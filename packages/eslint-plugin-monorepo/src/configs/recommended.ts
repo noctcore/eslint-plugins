@@ -5,4 +5,8 @@ export const recommended = {
   // stranger's repo. Enable it explicitly with your own scopes, e.g.
   //   'noctcore-monorepo/no-deep-package-imports': ['error', { scopes: ['@acme'] }]
   'noctcore-monorepo/no-deep-package-imports': 'off',
+  // Ships OFF for the same reason — `scopes` is required, so the rule cannot be
+  // turned on in a shared preset. Enable it with your own scopes, e.g.
+  //   'noctcore-monorepo/no-unexported-subpath-import': ['error', { scopes: ['@acme'] }]
+  'noctcore-monorepo/no-unexported-subpath-import': 'off',
 } as const;

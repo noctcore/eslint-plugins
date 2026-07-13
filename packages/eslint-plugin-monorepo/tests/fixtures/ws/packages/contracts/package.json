@@ -1,0 +1,10 @@
+{
+  "name": "@acme/contracts",
+  "version": "0.0.0",
+  "exports": {
+    ".": "./index.js",
+    "./schemas": "./schemas.js",
+    "./features/*": "./features/*.js",
+    "./package.json": "./package.json"
+  }
+}
