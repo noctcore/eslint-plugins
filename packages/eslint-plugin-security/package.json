@@ -1,0 +1,66 @@
+{
+  "name": "@noctcore/eslint-plugin-security",
+  "version": "0.1.0",
+  "description": "Injection / path-traversal precision ESLint rules — no shell interpolation, opt-in path containment.",
+  "license": "MIT",
+  "type": "module",
+  "main": "./dist/index.cjs",
+  "module": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js",
+      "require": "./dist/index.cjs"
+    },
+    "./package.json": "./package.json"
+  },
+  "files": [
+    "dist",
+    "docs",
+    "README.md"
+  ],
+  "sideEffects": false,
+  "keywords": [
+    "eslint",
+    "eslintplugin",
+    "eslint-plugin",
+    "security",
+    "injection",
+    "path-traversal",
+    "noctcore"
+  ],
+  "publishConfig": {
+    "access": "public",
+    "provenance": true
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/noctcore/eslint-plugins.git",
+    "directory": "packages/eslint-plugin-security"
+  },
+  "homepage": "https://github.com/noctcore/eslint-plugins/tree/main/packages/eslint-plugin-security",
+  "bugs": "https://github.com/noctcore/eslint-plugins/issues",
+  "scripts": {
+    "build": "tsup src/index.ts --format esm,cjs --dts --clean",
+    "typecheck": "tsc --noEmit",
+    "test": "vitest run"
+  },
+  "dependencies": {
+    "@noctcore/eslint-utils": "^0.1.0",
+    "@typescript-eslint/utils": "^8.61.1"
+  },
+  "peerDependencies": {
+    "eslint": ">=9.0.0",
+    "typescript": ">=5.0.0"
+  },
+  "devDependencies": {
+    "@noctcore/eslint-test-utils": "workspace:*",
+    "@types/node": "^22.0.0",
+    "@typescript-eslint/parser": "^8.61.1",
+    "@typescript-eslint/rule-tester": "^8.61.1",
+    "tsup": "^8.5.1",
+    "typescript": "^5.6.0",
+    "vitest": "^3"
+  }
+}
