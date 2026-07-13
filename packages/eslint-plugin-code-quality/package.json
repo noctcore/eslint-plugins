@@ -1,0 +1,54 @@
+{
+  "name": "@noctcore/eslint-plugin-code-quality",
+  "version": "0.1.0",
+  "description": "Portable code-quality, comment-hygiene, and test-discipline ESLint rules.",
+  "license": "MIT",
+  "type": "module",
+  "main": "./dist/index.cjs",
+  "module": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js",
+      "require": "./dist/index.cjs"
+    },
+    "./package.json": "./package.json"
+  },
+  "files": ["dist", "docs", "README.md"],
+  "sideEffects": false,
+  "keywords": ["eslint", "eslintplugin", "eslint-plugin", "code-quality", "noctcore"],
+  "publishConfig": {
+    "access": "public",
+    "provenance": true
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/noctcore/eslint-plugins.git",
+    "directory": "packages/eslint-plugin-code-quality"
+  },
+  "homepage": "https://github.com/noctcore/eslint-plugins/tree/main/packages/eslint-plugin-code-quality",
+  "bugs": "https://github.com/noctcore/eslint-plugins/issues",
+  "scripts": {
+    "build": "tsup src/index.ts --format esm,cjs --dts --clean",
+    "typecheck": "tsc --noEmit",
+    "test": "vitest run"
+  },
+  "dependencies": {
+    "@noctcore/eslint-utils": "workspace:*",
+    "@typescript-eslint/utils": "^8.61.1"
+  },
+  "peerDependencies": {
+    "eslint": ">=9.0.0",
+    "typescript": ">=5.0.0"
+  },
+  "devDependencies": {
+    "@noctcore/eslint-test-utils": "workspace:*",
+    "@types/node": "^22.0.0",
+    "@typescript-eslint/parser": "^8.61.1",
+    "@typescript-eslint/rule-tester": "^8.61.1",
+    "tsup": "^8.5.1",
+    "typescript": "^5.6.0",
+    "vitest": "^3"
+  }
+}
