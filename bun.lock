@@ -12,7 +12,7 @@
     },
     "packages/eslint-plugin-architecture": {
       "name": "@noctcore/eslint-plugin-architecture",
-      "version": "0.1.0",
+      "version": "0.2.0",
       "dependencies": {
         "@noctcore/eslint-utils": "workspace:*",
         "@typescript-eslint/utils": "^8.61.1",
@@ -75,7 +75,7 @@
     },
     "packages/eslint-plugin-contracts": {
       "name": "@noctcore/eslint-plugin-contracts",
-      "version": "0.1.0",
+      "version": "0.2.0",
       "dependencies": {
         "@noctcore/eslint-utils": "workspace:*",
         "@typescript-eslint/utils": "^8.61.1",
@@ -96,7 +96,7 @@
     },
     "packages/eslint-plugin-monorepo": {
       "name": "@noctcore/eslint-plugin-monorepo",
-      "version": "0.1.0",
+      "version": "0.2.0",
       "dependencies": {
         "@noctcore/eslint-utils": "workspace:*",
         "@typescript-eslint/utils": "^8.61.1",
@@ -138,7 +138,7 @@
     },
     "packages/eslint-plugin-react": {
       "name": "@noctcore/eslint-plugin-react",
-      "version": "0.1.0",
+      "version": "0.2.0",
       "dependencies": {
         "@noctcore/eslint-utils": "workspace:*",
         "@typescript-eslint/utils": "^8.61.1",
@@ -207,6 +207,18 @@
       "peerDependencies": {
         "eslint": ">=9.0.0",
         "typescript": ">=5.0.0",
+      },
+    },
+    "packages/lint-meta-rules": {
+      "name": "@noctcore/lint-meta-rules",
+      "version": "0.1.0",
+      "dependencies": {
+        "@noctcore/harness": "^0.1.0",
+      },
+      "devDependencies": {
+        "@types/node": "^22.0.0",
+        "tsup": "^8.5.1",
+        "typescript": "^5.6.0",
       },
     },
   },
@@ -360,6 +372,10 @@
     "@noctcore/eslint-test-utils": ["@noctcore/eslint-test-utils@workspace:packages/eslint-test-utils"],
 
     "@noctcore/eslint-utils": ["@noctcore/eslint-utils@workspace:packages/eslint-utils"],
+
+    "@noctcore/harness": ["@noctcore/harness@0.1.0", "", { "bin": { "harness": "dist/cli.js" } }, "sha512-bGQQ8neXh2ovKf350zeVK0ZLtQgL8KZn09mU18q1VtxWX7LAWcfecD/1xSAkcxDiGRwpXH9PMPjyRhcjYZiZaQ=="],
+
+    "@noctcore/lint-meta-rules": ["@noctcore/lint-meta-rules@workspace:packages/lint-meta-rules"],
 
     "@nodelib/fs.scandir": ["@nodelib/fs.scandir@2.1.5", "", { "dependencies": { "@nodelib/fs.stat": "2.0.5", "run-parallel": "^1.1.9" } }, "sha512-vq24Bq3ym5HEQm2NKCr3yXDwjc7vTsEThRDnkp2DK9p1uqLR+DHurm/NOTo0KG7HYHU7eppKZj3MyqYuMBf62g=="],
 

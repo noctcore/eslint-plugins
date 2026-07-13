@@ -1,0 +1,56 @@
+{
+  "name": "@noctcore/lint-meta-rules",
+  "version": "0.1.0",
+  "description": "Portable, parameterized lint-meta rules — whole-repo / cross-file invariants ESLint cannot reach — for the @noctcore/harness lint-meta runner.",
+  "license": "MIT",
+  "type": "module",
+  "main": "./dist/index.cjs",
+  "module": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js",
+      "require": "./dist/index.cjs"
+    },
+    "./package.json": "./package.json"
+  },
+  "files": [
+    "dist",
+    "docs",
+    "README.md"
+  ],
+  "sideEffects": false,
+  "keywords": [
+    "lint-meta",
+    "noctcore",
+    "harness",
+    "structure-lock",
+    "monorepo",
+    "convention"
+  ],
+  "publishConfig": {
+    "access": "public",
+    "provenance": true
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/noctcore/eslint-plugins.git",
+    "directory": "packages/lint-meta-rules"
+  },
+  "homepage": "https://github.com/noctcore/eslint-plugins/tree/main/packages/lint-meta-rules",
+  "bugs": "https://github.com/noctcore/eslint-plugins/issues",
+  "scripts": {
+    "build": "tsup src/index.ts --format esm,cjs --dts --clean",
+    "typecheck": "tsc --noEmit",
+    "test": "bun test"
+  },
+  "dependencies": {
+    "@noctcore/harness": "^0.1.0"
+  },
+  "devDependencies": {
+    "@types/node": "^22.0.0",
+    "tsup": "^8.5.1",
+    "typescript": "^5.6.0"
+  }
+}
