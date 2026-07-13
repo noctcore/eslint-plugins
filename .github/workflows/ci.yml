@@ -18,6 +18,8 @@ jobs:
         with:
           bun-version: 1.3.14
       - run: bun install --frozen-lockfile
-      - run: bun run typecheck
+      # Build first: plugins resolve @noctcore/eslint-utils via its emitted
+      # dist/*.d.ts, so typecheck needs the build to have run.
       - run: bun run build
+      - run: bun run typecheck
       - run: bun run test
