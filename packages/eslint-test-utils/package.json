@@ -1,0 +1,22 @@
+{
+  "name": "@noctcore/eslint-test-utils",
+  "version": "0.0.0",
+  "description": "Internal: shared RuleTester wired to Vitest for @noctcore plugin tests.",
+  "license": "MIT",
+  "private": true,
+  "type": "module",
+  "exports": {
+    ".": "./src/index.ts"
+  },
+  "scripts": {
+    "typecheck": "tsc --noEmit",
+    "test": "echo \"(no unit tests)\""
+  },
+  "dependencies": {
+    "@typescript-eslint/parser": "^8.61.1",
+    "@typescript-eslint/rule-tester": "^8.61.1"
+  },
+  "peerDependencies": {
+    "vitest": "^3"
+  }
+}

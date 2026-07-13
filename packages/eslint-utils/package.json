@@ -1,0 +1,49 @@
+{
+  "name": "@noctcore/eslint-utils",
+  "version": "0.1.0",
+  "description": "Shared rule-creator and AST helpers for @noctcore ESLint plugins.",
+  "license": "MIT",
+  "type": "module",
+  "main": "./dist/index.cjs",
+  "module": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js",
+      "require": "./dist/index.cjs"
+    },
+    "./package.json": "./package.json"
+  },
+  "files": ["dist"],
+  "sideEffects": false,
+  "keywords": ["eslint", "noctcore", "eslint-utils"],
+  "publishConfig": {
+    "access": "public",
+    "provenance": true
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/noctcore/eslint-plugins.git",
+    "directory": "packages/eslint-utils"
+  },
+  "homepage": "https://github.com/noctcore/eslint-plugins/tree/main/packages/eslint-utils",
+  "bugs": "https://github.com/noctcore/eslint-plugins/issues",
+  "scripts": {
+    "build": "tsup src/index.ts --format esm,cjs --dts --clean",
+    "typecheck": "tsc --noEmit",
+    "test": "echo \"(no unit tests)\""
+  },
+  "dependencies": {
+    "@typescript-eslint/utils": "^8.61.1"
+  },
+  "peerDependencies": {
+    "eslint": ">=9.0.0",
+    "typescript": ">=5.0.0"
+  },
+  "devDependencies": {
+    "@types/node": "^22.0.0",
+    "tsup": "^8.5.1",
+    "typescript": "^5.6.0"
+  }
+}
