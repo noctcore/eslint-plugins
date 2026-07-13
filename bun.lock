@@ -31,6 +31,27 @@
         "typescript": ">=5.0.0",
       },
     },
+    "packages/eslint-plugin-async-safety": {
+      "name": "@noctcore/eslint-plugin-async-safety",
+      "version": "0.1.0",
+      "dependencies": {
+        "@noctcore/eslint-utils": "^0.1.0",
+        "@typescript-eslint/utils": "^8.61.1",
+      },
+      "devDependencies": {
+        "@noctcore/eslint-test-utils": "workspace:*",
+        "@types/node": "^22.0.0",
+        "@typescript-eslint/parser": "^8.61.1",
+        "@typescript-eslint/rule-tester": "^8.61.1",
+        "tsup": "^8.5.1",
+        "typescript": "^5.6.0",
+        "vitest": "^3",
+      },
+      "peerDependencies": {
+        "eslint": ">=9.0.0",
+        "typescript": ">=5.0.0",
+      },
+    },
     "packages/eslint-plugin-code-quality": {
       "name": "@noctcore/eslint-plugin-code-quality",
       "version": "0.1.0",
@@ -94,11 +115,53 @@
         "typescript": ">=5.0.0",
       },
     },
+    "packages/eslint-plugin-observability": {
+      "name": "@noctcore/eslint-plugin-observability",
+      "version": "0.1.0",
+      "dependencies": {
+        "@noctcore/eslint-utils": "^0.1.0",
+        "@typescript-eslint/utils": "^8.61.1",
+      },
+      "devDependencies": {
+        "@noctcore/eslint-test-utils": "workspace:*",
+        "@types/node": "^22.0.0",
+        "@typescript-eslint/parser": "^8.61.1",
+        "@typescript-eslint/rule-tester": "^8.61.1",
+        "tsup": "^8.5.1",
+        "typescript": "^5.6.0",
+        "vitest": "^3",
+      },
+      "peerDependencies": {
+        "eslint": ">=9.0.0",
+        "typescript": ">=5.0.0",
+      },
+    },
     "packages/eslint-plugin-react": {
       "name": "@noctcore/eslint-plugin-react",
       "version": "0.1.0",
       "dependencies": {
         "@noctcore/eslint-utils": "workspace:*",
+        "@typescript-eslint/utils": "^8.61.1",
+      },
+      "devDependencies": {
+        "@noctcore/eslint-test-utils": "workspace:*",
+        "@types/node": "^22.0.0",
+        "@typescript-eslint/parser": "^8.61.1",
+        "@typescript-eslint/rule-tester": "^8.61.1",
+        "tsup": "^8.5.1",
+        "typescript": "^5.6.0",
+        "vitest": "^3",
+      },
+      "peerDependencies": {
+        "eslint": ">=9.0.0",
+        "typescript": ">=5.0.0",
+      },
+    },
+    "packages/eslint-plugin-security": {
+      "name": "@noctcore/eslint-plugin-security",
+      "version": "0.1.0",
+      "dependencies": {
+        "@noctcore/eslint-utils": "^0.1.0",
         "@typescript-eslint/utils": "^8.61.1",
       },
       "devDependencies": {
@@ -280,13 +343,19 @@
 
     "@noctcore/eslint-plugin-architecture": ["@noctcore/eslint-plugin-architecture@workspace:packages/eslint-plugin-architecture"],
 
+    "@noctcore/eslint-plugin-async-safety": ["@noctcore/eslint-plugin-async-safety@workspace:packages/eslint-plugin-async-safety"],
+
     "@noctcore/eslint-plugin-code-quality": ["@noctcore/eslint-plugin-code-quality@workspace:packages/eslint-plugin-code-quality"],
 
     "@noctcore/eslint-plugin-contracts": ["@noctcore/eslint-plugin-contracts@workspace:packages/eslint-plugin-contracts"],
 
     "@noctcore/eslint-plugin-monorepo": ["@noctcore/eslint-plugin-monorepo@workspace:packages/eslint-plugin-monorepo"],
 
+    "@noctcore/eslint-plugin-observability": ["@noctcore/eslint-plugin-observability@workspace:packages/eslint-plugin-observability"],
+
     "@noctcore/eslint-plugin-react": ["@noctcore/eslint-plugin-react@workspace:packages/eslint-plugin-react"],
+
+    "@noctcore/eslint-plugin-security": ["@noctcore/eslint-plugin-security@workspace:packages/eslint-plugin-security"],
 
     "@noctcore/eslint-test-utils": ["@noctcore/eslint-test-utils@workspace:packages/eslint-test-utils"],
 

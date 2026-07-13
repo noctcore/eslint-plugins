@@ -1,6 +1,6 @@
 {
   "name": "@noctcore/eslint-plugin-architecture",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "description": "Framework-agnostic folder-per-component and feature-boundary architecture ESLint rules.",
   "license": "MIT",
   "type": "module",

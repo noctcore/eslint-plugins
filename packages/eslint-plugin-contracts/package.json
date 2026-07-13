@@ -1,6 +1,6 @@
 {
   "name": "@noctcore/eslint-plugin-contracts",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "description": "ESLint rules for shared contract, config, error-handling, and money-precision conventions (zod schema naming, wire discriminants, no-direct-process-env, decimal money).",
   "license": "MIT",
   "type": "module",
