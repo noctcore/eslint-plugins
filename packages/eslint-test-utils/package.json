@@ -18,5 +18,9 @@
   },
   "peerDependencies": {
     "vitest": "^3"
+  },
+  "devDependencies": {
+    "typescript": "^5.6.0",
+    "vitest": "^3"
   }
 }

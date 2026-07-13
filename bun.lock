@@ -10,6 +10,90 @@
         "typescript": "^5.6.0",
       },
     },
+    "packages/eslint-plugin-architecture": {
+      "name": "@noctcore/eslint-plugin-architecture",
+      "version": "0.1.0",
+      "dependencies": {
+        "@noctcore/eslint-utils": "workspace:*",
+        "@typescript-eslint/utils": "^8.61.1",
+      },
+      "devDependencies": {
+        "@noctcore/eslint-test-utils": "workspace:*",
+        "@types/node": "^22.0.0",
+        "@typescript-eslint/parser": "^8.61.1",
+        "@typescript-eslint/rule-tester": "^8.61.1",
+        "tsup": "^8.5.1",
+        "typescript": "^5.6.0",
+        "vitest": "^3",
+      },
+      "peerDependencies": {
+        "eslint": ">=9.0.0",
+        "typescript": ">=5.0.0",
+      },
+    },
+    "packages/eslint-plugin-code-quality": {
+      "name": "@noctcore/eslint-plugin-code-quality",
+      "version": "0.1.0",
+      "dependencies": {
+        "@noctcore/eslint-utils": "workspace:*",
+        "@typescript-eslint/utils": "^8.61.1",
+      },
+      "devDependencies": {
+        "@noctcore/eslint-test-utils": "workspace:*",
+        "@types/node": "^22.0.0",
+        "@typescript-eslint/parser": "^8.61.1",
+        "@typescript-eslint/rule-tester": "^8.61.1",
+        "tsup": "^8.5.1",
+        "typescript": "^5.6.0",
+        "vitest": "^3",
+      },
+      "peerDependencies": {
+        "eslint": ">=9.0.0",
+        "typescript": ">=5.0.0",
+      },
+    },
+    "packages/eslint-plugin-contracts": {
+      "name": "@noctcore/eslint-plugin-contracts",
+      "version": "0.1.0",
+      "dependencies": {
+        "@noctcore/eslint-utils": "workspace:*",
+        "@typescript-eslint/utils": "^8.61.1",
+      },
+      "devDependencies": {
+        "@noctcore/eslint-test-utils": "workspace:*",
+        "@types/node": "^22.0.0",
+        "@typescript-eslint/parser": "^8.61.1",
+        "@typescript-eslint/rule-tester": "^8.61.1",
+        "tsup": "^8.5.1",
+        "typescript": "^5.6.0",
+        "vitest": "^3",
+      },
+      "peerDependencies": {
+        "eslint": ">=9.0.0",
+        "typescript": ">=5.0.0",
+      },
+    },
+    "packages/eslint-plugin-monorepo": {
+      "name": "@noctcore/eslint-plugin-monorepo",
+      "version": "0.1.0",
+      "dependencies": {
+        "@noctcore/eslint-utils": "workspace:*",
+        "@typescript-eslint/utils": "^8.61.1",
+      },
+      "devDependencies": {
+        "@noctcore/eslint-test-utils": "workspace:*",
+        "@types/node": "^22.0.0",
+        "@typescript-eslint/parser": "^8.61.1",
+        "@typescript-eslint/rule-tester": "^8.61.1",
+        "tsup": "^8.5.1",
+        "typescript": "^5.6.0",
+        "vitest": "^3",
+      },
+      "peerDependencies": {
+        "eslint": ">=9.0.0",
+        "typescript": ">=5.0.0",
+      },
+    },
     "packages/eslint-plugin-react": {
       "name": "@noctcore/eslint-plugin-react",
       "version": "0.1.0",
@@ -37,6 +121,10 @@
       "dependencies": {
         "@typescript-eslint/parser": "^8.61.1",
         "@typescript-eslint/rule-tester": "^8.61.1",
+      },
+      "devDependencies": {
+        "typescript": "^5.6.0",
+        "vitest": "^3",
       },
       "peerDependencies": {
         "vitest": "^3",
@@ -189,6 +277,14 @@
     "@manypkg/find-root": ["@manypkg/find-root@1.1.0", "", { "dependencies": { "@babel/runtime": "^7.5.5", "@types/node": "^12.7.1", "find-up": "^4.1.0", "fs-extra": "^8.1.0" } }, "sha512-mki5uBvhHzO8kYYix/WRy2WX8S3B5wdVSc9D6KcU5lQNglP2yt58/VfLuAK49glRXChosY8ap2oJ1qgma3GUVA=="],
 
     "@manypkg/get-packages": ["@manypkg/get-packages@1.1.3", "", { "dependencies": { "@babel/runtime": "^7.5.5", "@changesets/types": "^4.0.1", "@manypkg/find-root": "^1.1.0", "fs-extra": "^8.1.0", "globby": "^11.0.0", "read-yaml-file": "^1.1.0" } }, "sha512-fo+QhuU3qE/2TQMQmbVMqaQ6EWbMhi4ABWP+O4AM1NqPBuy0OrApV5LO6BrrgnhtAHS2NH6RrVk9OL181tTi8A=="],
+
+    "@noctcore/eslint-plugin-architecture": ["@noctcore/eslint-plugin-architecture@workspace:packages/eslint-plugin-architecture"],
+
+    "@noctcore/eslint-plugin-code-quality": ["@noctcore/eslint-plugin-code-quality@workspace:packages/eslint-plugin-code-quality"],
+
+    "@noctcore/eslint-plugin-contracts": ["@noctcore/eslint-plugin-contracts@workspace:packages/eslint-plugin-contracts"],
+
+    "@noctcore/eslint-plugin-monorepo": ["@noctcore/eslint-plugin-monorepo@workspace:packages/eslint-plugin-monorepo"],
 
     "@noctcore/eslint-plugin-react": ["@noctcore/eslint-plugin-react@workspace:packages/eslint-plugin-react"],
 
