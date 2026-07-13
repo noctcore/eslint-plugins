@@ -15,9 +15,20 @@
     },
     "./package.json": "./package.json"
   },
-  "files": ["dist", "docs", "README.md"],
+  "files": [
+    "dist",
+    "docs",
+    "README.md"
+  ],
   "sideEffects": false,
-  "keywords": ["eslint", "eslintplugin", "eslint-plugin", "contracts", "zod", "noctcore"],
+  "keywords": [
+    "eslint",
+    "eslintplugin",
+    "eslint-plugin",
+    "contracts",
+    "zod",
+    "noctcore"
+  ],
   "publishConfig": {
     "access": "public",
     "provenance": true
@@ -35,7 +46,7 @@
     "test": "vitest run"
   },
   "dependencies": {
-    "@noctcore/eslint-utils": "workspace:*",
+    "@noctcore/eslint-utils": "^0.1.0",
     "@typescript-eslint/utils": "^8.61.1"
   },
   "peerDependencies": {
