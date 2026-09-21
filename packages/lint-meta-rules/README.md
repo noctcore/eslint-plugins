@@ -44,7 +44,8 @@ over the whole catalog.
 
 13 nightcore lint-meta rules are ported as 12 factories — nightcore's `web-file-size-ratchet` and
 `engine-file-size-ratchet` were byte-identical logic and collapse into a single
-`createFileSizeRatchetRule` (instantiated once per capped area).
+`createFileSizeRatchetRule` (instantiated once per capped area). Five CI-hygiene rules (category
+`ci`) are ported from a production NestJS + Vite monorepo, one factory each, for 17 factories in all.
 
 | Factory | Source rule(s) | Category | What it enforces |
 | --- | --- | --- | --- |
@@ -60,6 +61,11 @@ over the whole catalog.
 | [`createUiPrimitiveShapeRule`](./docs/rules/ui-primitive-shape.md) | `ui-primitive-shape` | source-text | A folder primitive ships its proof siblings; a flat primitive carries none at the ui root. |
 | [`createTestWorkspaceEnrollmentRule`](./docs/rules/test-workspace-enrollment.md) | `test-workspace-enrollment` | testing | Every tested package is enumerated in the aggregate test script. |
 | [`createTestRunnerSegregationRule`](./docs/rules/test-runner-segregation.md) | `test-runner-segregation` | testing | Bun-side and foreign-side test runners are never mixed within a package. |
+| [`createGithubActionsShaPinnedRule`](./docs/rules/github-actions-sha-pinned.md) | `github-actions-sha-pinned` | ci | Workflow `uses:` refs are pinned to a full commit SHA with a `# vN` comment. |
+| [`createGithubActionsRunnerPinnedRule`](./docs/rules/github-actions-runner-pinned.md) | `github-actions-runner-pinned` | ci | Workflow jobs run on a named runner image, never a `*-latest` label. |
+| [`createServiceImageDigestPinRule`](./docs/rules/service-image-digest-pin.md) | `service-image-digest-pin` | ci | Workflow service/container images and compose images are pinned by `@sha256:` digest. |
+| [`createDockerfileBaseImageDigestPinRule`](./docs/rules/dockerfile-base-image-digest-pin.md) | `dockerfile-base-image-digest-pin` | ci | Dockerfile `FROM` base images are pinned by `@sha256:` digest. |
+| [`createSecurityScannerVersionParityRule`](./docs/rules/security-scanner-version-parity.md) | `security-scanner-version-parity` | ci | CI and the local pre-push hook pin the same secret-scanner version, and the hook checks it at run time. |
 
 Every factory is callable with no arguments (all options default), so `createAllRules()` and
 per-factory defaults work out of the box; supply options to retarget a rule at your own repo.

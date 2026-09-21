@@ -31,3 +31,56 @@ export function countLines(text: string): number {
 export function recursiveGlobs(roots: readonly string[], extensions: readonly string[]): string[] {
   return roots.flatMap((root) => extensions.map((ext) => `${root}/**/*${ext}`));
 }
+
+/** Default workflow globs: every `.github/workflows/*.y(a)ml`. */
+export const DEFAULT_WORKFLOW_GLOBS: readonly string[] = [
+  '.github/workflows/*.yml',
+  '.github/workflows/*.yaml',
+];
+
+/** Directories no CI or Docker file lives in (dependencies, build output, VCS internals). */
+export const DEFAULT_SKIP_DIRS: readonly string[] = [
+  'node_modules',
+  '.git',
+  'dist',
+  '.turbo',
+  'coverage',
+];
+
+/**
+ * The deduplicated, sorted union of `globs`, minus any path with a segment in
+ * `skipDirs`. Sorted so violations come out in a stable order.
+ */
+export function globFiles(
+  glob: (pattern: string) => string[],
+  globs: readonly string[],
+  skipDirs: readonly string[] = [],
+): string[] {
+  const skip = new Set(skipDirs);
+  const found = new Set<string>();
+  for (const pattern of globs) {
+    for (const rel of glob(pattern)) {
+      if (!rel.split('/').some((segment) => skip.has(segment))) found.add(rel);
+    }
+  }
+  return [...found].sort();
+}
+
+/** A YAML line with its trailing comment removed (a `#` at the start or after whitespace). */
+export function stripYamlComment(line: string): string {
+  return line.replace(/(^|\s)#.*$/u, '');
+}
+
+/** A YAML scalar with surrounding quotes removed. */
+export function unquote(value: string): string {
+  return value.trim().replace(/^(['"])(.*)\1$/u, '$2');
+}
+
+/**
+ * Expand base-name patterns into globs that match them at any depth, including
+ * inside dot-directories (`.devcontainer/Dockerfile`), which `fs.globSync`'s
+ * `**` does not enter on its own.
+ */
+export function anywhereGlobs(baseNames: readonly string[]): string[] {
+  return baseNames.flatMap((name) => [`**/${name}`, `**/.*/**/${name}`]);
+}
