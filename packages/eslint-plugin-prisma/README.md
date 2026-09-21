@@ -43,6 +43,9 @@ export default [
       'noctcore-prisma/no-cross-tenant-id-in-where': 'error',
       'noctcore-prisma/no-audit-write-in-transaction': 'error',
 
+      // Needs type information: see its docs.
+      'noctcore-prisma/mutation-entry-must-reach-audit': ['error', { unauditedModels: ['tourProgress'] }],
+
       // These need your registry and report nothing without it.
       'noctcore-prisma/tenant-scoped-tables-require-where': ['error', {
         tenantModels: ['invoice', 'customer'],
@@ -69,26 +72,32 @@ export default [
 ];
 ```
 
-`recommended` turns on the six rules whose defaults hold with no project knowledge. The other four
+`recommended` turns on the six rules whose defaults hold with no project knowledge. Four more
 need your model registry (`tenantModels`, `softDeleteModels`, `restrictions`) and are left out of the
-preset on purpose: an entry that reports nothing would read as coverage you do not have.
+preset on purpose: an entry that reports nothing would read as coverage you do not have. The last one,
+`mutation-entry-must-reach-audit`, needs type information.
 
 No project convention is hardcoded. What a Prisma receiver is called (`receiverPattern`), the
 unscoped client's property (`unscopedProperty`), escape-hatch functions (`escapeHatchFns`), extra
 client properties (`clientProperties`) and transaction-client names (`txRootNames`) are all options
 with defaults that fit a conventional Prisma codebase. Which models are tenant-scoped,
 soft-deletable or single-writer is never guessed: those lists default to empty. The rules are name-
-and shape-based and need no type information.
+and shape-based and need no type information, with one exception: `mutation-entry-must-reach-audit`
+follows calls across files through the type checker, refuses to run without it, and is not in
+`recommended` for that reason.
 
-Two rules state a limit loudly, because their names could be read as promising more:
+Three rules state a limit loudly, because their names could be read as promising more:
 `restrict-model-writes` fences WHO writes a model, and does not validate state transitions;
 `no-audit-write-in-transaction` polices WHERE an audit write sits, and does not check that mutations
-are audited.
+are audited. `mutation-entry-must-reach-audit` is the rule that checks audits exist, and it states its
+own limit in its name: it proves an audit is reachable from each mutation entry point, not that every
+mutating method audits.
 
 ## Rules
 
 | Rule | Description |
 | --- | --- |
+| [`mutation-entry-must-reach-audit`](./docs/rules/mutation-entry-must-reach-audit.md) | A `@Mutation()` entry that can reach a Prisma write must be able to reach an audit write, across files. Needs type information. |
 | [`no-audit-write-in-transaction`](./docs/rules/no-audit-write-in-transaction.md) | No audit-log write inside a `$transaction` callback. Does not check that mutations are audited. |
 | [`no-cross-tenant-id-in-where`](./docs/rules/no-cross-tenant-id-in-where.md) | A tenant id in `where` / `data` comes from server context, never from client input. |
 | [`no-raw-sql-outside-allowlist`](./docs/rules/no-raw-sql-outside-allowlist.md) | Raw SQL that can touch a table only in allowlisted files; `*Unsafe` never. |
