@@ -180,7 +180,7 @@ export const noConditionalExpectRule = createRule<RuleOptions, MessageIds>({
     function scan(node: TSESTree.Node): { boundary: FunctionNode | null; conditional: boolean } {
       let conditional = false;
       let child: TSESTree.Node = node;
-      // ESLint 10 sets `Program.parent` to null; earlier majors leave it undefined.
+      // `Program.parent` is typed `undefined` but is `null` at runtime.
       let current: TSESTree.Node | null | undefined = node.parent;
       while (current !== undefined && current !== null) {
         if (isFunctionNode(current) && isRunnerCallback(current)) {
