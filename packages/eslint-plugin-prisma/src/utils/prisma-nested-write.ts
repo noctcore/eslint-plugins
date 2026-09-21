@@ -2,7 +2,12 @@ import { AST_NODE_TYPES } from '@typescript-eslint/utils';
 import type { TSESTree } from '@typescript-eslint/utils';
 
 import type { ParsedPrismaSchema } from './prisma-schema';
-import { loadPrismaSchema, relationFieldsForModels, resolveSchemaPath } from './prisma-schema';
+import {
+  delegateAccessor,
+  loadPrismaSchema,
+  relationFieldsForModels,
+  resolveSchemaPath,
+} from './prisma-schema';
 
 /**
  * Shared nested-relation-write detection for single-writer fences: rules that
@@ -150,6 +155,30 @@ export function guardedRelationNames(request: GuardedRelationRequest): Set<strin
 
   perSchema.set(key, names);
   relationCache.set(parsed, perSchema);
+  return names;
+}
+
+/**
+ * Relation fields DECLARED ON one of the guarded models that point back at one
+ * of them (`Invoice.supersedes -> Invoice`), from the schema only.
+ *
+ * `guardedRelationNames` answers "which keys reach a guarded model", which is
+ * right for a payload on SOME OTHER model. Inside a payload on the guarded model
+ * itself it is too loose: a key is only a relation there if the guarded model
+ * declares it, and a name borrowed from another model's relation is just a
+ * column. So a write on a guarded model is checked against this narrower set,
+ * and with no schema in reach it is empty rather than guessed.
+ */
+export function guardedSelfRelationNames(request: GuardedRelationRequest): Set<string> {
+  const names = new Set<string>();
+  const parsed = loadPrismaSchema(resolveSchemaPath(request.filename, request.schemaPath));
+  if (parsed === null) return names;
+  const guarded = new Set(request.guardedModels);
+  for (const relation of parsed.relationFields) {
+    if (guarded.has(delegateAccessor(relation.owner)) && guarded.has(relation.targetAccessor)) {
+      names.add(relation.field);
+    }
+  }
   return names;
 }
 
