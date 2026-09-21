@@ -1,7 +1,7 @@
 {
   "name": "@noctcore/lint-meta-rules",
   "version": "0.2.0",
-  "description": "Portable, parameterized lint-meta rules — whole-repo / cross-file invariants ESLint cannot reach — for the @noctcore/harness lint-meta runner.",
+  "description": "Portable, parameterized lint-meta rules \u2014 whole-repo / cross-file invariants ESLint cannot reach \u2014 for the @noctcore/harness lint-meta runner.",
   "license": "MIT",
   "type": "module",
   "main": "./dist/index.cjs",
@@ -12,6 +12,11 @@
       "types": "./dist/index.d.ts",
       "import": "./dist/index.js",
       "require": "./dist/index.cjs"
+    },
+    "./i18n": {
+      "types": "./dist/i18n.d.ts",
+      "import": "./dist/i18n.js",
+      "require": "./dist/i18n.cjs"
     },
     "./package.json": "./package.json"
   },
@@ -41,15 +46,31 @@
   "homepage": "https://github.com/noctcore/eslint-plugins/tree/main/packages/lint-meta-rules",
   "bugs": "https://github.com/noctcore/eslint-plugins/issues",
   "scripts": {
-    "build": "tsup src/index.ts --format esm,cjs --dts --clean",
+    "build": "tsup src/index.ts src/i18n.ts --format esm,cjs --dts --clean",
     "typecheck": "tsc --noEmit",
     "test": "bun test"
   },
   "dependencies": {
-    "@noctcore/harness": "^0.3.0"
+    "@noctcore/eslint-plugin-contracts": "^0.4.0",
+    "@noctcore/harness": "^0.3.0",
+    "@typescript-eslint/utils": "^8.61.1"
+  },
+  "peerDependencies": {
+    "@typescript-eslint/parser": "^8.0.0",
+    "eslint": ">=9.0.0"
+  },
+  "peerDependenciesMeta": {
+    "@typescript-eslint/parser": {
+      "optional": true
+    },
+    "eslint": {
+      "optional": true
+    }
   },
   "devDependencies": {
     "@types/node": "^22.0.0",
+    "@typescript-eslint/parser": "^8.61.1",
+    "eslint": "^10.7.0",
     "tsup": "^8.5.1",
     "typescript": "^5.6.0"
   }

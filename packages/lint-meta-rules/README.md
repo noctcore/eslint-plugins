@@ -69,3 +69,15 @@ over the whole catalog.
 
 Every factory is callable with no arguments (all options default), so `createAllRules()` and
 per-factory defaults work out of the box; supply options to retarget a rule at your own repo.
+
+### `@noctcore/lint-meta-rules/i18n`
+
+Whole-program translation checks live on a separate entry point, because they run ESLint's parser
+and scope analysis (reusing the i18n visitor behind `noctcore-contracts/translation-key-exists`).
+The main entry never loads ESLint; this one needs the optional peers `eslint` and
+`@typescript-eslint/parser`. Its factories are not part of `RULE_FACTORIES` / `createAllRules()`:
+they are inert until you point them at your catalogs.
+
+| Factory | Category | What it enforces |
+| --- | --- | --- |
+| [`createTranslationDeadKeysRule`](./docs/rules/translation-dead-keys.md) | source-text | Every catalog key is reachable: named by a translation call, or spelled by some string in the source. |

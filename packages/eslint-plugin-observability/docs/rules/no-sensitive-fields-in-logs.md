@@ -1,6 +1,6 @@
 # `noctcore-observability/no-sensitive-fields-in-logs`
 
-> A name-heuristic guard against writing credentials and secrets into log sinks. Ships at `warn`.
+> A name-heuristic guard against writing credentials and secrets into log sinks. Ships at `error`.
 
 ## Why
 
@@ -9,8 +9,10 @@ Logs are long-lived, widely readable, and shipped to third-party aggregators. A 
 request by months. This rule catches the most common shape — a variable, property, or object key
 whose **name** matches a sensitive-field denylist appearing inside a logger call.
 
-It reads **names, never values**, so it is a heuristic and ships at `warn`, not `error` — treat a hit
-as "look here", not "definitely a bug".
+It reads **names, never values**, so it is a heuristic. It still ships at `error`: a miss puts a
+credential in a long-lived log sink, while a false positive costs a rename or an explicit `redact()`.
+Tests that log a secret on purpose (to prove a redaction boundary works) should turn the rule off for
+those files in config.
 
 ## What it flags
 
@@ -55,4 +57,4 @@ type Options = {
 ## When not to use it
 
 If your logging pipeline already redacts sensitive fields centrally (a serializer denylist), this
-rule is redundant. Otherwise keep it on at `warn` as a second line of defence.
+rule is redundant. Otherwise keep it on at `error` as a second line of defence.

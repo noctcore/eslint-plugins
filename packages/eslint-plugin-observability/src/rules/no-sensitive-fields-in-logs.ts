@@ -17,8 +17,8 @@ type MessageIds = 'sensitiveField';
  * A name-heuristic tripwire for secrets in logs. Any identifier, member-access,
  * or object-property NAME inside a logger call that matches the denylist
  * (`password`, `token`, `secret`, ...) is very likely leaking a credential into
- * a log sink. This is a HEURISTIC — it reads names, never values — so it ships at
- * `warn`, not `error`.
+ * a log sink. This is a HEURISTIC (it reads names, never values), but a miss
+ * costs far more than a false positive, so it ships at `error`.
  *
  * Matching is name-segment aware to keep the signal: a single-word denyName
  * (`token`) matches a camelCase / snake_case SEGMENT (`accessToken`,
