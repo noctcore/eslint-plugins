@@ -16,4 +16,8 @@ export const recommended = {
   'noctcore-code-quality/no-pr-reference-comments': 'error',
   'noctcore-code-quality/no-focused-tests': 'error',
   'noctcore-code-quality/skipped-tests-need-tracking': 'error',
+  'noctcore-code-quality/no-vacuous-expect': 'error',
+  'noctcore-code-quality/no-conditional-expect': 'error',
+  'noctcore-code-quality/fake-timers-must-be-restored': 'error',
+  'noctcore-code-quality/no-real-network-in-unit-tests': 'error',
 } as const;
