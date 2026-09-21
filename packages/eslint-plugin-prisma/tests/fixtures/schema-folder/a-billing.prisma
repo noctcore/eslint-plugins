@@ -1,0 +1,5 @@
+model Order {
+  id       String      @id
+  tenantId String
+  lines    OrderLine[]
+}

@@ -1,0 +1,5 @@
+model OrderLine {
+  id      String @id
+  order   Order  @relation(fields: [orderId], references: [id])
+  orderId String
+}
