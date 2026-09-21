@@ -1,6 +1,6 @@
 # @noctcore/eslint-plugin-security
 
-Injection, path-traversal, SSRF and open-redirect precision rules. High-precision syntactic sinks only — precision is the
+Injection, path-traversal, SSRF and open-redirect precision rules. High-precision syntactic sinks only; precision is the
 point. Flat-config only, ESLint 9+.
 
 ## Install
