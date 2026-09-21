@@ -42,3 +42,4 @@ export default [
 | [`structured-log-arguments`](./docs/rules/structured-log-arguments.md) | Pass dynamic values in a structured context object, not interpolated into the message string. | `error` |
 | [`no-sensitive-fields-in-logs`](./docs/rules/no-sensitive-fields-in-logs.md) | Name-heuristic guard against writing credentials/secrets into log sinks. | `warn` |
 | [`no-error-detail-loss`](./docs/rules/no-error-detail-loss.md) | A catch block that reports failure must log the error itself, not only `e.message`. | `error` |
+| [`audit-pii-declared`](./docs/rules/audit-pii-declared.md) | A PII-shaped key written into an audit payload must be declared: registered for scrubbing on purge, or declared non-PII. Enforces declaration, not deletion. Inert until `auditCallees` is set. | `error` |
