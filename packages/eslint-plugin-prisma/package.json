@@ -1,6 +1,6 @@
 {
   "name": "@noctcore/eslint-plugin-prisma",
-  "version": "0.0.0",
+  "version": "0.1.0",
   "description": "Prisma tenancy and transaction guardrails: unscoped-client and raw-SQL fences, multi-write transactions, tx-not-client inside interactive transactions.",
   "license": "MIT",
   "type": "module",
