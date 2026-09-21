@@ -5,11 +5,13 @@ import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 import type * as I18nRules from '../../src/i18n';
+import type * as PrismaRules from '../../src/prisma';
+import type * as ResolvedConfigRules from '../../src/resolved-config';
 import type * as Rules from '../../src/rules';
 
-type Factories = typeof Rules & typeof I18nRules;
+type Factories = typeof Rules & typeof I18nRules & typeof PrismaRules & typeof ResolvedConfigRules;
 
-/** A rule factory exported by this package (either entry point), by name. */
+/** A rule factory exported by this package (any entry point), by name. */
 export type RuleFactoryName = {
   [K in keyof Factories]: K extends `create${string}Rule` ? K : never;
 }[keyof Factories];
@@ -49,8 +51,16 @@ function harnessCli(): string {
   return path.join(path.dirname(fileURLToPath(import.meta.resolve('@noctcore/harness'))), 'cli.js');
 }
 
+/** The entry point each factory outside the main catalog is exported from. */
+const SUBPATH_ENTRIES: Partial<Record<RuleFactoryName, string>> = {
+  createTranslationDeadKeysRule: 'i18n',
+  createEslintConfigNoWarnRule: 'resolved-config',
+  createPrismaMethodSurfaceRule: 'prisma',
+  createTenantModelRegistryParityRule: 'prisma',
+};
+
 function entryFor(factory: RuleFactoryName, runtime: 'bun' | 'node-eslint9'): string {
-  const entry = factory === 'createTranslationDeadKeysRule' ? 'i18n' : 'index';
+  const entry = SUBPATH_ENTRIES[factory] ?? 'index';
   return runtime === 'bun' ? path.join(PACKAGE_ROOT, `src/${entry}.ts`) : path.join(PACKAGE_ROOT, `dist/${entry}.js`);
 }
 
