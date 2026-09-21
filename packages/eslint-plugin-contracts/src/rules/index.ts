@@ -1,4 +1,5 @@
 import { envVarSchemaParityRule } from './env-var-schema-parity';
+import { fetchMustCheckOkRule } from './fetch-must-check-ok';
 import { moneyMustBeDecimalRule } from './money-must-be-decimal';
 import { noDirectProcessEnvRule } from './no-direct-process-env';
 import { noErrorStringifyRule } from './no-error-stringify';
@@ -23,4 +24,5 @@ export const rules = {
   'env-var-schema-parity': envVarSchemaParityRule,
   'require-schema-parse-at-boundary': requireSchemaParseAtBoundaryRule,
   'schema-enum-field-consistency': schemaEnumFieldConsistencyRule,
+  'fetch-must-check-ok': fetchMustCheckOkRule,
 };
