@@ -54,5 +54,15 @@ documented but off by default (opinionated / niche) — enable them explicitly.
 | [`no-pr-reference-comments`](./docs/rules/no-pr-reference-comments.md) | Ban PR/issue references in comments. | ✅ | |
 | [`no-focused-tests`](./docs/rules/no-focused-tests.md) | Ban focused tests (`.only` / `fdescribe` / `fit`). | ✅ | |
 | [`skipped-tests-need-tracking`](./docs/rules/skipped-tests-need-tracking.md) | Skipped tests must carry a tracking marker (issue URL or `TODO(@owner)`). | ✅ | `markers`, `lookback` |
+| [`no-vacuous-expect`](./docs/rules/no-vacuous-expect.md) | Ban `typeof` expects, literal tautologies and a sole `toBeDefined`/`toBeTruthy`. | ✅ | `weakMatchers`, `assertionCallees` |
+| [`no-conditional-expect`](./docs/rules/no-conditional-expect.md) | Ban `expect()` inside a branch or `catch` that may not run. | ✅ | `checkLoops` |
+| [`fake-timers-must-be-restored`](./docs/rules/fake-timers-must-be-restored.md) | `useFakeTimers()` needs a `useRealTimers()`, here or in the shared suite the file runs. | ✅ | `fakeTimerMethods`, `restoreTimerMethods`, `followImportedSuites`, `sharedSuiteModules` |
+| [`no-real-network-in-unit-tests`](./docs/rules/no-real-network-in-unit-tests.md) | Ban real `fetch` / `axios` calls in unit test files. | ✅ | `testFileSuffixes`, `integrationMarkers`, `networkCallees`, `httpClients` |
 | [`interface-prefix-i`](./docs/rules/interface-prefix-i.md) | Interface names must be `I` + uppercase. Opinionated house style. | | |
 | [`no-template-trim-empty-ternary`](./docs/rules/no-template-trim-empty-ternary.md) | Extract inline `` `…`.trim() === '' ? … `` to a named util. Niche. | | |
+
+## Attribution
+
+`no-vacuous-expect`, `no-conditional-expect`, `fake-timers-must-be-restored` and
+`no-real-network-in-unit-tests` are ported from [tsforge](https://github.com/boringstack-xyz/tsforge)
+(MIT). See [THIRD_PARTY_NOTICES.md](./THIRD_PARTY_NOTICES.md).
