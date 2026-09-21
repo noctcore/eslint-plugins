@@ -9,11 +9,12 @@ export const recommended = {
   'noctcore-contracts/restrict-throw-to-taxonomy': 'error',
   'noctcore-contracts/schema-enum-field-consistency': 'error',
   'noctcore-contracts/fetch-must-check-ok': 'error',
-  // Config-required / heuristic rules ship inert. `require-registered-keys` and
-  // `env-var-schema-parity` do nothing until their `sinks` / `schema` options are
-  // set; `require-schema-parse-at-boundary` is a conservative syntactic slice of a
+  // Config-required / heuristic rules ship inert. `require-registered-keys`,
+  // `env-var-schema-parity` and `translation-key-exists` do nothing until their
+  // `sinks` / `schema` / `catalogs` options are set; `require-schema-parse-at-boundary` is a conservative syntactic slice of a
   // type-aware concern. Enable them explicitly once configured for your project.
   'noctcore-contracts/require-registered-keys': 'off',
   'noctcore-contracts/env-var-schema-parity': 'off',
   'noctcore-contracts/require-schema-parse-at-boundary': 'off',
+  'noctcore-contracts/translation-key-exists': 'off',
 } as const;

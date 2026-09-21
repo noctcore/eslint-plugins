@@ -1,0 +1,14 @@
+{
+  "common": {
+    "actions": { "save": "Save", "cancel": "Cancel" },
+    "items_one": "{{count}} item",
+    "items_other": "{{count}} items",
+    "place_ordinal_one": "{{count}}st",
+    "place_ordinal_other": "{{count}}th",
+    "friend_male": "He is a friend",
+    "friend_female": "She is a friend",
+    "weekdays": ["Mon", "Tue"],
+    "status": { "active": "Active", "archived": "Archived" }
+  },
+  "errors": { "NOT_FOUND": "Not found" }
+}
