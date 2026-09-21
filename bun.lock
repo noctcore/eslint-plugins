@@ -213,7 +213,7 @@
       "name": "@noctcore/lint-meta-rules",
       "version": "0.1.0",
       "dependencies": {
-        "@noctcore/harness": "^0.2.0",
+        "@noctcore/harness": "^0.3.0",
       },
       "devDependencies": {
         "@types/node": "^22.0.0",
@@ -373,7 +373,7 @@
 
     "@noctcore/eslint-utils": ["@noctcore/eslint-utils@workspace:packages/eslint-utils"],
 
-    "@noctcore/harness": ["@noctcore/harness@0.2.0", "", { "bin": { "harness": "dist/cli.js" } }, "sha512-tNI9fKRc+oUwgptn/XmGVv1RaAR3FZNRwPBYV41VbQkZKr7F5FoeN/Yw/plv3L+phGN3BK+dXjlODEx3QX/7UQ=="],
+    "@noctcore/harness": ["@noctcore/harness@0.3.0", "", { "bin": { "harness": "dist/cli.js" } }, "sha512-0AEu+R9IH21jALFUfT/OJdwZfaK1ljrHaQiPY7hDf4Ajqh5qE6rg4Ha+6S+PzkF//5vvZ38cU10XMIFz5LXk4Q=="],
 
     "@noctcore/lint-meta-rules": ["@noctcore/lint-meta-rules@workspace:packages/lint-meta-rules"],
 
