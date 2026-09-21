@@ -1,7 +1,9 @@
 # @noctcore/eslint-plugin-prisma
 
-Prisma tenancy and transaction guardrails: fence the escape hatches around a tenant-scoping client
-extension, and keep multi-write code transactional. Flat-config only, ESLint 9+.
+Prisma tenancy, data-integrity and transaction guardrails: fence the escape hatches around a
+tenant-scoping client extension, keep tenant and soft-delete filters on the queries that need them,
+fence single-writer models to their owners, and keep multi-write code transactional. Flat-config
+only, ESLint 9+.
 
 ## Install
 
@@ -38,16 +40,50 @@ export default [
       'noctcore-prisma/no-raw-sql-outside-allowlist': 'error',
       'noctcore-prisma/prisma-write-in-transaction': ['error', { clientProperties: ['client'] }],
       'noctcore-prisma/prisma-tx-uses-tx-not-client': ['error', { clientProperties: ['client'] }],
+      'noctcore-prisma/no-cross-tenant-id-in-where': 'error',
+      'noctcore-prisma/no-audit-write-in-transaction': 'error',
+
+      // These need your registry and report nothing without it.
+      'noctcore-prisma/tenant-scoped-tables-require-where': ['error', {
+        tenantModels: ['invoice', 'customer'],
+        handScopedModels: { notification: ['userId'] },
+      }],
+      'noctcore-prisma/tenant-write-must-carry-tenant-id': ['error', { tenantModels: ['invoice', 'customer'] }],
+      'noctcore-prisma/soft-deletable-tables-require-deleted-at': ['error', {
+        softDeleteModels: ['user'],
+        softDeleteSpreads: ['notDeleted'],
+      }],
+      'noctcore-prisma/restrict-model-writes': ['error', {
+        restrictions: [
+          { models: ['payment'], allowedFiles: ['**/billing/payment.service.ts'], owner: 'PaymentService' },
+          {
+            models: ['invoice'],
+            fields: ['status'],
+            allowedFiles: ['**/billing/invoice-lifecycle.service.ts'],
+            owner: 'InvoiceLifecycleService',
+          },
+        ],
+      }],
     },
   },
 ];
 ```
 
+`recommended` turns on the six rules whose defaults hold with no project knowledge. The other four
+need your model registry (`tenantModels`, `softDeleteModels`, `restrictions`) and are left out of the
+preset on purpose: an entry that reports nothing would read as coverage you do not have.
+
 No project convention is hardcoded. What a Prisma receiver is called (`receiverPattern`), the
 unscoped client's property (`unscopedProperty`), escape-hatch functions (`escapeHatchFns`), extra
 client properties (`clientProperties`) and transaction-client names (`txRootNames`) are all options
-with defaults that fit a conventional Prisma codebase. The rules are name- and shape-based and need
-no type information.
+with defaults that fit a conventional Prisma codebase. Which models are tenant-scoped,
+soft-deletable or single-writer is never guessed: those lists default to empty. The rules are name-
+and shape-based and need no type information.
+
+Two rules state a limit loudly, because their names could be read as promising more:
+`restrict-model-writes` fences WHO writes a model, and does not validate state transitions;
+`no-audit-write-in-transaction` polices WHERE an audit write sits, and does not check that mutations
+are audited.
 
 ## Rules
 
