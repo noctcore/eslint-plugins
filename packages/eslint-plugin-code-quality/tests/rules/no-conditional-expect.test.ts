@@ -5,6 +5,9 @@ import { noConditionalExpectRule } from '../../src/rules/no-conditional-expect';
 ruleTester.run('no-conditional-expect', noConditionalExpectRule, {
   valid: [
     { code: "it('adds', () => { expect(add(1, 2)).toBe(3); });" },
+    // Top-level expect: the ancestor walk climbs past Program, whose parent is
+    // null at runtime although the types say undefined.
+    { code: 'expect(setup()).toBe(true);' },
     // A suite-level loop that generates tests: every expect runs in its own test.
     {
       code: `

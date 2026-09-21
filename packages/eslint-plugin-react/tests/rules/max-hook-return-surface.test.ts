@@ -90,6 +90,17 @@ ruleTester.run('max-hook-return-surface', maxHookReturnSurfaceRule, {
     },
     // A raised max permits a wider return.
     { code: twentyOneMemberReturn, filename: HOOKS, options: [{ max: 25 }] },
+    // A top-level (CommonJS-style) return has no enclosing function: the walk
+    // climbs past Program, whose parent is null at runtime although the types
+    // say undefined.
+    {
+      code: `return {\n${members(25)}\n};`,
+      filename: HOOKS,
+      languageOptions: {
+        sourceType: 'script',
+        parserOptions: { ecmaFeatures: { globalReturn: true } },
+      },
+    },
     // A custom hook-file suffix re-targets which files are scanned.
     {
       code: twentyOneMemberReturn,

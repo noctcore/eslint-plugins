@@ -12,7 +12,9 @@
   "scripts": {
     "build": "bun run --filter '*' build",
     "typecheck": "bun run --filter '*' typecheck",
-    "test": "bun run --filter '*' test",
+    "test": "bun run test:eslint10 && bun run test:eslint9",
+    "test:eslint10": "bun run --filter '*' test",
+    "test:eslint9": "NODE_OPTIONS=--import=@noctcore/eslint-test-utils/eslint9 bun run --filter '*' test",
     "changeset": "changeset",
     "version-packages": "changeset version",
     "release": "bun run build && changeset publish"
