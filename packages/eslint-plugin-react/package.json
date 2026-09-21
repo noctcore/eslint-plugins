@@ -1,6 +1,6 @@
 {
   "name": "@noctcore/eslint-plugin-react",
-  "version": "0.2.0",
+  "version": "0.2.1",
   "description": "General-purpose React architecture and correctness ESLint rules.",
   "license": "MIT",
   "type": "module",

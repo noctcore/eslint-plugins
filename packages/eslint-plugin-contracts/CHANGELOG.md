@@ -1,5 +1,11 @@
 # @noctcore/eslint-plugin-contracts
 
+## 0.4.0
+
+### Minor Changes
+
+- [`181d829`](https://github.com/noctcore/eslint-plugins/commit/181d829e29fddcb56ead64ce2093847e5e785dcc) Thanks [@Shironex](https://github.com/Shironex)! - Add `translation-key-exists`: a static i18next / react-i18next translation key (`t(...)`, `i18n.t(...)`, `getFixedT`, `<Trans i18nKey>`) must exist in the catalog of the namespace in scope. Namespace-aware (`useTranslation('ns')`, namespace arrays, `keyPrefix`, `ns:key`, `{ ns }`, `TFunction<'ns'>` parameters, same-file constants, a `namespaceIdentifiers` map, and literal types under typed linting), plural and context aware, and silent on dynamic keys and opaque options. Catalog locations are configured with `catalogs` (`{ns}` templates, `keyPath` subtrees); there is no built-in location. Ships `off` in `recommended` until configured.
+
 ## 0.3.0
 
 ### Minor Changes
