@@ -1,6 +1,6 @@
 # @noctcore/eslint-plugin-security
 
-Injection / path-traversal precision rules. High-precision syntactic sinks only — precision is the
+Injection, path-traversal, SSRF and open-redirect precision rules. High-precision syntactic sinks only; precision is the
 point. Flat-config only, ESLint 9+.
 
 ## Install
@@ -42,4 +42,6 @@ export default [
 | Rule | Description | Recommended |
 | --- | --- | --- |
 | [`no-shell-interpolation`](./docs/rules/no-shell-interpolation.md) | A dynamically-built command string must not flow into a shell runner (`exec`/`execSync`, or `spawn`/`execFile` with `shell: true`). | `error` |
+| [`no-user-controlled-fetch-url`](./docs/rules/no-user-controlled-fetch-url.md) | `fetch` / `axios` URL whose origin is not fixed at authoring time (SSRF), including the `https://host${p}` userinfo trick. | `error` |
+| [`no-user-controlled-redirect`](./docs/rules/no-user-controlled-redirect.md) | Redirect target whose origin is not fixed at authoring time (open redirect); understands Express `res.redirect(302, url)`. | `error` |
 | [`require-path-containment`](./docs/rules/require-path-containment.md) | `req.*` input passed directly into `path.join` / `path.resolve` without a containment guard. | opt-in (off) |

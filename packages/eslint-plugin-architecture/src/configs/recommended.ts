@@ -11,4 +11,9 @@ export const recommended = {
   'noctcore-architecture/index-must-reexport-default': 'error',
   'noctcore-architecture/max-import-depth': 'error',
   'noctcore-architecture/no-cross-feature-imports': 'error',
+  // Ships OFF: which files it governs and which category mixes they may keep
+  // (a NestJS `.constants.ts` legitimately holds constants, types and enums) is
+  // a per-codebase decision best made from measured counts. Enable it with
+  //   'noctcore-architecture/single-semantic-module': ['error', { allow: [['constant', 'type', 'enum']] }]
+  'noctcore-architecture/single-semantic-module': 'off',
 } as const;

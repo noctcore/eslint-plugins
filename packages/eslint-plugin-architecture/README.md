@@ -55,3 +55,4 @@ ESLint against real file paths, not virtual sources.
 | [`index-must-reexport-default`](./docs/rules/index-must-reexport-default.md) | A component folder's `index.ts` must re-export the sibling default named after the folder. | |
 | [`max-import-depth`](./docs/rules/max-import-depth.md) | A relative import may not climb more than `max` parent levels (default 3); autofixed to a path alias when one is configured. | 🔧 |
 | [`no-cross-feature-imports`](./docs/rules/no-cross-feature-imports.md) | A file in one feature may not import runtime code from another feature. | |
+| [`single-semantic-module`](./docs/rules/single-semantic-module.md) | A module exports one semantic concern (types, constants, functions, classes, components, hooks, schemas or enums); private helpers do not count. Off until configured. | |

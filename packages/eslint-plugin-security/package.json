@@ -1,7 +1,7 @@
 {
   "name": "@noctcore/eslint-plugin-security",
   "version": "0.1.0",
-  "description": "Injection / path-traversal precision ESLint rules — no shell interpolation, opt-in path containment.",
+  "description": "Injection / path-traversal / SSRF / open-redirect precision ESLint rules.",
   "license": "MIT",
   "type": "module",
   "main": "./dist/index.cjs",
@@ -28,6 +28,8 @@
     "security",
     "injection",
     "path-traversal",
+    "ssrf",
+    "open-redirect",
     "noctcore"
   ],
   "publishConfig": {
