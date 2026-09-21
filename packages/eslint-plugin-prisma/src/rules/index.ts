@@ -3,6 +3,7 @@ import { noUnscopedPrismaOutsideAllowlistRule } from './no-unscoped-prisma-outsi
 import { prismaTxUsesTxNotClientRule } from './prisma-tx-uses-tx-not-client';
 import { prismaWriteInTransactionRule } from './prisma-write-in-transaction';
 import { tenantScopedTablesRequireWhereRule } from './tenant-scoped-tables-require-where';
+import { tenantWriteMustCarryTenantIdRule } from './tenant-write-must-carry-tenant-id';
 
 /** Every rule this plugin exposes, keyed by its (unprefixed) rule id. */
 export const rules = {
@@ -11,4 +12,5 @@ export const rules = {
   'prisma-tx-uses-tx-not-client': prismaTxUsesTxNotClientRule,
   'prisma-write-in-transaction': prismaWriteInTransactionRule,
   'tenant-scoped-tables-require-where': tenantScopedTablesRequireWhereRule,
+  'tenant-write-must-carry-tenant-id': tenantWriteMustCarryTenantIdRule,
 };
