@@ -53,6 +53,7 @@ no type information.
 
 | Rule | Description |
 | --- | --- |
+| [`no-audit-write-in-transaction`](./docs/rules/no-audit-write-in-transaction.md) | No audit-log write inside a `$transaction` callback. Does not check that mutations are audited. |
 | [`no-cross-tenant-id-in-where`](./docs/rules/no-cross-tenant-id-in-where.md) | A tenant id in `where` / `data` comes from server context, never from client input. |
 | [`no-raw-sql-outside-allowlist`](./docs/rules/no-raw-sql-outside-allowlist.md) | Raw SQL that can touch a table only in allowlisted files; `*Unsafe` never. |
 | [`no-unscoped-prisma-outside-allowlist`](./docs/rules/no-unscoped-prisma-outside-allowlist.md) | The unscoped client and tenant-scope escape hatches only in allowlisted files. |
