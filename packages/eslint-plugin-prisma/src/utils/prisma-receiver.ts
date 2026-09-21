@@ -71,6 +71,13 @@ export const nameListSchema: JSONSchema4 = {
   items: { type: 'string', minLength: 1 },
   uniqueItems: true,
 };
+/** `nameListSchema` that must name at least one entry. */
+export const nonEmptyNameListSchema: JSONSchema4 = {
+  type: 'array',
+  items: { type: 'string', minLength: 1 },
+  uniqueItems: true,
+  minItems: 1,
+};
 
 export function resolveReceiverOptions(options: ReceiverOptions): ResolvedReceiverOptions {
   return {

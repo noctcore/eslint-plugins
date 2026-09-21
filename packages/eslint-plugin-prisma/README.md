@@ -57,6 +57,7 @@ no type information.
 | [`no-unscoped-prisma-outside-allowlist`](./docs/rules/no-unscoped-prisma-outside-allowlist.md) | The unscoped client and tenant-scope escape hatches only in allowlisted files. |
 | [`prisma-tx-uses-tx-not-client`](./docs/rules/prisma-tx-uses-tx-not-client.md) | Inside an interactive `$transaction`, writes go through `tx`, not the outer client. |
 | [`prisma-write-in-transaction`](./docs/rules/prisma-write-in-transaction.md) | Two or more writes in one function must be wrapped in a `$transaction`. |
+| [`tenant-scoped-tables-require-where`](./docs/rules/tenant-scoped-tables-require-where.md) | Unscoped-client queries on tenant models filter by every tenant column; hand-scoped models filter by a scope column on any client. |
 
 ## Building blocks
 
