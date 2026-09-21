@@ -97,10 +97,15 @@ export function runLintMetaOnRealTree(
     );
     const [command, prefix] =
       runtime === 'bun' ? [process.execPath, []] : ['node', ['--import', ESLINT9_HOOK]];
+    // The child gets its runtime from `prefix`, not from an inherited
+    // NODE_OPTIONS: the root `test:eslint9` script sets one whose bare
+    // specifier does not resolve from here.
+    const env = { ...process.env };
+    delete env.NODE_OPTIONS;
     const res = spawnSync(
       command,
       [...prefix, harnessCli(), 'lint-meta', '--dir', repo, '--registry', registry],
-      { encoding: 'utf8' },
+      { encoding: 'utf8', env },
     );
     const stderr = res.stderr ?? '';
     return {
