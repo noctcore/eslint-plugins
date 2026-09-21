@@ -7,6 +7,7 @@ export const recommended = {
   'noctcore-contracts/money-must-be-decimal': 'error',
   'noctcore-contracts/require-error-cause': 'error',
   'noctcore-contracts/restrict-throw-to-taxonomy': 'error',
+  'noctcore-contracts/schema-enum-field-consistency': 'error',
   // Config-required / heuristic rules ship inert. `require-registered-keys` and
   // `env-var-schema-parity` do nothing until their `sinks` / `schema` options are
   // set; `require-schema-parse-at-boundary` is a conservative syntactic slice of a

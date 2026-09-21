@@ -52,6 +52,7 @@ Legend: 🔧 = autofixable · 💤 = ships inert / `off` in `recommended` (enabl
 | [`require-registered-keys`](./docs/rules/require-registered-keys.md) | Key/name argument of a configured sink API must be an imported constant, not a raw string. | | 💤 |
 | [`env-var-schema-parity`](./docs/rules/env-var-schema-parity.md) | `process.env.FOO` / `import.meta.env.FOO` keys must be declared in a schema file. | | 💤 |
 | [`require-schema-parse-at-boundary`](./docs/rules/require-schema-parse-at-boundary.md) | Ban `JSON.parse(...) as T` / `(await res.json()) as T`; parse boundary data at runtime. | | 💤 |
+| [`schema-enum-field-consistency`](./docs/rules/schema-enum-field-consistency.md) | A field that is an enum in one zod object schema must not be `z.string()` in another schema of the same module. | | |
 
 The 💤 rules ship `off` in `recommended`: `require-registered-keys` and `env-var-schema-parity` do
 nothing until their `sinks` / `schema` options are set, and `require-schema-parse-at-boundary` is a

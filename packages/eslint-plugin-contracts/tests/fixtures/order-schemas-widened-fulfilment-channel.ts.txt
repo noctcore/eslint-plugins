@@ -1,0 +1,193 @@
+import { z } from 'zod';
+
+import { emailSchema, idSchema, moneySchema } from './common';
+
+/**
+ * Order wire schemas. A synthetic stand-in for a real shared contract module:
+ * many object schemas, many repeated field names, several enums, and exactly
+ * one widened field (`orderItemOutput.fulfilmentChannel`).
+ */
+
+export const ORDER_LIST_DEFAULT_LIMIT = 25;
+export const ORDER_LIST_MAX_LIMIT = 100;
+
+// ---------------------------------------------------------------------------
+// Enums
+// ---------------------------------------------------------------------------
+
+export const orderStatusSchema = z.enum(['DRAFT', 'PLACED', 'PAID', 'SHIPPED', 'CANCELLED']);
+export type OrderStatus = z.infer<typeof orderStatusSchema>;
+
+export const openOrderStatusSchema = orderStatusSchema.exclude(['CANCELLED']);
+export type OpenOrderStatus = z.infer<typeof openOrderStatusSchema>;
+
+export const fulfilmentChannelSchema = z.enum(['WAREHOUSE', 'DROPSHIP', 'PICKUP']);
+export type FulfilmentChannel = z.infer<typeof fulfilmentChannelSchema>;
+
+export const paymentMethodSchema = z.union([
+  z.literal('CARD'),
+  z.literal('TRANSFER'),
+  z.literal('CASH'),
+]);
+export type PaymentMethod = z.infer<typeof paymentMethodSchema>;
+
+export const currencySchema = z.literal(['EUR', 'USD', 'PLN']);
+export type Currency = z.infer<typeof currencySchema>;
+
+export const sortDirectionSchema = z.enum(['asc', 'desc']);
+
+// ---------------------------------------------------------------------------
+// Shared building blocks
+// ---------------------------------------------------------------------------
+
+/** A free-text note. A named string schema, not an enum. */
+export const noteSchema = z.string().trim().max(2000);
+
+const addressSchema = z.object({
+  line1: z.string().trim().min(1).max(200),
+  line2: z.string().trim().max(200).optional(),
+  city: z.string().trim().min(1).max(100),
+  postcode: z.string().trim().min(1).max(20),
+  country: z.string().length(2),
+});
+
+const auditFields = z.object({
+  createdAt: z.date(),
+  updatedAt: z.date(),
+  createdBy: idSchema,
+});
+
+// ---------------------------------------------------------------------------
+// Customers
+// ---------------------------------------------------------------------------
+
+export const customerCreateInput = z.object({
+  name: z.string().trim().min(1).max(200),
+  email: emailSchema,
+  phone: z.string().trim().max(40).optional(),
+  billingAddress: addressSchema,
+  note: noteSchema.optional(),
+});
+
+export const customerUpdateInput = customerCreateInput.partial().extend({
+  id: idSchema,
+  email: z.string().trim().optional(),
+});
+
+export const customerOutput = z.object({
+  id: idSchema,
+  name: z.string(),
+  email: z.string(),
+  phone: z.string().nullable(),
+  billingAddress: addressSchema,
+  note: z.string().nullable(),
+  // A string/null union is not a plain z.string().
+  preferredChannel: z.union([z.string(), z.null()]),
+});
+
+// ---------------------------------------------------------------------------
+// Orders
+// ---------------------------------------------------------------------------
+
+export const orderItemInput = z.object({
+  sku: z.string().trim().min(1).max(64),
+  quantity: z.number().int().positive(),
+  unitPrice: moneySchema,
+  fulfilmentChannel: fulfilmentChannelSchema.default('WAREHOUSE'),
+});
+
+export const orderCreateInput = z.object({
+  customerId: idSchema,
+  currency: currencySchema,
+  paymentMethod: paymentMethodSchema,
+  items: z.array(orderItemInput).min(1),
+  shippingAddress: addressSchema.optional(),
+  note: noteSchema.optional(),
+});
+
+export const orderItemRenewInput = z.object({
+  orderId: idSchema,
+  sku: z.string().trim().min(1).max(64),
+  fulfilmentChannel: fulfilmentChannelSchema.optional(),
+});
+
+export const orderStatusUpdateInput = z.object({
+  id: idSchema,
+  status: orderStatusSchema,
+  reason: z.string().trim().max(500).optional(),
+});
+
+export const orderListInput = z.object({
+  status: openOrderStatusSchema.optional(),
+  customerId: idSchema.optional(),
+  search: z.string().trim().max(200).optional(),
+  limit: z.number().int().min(1).max(ORDER_LIST_MAX_LIMIT).default(ORDER_LIST_DEFAULT_LIMIT),
+  cursor: z.string().optional(),
+  sort: sortDirectionSchema.default('desc'),
+});
+
+export const orderItemOutput = z.object({
+  id: idSchema,
+  sku: z.string(),
+  quantity: z.number(),
+  unitPrice: moneySchema,
+  fulfilmentChannel: z.string().nullable(),
+});
+
+export const orderOutput = z
+  .object({
+    id: idSchema,
+    customerId: idSchema,
+    status: orderStatusSchema,
+    currency: currencySchema,
+    paymentMethod: paymentMethodSchema,
+    items: z.array(orderItemOutput),
+    total: moneySchema,
+    shippingAddress: addressSchema.nullable(),
+    note: z.string().nullable(),
+  })
+  .merge(auditFields);
+
+export const orderListOutput = z.object({
+  items: z.array(orderOutput),
+  nextCursor: z.string().nullable(),
+});
+
+// ---------------------------------------------------------------------------
+// Refunds
+// ---------------------------------------------------------------------------
+
+export const refundCreateInput = z.object({
+  orderId: idSchema,
+  amount: moneySchema,
+  // Transformed: outputs a number, so it is not a widened string.
+  reasonCode: z.string().transform((value) => value.length),
+  note: noteSchema.optional(),
+});
+
+export const refundOutput = z.object({
+  id: idSchema,
+  orderId: idSchema,
+  amount: moneySchema,
+  // Piped into the enum: outputs the enum, not a string.
+  status: z.string().pipe(orderStatusSchema),
+  note: z.string().nullable(),
+});
+
+// ---------------------------------------------------------------------------
+// Types
+// ---------------------------------------------------------------------------
+
+export type CustomerCreateInput = z.infer<typeof customerCreateInput>;
+export type CustomerUpdateInput = z.infer<typeof customerUpdateInput>;
+export type CustomerOutput = z.infer<typeof customerOutput>;
+export type OrderItemInput = z.infer<typeof orderItemInput>;
+export type OrderCreateInput = z.infer<typeof orderCreateInput>;
+export type OrderItemRenewInput = z.infer<typeof orderItemRenewInput>;
+export type OrderStatusUpdateInput = z.infer<typeof orderStatusUpdateInput>;
+export type OrderListInput = z.infer<typeof orderListInput>;
+export type OrderItemOutput = z.infer<typeof orderItemOutput>;
+export type OrderOutput = z.infer<typeof orderOutput>;
+export type OrderListOutput = z.infer<typeof orderListOutput>;
+export type RefundCreateInput = z.infer<typeof refundCreateInput>;
+export type RefundOutput = z.infer<typeof refundOutput>;

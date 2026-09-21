@@ -6,6 +6,7 @@ import { requireErrorCauseRule } from './require-error-cause';
 import { requireRegisteredKeysRule } from './require-registered-keys';
 import { requireSchemaParseAtBoundaryRule } from './require-schema-parse-at-boundary';
 import { restrictThrowToTaxonomyRule } from './restrict-throw-to-taxonomy';
+import { schemaEnumFieldConsistencyRule } from './schema-enum-field-consistency';
 import { wireMessageNamingRule } from './wire-message-naming';
 import { zodSchemaNamingRule } from './zod-schema-naming';
 
@@ -21,4 +22,5 @@ export const rules = {
   'require-registered-keys': requireRegisteredKeysRule,
   'env-var-schema-parity': envVarSchemaParityRule,
   'require-schema-parse-at-boundary': requireSchemaParseAtBoundaryRule,
+  'schema-enum-field-consistency': schemaEnumFieldConsistencyRule,
 };
