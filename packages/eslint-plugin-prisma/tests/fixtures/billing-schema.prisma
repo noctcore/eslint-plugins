@@ -1,0 +1,56 @@
+// A neutral multi-tenant billing schema. Invoice and Payment are the guarded
+// models; Customer and Note relations exist so the negative assertions have
+// something real to be negative about.
+
+model Account {
+  id             String     @id
+  tenantId       String
+  invoices       Invoice[]
+  issuedInvoices Invoice[]  @relation("issuer")
+  customers      Customer[]
+
+  @@index([tenantId])
+}
+
+model Customer {
+  id        String    @id
+  tenantId  String
+  account   Account   @relation(fields: [accountId], references: [id])
+  accountId String
+  invoices  Invoice[] @relation("billedTo")
+  notes     Note[]
+}
+
+model Invoice {
+  id           String    @id
+  tenantId     String
+  account      Account   @relation(fields: [accountId], references: [id])
+  accountId    String
+  issuer       Account?  @relation("issuer", fields: [issuerId], references: [id])
+  issuerId     String?
+  billedTo     Customer  @relation("billedTo", fields: [customerId], references: [id])
+  customerId   String
+  supersedes   Invoice?  @relation("supersession", fields: [supersedesId], references: [id])
+  supersedesId String?   @unique
+  supersededBy Invoice?  @relation("supersession")
+  payments     Payment[]
+  status       InvoiceStatus
+}
+
+model Payment {
+  id        String  @id
+  tenantId  String
+  invoice   Invoice @relation(fields: [invoiceId], references: [id])
+  invoiceId String
+}
+
+model Note {
+  id         String   @id
+  customer   Customer @relation(fields: [customerId], references: [id])
+  customerId String
+}
+
+enum InvoiceStatus {
+  DRAFT
+  ISSUED
+}

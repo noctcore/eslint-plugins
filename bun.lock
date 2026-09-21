@@ -136,6 +136,27 @@
         "typescript": ">=5.0.0",
       },
     },
+    "packages/eslint-plugin-prisma": {
+      "name": "@noctcore/eslint-plugin-prisma",
+      "version": "0.0.0",
+      "dependencies": {
+        "@noctcore/eslint-utils": "^0.1.0",
+        "@typescript-eslint/utils": "^8.61.1",
+      },
+      "devDependencies": {
+        "@noctcore/eslint-test-utils": "workspace:*",
+        "@types/node": "^22.0.0",
+        "@typescript-eslint/parser": "^8.61.1",
+        "@typescript-eslint/rule-tester": "^8.61.1",
+        "tsup": "^8.5.1",
+        "typescript": "^5.6.0",
+        "vitest": "^4",
+      },
+      "peerDependencies": {
+        "eslint": ">=9.0.0",
+        "typescript": ">=5.0.0",
+      },
+    },
     "packages/eslint-plugin-react": {
       "name": "@noctcore/eslint-plugin-react",
       "version": "0.2.0",
@@ -364,6 +385,8 @@
     "@noctcore/eslint-plugin-monorepo": ["@noctcore/eslint-plugin-monorepo@workspace:packages/eslint-plugin-monorepo"],
 
     "@noctcore/eslint-plugin-observability": ["@noctcore/eslint-plugin-observability@workspace:packages/eslint-plugin-observability"],
+
+    "@noctcore/eslint-plugin-prisma": ["@noctcore/eslint-plugin-prisma@workspace:packages/eslint-plugin-prisma"],
 
     "@noctcore/eslint-plugin-react": ["@noctcore/eslint-plugin-react@workspace:packages/eslint-plugin-react"],
 
