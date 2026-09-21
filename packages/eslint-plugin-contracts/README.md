@@ -54,7 +54,8 @@ Legend: 🔧 = autofixable · 💤 = ships inert / `off` in `recommended` (enabl
 | [`require-schema-parse-at-boundary`](./docs/rules/require-schema-parse-at-boundary.md) | Ban `JSON.parse(...) as T` / `(await res.json()) as T`; parse boundary data at runtime. | | 💤 |
 | [`schema-enum-field-consistency`](./docs/rules/schema-enum-field-consistency.md) | A field that is an enum in one zod object schema must not be `z.string()` in another schema of the same module. | | |
 | [`fetch-must-check-ok`](./docs/rules/fetch-must-check-ok.md) | A fetch response must be checked with `.ok` or a status comparison before `.json()` parses its body. | | |
+| [`translation-key-exists`](./docs/rules/translation-key-exists.md) | A static i18next / react-i18next key (`t(...)`, `i18n.t(...)`, `<Trans i18nKey>`) must exist in the catalog of the namespace in scope. | | 💤 |
 
-The 💤 rules ship `off` in `recommended`: `require-registered-keys` and `env-var-schema-parity` do
-nothing until their `sinks` / `schema` options are set, and `require-schema-parse-at-boundary` is a
+The 💤 rules ship `off` in `recommended`: `require-registered-keys`, `env-var-schema-parity` and
+`translation-key-exists` do nothing until their `sinks` / `schema` / `catalogs` options are set, and `require-schema-parse-at-boundary` is a
 conservative syntactic slice of a type-aware concern. Turn them on explicitly once configured.
