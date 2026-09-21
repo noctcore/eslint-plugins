@@ -67,3 +67,26 @@ describe('package export surface', () => {
     }
   });
 });
+
+describe('sub-path entry points', () => {
+  test('resolved-config exports its factory, and the main entry does not', async () => {
+    const resolvedConfig = await import('../src/resolved-config');
+    expect(typeof resolvedConfig.createEslintConfigNoWarnRule).toBe('function');
+    expect((pkg as Record<string, unknown>).createEslintConfigNoWarnRule).toBeUndefined();
+  });
+
+  test('package.json exports every entry the build emits', async () => {
+    const manifest = (await import('../package.json')).default as {
+      exports: Record<string, unknown>;
+      scripts: { build: string };
+    };
+    for (const entry of ['i18n', 'resolved-config']) {
+      expect(manifest.exports[`./${entry}`]).toEqual({
+        types: `./dist/${entry}.d.ts`,
+        import: `./dist/${entry}.js`,
+        require: `./dist/${entry}.cjs`,
+      });
+      expect(manifest.scripts.build).toContain(`src/${entry}.ts`);
+    }
+  });
+});

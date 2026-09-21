@@ -81,3 +81,13 @@ they are inert until you point them at your catalogs.
 | Factory | Category | What it enforces |
 | --- | --- | --- |
 | [`createTranslationDeadKeysRule`](./docs/rules/translation-dead-keys.md) | source-text | Every catalog key is reachable: named by a translation call, or spelled by some string in the source. |
+
+### `@noctcore/lint-meta-rules/resolved-config`
+
+Checks over the RESOLVED ESLint config. They load ESLint and resolve configs through
+`calculateConfigForFile`, which is async, so they implement the harness's `runAsync`
+(`@noctcore/harness` 0.3.0 or newer) and need the optional peer `eslint`.
+
+| Factory | Category | What it enforces |
+| --- | --- | --- |
+| [`createEslintConfigNoWarnRule`](./docs/rules/eslint-config-no-warn.md) | config | No rule RESOLVES to `warn`, including a severity a spread preset injects, which the text scan of `no-warn-severity` cannot see. |
