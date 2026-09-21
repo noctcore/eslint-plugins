@@ -99,8 +99,9 @@ export const maxHookReturnSurfaceRule = createRule<RuleOptions, MessageIds>({
 
     /** The nearest enclosing function of a return statement (never nested past it). */
     function enclosingFunction(node: TSESTree.Node): HookFunction | null {
-      let current: TSESTree.Node | undefined = node.parent;
-      while (current !== undefined) {
+      // `Program.parent` is typed `undefined` but is `null` at runtime.
+      let current: TSESTree.Node | null | undefined = node.parent;
+      while (current !== undefined && current !== null) {
         if (
           current.type === AST_NODE_TYPES.FunctionDeclaration ||
           current.type === AST_NODE_TYPES.FunctionExpression ||
