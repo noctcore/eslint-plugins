@@ -5,10 +5,11 @@ import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 import type * as I18nRules from '../../src/i18n';
+import type * as PrismaRules from '../../src/prisma';
 import type * as ResolvedConfigRules from '../../src/resolved-config';
 import type * as Rules from '../../src/rules';
 
-type Factories = typeof Rules & typeof I18nRules & typeof ResolvedConfigRules;
+type Factories = typeof Rules & typeof I18nRules & typeof PrismaRules & typeof ResolvedConfigRules;
 
 /** A rule factory exported by this package (any entry point), by name. */
 export type RuleFactoryName = {
@@ -54,6 +55,8 @@ function harnessCli(): string {
 const SUBPATH_ENTRIES: Partial<Record<RuleFactoryName, string>> = {
   createTranslationDeadKeysRule: 'i18n',
   createEslintConfigNoWarnRule: 'resolved-config',
+  createPrismaMethodSurfaceRule: 'prisma',
+  createTenantModelRegistryParityRule: 'prisma',
 };
 
 function entryFor(factory: RuleFactoryName, runtime: 'bun' | 'node-eslint9'): string {

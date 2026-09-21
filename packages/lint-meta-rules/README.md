@@ -91,3 +91,15 @@ Checks over the RESOLVED ESLint config. They load ESLint and resolve configs thr
 | Factory | Category | What it enforces |
 | --- | --- | --- |
 | [`createEslintConfigNoWarnRule`](./docs/rules/eslint-config-no-warn.md) | config | No rule RESOLVES to `warn`, including a severity a spread preset injects, which the text scan of `no-warn-severity` cannot see. |
+
+### `@noctcore/lint-meta-rules/prisma`
+
+Whole-repo Prisma guardrails that keep `@noctcore/eslint-plugin-prisma`'s inputs honest. They read
+the plugin's method sets, schema parser and registry reconciliation, so the lint rules and these
+checks cannot disagree. The registry parity check resolves an ESLint config (async, `runAsync`) and
+needs the optional peer `eslint`. Neither is in `RULE_FACTORIES`: both need the project's paths.
+
+| Factory | Category | What it enforces |
+| --- | --- | --- |
+| [`createTenantModelRegistryParityRule`](./docs/rules/tenant-model-registry-parity.md) | config | Every tenant-bearing schema model is scoped at runtime or exempt with a reason, and the tenant lint rules resolve with exactly that registry. |
+| [`createPrismaMethodSurfaceRule`](./docs/rules/prisma-method-surface.md) | config | The reads and writes the rules police are exactly the generated client's delegate methods, so a Prisma upgrade cannot add an unguarded one. |

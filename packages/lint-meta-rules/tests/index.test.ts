@@ -69,10 +69,19 @@ describe('package export surface', () => {
 });
 
 describe('sub-path entry points', () => {
-  test('resolved-config exports its factory, and the main entry does not', async () => {
+  test('resolved-config and prisma export their factories, and the main entry does not', async () => {
     const resolvedConfig = await import('../src/resolved-config');
+    const prisma = await import('../src/prisma');
     expect(typeof resolvedConfig.createEslintConfigNoWarnRule).toBe('function');
-    expect((pkg as Record<string, unknown>).createEslintConfigNoWarnRule).toBeUndefined();
+    expect(typeof prisma.createTenantModelRegistryParityRule).toBe('function');
+    expect(typeof prisma.createPrismaMethodSurfaceRule).toBe('function');
+    for (const name of [
+      'createEslintConfigNoWarnRule',
+      'createTenantModelRegistryParityRule',
+      'createPrismaMethodSurfaceRule',
+    ]) {
+      expect((pkg as Record<string, unknown>)[name]).toBeUndefined();
+    }
   });
 
   test('package.json exports every entry the build emits', async () => {
@@ -80,7 +89,7 @@ describe('sub-path entry points', () => {
       exports: Record<string, unknown>;
       scripts: { build: string };
     };
-    for (const entry of ['i18n', 'resolved-config']) {
+    for (const entry of ['i18n', 'prisma', 'resolved-config']) {
       expect(manifest.exports[`./${entry}`]).toEqual({
         types: `./dist/${entry}.d.ts`,
         import: `./dist/${entry}.js`,
