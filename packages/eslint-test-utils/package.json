@@ -6,21 +6,25 @@
   "private": true,
   "type": "module",
   "exports": {
-    ".": "./src/index.ts"
+    ".": "./src/index.ts",
+    "./eslint9": "./eslint9.mjs"
   },
   "scripts": {
     "build": "echo \"(no build)\"",
     "typecheck": "tsc --noEmit",
-    "test": "echo \"(no unit tests)\""
+    "test": "vitest run"
   },
   "dependencies": {
     "@typescript-eslint/parser": "^8.61.1",
-    "@typescript-eslint/rule-tester": "^8.61.1"
+    "@typescript-eslint/rule-tester": "^8.61.1",
+    "eslint": "^10.7.0",
+    "eslint-v9": "npm:eslint@9.0.0"
   },
   "peerDependencies": {
     "vitest": "^4"
   },
   "devDependencies": {
+    "@types/node": "^22.0.0",
     "typescript": "^5.6.0",
     "vitest": "^4"
   }

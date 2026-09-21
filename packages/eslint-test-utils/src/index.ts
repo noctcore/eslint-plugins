@@ -1,1 +1,1 @@
-export { ruleTester } from './ruleTester';
+export { eslintVersion, expectedEslintMajor, ruleTester } from './ruleTester';
