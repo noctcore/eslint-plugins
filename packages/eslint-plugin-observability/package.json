@@ -1,6 +1,6 @@
 {
   "name": "@noctcore/eslint-plugin-observability",
-  "version": "0.2.0",
+  "version": "0.3.0",
   "description": "Structured-logging discipline ESLint rules — context objects over interpolated messages, no sensitive fields in logs, no error-detail loss.",
   "license": "MIT",
   "type": "module",
