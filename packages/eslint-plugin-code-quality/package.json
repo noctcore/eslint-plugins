@@ -1,6 +1,6 @@
 {
   "name": "@noctcore/eslint-plugin-code-quality",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "description": "Portable code-quality, comment-hygiene, and test-discipline ESLint rules.",
   "license": "MIT",
   "type": "module",
