@@ -1,8 +1,10 @@
+import { fileURLToPath } from 'node:url';
+
 import { parse } from '@typescript-eslint/parser';
 import { AST_NODE_TYPES, type TSESTree } from '@typescript-eslint/utils';
 import { describe, expect, it } from 'vitest';
 
-import { findNestedWrites } from '../../src/utils/prisma-nested-write';
+import { findNestedWrites, guardedSelfRelationNames } from '../../src/utils/prisma-nested-write';
 
 /** The first argument of the first call in `code`. */
 function firstArgument(code: string): TSESTree.Node | undefined {
@@ -46,5 +48,38 @@ describe('findNestedWrites', () => {
 
   it('cannot see a variable payload (the documented blind spot)', () => {
     expect(findNestedWrites(firstArgument('client.account.update(payload)'), RELATIONS)).toEqual([]);
+  });
+});
+
+describe('guardedSelfRelationNames', () => {
+  const schemaPath = fileURLToPath(new URL('../fixtures/billing-schema.prisma', import.meta.url));
+  const request = (guardedModels: string[]) => ({
+    filename: fileURLToPath(import.meta.url),
+    schemaPath,
+    guardedModels,
+    extraRelations: [],
+  });
+
+  it('returns only relations a guarded model declares to a guarded model', () => {
+    // Real files on disk: the fixture schema is read, not faked.
+    expect([...guardedSelfRelationNames(request(['invoice']))].sort()).toEqual([
+      'supersededBy',
+      'supersedes',
+    ]);
+  });
+
+  it('includes relations between two guarded models, in both directions', () => {
+    expect([...guardedSelfRelationNames(request(['invoice', 'payment']))].sort()).toEqual([
+      'invoice',
+      'payments',
+      'supersededBy',
+      'supersedes',
+    ]);
+  });
+
+  it('is empty, not guessed, with no schema in reach', () => {
+    expect(
+      guardedSelfRelationNames({ ...request(['invoice']), schemaPath: '/nonexistent/schema.prisma' }).size,
+    ).toBe(0);
   });
 });

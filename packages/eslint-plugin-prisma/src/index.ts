@@ -44,6 +44,10 @@ export {
   tenantBearingAccessors,
 } from './utils/prisma-schema';
 export type { ParsedPrismaSchema, PrismaRelationField } from './utils/prisma-schema';
+export type {
+  ModelWriteRestriction,
+  RestrictModelWritesOptions,
+} from './rules/restrict-model-writes';
 export { reconcileTenantRegistry } from './utils/tenant-registry';
 export type {
   TenantRegistry,
