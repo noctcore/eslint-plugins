@@ -13,6 +13,10 @@
  * `soft-deletable-tables-require-deleted-at` (`softDeleteModels`) and
  * `restrict-model-writes` (`restrictions`). A preset entry that reports nothing
  * would read as coverage the project does not have.
+ *
+ * Also not here: `mutation-entry-must-reach-audit`, which needs type
+ * information and throws without it, so a preset entry would break every
+ * untyped lint that spreads the preset.
  */
 export const recommended = {
   'noctcore-prisma/no-audit-write-in-transaction': 'error',

@@ -10,7 +10,8 @@ audit logger passes this rule. It only polices WHERE an audit write sits, never 
 It was moved from a consumer where it was named `mutating-service-must-audit`. That name promised
 the missing check, and the consumer's own docs and comments came to rely on it: one service comment
 records that the rule "stayed green" on a mutation with no audit row at all. It is renamed for what
-it does. If you need "every mutation is audited", that is a different rule, and this is not it.
+it does. If you need "every mutation is audited", that is a different rule, and this is not it: see
+[`mutation-entry-must-reach-audit`](./mutation-entry-must-reach-audit.md), and read its limits.
 
 ## Why
 
