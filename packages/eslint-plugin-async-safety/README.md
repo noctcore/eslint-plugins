@@ -55,9 +55,11 @@ export default [
 | `require-fetch-timeout` | `error` | Precise and syntactic. |
 | `require-client-timeout` | `error` | Inert until you list `clients`, so it ships enabled but checks nothing by default. |
 | `no-shared-mutable-module-state` | `error` | Inert until you set `include` globs, so it ships enabled but off by default. |
-| `forward-abort-signal` | `warn` | Heuristic — advisory. |
-| `prefer-parallel-awaits` | `warn` | Heuristic — advisory suggestion. |
-| `no-concurrent-shared-mutation` | `warn` | Heuristic — advisory. |
+| `forward-abort-signal` | `error` | A dead `signal` is a real bug; any forwarding shape counts as a pass. |
+| `no-concurrent-shared-mutation` | `error` | A lost update is a real bug; order-tolerant writes are skipped. |
+| `prefer-parallel-awaits` | `off` | A latency hint, not a bug. Sequential awaits are often deliberate. Opt in where you want it. |
+
+Every rule is `error` or `off`, never `warn`: a warning is a rule nobody obeys.
 
 The 💡 rules provide editor suggestions (not autofixes) — parallelizing awaits and adding a timeout both change
 runtime behavior, so they are never applied automatically.

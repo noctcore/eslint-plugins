@@ -45,4 +45,4 @@ None.
 ## When not to use it
 
 If you intentionally accumulate into shared state and have externally serialized the callbacks (e.g. a mutex, or
-a concurrency limit of 1), this rule's warning is a false positive — disable it inline for that block.
+a concurrency limit of 1), this rule's report is a false positive — disable it inline for that block.
