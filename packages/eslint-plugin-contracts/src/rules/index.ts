@@ -8,6 +8,7 @@ import { requireRegisteredKeysRule } from './require-registered-keys';
 import { requireSchemaParseAtBoundaryRule } from './require-schema-parse-at-boundary';
 import { restrictThrowToTaxonomyRule } from './restrict-throw-to-taxonomy';
 import { schemaEnumFieldConsistencyRule } from './schema-enum-field-consistency';
+import { translationKeyExistsRule } from './translation-key-exists';
 import { wireMessageNamingRule } from './wire-message-naming';
 import { zodSchemaNamingRule } from './zod-schema-naming';
 
@@ -25,4 +26,5 @@ export const rules = {
   'require-schema-parse-at-boundary': requireSchemaParseAtBoundaryRule,
   'schema-enum-field-consistency': schemaEnumFieldConsistencyRule,
   'fetch-must-check-ok': fetchMustCheckOkRule,
+  'translation-key-exists': translationKeyExistsRule,
 };

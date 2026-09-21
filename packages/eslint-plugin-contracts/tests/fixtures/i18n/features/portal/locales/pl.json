@@ -1,0 +1,4 @@
+{
+  "tasks": { "title": "Tasks", "empty": "Nothing to sign" },
+  "shell": { "nav": { "tasks": "To sign" } }
+}
