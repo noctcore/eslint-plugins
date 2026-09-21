@@ -1,3 +1,4 @@
+import { mutationEntryMustReachAuditRule } from './mutation-entry-must-reach-audit';
 import { noAuditWriteInTransactionRule } from './no-audit-write-in-transaction';
 import { noCrossTenantIdInWhereRule } from './no-cross-tenant-id-in-where';
 import { noRawSqlOutsideAllowlistRule } from './no-raw-sql-outside-allowlist';
@@ -11,6 +12,7 @@ import { tenantWriteMustCarryTenantIdRule } from './tenant-write-must-carry-tena
 
 /** Every rule this plugin exposes, keyed by its (unprefixed) rule id. */
 export const rules = {
+  'mutation-entry-must-reach-audit': mutationEntryMustReachAuditRule,
   'no-audit-write-in-transaction': noAuditWriteInTransactionRule,
   'no-cross-tenant-id-in-where': noCrossTenantIdInWhereRule,
   'no-raw-sql-outside-allowlist': noRawSqlOutsideAllowlistRule,
