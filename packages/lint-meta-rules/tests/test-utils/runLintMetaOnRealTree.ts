@@ -4,12 +4,15 @@ import { tmpdir } from 'node:os';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 
+import type * as I18nRules from '../../src/i18n';
 import type * as Rules from '../../src/rules';
 
-/** A rule factory exported by this package, by name. */
+type Factories = typeof Rules & typeof I18nRules;
+
+/** A rule factory exported by this package (either entry point), by name. */
 export type RuleFactoryName = {
-  [K in keyof typeof Rules]: K extends `create${string}Rule` ? K : never;
-}[keyof typeof Rules];
+  [K in keyof Factories]: K extends `create${string}Rule` ? K : never;
+}[keyof Factories];
 
 export interface RealTreeRun {
   /** The harness CLI's exit code. */
@@ -20,7 +23,19 @@ export interface RealTreeRun {
   readonly violations: readonly string[];
 }
 
-const SOURCE_INDEX = fileURLToPath(new URL('../../src/index.ts', import.meta.url));
+export interface RealTreeRunOptions {
+  /**
+   * `bun` (default) imports the rule from `src/` under Bun, as consumers run the
+   * harness. `node-eslint9` imports the BUILT `dist/` under Node with ESLint
+   * redirected to 9.0.0, the floor of the peer range: Bun ignores the
+   * `NODE_OPTIONS` hook the root `test:eslint9` script relies on.
+   */
+  readonly runtime?: 'bun' | 'node-eslint9';
+}
+
+const PACKAGE_ROOT = fileURLToPath(new URL('../../', import.meta.url));
+const REGISTRY_HOME = path.join(PACKAGE_ROOT, 'node_modules/.cache/lint-meta-real');
+const ESLINT9_HOOK = path.join(PACKAGE_ROOT, '../eslint-test-utils/eslint9.mjs');
 
 /**
  * The harness CLI that builds the REAL `ctx`: the one consumers run. Its
@@ -34,9 +49,14 @@ function harnessCli(): string {
   return path.join(path.dirname(fileURLToPath(import.meta.resolve('@noctcore/harness'))), 'cli.js');
 }
 
+function entryFor(factory: RuleFactoryName, runtime: 'bun' | 'node-eslint9'): string {
+  const entry = factory === 'createTranslationDeadKeysRule' ? 'i18n' : 'index';
+  return runtime === 'bun' ? path.join(PACKAGE_ROOT, `src/${entry}.ts`) : path.join(PACKAGE_ROOT, `dist/${entry}.js`);
+}
+
 /**
  * Write `files` into a real temp directory, then run one rule over it through
- * `harness lint-meta` under the current runtime (Bun, as consumers run it).
+ * `harness lint-meta`.
  *
  * This proves REACHABILITY, which `createFakeCtx` cannot: the fake's glob
  * matches whatever the test hands it, so it passed while Bun's real glob
@@ -46,32 +66,40 @@ export function runLintMetaOnRealTree(
   files: Readonly<Record<string, string>>,
   factory: RuleFactoryName,
   options: object = {},
+  runOptions: RealTreeRunOptions = {},
 ): RealTreeRun {
+  const runtime = runOptions.runtime ?? 'bun';
   const base = mkdtempSync(path.join(tmpdir(), 'lint-meta-real-'));
+  // The registry lives OUTSIDE the scanned tree, so it can never be a match
+  // itself, and inside this package, so it resolves `eslint` from here.
+  mkdirSync(REGISTRY_HOME, { recursive: true });
+  const registryDir = mkdtempSync(path.join(REGISTRY_HOME, 'registry-'));
   try {
     const repo = path.join(base, 'repo');
+    mkdirSync(repo, { recursive: true });
     for (const [rel, text] of Object.entries(files)) {
       const abs = path.join(repo, rel);
       mkdirSync(path.dirname(abs), { recursive: true });
       writeFileSync(abs, text, 'utf8');
     }
-    mkdirSync(repo, { recursive: true });
 
-    // The registry lives OUTSIDE the scanned tree so it can never be a match itself.
-    const registry = path.join(base, 'registry.mjs');
+    const registry = path.join(registryDir, 'registry.mjs');
     writeFileSync(
       registry,
       [
-        `import { ${factory} } from ${JSON.stringify(SOURCE_INDEX)};`,
+        `import { Linter } from 'eslint';`,
+        `import { ${factory} } from ${JSON.stringify(entryFor(factory, runtime))};`,
+        `console.log('eslint ' + new Linter().version);`,
         `export const META_RULES = [${factory}(${JSON.stringify(options)})];`,
         '',
       ].join('\n'),
       'utf8',
     );
-
+    const [command, prefix] =
+      runtime === 'bun' ? [process.execPath, []] : ['node', ['--import', ESLINT9_HOOK]];
     const res = spawnSync(
-      process.execPath,
-      [harnessCli(), 'lint-meta', '--dir', repo, '--registry', registry],
+      command,
+      [...prefix, harnessCli(), 'lint-meta', '--dir', repo, '--registry', registry],
       { encoding: 'utf8' },
     );
     const stderr = res.stderr ?? '';
@@ -86,5 +114,6 @@ export function runLintMetaOnRealTree(
     };
   } finally {
     rmSync(base, { recursive: true, force: true });
+    rmSync(registryDir, { recursive: true, force: true });
   }
 }

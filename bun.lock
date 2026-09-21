@@ -12,7 +12,7 @@
     },
     "packages/eslint-plugin-architecture": {
       "name": "@noctcore/eslint-plugin-architecture",
-      "version": "0.2.0",
+      "version": "0.3.0",
       "dependencies": {
         "@noctcore/eslint-utils": "^0.1.0",
         "@typescript-eslint/utils": "^8.61.1",
@@ -33,7 +33,7 @@
     },
     "packages/eslint-plugin-async-safety": {
       "name": "@noctcore/eslint-plugin-async-safety",
-      "version": "0.1.0",
+      "version": "0.2.0",
       "dependencies": {
         "@noctcore/eslint-utils": "^0.1.0",
         "@typescript-eslint/utils": "^8.61.1",
@@ -54,7 +54,7 @@
     },
     "packages/eslint-plugin-code-quality": {
       "name": "@noctcore/eslint-plugin-code-quality",
-      "version": "0.1.0",
+      "version": "0.2.0",
       "dependencies": {
         "@noctcore/eslint-utils": "^0.1.0",
         "@typescript-eslint/utils": "^8.61.1",
@@ -75,7 +75,7 @@
     },
     "packages/eslint-plugin-contracts": {
       "name": "@noctcore/eslint-plugin-contracts",
-      "version": "0.2.0",
+      "version": "0.4.0",
       "dependencies": {
         "@noctcore/eslint-utils": "^0.1.0",
         "@typescript-eslint/utils": "^8.61.1",
@@ -117,7 +117,7 @@
     },
     "packages/eslint-plugin-observability": {
       "name": "@noctcore/eslint-plugin-observability",
-      "version": "0.1.0",
+      "version": "0.2.0",
       "dependencies": {
         "@noctcore/eslint-utils": "^0.1.0",
         "@typescript-eslint/utils": "^8.61.1",
@@ -138,7 +138,7 @@
     },
     "packages/eslint-plugin-prisma": {
       "name": "@noctcore/eslint-plugin-prisma",
-      "version": "0.0.0",
+      "version": "0.1.0",
       "dependencies": {
         "@noctcore/eslint-utils": "^0.1.0",
         "@typescript-eslint/utils": "^8.61.1",
@@ -159,7 +159,7 @@
     },
     "packages/eslint-plugin-react": {
       "name": "@noctcore/eslint-plugin-react",
-      "version": "0.2.0",
+      "version": "0.2.1",
       "dependencies": {
         "@noctcore/eslint-utils": "^0.1.0",
         "@typescript-eslint/utils": "^8.61.1",
@@ -180,7 +180,7 @@
     },
     "packages/eslint-plugin-security": {
       "name": "@noctcore/eslint-plugin-security",
-      "version": "0.1.0",
+      "version": "0.2.0",
       "dependencies": {
         "@noctcore/eslint-utils": "^0.1.0",
         "@typescript-eslint/utils": "^8.61.1",
@@ -235,15 +235,27 @@
     },
     "packages/lint-meta-rules": {
       "name": "@noctcore/lint-meta-rules",
-      "version": "0.1.0",
+      "version": "0.2.0",
       "dependencies": {
+        "@noctcore/eslint-plugin-contracts": "^0.4.0",
         "@noctcore/harness": "^0.3.0",
+        "@typescript-eslint/utils": "^8.61.1",
       },
       "devDependencies": {
         "@types/node": "^22.0.0",
+        "@typescript-eslint/parser": "^8.61.1",
+        "eslint": "^10.7.0",
         "tsup": "^8.5.1",
         "typescript": "^5.6.0",
       },
+      "peerDependencies": {
+        "@typescript-eslint/parser": "^8.0.0",
+        "eslint": ">=9.0.0",
+      },
+      "optionalPeers": [
+        "@typescript-eslint/parser",
+        "eslint",
+      ],
     },
   },
   "packages": {
