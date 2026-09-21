@@ -42,6 +42,7 @@ export default [
 | Rule | Description | 💡 |
 | --- | --- | --- |
 | [`require-fetch-timeout`](./docs/rules/require-fetch-timeout.md) | A `fetch` (or configured wrapper) call must carry a `signal`/`timeout` — an unbounded request can hang forever. | 💡 |
+| [`require-client-timeout`](./docs/rules/require-client-timeout.md) | A configured network client (`new S3Client(...)`, `nodemailer.createTransport(...)`) must be built with one of its timeout options. Ships with no client list. | |
 | [`forward-abort-signal`](./docs/rules/forward-abort-signal.md) | A function that accepts an `AbortSignal` but awaits a call without forwarding it leaves that work uncancellable. | |
 | [`no-shared-mutable-module-state`](./docs/rules/no-shared-mutable-module-state.md) | A module-scoped mutable binding written from an exported async/handler function is shared across concurrent requests (opt in via `include`). | |
 | [`prefer-parallel-awaits`](./docs/rules/prefer-parallel-awaits.md) | Consecutive independent awaits can run concurrently with `Promise.all`. | 💡 |
@@ -52,6 +53,7 @@ export default [
 | Rule | Severity | Notes |
 | --- | --- | --- |
 | `require-fetch-timeout` | `error` | Precise and syntactic. |
+| `require-client-timeout` | `error` | Inert until you list `clients`, so it ships enabled but checks nothing by default. |
 | `no-shared-mutable-module-state` | `error` | Inert until you set `include` globs, so it ships enabled but off by default. |
 | `forward-abort-signal` | `warn` | Heuristic — advisory. |
 | `prefer-parallel-awaits` | `warn` | Heuristic — advisory suggestion. |

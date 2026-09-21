@@ -2,7 +2,7 @@ import { AST_NODE_TYPES, type TSESTree } from '@typescript-eslint/utils';
 import type { JSONSchema4 } from '@typescript-eslint/utils/json-schema';
 
 import { createRule } from '../createRule';
-import { DEFAULT_LOGGERS, loggerCallMethod } from '../utils';
+import { DEFAULT_LOGGERS, loggerCallMethod, makeNameMatcher } from '../utils';
 
 const RULE_NAME = 'no-sensitive-fields-in-logs';
 
@@ -48,44 +48,6 @@ const optionSchema: JSONSchema4 = {
   },
 };
 
-/** Lowercased camelCase / snake_case / kebab segments of a name. */
-function nameSegments(name: string): string[] {
-  return name
-    .replace(/([a-z0-9])([A-Z])/g, '$1 $2')
-    .split(/[^a-zA-Z0-9]+/)
-    .join(' ')
-    .toLowerCase()
-    .split(/\s+/)
-    .filter(Boolean);
-}
-
-/** Name with all non-alphanumerics stripped, lowercased (`api_key` → `apikey`). */
-function compact(name: string): string {
-  return name.toLowerCase().replace(/[^a-z0-9]/g, '');
-}
-
-/** Build a matcher closure from the configured denylist. */
-function makeMatcher(denyNames: readonly string[]): (name: string) => boolean {
-  const single: string[] = [];
-  const multi: string[] = [];
-  for (const deny of denyNames) {
-    const segs = nameSegments(deny);
-    if (segs.length <= 1) {
-      single.push(compact(deny));
-    } else {
-      multi.push(compact(deny));
-    }
-  }
-  return (name: string): boolean => {
-    const segs = new Set(nameSegments(name));
-    if (single.some((deny) => segs.has(deny))) {
-      return true;
-    }
-    const flat = compact(name);
-    return multi.some((deny) => flat.includes(deny));
-  };
-}
-
 export const noSensitiveFieldsInLogsRule = createRule<RuleOptions, MessageIds>({
   name: RULE_NAME,
   meta: {
@@ -97,12 +59,12 @@ export const noSensitiveFieldsInLogsRule = createRule<RuleOptions, MessageIds>({
     schema: [optionSchema],
     messages: {
       sensitiveField:
-        "`{{name}}` looks like a sensitive field being written to a log sink. Redact it before logging (e.g. `redact({{name}})`) or omit it — logs are long-lived and widely readable.",
+        '`{{name}}` looks like a sensitive field being written to a log sink. Redact it before logging (e.g. `redact({{name}})`) or omit it — logs are long-lived and widely readable.',
     },
   },
   defaultOptions: [{ denyNames: DEFAULT_DENY_NAMES }],
   create(context, [options]) {
-    const matches = makeMatcher(options.denyNames ?? DEFAULT_DENY_NAMES);
+    const matches = makeNameMatcher(options.denyNames ?? DEFAULT_DENY_NAMES);
 
     /** Generic descent over an argument subtree, skipping the `parent` back-edge. */
     function walk(node: TSESTree.Node, visit: (n: TSESTree.Node) => void): void {

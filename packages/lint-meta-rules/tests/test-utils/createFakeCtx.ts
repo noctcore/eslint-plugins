@@ -16,6 +16,8 @@ export interface CreateFakeCtxOptions {
  * rules:
  *  - a `/` + `**` + `/` sequence matches zero OR more directory segments (so a
  *    `src/**` + `/*.ts` glob matches both `src/a.ts` and `src/deep/a.ts`),
+ *  - a LEADING `**` + `/` likewise matches zero or more segments (so a
+ *    `**` + `/Dockerfile` glob matches a root-level `Dockerfile` too),
  *  - a standalone `**` matches anything,
  *  - `*` matches within a single segment, and
  *  - `[...]` character classes (e.g. `[A-Z]`) pass through untouched —
@@ -28,9 +30,11 @@ function matchesGlob(candidate: string, pattern: string): boolean {
   const re = pattern
     // Escape regex specials EXCEPT `*` (wildcards) and `[` `]` `-` (char classes).
     .replace(/[.+^${}()|\\]/g, '\\$&')
+    .replace(/^\*\*\//, '__NC_LEAD__')
     .replace(/\/\*\*\//g, '__NC_DIRS__')
     .replace(/\*\*/g, '__NC_ANY__')
     .replace(/\*/g, '[^/]*')
+    .replaceAll('__NC_LEAD__', '(?:.*/)?')
     .replaceAll('__NC_DIRS__', '/(?:.*/)?')
     .replaceAll('__NC_ANY__', '.*');
   return new RegExp('^' + re + '$').test(candidate);

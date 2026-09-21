@@ -1,3 +1,4 @@
+import { auditPiiDeclaredRule } from './audit-pii-declared';
 import { noErrorDetailLossRule } from './no-error-detail-loss';
 import { noSensitiveFieldsInLogsRule } from './no-sensitive-fields-in-logs';
 import { structuredLogArgumentsRule } from './structured-log-arguments';
@@ -7,4 +8,5 @@ export const rules = {
   'structured-log-arguments': structuredLogArgumentsRule,
   'no-sensitive-fields-in-logs': noSensitiveFieldsInLogsRule,
   'no-error-detail-loss': noErrorDetailLossRule,
+  'audit-pii-declared': auditPiiDeclaredRule,
 };

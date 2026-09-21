@@ -2,6 +2,8 @@
 export const recommended = {
   // Precise, syntactic — safe as errors.
   'noctcore-async-safety/require-fetch-timeout': 'error',
+  // Inert until you list `clients`, so it ships enabled but checks nothing by default.
+  'noctcore-async-safety/require-client-timeout': 'error',
   // Inert until you set `include` globs, so it ships enabled but off by default.
   'noctcore-async-safety/no-shared-mutable-module-state': 'error',
   // Heuristic — advisory. Warns rather than blocking.
