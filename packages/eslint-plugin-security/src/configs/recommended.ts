@@ -8,4 +8,6 @@
  */
 export const recommended = {
   'noctcore-security/no-shell-interpolation': 'error',
+  'noctcore-security/no-user-controlled-fetch-url': 'error',
+  'noctcore-security/no-user-controlled-redirect': 'error',
 } as const;
