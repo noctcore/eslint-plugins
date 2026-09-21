@@ -49,6 +49,15 @@ client properties (`clientProperties`) and transaction-client names (`txRootName
 with defaults that fit a conventional Prisma codebase. The rules are name- and shape-based and need
 no type information.
 
+## Rules
+
+| Rule | Description |
+| --- | --- |
+| [`no-raw-sql-outside-allowlist`](./docs/rules/no-raw-sql-outside-allowlist.md) | Raw SQL that can touch a table only in allowlisted files; `*Unsafe` never. |
+| [`no-unscoped-prisma-outside-allowlist`](./docs/rules/no-unscoped-prisma-outside-allowlist.md) | The unscoped client and tenant-scope escape hatches only in allowlisted files. |
+| [`prisma-tx-uses-tx-not-client`](./docs/rules/prisma-tx-uses-tx-not-client.md) | Inside an interactive `$transaction`, writes go through `tx`, not the outer client. |
+| [`prisma-write-in-transaction`](./docs/rules/prisma-write-in-transaction.md) | Two or more writes in one function must be wrapped in a `$transaction`. |
+
 ## Building blocks
 
 The package also exports the pieces its rules are built on, so a project's own tooling reads the
