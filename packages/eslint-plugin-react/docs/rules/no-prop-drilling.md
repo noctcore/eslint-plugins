@@ -20,13 +20,15 @@ A prop is only counted when **every** read of it is a `name={name}` pass-through
 uppercase (component-typed) JSX element. Any local use, rename (`x={y}`), spread, `key` forward, or
 forward to a lowercase DOM element disqualifies it.
 
-```tsx
-// ✗ four unchanged forwards to one child
+```tsx bad
+// four unchanged forwards to one child
 function Board({ a, b, c, d }: BoardProps) {
   return <Column a={a} b={b} c={c} d={d} />;
 }
+```
 
-// ✓ split across children, renamed, or locally used
+```tsx good
+// split across children, renamed, or locally used
 function Board({ a, b, c, d }: BoardProps) {
   return (
     <>

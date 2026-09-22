@@ -19,13 +19,15 @@ This rule is deliberately **conservative** — it fires only on the unambiguous 
   identifiers all resolve to a dependency;
 - at least one argument actually reads a dependency.
 
-```tsx
-// ✗ derived state synced through an effect
+```tsx bad
+// derived state synced through an effect
 useEffect(() => {
   setFullName(firstName + ' ' + lastName);
 }, [firstName, lastName]);
+```
 
-// ✓ compute during render
+```tsx good
+// compute during render
 const fullName = firstName + ' ' + lastName;
 ```
 

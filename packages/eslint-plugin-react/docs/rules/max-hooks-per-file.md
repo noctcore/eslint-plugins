@@ -16,15 +16,26 @@ exported hook factories count — internal helper hooks are free. Hooks exported
 (`export { useA, useB }`) and under aliases (`export { useA as helperA }`) still count by their local
 factory name, so aliasing cannot bypass the limit.
 
-```ts
-// ✗ five exported hooks in Board.queries.ts
+```ts bad filename=src/board/Board.queries.ts
+// five exported hooks
 export function useA() {}
 export function useB() {}
 export function useC() {}
 export function useD() {}
 export function useE() {}
+```
 
-// ✓ split into focused query/mutation files
+```ts good filename=src/board/Board.queries.ts
+// split into focused query/mutation files: the queries stay here
+export function useA() {}
+export function useB() {}
+export function useC() {}
+```
+
+```ts good filename=src/board/Board.mutations.ts relocation
+// and the mutations move out
+export function useD() {}
+export function useE() {}
 ```
 
 ## Options

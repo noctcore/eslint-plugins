@@ -20,15 +20,30 @@ fragment):
 A single `{cond && <X/>}` guard and ternaries stay allowed. Computation inside event handlers
 (`onClick={() => items.map(...)}`) is not render-time work and is not flagged.
 
-```tsx
-// ✗ computation in JSX
-<ul>{props.items.map((i) => <li key={i} />)}</ul>
-<span>{props.total - props.used}</span>
+```tsx bad reports=2
+// computation in JSX
+function Usage(props: UsageProps) {
+  return (
+    <div>
+      <ul>{props.items.map((i) => <li key={i} />)}</ul>
+      <span>{props.total - props.used}</span>
+    </div>
+  );
+}
+```
 
-// ✓ lifted to a const above the return
-const rows = props.items.map((i) => <li key={i} />);
-const remaining = props.total - props.used;
-return <ul>{rows}</ul>;
+```tsx good
+// lifted to a const above the return
+function Usage(props: UsageProps) {
+  const rows = props.items.map((i) => <li key={i} />);
+  const remaining = props.total - props.used;
+  return (
+    <div>
+      <ul>{rows}</ul>
+      <span>{remaining}</span>
+    </div>
+  );
+}
 ```
 
 ## Options

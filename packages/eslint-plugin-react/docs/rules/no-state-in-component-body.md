@@ -25,14 +25,18 @@ Inside a component file (`.tsx` that is **not** a hook file), a call to any of:
 ends with a `hookFileSuffixes` entry (default `.hooks.ts`) are skipped — that is where the hooks
 belong.
 
-```tsx
-// ✗ state in the component body (Widget.tsx)
+```tsx bad filename=src/widget/Widget.tsx
+// state in the component body
 export default function Widget() {
   const [open, setOpen] = useState(false);
   return <div />;
 }
+```
 
-// ✓ the same state, colocated in Widget.hooks.ts
+Moving the state to the colocated hook file is the fix:
+
+```ts good filename=src/widget/Widget.hooks.ts relocation
+// the same state, colocated in Widget.hooks.ts
 export function useWidget() {
   const [open, setOpen] = useState(false);
   return { open, setOpen };

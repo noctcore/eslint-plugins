@@ -14,18 +14,20 @@ Rename it to a PascalCase component, or return values instead of elements.
 A function whose declared name matches the hook pattern (`useX`) whose **own** body returns JSX —
 directly, or through a ternary / `&&`:
 
-```tsx
-// ✗ a "hook" that returns markup
+```tsx bad
+// a "hook" that returns markup
 function useUserBadge(user) {
   return <span>{user.name}</span>;
 }
+```
 
-// ✓ a hook returns data
+```tsx good
+// a hook returns data
 function useUserBadge(user) {
   return { label: user.name };
 }
 
-// ✓ this is a component — name it like one
+// this is a component: name it like one
 function UserBadge({ user }) {
   return <span>{user.name}</span>;
 }

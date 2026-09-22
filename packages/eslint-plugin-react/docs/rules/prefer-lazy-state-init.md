@@ -17,11 +17,13 @@ path is listed in `initializers`. By default that is `JSON.parse`, `localStorage
 `sessionStorage.getItem`. A callee is matched by its dotted path (`localStorage.getItem`) or bare
 name (`buildInitialState`). Anything already wrapped in a function is left alone.
 
-```tsx
-// ✗ runs JSON.parse on every render
+```tsx bad
+// runs JSON.parse on every render
 const [state, setState] = useState(JSON.parse(raw));
+```
 
-// ✓ lazy — runs once on mount
+```tsx good
+// lazy: runs once on mount
 const [state, setState] = useState(() => JSON.parse(raw));
 ```
 

@@ -17,14 +17,16 @@ entry. Entries are matched as **case-insensitive regular expressions**, so the d
 names (`^userId$`) and substrings (`token` matches `resetToken`). The rule keys off the `*Props`
 naming convention and is layout-independent.
 
-```ts
-// ✗ identity / credential props
+```ts bad reports=2
+// identity / credential props
 interface LoginFormProps {
   userId: string;
   resetToken: string;
 }
+```
 
-// ✓ visual props (and a live password input is allowed)
+```ts good
+// visual props (and a live password input is allowed)
 interface LoginFormProps {
   label: string;
   password: string;

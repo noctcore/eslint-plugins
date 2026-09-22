@@ -32,7 +32,7 @@ const PLUGINS: Record<string, { readonly plugin: DocPlugin; readonly status: Doc
   monorepo: { plugin: monorepo, status: 'executed' },
   observability: { plugin: observability, status: 'executed' },
   prisma: { plugin: prisma, status: 'pending' },
-  react: { plugin: react, status: 'pending' },
+  react: { plugin: react, status: 'executed' },
   security: { plugin: security, status: 'executed' },
 };
 

@@ -22,11 +22,13 @@ Custom wrapper components (`<FooProvider value={...}>`) are intentionally **not*
 they forward is memoized at their single call site, and matching every `*Provider`-named element
 would flag unrelated library providers.
 
-```tsx
-// ✗ fresh object every render
+```tsx bad filename=src/tasks/TaskStream.tsx
+// fresh object every render
 <TaskStreamContext.Provider value={{ a: 1, b: 2 }}>{children}</TaskStreamContext.Provider>
+```
 
-// ✓ stable, memoized reference
+```tsx good filename=src/tasks/TaskStream.tsx
+// stable, memoized reference
 const value = useMemo(() => ({ a, b }), [a, b]);
 <TaskStreamContext.Provider value={value}>{children}</TaskStreamContext.Provider>
 ```

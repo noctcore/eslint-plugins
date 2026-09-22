@@ -15,13 +15,14 @@ props type is named `Props`, `IProps`, or something unrelated hides that link.
 A **PascalCase, JSX-returning** function component whose first parameter is annotated with a plain
 named type that is not `<Component>Props`:
 
-```tsx
-// ✗ props type is `Props`, component is `Button`
+```tsx bad
+// props type is `Props`, component is `Button`
 function Button(props: Props) {
   return <button {...props} />;
 }
+```
 
-// ✓
+```tsx good
 function Button(props: ButtonProps) {
   return <button {...props} />;
 }

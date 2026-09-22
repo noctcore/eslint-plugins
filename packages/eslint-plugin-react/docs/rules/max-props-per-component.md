@@ -17,13 +17,27 @@ Any `*Props` interface or object type-literal alias that declares more than `max
 layout-independent: it keys off the `*Props` naming convention and applies wherever the contract is
 declared.
 
-```ts
-// ✗ 13 local props
+```ts bad
+// 13 local props
 export interface BoardProps {
-  a: string; b: string; /* ...11 more... */
+  p1: string;
+  p2: string;
+  p3: string;
+  p4: string;
+  p5: string;
+  p6: string;
+  p7: string;
+  p8: string;
+  p9: string;
+  p10: string;
+  p11: string;
+  p12: string;
+  p13: string;
 }
+```
 
-// ✓ inherited members are free — only the local surface counts
+```ts good
+// inherited members are free: only the local surface counts
 export interface BoardProps extends BaseProps {
   a: string; b: string;
 }

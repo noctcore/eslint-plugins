@@ -17,13 +17,17 @@ top-level return and objects nested **one** level deep (the `board: {...}` contr
 measured. Each spread element counts as 1 (though it hides arbitrary extra surface). Non-exported
 hooks and non-hook functions are ignored, as is nesting deeper than one level.
 
-```ts
-// ✗ a 21-member controller (useBoard in Board.hooks.ts)
+```ts bad filename=src/board/Board.hooks.ts
+// a 21-member controller
 export function useBoard() {
-  return { a, b, c, /* ...18 more... */ };
+  return {
+    m1, m2, m3, m4, m5, m6, m7, m8, m9, m10, m11, m12, m13, m14, m15, m16, m17, m18, m19, m20, m21,
+  };
 }
+```
 
-// ✓ split into cohesive sub-objects (each under the cap)
+```ts good filename=src/board/Board.hooks.ts
+// split into cohesive sub-objects (each under the cap)
 export function useBoard() {
   return { columns, selection, actions };
 }

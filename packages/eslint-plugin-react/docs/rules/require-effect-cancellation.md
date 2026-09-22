@@ -15,8 +15,8 @@ flag, or a cleanup `return`.
 An `await` (or a `.then(cb)`) inside a `useEffect` / `useLayoutEffect` callback, followed by a
 `setState`/`dispatch`, when the effect has **no** recognisable cancellation guard:
 
-```tsx
-// ✗ nothing cancels the update
+```tsx bad
+// nothing cancels the update
 useEffect(() => {
   async function load() {
     const data = await fetchThing(id);
@@ -24,8 +24,10 @@ useEffect(() => {
   }
   load();
 }, [id]);
+```
 
-// ✓ guarded with a cancelled flag
+```tsx good
+// guarded with a cancelled flag
 useEffect(() => {
   let cancelled = false;
   fetchThing(id).then((data) => {
