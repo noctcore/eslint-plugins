@@ -90,6 +90,13 @@ describe('collectDocProblems', () => {
     ]);
   });
 
+  it('accepts a prose example in any language, but runs bad and good ones only as code', () => {
+    expect(problems(doc(fence('text prose reason="a file tree"', 'src/\n  a.ts')))).toEqual([]);
+    expect(problems(doc(BAD, GOOD, fence('text good', 'src/')))).toEqual([
+      'line 11: a good example must be ts, tsx, js or jsx, not `text`',
+    ]);
+  });
+
   it('rejects a bad example the rule does not report', () => {
     expect(problems(doc(fence('ts bad', 'const x = 1;'), GOOD))).toEqual([
       'line 3 (bad, src/example.ts): bad example drew no report from no-debugger',

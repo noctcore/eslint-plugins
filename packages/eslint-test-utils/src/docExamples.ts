@@ -11,7 +11,8 @@
  * `bad` must draw at least one report from the documented rule, or exactly
  * `reports=N` when a block shows several violations. `good` must
  * draw no message at all, which also rejects a parse error. `prose` is not run
- * and must say why. Every `ts` / `tsx` fence needs a label, so an example
+ * and must say why; it may be in any language, such as a `text` file tree.
+ * Every `ts` / `tsx` fence needs a label, so an example
  * cannot sit in a doc unexamined. Other fences (a `js` config snippet, a
  * `jsonc` default) are left alone.
  *
@@ -182,7 +183,7 @@ export function parseDocExamples(markdown: string): ParsedDoc {
       }
       continue;
     }
-    if (!EXAMPLE_LANGS.has(lang)) {
+    if (label !== 'prose' && !EXAMPLE_LANGS.has(lang)) {
       problems.push(`${at}: a ${label} example must be ts, tsx, js or jsx, not \`${lang}\``);
       continue;
     }
