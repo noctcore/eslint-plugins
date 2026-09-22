@@ -1,0 +1,76 @@
+name: False positive
+description: A rule reported code that is correct.
+labels: ["false positive"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        A false positive is the report that matters most for a plugin whose rules run at `error`: one is enough to make a team switch the rule off. It is only actionable with the exact code and the rule's options, so those fields are required.
+  - type: input
+    id: rule
+    attributes:
+      label: Rule id
+      description: As it appears in the ESLint output, namespace included. For a lint-meta rule, its id.
+      placeholder: noctcore-security/no-shell-interpolation
+    validations:
+      required: true
+  - type: textarea
+    id: code
+    attributes:
+      label: The code that is reported
+      description: The smallest file that still triggers the report. Include the imports if they matter to the rule. This field renders as a code block, so paste code only.
+      render: ts
+    validations:
+      required: true
+  - type: textarea
+    id: message
+    attributes:
+      label: The report
+      description: The message ESLint printed, with the line and column.
+      render: text
+    validations:
+      required: true
+  - type: textarea
+    id: why-correct
+    attributes:
+      label: Why the code is correct
+      description: What the code does, and why the pattern the rule names does not apply here. The rule's doc page has a "What it flags" section; say where your code falls outside it.
+    validations:
+      required: true
+  - type: textarea
+    id: config
+    attributes:
+      label: The rule's configuration
+      description: The entry from your `eslint.config.js` for this rule, options included, or "recommended preset, no override".
+      render: js
+    validations:
+      required: true
+  - type: input
+    id: plugin-version
+    attributes:
+      label: Plugin version
+      description: From `package.json` or `npm ls @noctcore/eslint-plugin-<name>`.
+      placeholder: "@noctcore/eslint-plugin-security 0.3.0"
+    validations:
+      required: true
+  - type: input
+    id: eslint-version
+    attributes:
+      label: ESLint version
+      description: The output of `npx eslint --version`. Every plugin supports ESLint 9 and 10.
+      placeholder: v10.7.0
+    validations:
+      required: true
+  - type: input
+    id: toolchain
+    attributes:
+      label: TypeScript, parser and Node versions
+      description: Optional. Useful when the report depends on syntax the parser handles differently between versions.
+      placeholder: typescript 5.9.2, @typescript-eslint/parser 8.61.1, node 22.22
+  - type: checkboxes
+    id: checks
+    attributes:
+      label: Before you send it
+      options:
+        - label: I read the rule's page on the docs site and the code is not in its "What it flags" section.
+        - label: I searched the open and closed issues for this rule.
