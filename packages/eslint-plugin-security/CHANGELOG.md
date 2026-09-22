@@ -1,5 +1,20 @@
 # @noctcore/eslint-plugin-security
 
+## 0.2.3
+
+### Patch Changes
+
+- [`ca5f24b`](https://github.com/noctcore/eslint-plugins/commit/ca5f24b5ea45f532c60f92fdca6a77d7cf867773) Thanks [@Shironex](https://github.com/Shironex)! - `prefer-lazy-state-init` now matches storage calls written with a global prefix.
+
+  `window.localStorage.getItem` and `localStorage.getItem` are one call written two ways, and the
+  rule compared the dotted path literally, so the default `localStorage.getItem` entry saw only the
+  bare form and every `window.`-prefixed call site went unreported. `window.`, `globalThis.` and
+  `self.` are now stripped before matching, and an explicitly configured prefixed path still matches
+  as written.
+
+  Also corrects the security plugin's README, which wired an example rule at `warn` against the
+  house policy that every rule is `error` or `off`.
+
 ## 0.2.2
 
 ### Patch Changes
