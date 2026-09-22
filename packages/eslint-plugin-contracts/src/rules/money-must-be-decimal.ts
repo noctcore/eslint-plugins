@@ -12,6 +12,12 @@ export interface MoneyMustBeDecimalOptions {
   readonly fieldPatterns?: readonly string[];
   /** Path-suffix allowlist of files to skip entirely. */
   readonly allowedFiles?: readonly string[];
+  /**
+   * Regex fragments (case-insensitive) naming fields that hold an integer count
+   * of minor units (cents), where `number` is the correct type. A money-named
+   * field matching one of these is not reported. Empty by default.
+   */
+  readonly minorUnitPatterns?: readonly string[];
 }
 
 type RuleOptions = [MoneyMustBeDecimalOptions];
@@ -47,6 +53,14 @@ const DEFAULT_FIELD_PATTERNS: readonly string[] = [
 
 const DEFAULT_ALLOWED_FILES: readonly string[] = [];
 
+/*
+ * Payment APIs such as Stripe carry money as an integer count of minor units
+ * (`amount: 1999` is 19.99), which is exact in a `number`. How a codebase names
+ * those fields is its own convention (`amount`, `amountCents`, `unitAmount`), so
+ * nothing is exempt until the consumer lists the patterns.
+ */
+const DEFAULT_MINOR_UNIT_PATTERNS: readonly string[] = [];
+
 const optionSchema: JSONSchema4 = {
   type: 'object',
   additionalProperties: false,
@@ -61,6 +75,11 @@ const optionSchema: JSONSchema4 = {
     allowedFiles: {
       type: 'array',
       items: { type: 'string' },
+      uniqueItems: true,
+    },
+    minorUnitPatterns: {
+      type: 'array',
+      items: { type: 'string', minLength: 1 },
       uniqueItems: true,
     },
   },
@@ -117,6 +136,7 @@ export const moneyMustBeDecimalRule = createRule<RuleOptions, MessageIds>({
       decimalType: DEFAULT_DECIMAL_TYPE,
       fieldPatterns: [...DEFAULT_FIELD_PATTERNS],
       allowedFiles: [],
+      minorUnitPatterns: [],
     },
   ],
   create(context, [options]) {
@@ -129,6 +149,14 @@ export const moneyMustBeDecimalRule = createRule<RuleOptions, MessageIds>({
 
     const fieldPatterns = options.fieldPatterns ?? DEFAULT_FIELD_PATTERNS;
     const moneyPattern = new RegExp(`(${fieldPatterns.join('|')})`, 'i');
+    const minorUnitPatterns = options.minorUnitPatterns ?? DEFAULT_MINOR_UNIT_PATTERNS;
+    const minorUnitPattern =
+      minorUnitPatterns.length > 0 ? new RegExp(`(${minorUnitPatterns.join('|')})`, 'i') : null;
+
+    /** A money-named field that is not declared as a minor-unit integer. */
+    function isDecimalMoneyName(name: string): boolean {
+      return moneyPattern.test(name) && !(minorUnitPattern?.test(name) ?? false);
+    }
 
     function report(node: TSESTree.Node): void {
       context.report({ node, messageId: 'moneyMustBeDecimal', data: { decimalType } });
@@ -143,7 +171,7 @@ export const moneyMustBeDecimalRule = createRule<RuleOptions, MessageIds>({
         const name = staticName(node.key);
         if (
           name !== undefined &&
-          moneyPattern.test(name) &&
+          isDecimalMoneyName(name) &&
           isNumberAnnotation(node.typeAnnotation)
         ) {
           report(node);
@@ -155,7 +183,7 @@ export const moneyMustBeDecimalRule = createRule<RuleOptions, MessageIds>({
           return;
         }
         const name = node.id.name;
-        if (moneyPattern.test(name) && isNumberAnnotation(node.id.typeAnnotation)) {
+        if (isDecimalMoneyName(name) && isNumberAnnotation(node.id.typeAnnotation)) {
           report(node);
         }
       },
