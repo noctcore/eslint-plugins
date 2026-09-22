@@ -3,7 +3,7 @@ import { rules } from './rules';
 
 /** Flat-config namespace: rule ids are keyed `noctcore-security/<rule>`. */
 const NAMESPACE = 'noctcore-security';
-const VERSION = '0.2.1';
+const VERSION = '0.2.2';
 
 const plugin = {
   meta: { name: '@noctcore/eslint-plugin-security', version: VERSION },
