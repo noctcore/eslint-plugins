@@ -1,5 +1,39 @@
 # @noctcore/eslint-plugin-react
 
+## 0.4.0
+
+### Minor Changes
+
+- [`42ecbd9`](https://github.com/noctcore/eslint-plugins/commit/42ecbd9f98a51d9377530770a44873b4cb0ba80e) Thanks [@Shironex](https://github.com/Shironex)! - New rule `no-unguarded-web-storage`, shipped as `error` in `recommended`.
+
+  A `localStorage` / `sessionStorage` call must sit inside a `try` block. The property access
+  itself throws when storage is disabled (private browsing, blocked cookies, a sandboxed iframe,
+  storage partitioning), and `setItem` throws on an exhausted quota. The code compiles and the
+  tests pass under jsdom, then the exception lands in a render for a slice of real users.
+
+  The rule flags any storage method call, written bare or through `window.`, `globalThis.` or
+  `self.`, with no enclosing `try` at any depth. A `typeof window === 'undefined'` check is not a
+  guard: it fences off the server, and the throw happens in the browser. It stays silent for a
+  wrapper object, a non-call reference, a locally declared `localStorage`, storage code written as
+  text inside a string, and files matched by `allowIn` (tests and specs by default). A suggestion
+  wraps a plain expression or return statement in `try { ... } catch { ... }`.
+
+  Projects that spread `react.configs.recommended` will now fail lint on an unguarded storage
+  call. Wrap it, move it into a guarded helper, or exempt the path with `allowIn`.
+
+### Patch Changes
+
+- [`ca5f24b`](https://github.com/noctcore/eslint-plugins/commit/ca5f24b5ea45f532c60f92fdca6a77d7cf867773) Thanks [@Shironex](https://github.com/Shironex)! - `prefer-lazy-state-init` now matches storage calls written with a global prefix.
+
+  `window.localStorage.getItem` and `localStorage.getItem` are one call written two ways, and the
+  rule compared the dotted path literally, so the default `localStorage.getItem` entry saw only the
+  bare form and every `window.`-prefixed call site went unreported. `window.`, `globalThis.` and
+  `self.` are now stripped before matching, and an explicitly configured prefixed path still matches
+  as written.
+
+  Also corrects the security plugin's README, which wired an example rule at `warn` against the
+  house policy that every rule is `error` or `off`.
+
 ## 0.3.1
 
 ### Patch Changes
