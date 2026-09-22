@@ -60,14 +60,15 @@ A NestJS API that talks to S3 and sends mail over SMTP:
 ],
 ```
 
-```ts
-// Bad: no request handler, so no connection or request timeout
+```ts bad reports=2 options={"clients":[{"callee":"S3Client","construct":true,"requireAnyOf":["requestHandler"]},{"callee":"nodemailer.createTransport","requireAnyOf":["connectionTimeout","socketTimeout"]}]}
+// no request handler, so no connection or request timeout
 this.s3 = new S3Client({ region, credentials });
 
-// Bad: SMTP transport with default (unbounded in practice) timeouts
+// SMTP transport with default (unbounded in practice) timeouts
 this.transporter = nodemailer.createTransport({ host, port, secure: true });
+```
 
-// Good
+```ts good options={"clients":[{"callee":"S3Client","construct":true,"requireAnyOf":["requestHandler"]},{"callee":"nodemailer.createTransport","requireAnyOf":["connectionTimeout","socketTimeout"]}]}
 this.s3 = new S3Client({
   region,
   credentials,

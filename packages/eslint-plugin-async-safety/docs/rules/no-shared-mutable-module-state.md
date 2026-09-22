@@ -21,16 +21,16 @@ module-scoped mutable binding performed inside an **exported async function** or
 Exported functions qualify when they are `async` or named like a handler (`GET`/`POST`/…, `loader`, `action`,
 `handler`, `*Handler`, `middleware`).
 
-```ts
-// server.ts  (include: ['**/server/**'])
-
-// ✗ shared across requests
+```ts bad filename=src/server/metrics.ts options={"include":["**/server/**"]}
+// shared across requests
 let requestCount = 0;
 export async function GET() {
   requestCount += 1;
 }
+```
 
-// ✓ per-request
+```ts good filename=src/server/metrics.ts options={"include":["**/server/**"]}
+// per-request
 export async function GET() {
   const requestCount = 1;
 }

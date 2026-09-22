@@ -23,12 +23,14 @@ The rule is purely syntactic and stays silent whenever it cannot see the argumen
 It reports only when the arguments are plainly signal-free: a bare string/template URL, or a visible options
 object literal with neither key.
 
-```ts
-// ✗ no timeout — can hang forever
+```ts bad reports=2
+// no timeout: can hang forever
 await fetch('https://api.example.com/data');
 await fetch(url, { method: 'POST' });
+```
 
-// ✓ bounded
+```ts good
+// bounded
 await fetch('https://api.example.com/data', { signal: AbortSignal.timeout(10000) });
 await fetch(url, { method: 'POST', signal: controller.signal });
 ```

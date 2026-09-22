@@ -20,13 +20,15 @@ A function (declaration, expression, or arrow) that:
 "Forwarding" is deliberately generous: passing the signal as an argument, into an options object, assigning it,
 or returning it all count — so the rule errs toward silence rather than false positives.
 
-```ts
-// ✗ signal accepted, fetch left uncancellable
+```ts bad
+// signal accepted, fetch left uncancellable
 async function load(url: string, signal: AbortSignal) {
   return await fetch(url);
 }
+```
 
-// ✓ signal forwarded
+```ts good
+// signal forwarded
 async function load(url: string, signal: AbortSignal) {
   return await fetch(url, { signal });
 }

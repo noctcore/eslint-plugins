@@ -18,14 +18,25 @@ A run of two or more **consecutive** statements of the exact shape `const <id> =
   writes is usually intentional;
 - no later statement references an earlier statement's binding (no data dependency).
 
-```ts
-// ✗ sequential, but independent
-const user = await getUser();
-const feed = await getFeed();
-
-// ✓ concurrent
-const [user, feed] = await Promise.all([getUser(), getFeed()]);
+```ts bad
+// sequential, but independent
+async function loadHome() {
+  const user = await getUser();
+  const feed = await getFeed();
+  return { user, feed };
+}
 ```
+
+```ts good
+// concurrent
+async function loadHome() {
+  const [user, feed] = await Promise.all([getUser(), getFeed()]);
+  return { user, feed };
+}
+```
+
+Only runs inside a block (a function body, or any `{ ... }`) are checked. Top-level `await`s at
+module scope are not.
 
 The rule is intentionally conservative — a data dependency, a mutation-looking callee, a `let`, a nested call
 argument, or any non-await statement between them all suppress it.

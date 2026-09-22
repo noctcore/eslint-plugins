@@ -18,14 +18,16 @@ Inside an `async` callback passed to `.map`/`.flatMap`/`.forEach` whose result i
 - a self-referential assignment (`x = x + …`);
 - an update expression on an outer binding (`x++`, `--x`).
 
-```ts
-// ✗ lost updates
+```ts bad
+// lost updates
 let total = 0;
 await Promise.all(items.map(async (item) => {
   total += await priceOf(item);
 }));
+```
 
-// ✓ collect, then reduce
+```ts good
+// collect, then reduce
 const prices = await Promise.all(items.map((item) => priceOf(item)));
 const total = prices.reduce((a, b) => a + b, 0);
 ```

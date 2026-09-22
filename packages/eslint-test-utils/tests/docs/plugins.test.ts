@@ -26,7 +26,7 @@ type DocStatus = 'executed' | 'pending';
 
 const PLUGINS: Record<string, { readonly plugin: DocPlugin; readonly status: DocStatus }> = {
   architecture: { plugin: architecture, status: 'pending' },
-  'async-safety': { plugin: asyncSafety, status: 'pending' },
+  'async-safety': { plugin: asyncSafety, status: 'executed' },
   'code-quality': { plugin: codeQuality, status: 'executed' },
   contracts: { plugin: contracts, status: 'executed' },
   monorepo: { plugin: monorepo, status: 'pending' },
