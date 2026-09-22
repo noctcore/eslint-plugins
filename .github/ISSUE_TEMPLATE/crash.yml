@@ -1,0 +1,57 @@
+name: Crash or install problem
+description: A rule throws, a plugin fails to load, or a package is broken as published.
+labels: ["crash"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        For a rule that reports the wrong thing, use the false positive or false negative form instead. This one is for the cases where nothing gets to the point of reporting: an exception from a rule, an import or resolution failure, a config schema rejection, a broken tarball.
+  - type: dropdown
+    id: kind
+    attributes:
+      label: What happens
+      options:
+        - a rule throws while linting a file
+        - the plugin fails to import or resolve (ESM/CJS, types, exports map)
+        - ESLint rejects the rule's options (schema error)
+        - the published package is missing files or has wrong metadata
+        - something else
+    validations:
+      required: true
+  - type: textarea
+    id: output
+    attributes:
+      label: The full error
+      description: The whole stack trace or error message, from the first line to the last.
+      render: text
+    validations:
+      required: true
+  - type: textarea
+    id: repro
+    attributes:
+      label: How to reproduce it
+      description: The smallest file, config, or command that triggers it. If a rule throws on a file, that file is the reproduction.
+      render: text
+    validations:
+      required: true
+  - type: input
+    id: package-version
+    attributes:
+      label: Package and version
+      placeholder: "@noctcore/eslint-plugin-prisma 0.3.2"
+    validations:
+      required: true
+  - type: input
+    id: eslint-version
+    attributes:
+      label: ESLint version
+      placeholder: v9.0.0
+    validations:
+      required: true
+  - type: input
+    id: environment
+    attributes:
+      label: Node, package manager and OS
+      placeholder: node 22.22, pnpm 10.4, macOS 15
+    validations:
+      required: true

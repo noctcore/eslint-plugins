@@ -1,0 +1,12 @@
+# Template chooser for github.com/noctcore/eslint-plugins/issues/new/choose.
+# Blank issues stay on: a question about the harness or the site has no form
+# and should not be forced into one. Discussions are off on purpose; at this
+# volume an issue with the `question` label is the same thing with less to check.
+blank_issues_enabled: true
+contact_links:
+  - name: Rule documentation
+    url: https://noctcore.github.io/eslint-plugins/rules/
+    about: Every rule, its options, and executable bad/good examples. Read the rule's page before reporting a false positive; the "What it flags" section is the contract.
+  - name: Getting started and adoption
+    url: https://noctcore.github.io/eslint-plugins/getting-started/
+    about: Install, presets, the severity policy (error or off, never warn), and how to adopt a preset in a codebase that already has hundreds of hits.

@@ -1,0 +1,60 @@
+name: False negative
+description: A rule stayed silent on code it documents as bad.
+labels: ["false negative"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        A false negative is a defect the rule promises to catch and did not. The useful report is the code, the rule's own words on why it should have fired, and the options in play. If the rule's doc never claims to catch this shape, that is a rule change or a new rule, not a false negative; see the rule proposal form.
+  - type: input
+    id: rule
+    attributes:
+      label: Rule id
+      description: As it appears in a flat config, namespace included. For a lint-meta rule, its id.
+      placeholder: noctcore-react/no-unguarded-web-storage
+    validations:
+      required: true
+  - type: textarea
+    id: code
+    attributes:
+      label: The code that should be reported
+      description: The smallest file that shows the miss. This field renders as a code block, so paste code only.
+      render: ts
+    validations:
+      required: true
+  - type: textarea
+    id: expected
+    attributes:
+      label: What you expected reported, and why
+      description: Quote the part of the rule's doc page ("What it flags") that covers this code. A variant the doc does not mention is still worth reporting, but say so.
+    validations:
+      required: true
+  - type: textarea
+    id: config
+    attributes:
+      label: The rule's configuration
+      description: The entry from your `eslint.config.js` for this rule, options included, or "recommended preset, no override". Confirm the file is actually linted (`npx eslint --print-config <file>` shows the rule at `error`).
+      render: js
+    validations:
+      required: true
+  - type: input
+    id: plugin-version
+    attributes:
+      label: Plugin version
+      placeholder: "@noctcore/eslint-plugin-react 0.4.0"
+    validations:
+      required: true
+  - type: input
+    id: eslint-version
+    attributes:
+      label: ESLint version
+      description: The output of `npx eslint --version`.
+      placeholder: v10.7.0
+    validations:
+      required: true
+  - type: input
+    id: toolchain
+    attributes:
+      label: TypeScript, parser and Node versions
+      description: Optional.
+      placeholder: typescript 5.9.2, @typescript-eslint/parser 8.61.1, node 22.22

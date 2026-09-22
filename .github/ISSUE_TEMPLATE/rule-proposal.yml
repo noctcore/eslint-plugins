@@ -1,0 +1,104 @@
+name: Rule proposal
+description: Propose a rule that does not exist yet.
+labels: ["new rule"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Every rule here runs at `error` or is opt-in; there is no `warn`. So a proposal is judged on precision first: what it catches, why nothing else catches it, and what it must leave alone. The last question is the one that separates a rule from a wish. CONTRIBUTING.md has the full bar.
+  - type: input
+    id: name
+    attributes:
+      label: Proposed rule id
+      description: Package and name, in the form the config would use.
+      placeholder: noctcore-async-safety/no-unawaited-cleanup
+    validations:
+      required: true
+  - type: dropdown
+    id: package
+    attributes:
+      label: Package
+      description: Where it belongs. Pick "not sure" if the plugins overlap for this one.
+      options:
+        - not sure
+        - eslint-plugin-react
+        - eslint-plugin-architecture
+        - eslint-plugin-monorepo
+        - eslint-plugin-contracts
+        - eslint-plugin-code-quality
+        - eslint-plugin-async-safety
+        - eslint-plugin-observability
+        - eslint-plugin-security
+        - eslint-plugin-prisma
+        - lint-meta-rules (whole-repo checks for the harness)
+        - a new package
+    validations:
+      required: true
+  - type: textarea
+    id: defect
+    attributes:
+      label: The defect class
+      description: What breaks in production, or what a reviewer reliably misses, when the pattern is present. A style preference is not a defect.
+    validations:
+      required: true
+  - type: textarea
+    id: why-not-elsewhere
+    attributes:
+      label: Why a generic linter cannot see it
+      description: Which existing rules you checked (typescript-eslint, eslint-plugin-react, unicorn, import, the compiler) and why none of them covers this.
+    validations:
+      required: true
+  - type: textarea
+    id: bad
+    attributes:
+      label: Code it must report
+      description: One or two minimal examples. These become the `bad` fences in the rule doc, which the test suite executes.
+      render: ts
+    validations:
+      required: true
+  - type: textarea
+    id: must-not-flag
+    attributes:
+      label: Code it must NOT report
+      description: The legitimate code that looks like the bad code. This is where most proposals fail, so be concrete. If the rule can only stay silent here with an allowlist, say so; that makes it opt-in.
+      render: ts
+    validations:
+      required: true
+  - type: dropdown
+    id: shipping
+    attributes:
+      label: How it should ship
+      description: In `recommended` at `error` means it is precise on any codebase with no configuration. Opt-in means it needs a per-project fact (a client name, a scope, a model list) or trades precision for coverage.
+      options:
+        - in recommended at error
+        - exported but left out of recommended (opt-in)
+        - not sure
+    validations:
+      required: true
+  - type: textarea
+    id: options
+    attributes:
+      label: Options it needs
+      description: The per-project facts the rule cannot know, with a default for each, or "none".
+  - type: dropdown
+    id: types
+    attributes:
+      label: Does it need type information?
+      description: Only one rule in the family does today. A syntactic rule is strongly preferred.
+      options:
+        - "no, purely syntactic"
+        - "yes, it needs a type-checked program"
+        - "optional, better with types but works without"
+    validations:
+      required: true
+  - type: textarea
+    id: evidence
+    attributes:
+      label: Evidence
+      description: Optional but persuasive. Counts from real code (how many hits, how many were true positives), a bug it would have caught, a link to a postmortem.
+  - type: checkboxes
+    id: offer
+    attributes:
+      label: Implementation
+      options:
+        - label: I would like to implement this myself once the shape is agreed.
