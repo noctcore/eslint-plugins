@@ -56,6 +56,23 @@ function calleePath(node: TSESTree.Node): string | null {
   return null;
 }
 
+/**
+ * The same path with a global object prefix removed.
+ *
+ * `localStorage.getItem` and `window.localStorage.getItem` are one call written
+ * two ways, and both forms are common. Matching the dotted path literally saw
+ * only the bare one, so configuring `localStorage.getItem` silently missed every
+ * `window.`-prefixed call site.
+ */
+function withoutGlobalPrefix(path: string): string {
+  for (const prefix of ['window.', 'globalThis.', 'self.']) {
+    if (path.startsWith(prefix)) {
+      return path.slice(prefix.length);
+    }
+  }
+  return path;
+}
+
 /** True when `callee` is `useState` or `<something>.useState`. */
 function isUseStateCallee(callee: TSESTree.Node): boolean {
   if (callee.type === AST_NODE_TYPES.Identifier) {
@@ -98,7 +115,17 @@ export const preferLazyStateInitRule = createRule<RuleOptions, MessageIds>({
           return;
         }
         const path = calleePath(arg.callee);
-        if (path === null || !initializers.has(path)) {
+        if (path === null) {
+          return;
+        }
+        // Match the written path first, so an explicitly configured
+        // `window.localStorage.getItem` still works, then the unprefixed form.
+        const matched = initializers.has(path)
+          ? path
+          : initializers.has(withoutGlobalPrefix(path))
+            ? withoutGlobalPrefix(path)
+            : null;
+        if (matched === null) {
           return;
         }
         const text = context.sourceCode.getText(arg);

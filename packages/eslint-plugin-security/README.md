@@ -31,7 +31,7 @@ export default [
     rules: {
       'noctcore-security/no-shell-interpolation': ['error', { extraCallees: ['sh'] }],
       // High false-positive; enable explicitly (omitted from `recommended`).
-      'noctcore-security/require-path-containment': ['warn', { requestObjects: ['req', 'ctx'] }],
+      'noctcore-security/require-path-containment': ['error', { requestObjects: ['req', 'ctx'] }],
     },
   },
 ];

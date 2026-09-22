@@ -56,5 +56,27 @@ ruleTester.run('prefer-lazy-state-init', preferLazyStateInitRule, {
       errors: [{ messageId: 'lazyInit' }],
       output: `const [s, setS] = useState(() => buildInitial());`,
     },
+    // `window.`-prefixed storage is the same call written differently, and
+    // configuring `localStorage.getItem` used to miss it entirely.
+    {
+      code: `const [s, setS] = useState(window.localStorage.getItem('k'));`,
+      filename: FILE,
+      errors: [{ messageId: 'lazyInit' }],
+      output: `const [s, setS] = useState(() => window.localStorage.getItem('k'));`,
+    },
+    {
+      code: `const [s, setS] = useState(globalThis.sessionStorage.getItem('k'));`,
+      filename: FILE,
+      errors: [{ messageId: 'lazyInit' }],
+      output: `const [s, setS] = useState(() => globalThis.sessionStorage.getItem('k'));`,
+    },
+    // An explicitly configured prefixed path still matches as written.
+    {
+      code: `const [s, setS] = useState(window.buildInitial());`,
+      filename: FILE,
+      options: [{ initializers: ['window.buildInitial'] }],
+      errors: [{ messageId: 'lazyInit' }],
+      output: `const [s, setS] = useState(() => window.buildInitial());`,
+    },
   ],
 });
