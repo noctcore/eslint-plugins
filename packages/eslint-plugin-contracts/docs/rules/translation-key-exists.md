@@ -14,7 +14,7 @@ the ones that cannot resolve.
 
 A static key that no configured catalog of the namespace in scope contains:
 
-```tsx
+```tsx prose reason="the rule reads the translation catalogs named in its options from disk"
 // catalogs: common = { actions: { save, cancel } }, portal = { tasks: { title } }
 
 const { t } = useTranslation(); // default namespace: common

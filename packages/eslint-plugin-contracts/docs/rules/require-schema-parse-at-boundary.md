@@ -10,7 +10,7 @@ promise the runtime never checks: a field the server dropped is now `undefined` 
 `string`, and the corruption surfaces far from the boundary. Parsing with a runtime schema
 (zod/valibot) validates the shape at the edge and fails loudly there:
 
-```ts
+```ts good
 const user = UserSchema.parse(await res.json()); // validated
 ```
 
@@ -19,15 +19,15 @@ const user = UserSchema.parse(await res.json()); // validated
 This is a **conservative syntactic slice** of a concept that is fully general only with type
 information. It flags a cast applied **directly** to a call site that is unmistakably a boundary read:
 
-```ts
-// ✗
+```ts bad reports=3
 const user = JSON.parse(raw) as User;
 const users = JSON.parse(raw) as User[];
-const user = (await res.json()) as User;
+const fetched = (await res.json()) as User;
+```
 
-// ✓
+```ts good
 const user = UserSchema.parse(JSON.parse(raw));
-const user = UserSchema.parse(await res.json());
+const fetched = UserSchema.parse(await res.json());
 const data = JSON.parse(raw) as unknown; // safe widening, not a shape claim
 ```
 

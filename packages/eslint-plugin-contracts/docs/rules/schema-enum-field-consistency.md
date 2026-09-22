@@ -26,8 +26,8 @@ Per file, purely syntactic, no type information. The rule collects every propert
 Every **string** occurrence of a key that is **enum** elsewhere in the file is reported. No autofix:
 the right fix may be a data migration (the stored column was free text), not a schema edit.
 
-```ts
-// ✗ the output widens what both inputs narrow
+```ts bad reports=1
+// the output widens what both inputs narrow
 export const statusSchema = z.enum(['OPEN', 'CLOSED']);
 
 export const ticketCreateInput = z.object({ status: statusSchema.default('OPEN') });
@@ -38,8 +38,12 @@ export const ticketOutput = z.object({
 });
 ```
 
-```ts
-// ✓ the output reuses the enum
+```ts good
+// the output reuses the enum
+export const statusSchema = z.enum(['OPEN', 'CLOSED']);
+
+export const ticketCreateInput = z.object({ status: statusSchema.default('OPEN') });
+export const ticketUpdateInput = z.object({ status: statusSchema.optional() });
 export const ticketOutput = z.object({
   id: z.string(),
   status: statusSchema.nullable(),

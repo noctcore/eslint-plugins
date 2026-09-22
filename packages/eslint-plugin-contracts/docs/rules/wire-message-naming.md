@@ -16,15 +16,17 @@ whose zod object declares a `type: z.literal('…')` property, the literal must 
 `kebab(constName minus the role suffix)`. A mismatch is reported and **autofixed** to the expected
 value.
 
-```ts
-// ✗ camelCase discriminant  →  autofixes to 'task-completed'
+```ts bad reports=2
+// camelCase discriminant: autofixes to 'task-completed'
 export const TaskCompletedEvent = z.object({ type: z.literal('taskCompleted') });
 
-// ✗ wrong value              →  autofixes to 'run-task'
+// wrong value: autofixes to 'run-task'
 export const RunTaskCommand = z.object({ type: z.literal('run') });
+```
 
-// ✓
+```ts good
 export const TaskCompletedEvent = z.object({ type: z.literal('task-completed') });
+export const RunTaskCommand = z.object({ type: z.literal('run-task') });
 ```
 
 Consts without a role suffix, and role-suffixed consts without a `type` literal, are ignored.
@@ -39,8 +41,8 @@ Consts without a role suffix, and role-suffixed consts without a `type` literal,
 'noctcore-contracts/wire-message-naming': ['error', { roleSuffixes: ['Message'] }]
 ```
 
-```ts
-// with roleSuffixes: ['Message']  →  autofixes to 'task-done'
+```ts bad options={"roleSuffixes":["Message"]}
+// with roleSuffixes: ['Message'], autofixes to 'task-done'
 export const TaskDoneMessage = z.object({ type: z.literal('done') });
 ```
 

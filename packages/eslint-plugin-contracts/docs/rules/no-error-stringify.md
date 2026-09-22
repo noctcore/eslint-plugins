@@ -9,7 +9,7 @@ discarding `error.cause`, the stack, and any custom fields. The value that reach
 sentence with no chain to the underlying failure. The guarded extractor idiom preserves the object for
 structured loggers and stays legal:
 
-```ts
+```ts good
 error instanceof Error ? error.message : String(error)
 ```
 
@@ -18,14 +18,15 @@ error instanceof Error ? error.message : String(error)
 Only the three unambiguous cause-chain-dropping forms, and only when the operand is a known error
 identifier (default `error`, `err`, `e`, `cause`):
 
-```ts
-// ✗
+```ts bad reports=4
 logger.error(`request failed: ${error}`);
-const msg = err.toString();
-const msg = error + "";
-const msg = "" + e;
+const a = err.toString();
+const b = error + "";
+const c = "" + e;
+```
 
-// ✓  the guarded idiom (bare String(error) is intentionally NOT policed)
+```ts good
+// the guarded idiom (bare String(error) is intentionally NOT policed)
 const msg = error instanceof Error ? error.message : String(error);
 const m = `${error.message}`;
 ```

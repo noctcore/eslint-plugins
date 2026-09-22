@@ -20,12 +20,12 @@ Conservative on purpose. Untyped declarations and numeric-literal initializers (
 **not** flagged — those are usually counters/accumulators. Interface and type-literal members
 (`{ amount: number }`) are **out of scope** so non-money type members do not regress.
 
-```ts
-// ✗
+```ts bad reports=2
 class Invoice { total: number; }
 const amount: number = 5;
+```
 
-// ✓
+```ts good
 class Invoice { total: Decimal; }
 const count: number = 3;          // not a money name
 interface Payment { amount: number; }   // type member, out of scope

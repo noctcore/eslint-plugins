@@ -19,15 +19,17 @@ Conservative on the ambiguous forms. A bare identifier (`throw err` — the re-t
 (`throw ctx.error`), and a call (`throw makeError()`) are all left alone: a syntactic rule cannot know
 whether they resolve to an Error, and re-throwing a caught error is the most common `throw` there is.
 
-```ts
-// ✗  built-in not in the taxonomy
+```ts bad reports=3
+// built-in not in the taxonomy
 throw new TypeError('bad');
 
-// ✗  bare values
+// bare values
 throw 'boom';
 throw { code: 500 };
+```
 
-// ✓  (default allow is ['Error'])
+```ts good
+// default allow is ['Error']
 throw new Error('boom');
 try { work(); } catch (err) { throw err; }
 ```

@@ -9,7 +9,7 @@ forward the caught error as `cause`, the underlying failure — its message, sta
 cause — is gone. The stack you see points only at the re-throw site. `Error`'s standard `cause`
 option (and every `*Error` subclass that forwards it) preserves the chain:
 
-```ts
+```ts good
 try {
   await db.query(sql);
 } catch (err) {
@@ -34,14 +34,15 @@ Deliberately conservative:
 A `throw` nested in a closure declared inside the catch is still flagged: the binding is genuinely in
 scope there. Nested `try/catch` uses the nearest binding.
 
-```ts
-// ✗  drops the cause  →  autofixes to `new Error('failed', { cause: err })`
+```ts bad reports=2
+// drops the cause: autofixes to `new Error('failed', { cause: err })`
 try { work(); } catch (err) { throw new Error('failed'); }
 
-// ✗  merges into an existing options object
+// merges into an existing options object
 try { work(); } catch (err) { throw new HttpError('failed', { status: 500 }); }
+```
 
-// ✓
+```ts good
 try { work(); } catch (err) { throw new Error('failed', { cause: err }); }
 try { work(); } catch (err) { throw err; }
 ```

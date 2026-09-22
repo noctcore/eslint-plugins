@@ -15,7 +15,7 @@ declaration in lockstep.
 A static `process.env.FOO` or `import.meta.env.FOO` access whose key `FOO` is not declared in the
 configured schema file:
 
-```ts
+```ts prose reason="the rule reads the schema file named in its options from disk"
 // schema (.env.example) declares DATABASE_URL, PORT, NODE_ENV
 
 // ✗

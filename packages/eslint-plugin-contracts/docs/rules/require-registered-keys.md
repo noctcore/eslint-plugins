@@ -14,14 +14,13 @@ compile error instead of a runtime miss.
 
 A **raw string literal** in the configured key position of a configured sink call:
 
-```ts
-// with sinks: [{ callee: 'localStorage.getItem', argIndex: 0 }, { callee: 'emitter.on', argIndex: 0 }]
-
-// ✗
+```ts bad reports=2 options={"sinks":[{"callee":"localStorage.getItem","argIndex":0},{"callee":"emitter.on","argIndex":0}]}
 localStorage.getItem('user-profile');
 emitter.on('task-done', handler);
+```
 
-// ✓  imported constant
+```ts good options={"sinks":[{"callee":"localStorage.getItem","argIndex":0},{"callee":"emitter.on","argIndex":0}]}
+// imported constant
 import { USER_PROFILE_KEY, TASK_DONE } from '@/keys';
 localStorage.getItem(USER_PROFILE_KEY);
 emitter.on(TASK_DONE, handler);

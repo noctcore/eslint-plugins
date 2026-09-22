@@ -15,27 +15,37 @@ status the server actually sent. Check the response first, and the failure is na
 
 A `.json()` read on a response bound from a configured fetch callee when no check governs it.
 
-```ts
-// ✗ no check at all
+```ts bad reports=4
+// no check at all
 export async function loadUser(id: string) {
   const res = await fetch(`/api/users/${id}`);
   return res.json();
 }
 
-// ✗ the check comes after the body is already parsed
-const data = await res.json();
-if (!res.ok) throw new Error('failed');
+// the check comes after the body is already parsed
+export async function loadOrder(id: string) {
+  const res = await fetch(`/api/orders/${id}`);
+  const data = await res.json();
+  if (!res.ok) throw new Error('failed');
+  return data;
+}
 
-// ✗ a single-code guard lets every other error through
-if (res.status === 404) return null;
-return res.json();
+// a single-code guard lets every other error through
+export async function findUser(id: string) {
+  const res = await fetch(`/api/users/${id}`);
+  if (res.status === 404) return null;
+  return res.json();
+}
 
-// ✗ `||` runs the parse exactly on the failure path
-return res.ok || res.json();
+// `||` runs the parse exactly on the failure path
+export async function loadFlags() {
+  const res = await fetch('/api/flags');
+  return res.ok || res.json();
+}
 ```
 
-```ts
-// ✓ guard clause
+```ts good
+// guard clause
 export async function loadUser(id: string) {
   const res = await fetch(`/api/users/${id}`);
   if (!res.ok) {
@@ -44,16 +54,30 @@ export async function loadUser(id: string) {
   return res.json();
 }
 
-// ✓ the parse sits in the branch the check permits
-return res.ok ? res.json() : null;
+// the parse sits in the branch the check permits
+export async function findUser(id: string) {
+  const res = await fetch(`/api/users/${id}`);
+  return res.ok ? res.json() : null;
+}
 
-// ✓ a status split at the success/error boundary, or a switch on success codes
-if (res.status >= 400) return null;
-switch (res.status) { case 200: case 201: return res.json(); default: return null; }
+// a status split at the success/error boundary, or a switch on success codes
+export async function loadOrder(id: string) {
+  const res = await fetch(`/api/orders/${id}`);
+  if (res.status >= 400) return null;
+  return res.json();
+}
 
-// ✓ an assertion helper (`assert`, `invariant`, `ensure*`, `expect*`)
-invariant(res.ok, 'user request failed');
-return res.json();
+export async function createOrder() {
+  const res = await fetch('/api/orders', { method: 'POST' });
+  switch (res.status) { case 200: case 201: return res.json(); default: return null; }
+}
+
+// an assertion helper (`assert`, `invariant`, `ensure*`, `expect*`)
+export async function loadFlags() {
+  const res = await fetch('/api/flags');
+  invariant(res.ok, 'user request failed');
+  return res.json();
+}
 ```
 
 Three response shapes are tracked: `const res = await fetch(...)` then `res.json()` in the same block,

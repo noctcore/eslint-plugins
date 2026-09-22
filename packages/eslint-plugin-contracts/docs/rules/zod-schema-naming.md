@@ -17,14 +17,15 @@ For every `export const` whose initializer is rooted at the `z` identifier (`z.o
 - a correctly-named `FooSchema` must have a sibling `export type Foo` (a `type` alias or
   `interface`) — otherwise `missingType`.
 
-```ts
-// ✗ not suffixed `Schema`
+```ts bad reports=2
+// not suffixed `Schema`
 export const Task = z.object({});
 
-// ✗ no sibling inferred type
+// no sibling inferred type
 export const TaskSchema = z.object({});
+```
 
-// ✓
+```ts good
 export const TaskSchema = z.object({ id: z.string() });
 export type Task = z.infer<typeof TaskSchema>;
 ```
@@ -43,7 +44,7 @@ suffixes to carve them out:
 'noctcore-contracts/zod-schema-naming': ['error', { roleSuffixes: ['Event', 'Command', 'Query'] }]
 ```
 
-```ts
+```ts good options={"roleSuffixes":["Event","Command","Query"]} reconfigured
 // carved out only when 'Command' is listed in roleSuffixes
 export const RunTaskCommand = z.object({ type: z.literal('run-task') });
 ```

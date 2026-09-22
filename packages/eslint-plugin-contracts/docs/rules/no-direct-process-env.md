@@ -15,18 +15,24 @@ Any `process.env` access, in every position — property read (`process.env.X`),
 (`process.env[X]`), destructure (`const { X } = process.env`), or the bare value passed / returned /
 assigned (`log(process.env)`, `return process.env`). Computed `process['env']` cannot bypass it.
 
-```ts
-// ✗
+```ts bad reports=3
 const isProd = process.env.NODE_ENV === 'production';
 const { DATABASE_URL } = process.env;
 const env = process['env'];
+```
 
-// ✓
+```ts good
+import { config } from '@/config';
+
 const isProd = config.isProduction;
 ```
 
 Files matched by the `allowedFiles` glob allowlist are skipped entirely, so bootstrap entrypoints,
 config files, and tests may still read `process.env` directly.
+
+```ts good filename=vite.config.ts relocation
+const isProd = process.env.NODE_ENV === 'production';
+```
 
 ## Options
 
