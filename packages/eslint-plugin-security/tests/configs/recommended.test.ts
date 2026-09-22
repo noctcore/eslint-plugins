@@ -11,6 +11,7 @@ function severityOf(entry: unknown): unknown {
 // A new rule must land in the preset or here, so leaving one out is a decision.
 const OMITTED_FROM_PRESETS = [
   'require-path-containment',
+  'server-action-through-client',
 ];
 
 describe('presets', () => {

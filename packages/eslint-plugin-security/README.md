@@ -32,6 +32,8 @@ export default [
       'noctcore-security/no-shell-interpolation': ['error', { extraCallees: ['sh'] }],
       // High false-positive; enable explicitly (omitted from `recommended`).
       'noctcore-security/require-path-containment': ['error', { requestObjects: ['req', 'ctx'] }],
+      // Needs your action-client names; with none configured it reports every exported action.
+      'noctcore-security/server-action-through-client': ['error', { actionClients: ['actionClient', 'authActionClient'] }],
     },
   },
 ];
@@ -45,3 +47,4 @@ export default [
 | [`no-user-controlled-fetch-url`](./docs/rules/no-user-controlled-fetch-url.md) | `fetch` / `axios` URL whose origin is not fixed at authoring time (SSRF), including the `https://host${p}` userinfo trick. | `error` |
 | [`no-user-controlled-redirect`](./docs/rules/no-user-controlled-redirect.md) | Redirect target whose origin is not fixed at authoring time (open redirect); understands Express `res.redirect(302, url)`. | `error` |
 | [`require-path-containment`](./docs/rules/require-path-containment.md) | `req.*` input passed directly into `path.join` / `path.resolve` without a containment guard. | opt-in (off) |
+| [`server-action-through-client`](./docs/rules/server-action-through-client.md) | In a `'use server'` module, every exported action must be built from a configured action client; no raw `export async function`. | opt-in (off), needs `actionClients` |
