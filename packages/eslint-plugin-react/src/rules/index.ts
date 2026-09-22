@@ -8,6 +8,7 @@ import { noJsxComputationRule } from './no-jsx-computation';
 import { noJsxInHooksRule } from './no-jsx-in-hooks';
 import { noPropDrillingRule } from './no-prop-drilling';
 import { noStateInComponentBodyRule } from './no-state-in-component-body';
+import { noUnguardedWebStorageRule } from './no-unguarded-web-storage';
 import { preferLazyStateInitRule } from './prefer-lazy-state-init';
 import { propsMustBeVisualRule } from './props-must-be-visual';
 import { requireEffectCancellationRule } from './require-effect-cancellation';
@@ -24,6 +25,7 @@ export const rules = {
   'no-jsx-in-hooks': noJsxInHooksRule,
   'no-prop-drilling': noPropDrillingRule,
   'no-state-in-component-body': noStateInComponentBodyRule,
+  'no-unguarded-web-storage': noUnguardedWebStorageRule,
   'prefer-lazy-state-init': preferLazyStateInitRule,
   'props-must-be-visual': propsMustBeVisualRule,
   'require-effect-cancellation': requireEffectCancellationRule,

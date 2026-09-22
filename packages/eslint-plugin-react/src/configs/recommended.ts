@@ -17,6 +17,9 @@ export const recommended = {
   'noctcore-react/no-jsx-in-hooks': 'error',
   'noctcore-react/no-prop-drilling': 'error',
   'noctcore-react/no-state-in-component-body': 'error',
+  // The storage access itself throws in private browsing, with cookies blocked,
+  // or under quota; a `typeof window` check does not catch it, only a `try` does.
+  'noctcore-react/no-unguarded-web-storage': 'error',
   'noctcore-react/prefer-lazy-state-init': 'error',
   'noctcore-react/props-must-be-visual': 'error',
   // A state update after an await with nothing to cancel it is a real bug, and

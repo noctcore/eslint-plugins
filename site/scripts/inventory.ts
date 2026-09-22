@@ -5,7 +5,7 @@
  * listing: the exported surface is what a consumer gets,
  * and 4 of the lint-meta rules live outside `src/rules/` behind their own entry
  * points (`/i18n`, `/prisma`, `/resolved-config`). A listing of
- * `packages/*\/src/rules/*.ts` finds 92 and is blind to those 4.
+ * `packages/*\/src/rules/*.ts` finds 93 and is blind to those 4.
  *
  * Docs are read from `packages/*\/docs/rules/*.md`, the files that ship in each
  * tarball and that the site renders.

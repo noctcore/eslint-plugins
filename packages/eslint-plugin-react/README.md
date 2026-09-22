@@ -48,6 +48,7 @@ export default [
 | [`no-jsx-in-hooks`](./docs/rules/no-jsx-in-hooks.md) | Forbid a `use*`-named function from returning JSX. | |
 | [`no-prop-drilling`](./docs/rules/no-prop-drilling.md) | Flag a bundle of props forwarded unchanged to the same child. | |
 | [`no-state-in-component-body`](./docs/rules/no-state-in-component-body.md) | Keep state/effect/query hooks in the colocated hook file, not the component body. | |
+| [`no-unguarded-web-storage`](./docs/rules/no-unguarded-web-storage.md) | A `localStorage` / `sessionStorage` call must sit inside a `try` block. | 💡 |
 | [`prefer-lazy-state-init`](./docs/rules/prefer-lazy-state-init.md) | Wrap an expensive `useState` initializer call in a lazy function. | 🔧 |
 | [`props-must-be-visual`](./docs/rules/props-must-be-visual.md) | Disallow auth/identity/credential names in `*Props` contracts. | |
 | [`require-effect-cancellation`](./docs/rules/require-effect-cancellation.md) | Flag an unguarded `setState` after an `await`/`.then` inside an effect. | |
