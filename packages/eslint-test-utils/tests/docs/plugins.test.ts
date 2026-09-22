@@ -30,7 +30,7 @@ const PLUGINS: Record<string, { readonly plugin: DocPlugin; readonly status: Doc
   'code-quality': { plugin: codeQuality, status: 'executed' },
   contracts: { plugin: contracts, status: 'executed' },
   monorepo: { plugin: monorepo, status: 'executed' },
-  observability: { plugin: observability, status: 'pending' },
+  observability: { plugin: observability, status: 'executed' },
   prisma: { plugin: prisma, status: 'pending' },
   react: { plugin: react, status: 'pending' },
   security: { plugin: security, status: 'pending' },

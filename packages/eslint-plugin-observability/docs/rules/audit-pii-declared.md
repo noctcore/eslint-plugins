@@ -83,7 +83,7 @@ The purge job needs the registry at run time and this rule needs it at lint time
 in code both can import, and pass it into the ESLint config. Never retype it into the config: two
 hand-kept copies of one list drift.
 
-```ts
+```ts prose reason="the registry module the config imports, not a lint example"
 // packages/shared/src/audit/pii-registry.ts
 /** Audit payload keys holding personal data. The user purge anonymizes these. */
 export const AUDIT_PII_FIELDS = ['newEmail', 'email'] as const;
@@ -111,28 +111,33 @@ export default [
 
 ## Examples
 
-```ts
-// Bad: raw email in the payload, and no declaration that the purger must scrub it
+```ts bad reports=4 options={"auditCallees":["auditService.log","auditService.logOrThrow"]}
+// raw email in the payload, and no declaration that the purger must scrub it
 await this.auditService.log({
   action: 'auth.email_change.requested',
   userId,
   metadata: { newEmail: normalizedEmail },
 });
 
-// Bad: before/after snapshots of a PII column
+// before/after snapshots of a PII column
 await this.auditService.log({
   action: 'auth.email_changed',
   before: { email: previousEmail },
   after: { email: pending.newEmail },
 });
 
-// Bad: the rule cannot see what this bag carries
+// the rule cannot see what this bag carries
 await this.auditService.log({ action, metadata: { ...grant.auditMetadata } });
+```
 
-// Good, with registeredFields: ['newEmail', 'email']
+Declaring the keys is the fix, so this example runs with `registeredFields: ['newEmail', 'email']`:
+
+```ts good reconfigured options={"auditCallees":["auditService.log","auditService.logOrThrow"],"registeredFields":["newEmail","email"]}
 await this.auditService.log({ action, userId, metadata: { newEmail: normalizedEmail } });
+```
 
-// Good: nothing PII-shaped; `emailSent` is a flag about the data
+```ts good options={"auditCallees":["auditService.log","auditService.logOrThrow"]}
+// nothing PII-shaped; `emailSent` is a flag about the data
 await this.auditService.log({ action, metadata: { role, outcome, emailSent } });
 ```
 

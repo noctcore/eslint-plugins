@@ -8,13 +8,15 @@ A caught error carries a **stack trace** and often a **`cause`** — the parts y
 debug a production failure. A catch block that logs only `e.message`, `String(e)`, or `` `${e}` ``
 throws that away: the log records _that_ something failed but not _where_ or _why_.
 
-```ts
-// ✗ stack and cause are gone
+```ts bad
+// stack and cause are gone
 try { await run(); } catch (e) {
   logger.error(`run failed: ${e.message}`);
 }
+```
 
-// ✓ the whole error survives
+```ts good
+// the whole error survives
 try { await run(); } catch (e) {
   logger.error('run failed', { err: e });
 }
@@ -32,12 +34,12 @@ A `catch (e)` block where **all** of the following hold:
 If the error is passed whole anywhere (`logger.error('x', e)`, `{ err: e }`), or `.stack` / `.cause` /
 any other property is read, or it is re-thrown, its diagnostics survive and the rule stays silent:
 
-```ts
-// ✓ .stack is read — not a lossy form
-catch (e) { logger.error(`failed: ${e.stack}`); }
+```ts good
+// .stack is read: not a lossy form
+try { await run(); } catch (e) { logger.error(`failed: ${e.stack}`); }
 
-// ✓ mixed use — the full capture wins
-catch (e) { logger.error(`${e.message}`, { err: e }); }
+// mixed use: the full capture wins
+try { await run(); } catch (e) { logger.error(`${e.message}`, { err: e }); }
 ```
 
 Distinct from a fully-**unused** catch binding (`catch (e) { cleanup(); }`), which this rule

@@ -6,7 +6,7 @@
 
 Dynamic values baked into a log **message** string are unqueryable. When you write
 
-```ts
+```ts bad
 logger.info(`processing task ${taskId} for ${userId}`);
 ```
 
@@ -14,7 +14,7 @@ a log aggregator stores one opaque line of free text — it cannot index, filter
 `taskId` or `userId`, because they are fused into the message. The value belongs in a structured
 context object, where each field stays a first-class, queryable attribute:
 
-```ts
+```ts good
 logger.info('processing task', { taskId, userId });
 ```
 
@@ -24,11 +24,13 @@ A logger call — `<logger>.<method>(...)` where `<method>` is `info` / `warn` /
 `<logger>` is a configured logger name — that receives a **template literal with expressions** as a
 **direct** positional argument.
 
-```ts
-// ✗ dynamic values interpolated into the message
+```ts bad
+// dynamic values interpolated into the message
 logger.error(`failed: ${err.code}`);
+```
 
-// ✓ static message + structured context
+```ts good
+// static message + structured context
 logger.error('request failed', { code: err.code });
 ```
 
@@ -38,8 +40,8 @@ namespace or `this` (`this.logger.info(...)`, `app.log.warn(...)`) are recognise
 Only **direct** arguments are inspected. A template literal nested inside a context object is building
 a value, not the message, and is never flagged:
 
-```ts
-// ✓ the template builds a URL field, not the message
+```ts good
+// the template builds a URL field, not the message
 logger.info('fetching', { url: `${base}/tasks` });
 ```
 
@@ -51,7 +53,7 @@ A template with **no** expressions carries no dynamic value and is ignored
 
 ## Options
 
-```ts
+```ts prose reason="the options type, not a lint example"
 type Options = {
   /** Logger object names to scan. Default: ['console', 'logger', 'log']. */
   loggers?: string[];
