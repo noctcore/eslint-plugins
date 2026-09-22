@@ -30,16 +30,16 @@ The rule classifies by **AST shape**, never by filename or suffix:
 
 ## Examples
 
-```ts
-// ✗ a type and a runtime constant
+```ts bad
+// a type and a runtime constant
 export interface User {
   id: string;
 }
 export const DEFAULT_USER: User = { id: 'anonymous' };
 ```
 
-```ts
-// ✗ a component and a hook
+```tsx bad
+// a component and a hook
 export function UserCard() {
   return <div />;
 }
@@ -48,8 +48,8 @@ export function useUserCard() {
 }
 ```
 
-```ts
-// ✓ one concern: types only
+```ts good
+// one concern: types only
 export interface User {
   id: string;
 }
@@ -62,8 +62,8 @@ Only the **exported** surface defines a module (`ignorePrivateDeclarations`, def
 non-exported render helper beside a component, or a filter constant inside a hook file, serves that
 surface and is not a second concern:
 
-```tsx
-// ✓ the helper is private
+```tsx good
+// the helper is private
 function renderBadge(count: number) {
   return <span className="badge">{count}</span>;
 }
@@ -72,8 +72,8 @@ export function Inbox({ unread }: { unread: number }) {
 }
 ```
 
-```ts
-// ✓ the filter object is private
+```ts good
+// the filter object is private
 const ACTIVE_FILTER = { status: 'active', archived: false } as const;
 export function useActiveProjects() {
   return useQuery({ queryKey: ['projects', ACTIVE_FILTER] });
@@ -85,7 +85,7 @@ is surface all the same.
 
 ## Options
 
-```ts
+```ts prose reason="the options type, not a lint example"
 type SemanticCategory =
   | 'type' | 'constant' | 'function' | 'class'
   | 'react-component' | 'hook' | 'schema' | 'enum';
@@ -134,16 +134,20 @@ export default [
 ];
 ```
 
-```ts
-// ✓ billing.constants.ts with the config above
+```ts good filename=apps/api/src/billing/billing.constants.ts options={"allow":[["constant","type","enum"]]}
+// billing.constants.ts with the config above
 export const BILLING_QUEUE = Symbol('BILLING_QUEUE');
 export const INVOICE_STATUSES = ['draft', 'sent', 'paid'] as const;
 export type InvoiceStatus = (typeof INVOICE_STATUSES)[number];
 export enum BillingEvent {
   Paid = 'billing.paid',
 }
+```
 
-// ✗ still reported: a function is outside the allowed group
+```ts bad filename=apps/api/src/billing/billing.constants.ts options={"allow":[["constant","type","enum"]]}
+// still reported: a function is outside the allowed group
+export const INVOICE_STATUSES = ['draft', 'sent', 'paid'] as const;
+export type InvoiceStatus = (typeof INVOICE_STATUSES)[number];
 export function isPaid(status: InvoiceStatus) {
   return status === 'paid';
 }

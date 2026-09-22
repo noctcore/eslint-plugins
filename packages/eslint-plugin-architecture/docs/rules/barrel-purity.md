@@ -14,25 +14,26 @@ folder now silently pulls that behavior in, and the folder no longer has a clean
 Only `index.ts` / `index.tsx` (and the other index extensions) are inspected. Each top-level
 statement that is not a pure re-export is reported.
 
-```ts
-// index.ts
+```ts good filename=src/components/Card/index.ts
+export { Card } from './Card';          // named re-export
+export * from './Card.types';           // star re-export
+export * as card from './Card';         // namespace re-export
+export { default as CardView } from './Card'; // default re-export
+import { a } from './a';                // import that feeds a re-export
+export { a };                           //   ...its matching specifier
+export type { Props } from './Card';    // type re-export
+import Card from './Card';
+export default Card;                    // re-export of a binding by name
+```
 
-export { Card } from './Card';          // ✓ named re-export
-export * from './Card.types';           // ✓ star re-export
-export * as card from './Card';         // ✓ namespace re-export
-export { default as Card } from './Card'; // ✓ default re-export
-import { a } from './a';                // ✓ import that feeds a re-export
-export { a };                           //   …its matching specifier
-export type { Props } from './Card';    // ✓ type re-export
-export default Card;                    // ✓ re-export of a binding by name
-
-export const helper = 1;                // ✗ local declaration
-export function build() {}              // ✗ local declaration
-export type T = string;                 // ✗ local declaration
-export default () => 1;                 // ✗ a value, not a re-export
-import './styles.css';                  // ✗ side-effect import
-console.log('hi');                      // ✗ side-effect statement
-const cache = new Map();                // ✗ non-export code
+```ts bad reports=7 filename=src/components/Card/index.ts
+export const helper = 1;                // local declaration
+export function build() {}              // local declaration
+export type T = string;                 // local declaration
+export default () => 1;                 // a value, not a re-export
+import './styles.css';                  // side-effect import
+console.log('hi');                      // side-effect statement
+const cache = new Map();                // non-export code
 ```
 
 An import that carries bindings is allowed because it feeds a re-export; a specifier-less

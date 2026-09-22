@@ -22,10 +22,30 @@ The rule first resolves the file's **primary export**:
 The basename and the identifier are compared **case- and separator-insensitively**, so naming
 conventions never collide:
 
-```ts
-// TaskCard.tsx  → export default function TaskCard() {}   ✓
-// use-thing.ts  → export const useThing = () => {}        ✓ (kebab ↔ camel)
-// helpers.ts    → export const formatDate = () => {}      ✗ (genuine mismatch)
+```ts bad filename=src/utils/helpers.ts
+// genuine mismatch
+export const formatDate = () => {};
+```
+
+Renaming the file is one fix, renaming the export the other:
+
+```ts good filename=src/utils/format-date.ts relocation
+export const formatDate = () => {};
+```
+
+```ts good filename=src/utils/helpers.ts
+export const helpers = () => {};
+```
+
+The comparison ignores case and separators:
+
+```tsx good filename=src/components/TaskCard.tsx relocation
+export default function TaskCard() {}
+```
+
+```ts good filename=src/hooks/use-thing.ts relocation
+// kebab-case file, camelCase export
+export const useThing = () => {};
 ```
 
 `index` files and files matching an `ignore` glob are always skipped.

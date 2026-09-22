@@ -14,7 +14,7 @@ is obvious when missing.
 For a file matching `include`, the rule reads the file's directory and looks for a sibling whose name
 is `<stem>.test.<ext>` or `<stem>.spec.<ext>` (any extension). If none exists, it reports.
 
-```
+```text prose reason="the rule checks for a sibling test file on disk"
 src/hooks/useCart.ts          ← include: ['**/use*.ts']
 src/hooks/useCart.test.ts      ✓ colocated test present
 src/hooks/useWishlist.ts       ✗ no useWishlist.test.* / .spec.* sibling

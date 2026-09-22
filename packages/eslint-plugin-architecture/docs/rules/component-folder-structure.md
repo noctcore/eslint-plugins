@@ -15,7 +15,7 @@ For every **component entry file** — a PascalCase `.tsx` whose basename equals
 (`TaskCard/TaskCard.tsx`) — that lives under the configured `componentRoot`, the rule reads the
 component's directory and reports any sibling from the required set that is missing on disk.
 
-```
+```text prose reason="the rule checks for sibling files on disk"
 components/board/TaskCard/
   TaskCard.tsx          ← entry file (checked)
   TaskCard.hooks.ts     ┐

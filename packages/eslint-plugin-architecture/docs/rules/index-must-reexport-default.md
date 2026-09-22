@@ -15,7 +15,7 @@ The rule only activates for an `index.ts` that sits next to a `<Folder>.tsx` of 
 name on disk (`Card/Card.tsx` beside `Card/index.ts`). For those barrels, it reports when the file
 never re-exports the sibling's default export.
 
-```ts
+```ts prose reason="the rule only runs when a sibling Card.tsx exists on disk"
 // Card/index.ts
 
 export { default as Card } from './Card'; // ✓

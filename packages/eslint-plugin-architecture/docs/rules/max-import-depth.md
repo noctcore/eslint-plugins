@@ -14,10 +14,13 @@ reach before it must become an alias.
 Any relative specifier whose leading `..` run exceeds `max` is reported, on every source-carrying
 construct: `import`, `import()`, `export … from`, and `export * from`.
 
-```ts
+```ts bad
 // max: 3 (default)
-import a from '../../../shared';        // ✓ exactly at the limit
-import b from '../../../../shared/log'; // ✗ climbs 4 levels
+import b from '../../../../shared/log'; // climbs 4 levels
+```
+
+```ts good
+import a from '../../../shared';        // exactly at the limit
 ```
 
 ## Autofix
@@ -31,9 +34,13 @@ When `alias` maps a directory-anchor segment to an alias prefix, a too-deep impo
 }]
 ```
 
-```ts
-// from src/a/b/c/d/deep.ts
-import x from '../../../../shared/log'; // → import x from '@/shared/log';
+```ts bad filename=src/a/b/c/d/deep.ts options={"alias":{"src":"@"}}
+// autofixes to: import x from '@/shared/log';
+import x from '../../../../shared/log';
+```
+
+```ts good filename=src/a/b/c/d/deep.ts options={"alias":{"src":"@"}}
+import x from '@/shared/log';
 ```
 
 With no matching alias anchor on the resolved path, the violation is **reported without a fix** —

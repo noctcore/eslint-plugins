@@ -24,13 +24,14 @@ Both the alias form (`<alias>/<feature>/…`) and relative paths that climb into
 to forbid them). Imports of the current feature, of a shared feature, or of non-feature modules are
 always fine.
 
-```tsx
-// in components/board/Board/Board.tsx
+```tsx good filename=src/components/board/Board/Board.tsx options={"featureRoot":"components","alias":"@/components","sharedFeatures":["ui"]}
+import { Button } from '@/components/ui/Button';         // shared feature
+import { cn } from '@/lib/utils';                        // non-feature module
+import { TaskCard } from '../TaskCard/TaskCard';         // same feature
+```
 
-import { Button } from '@/components/ui/Button';         // ✓ shared feature
-import { cn } from '@/lib/utils';                        // ✓ non-feature module
-import { TaskCard } from '../TaskCard/TaskCard';         // ✓ same feature
-import { ProjectCard } from '@/components/projects/…';   // ✗ cross-feature
+```tsx bad filename=src/components/board/Board/Board.tsx options={"featureRoot":"components","alias":"@/components","sharedFeatures":["ui"]}
+import { ProjectCard } from '@/components/projects/ProjectCard'; // cross-feature
 ```
 
 ## Options
