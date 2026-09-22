@@ -31,7 +31,7 @@ const PLUGINS: Record<string, { readonly plugin: DocPlugin; readonly status: Doc
   contracts: { plugin: contracts, status: 'executed' },
   monorepo: { plugin: monorepo, status: 'executed' },
   observability: { plugin: observability, status: 'executed' },
-  prisma: { plugin: prisma, status: 'pending' },
+  prisma: { plugin: prisma, status: 'executed' },
   react: { plugin: react, status: 'executed' },
   security: { plugin: security, status: 'executed' },
 };

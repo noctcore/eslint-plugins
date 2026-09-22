@@ -19,14 +19,13 @@ unscoped client (a chain containing `.<unscopedProperty>`, or a local bound to i
 - `data: [{ ... }, ...]` where any element lacks it;
 - `data: rows.map((r) => ({ ... }))` (concise or `return { ... }` body) without it.
 
-```ts
+```ts bad reports=2 options={"tenantModels":["invoice"]}
 // with { tenantModels: ['invoice'] }
-
-// ✗
 await this.prisma.unscoped.invoice.create({ data: { total } });
 await this.prisma.unscoped.invoice.createMany({ data: rows.map((r) => ({ total: r.total })) });
+```
 
-// ✓
+```ts good options={"tenantModels":["invoice"]}
 await this.prisma.unscoped.invoice.create({ data: { total, tenantId } });
 await this.prisma.client.invoice.create({ data: { total } }); // the extension fills tenantId
 ```

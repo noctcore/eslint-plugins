@@ -22,18 +22,19 @@ rows. The extension cannot parse SQL, so this door can only be guarded staticall
 
 Allowlisted files skip everything except the `*Unsafe` report.
 
-```ts
-// ✗
+```ts bad reports=4
 const rows = await tx.$queryRaw`SELECT id FROM "Invoice" WHERE "accountId" = ${accountId}`;
 await tx.$queryRaw(Prisma.sql`SELECT 1`);
 await tx.$queryRaw`SELECT ${Prisma.raw(columns)}`;
 await prisma.$executeRawUnsafe(`DELETE FROM "Invoice" WHERE id = ${id}`);
+```
 
-// ✓ touches no table
+```ts good
+// touches no table
 await prisma.$queryRaw`SELECT 1`;
 await tx.$executeRaw`SELECT pg_advisory_xact_lock(${lockKey})`;
 
-// ✓ a model query through the scoped client
+// a model query through the scoped client
 const rows = await prisma.invoice.findMany({ where: { accountId } });
 ```
 

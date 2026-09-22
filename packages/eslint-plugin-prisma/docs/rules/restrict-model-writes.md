@@ -52,21 +52,20 @@ added by a later migration are covered without a config edit. Only relation keys
 write verb (`create`, `createMany`, `update`, `updateMany`, `upsert`, `delete`, `deleteMany`,
 `connectOrCreate`) count; `connect`, `disconnect`, `set`, relation filters and `include` do not.
 
-```ts
+```ts bad reports=5 filename=src/billing/billing.router.ts options={"restrictions":[{"models":["payment"],"allowedFiles":["**/billing/payment.service.ts"],"owner":"PaymentService"},{"models":["invoice"],"fields":["status"],"allowedFiles":["**/billing/invoice-lifecycle.service.ts"],"owner":"InvoiceLifecycleService"}]}
 // restrictions: [
 //   { models: ['payment'], allowedFiles: ['**/billing/payment.service.ts'], owner: 'PaymentService' },
 //   { models: ['invoice'], fields: ['status'], allowedFiles: ['**/billing/invoice-lifecycle.service.ts'],
 //     owner: 'InvoiceLifecycleService' },
 // ]
-
-// ✗ in billing.router.ts
 await tx.payment.create({ data: { invoiceId, amount } });
 await tx.invoice.update({ where: { id }, data: { status: 'PAID' } });
 await tx.invoice.update({ where: { id }, data: { ...changes } }); // cannot prove status is absent
 await tx.invoice.delete({ where: { id } });
 await tx.customer.update({ where: { id }, data: { invoices: { create: { total } } } });
+```
 
-// ✓ in billing.router.ts
+```ts good filename=src/billing/billing.router.ts options={"restrictions":[{"models":["payment"],"allowedFiles":["**/billing/payment.service.ts"],"owner":"PaymentService"},{"models":["invoice"],"fields":["status"],"allowedFiles":["**/billing/invoice-lifecycle.service.ts"],"owner":"InvoiceLifecycleService"}]}
 await tx.invoice.update({ where: { id }, data: { dueAt } }); // not a fenced column
 await tx.payment.findMany({ where: { invoiceId } }); // reads are never fenced
 await this.invoiceLifecycle.markPaid(id); // the owner does it
@@ -74,7 +73,7 @@ await this.invoiceLifecycle.markPaid(id); // the owner does it
 
 ## Options
 
-```ts
+```ts prose reason="the options type, not a lint example"
 {
   restrictions?: Array<{
     models: string[];        // delegate accessors, e.g. ['invoice']. Required, 1+.

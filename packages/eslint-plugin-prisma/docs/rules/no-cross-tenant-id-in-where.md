@@ -15,13 +15,14 @@ A Prisma read or write (`findMany`, `create`, `updateMany`, ... every delegate m
 `tenantModels`, whose first argument's `where` or `data` object sets `tenantField` to a member chain
 rooted at one of `untrustedRoots`.
 
-```ts
-// ✗
+```ts bad reports=3
 await this.prisma.invoice.findMany({ where: { tenantId: input.tenantId } });
 await tx.invoice.update({ where: { tenantId: req.body.tenantId, id }, data });
 await this.prisma.invoice.create({ data: { tenantId: dto.tenantId, total } });
+```
 
-// ✓ server context
+```ts good
+// server context
 await this.prisma.invoice.findMany({ where: { tenantId: ctx.tenantId } });
 await this.prisma.invoice.findMany({ where: { tenantId: getTenantId() } });
 ```

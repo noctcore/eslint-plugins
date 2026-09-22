@@ -22,16 +22,19 @@ Outside the files in `allowedFiles`:
   `const { unscoped: raw } = ...`), which the member matcher would otherwise never see again;
 - a direct call to any function named in `escapeHatchFns`.
 
-```ts
-// ✗ in apps/api/src/invoices/invoice.service.ts
+```ts bad reports=3 filename=apps/api/src/invoices/invoice.service.ts options={"escapeHatchFns":["runWithoutTenantScope"]}
 const rows = await this.prisma.unscoped.invoice.findMany();
 const { unscoped } = this.prismaService;
 await runWithoutTenantScope(() => sweep()); // with escapeHatchFns: ['runWithoutTenantScope']
+```
 
-// ✓ the tenant-scoped client
+```ts good filename=apps/api/src/invoices/invoice.service.ts options={"escapeHatchFns":["runWithoutTenantScope"]}
+// the tenant-scoped client
 const rows = await this.prisma.client.invoice.findMany();
+```
 
-// ✓ in prisma/seed.ts (allowlisted by default)
+```ts good filename=prisma/seed.ts options={"escapeHatchFns":["runWithoutTenantScope"]} relocation
+// allowlisted by default
 await prisma.unscoped.invoice.createMany({ data: fixtures });
 ```
 

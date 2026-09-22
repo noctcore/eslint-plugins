@@ -35,14 +35,13 @@ selector, not a scope filter.
 - whose `where` mentions none of the model's listed scope columns anywhere in its tree. `AND`, `OR`
   and relation filters are walked, so `{ OR: [{ tenantId }, { user: { tenantId } }] }` counts.
 
-```ts
+```ts bad reports=2 options={"tenantModels":["invoice"],"handScopedModels":{"notification":["userId"]}}
 // with { tenantModels: ['invoice'], handScopedModels: { notification: ['userId'] } }
-
-// ✗
 await this.prisma.unscoped.invoice.findMany({ where: { status: 'OPEN' } });
 await this.prisma.client.notification.findUnique({ where: { id } });
+```
 
-// ✓
+```ts good options={"tenantModels":["invoice"],"handScopedModels":{"notification":["userId"]}}
 await this.prisma.unscoped.invoice.findMany({ where: { tenantId, status: 'OPEN' } });
 await this.prisma.client.invoice.findMany({ where: { status: 'OPEN' } }); // the extension scopes it
 await this.prisma.client.notification.findFirst({ where: { id, userId } });

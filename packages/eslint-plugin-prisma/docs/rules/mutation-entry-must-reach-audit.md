@@ -66,7 +66,7 @@ from names. Linting without type information is an error, not a silent pass:
 
 ## What it flags
 
-```ts
+```ts prose reason="a typed rule that follows calls across three files, which needs a type-checked program"
 // invoice.router.ts
 @Mutation()
 async rename(@Input() input: RenameInput) {
@@ -94,7 +94,7 @@ write anywhere in its call graph.
 
 It passes as soon as any reachable function audits, however deep:
 
-```ts
+```ts prose reason="a typed rule that follows calls across three files, which needs a type-checked program"
 // invoice.service.ts
 async rename(id: string, name: string) {
   await this.repository.rename(id, name);

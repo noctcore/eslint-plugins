@@ -17,19 +17,19 @@ Prisma client (see `receiverPattern`, `clientProperties`, `txRootNames`) or is r
 transaction's parameter. Nested transactions each police their own parameter. Reads are not
 reported, and neither is the array form `$transaction([...])`.
 
-```ts
-// ✗
+```ts bad reports=2
 await this.prisma.$transaction(async (tx) => {
   await tx.invoice.update({ where, data });
   await this.prisma.ledgerEntry.create({ data: entry }); // escapes the rollback
 });
 
-// ✗ nested: the outer tx escapes the inner transaction
+// nested: the outer tx escapes the inner transaction
 await tx.$transaction(async (inner) => {
   await tx.invoice.create({ data });
 });
+```
 
-// ✓
+```ts good
 await this.prisma.$transaction(async (tx) => {
   await tx.invoice.update({ where, data });
   await tx.ledgerEntry.create({ data: entry });

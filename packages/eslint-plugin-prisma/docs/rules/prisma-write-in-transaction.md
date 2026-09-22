@@ -21,14 +21,14 @@ A call is a Prisma write when its method is one of Prisma's writes (`create`, `c
 `receiverPattern` or is one of `clientProperties`, or the chain's root is one of `txRootNames`.
 That second condition keeps `createHash('sha256').update(x)` and `this.cache.delete(k)` quiet.
 
-```ts
-// ✗
+```ts bad
 async function issue(prisma: PrismaClient) {
   await prisma.invoice.create({ data });
   await prisma.ledgerEntry.create({ data: entry }); // reported
 }
+```
 
-// ✓
+```ts good
 async function issue(prisma: PrismaClient) {
   await prisma.$transaction(async (tx) => {
     await tx.invoice.create({ data });

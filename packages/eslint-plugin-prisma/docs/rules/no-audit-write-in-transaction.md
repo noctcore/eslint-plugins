@@ -26,14 +26,14 @@ A call to one of `auditMethods` on an audit logger (a bare identifier, or the la
 inside a function passed to `<anything>.$transaction(...)`, including callbacks nested inside it
 (`rows.forEach(...)`).
 
-```ts
-// ✗
+```ts bad
 await this.prisma.$transaction(async (tx) => {
   await tx.invoice.update({ where: { id }, data });
   await this.auditService.log({ action: 'invoice.updated', targetId: id });
 });
+```
 
-// ✓
+```ts good
 await this.prisma.$transaction(async (tx) => {
   await tx.invoice.update({ where: { id }, data });
 });

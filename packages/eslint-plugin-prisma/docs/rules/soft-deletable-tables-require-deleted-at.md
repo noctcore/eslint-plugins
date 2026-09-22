@@ -24,14 +24,13 @@ filtered bulk write (`updateMany`, `updateManyAndReturn`, `deleteMany`) on a mod
 One hop of binding resolution is done, so `const where = { tenantId, ...this.notDeleted }` then
 `findMany({ where })` is read correctly, as is a resolvable spread at the argument level.
 
-```ts
+```ts bad reports=2 options={"softDeleteModels":["user"],"softDeleteSpreads":["notDeleted"]}
 // with { softDeleteModels: ['user'], softDeleteSpreads: ['notDeleted'] }
-
-// ✗
 await this.prisma.user.findFirst({ where: { email } });
 await this.prisma.user.count();
+```
 
-// ✓
+```ts good options={"softDeleteModels":["user"],"softDeleteSpreads":["notDeleted"]}
 await this.prisma.user.findFirst({ where: { email, deletedAt: null } });
 await this.prisma.user.findFirst({ where: { email, ...this.notDeleted } });
 ```
