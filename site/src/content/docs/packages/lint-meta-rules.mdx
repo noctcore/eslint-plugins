@@ -1,0 +1,31 @@
+---
+title: "@noctcore/lint-meta-rules"
+description: "Whole-repo structure-lock rules for the @noctcore/harness lint-meta runner."
+sidebar:
+  label: lint-meta-rules
+  order: 10
+---
+
+import QuickStart from '../../../components/QuickStart.astro';
+import RuleTable from '../../../components/RuleTable.astro';
+
+Whole-repo structure-lock rules for the @noctcore/harness lint-meta runner.
+
+## What it solves
+
+Some invariants are not about one file: every workspace package is named `<scope>/<dir>`, every imported workspace package is a declared dependency, every GitHub Action is pinned to a commit SHA, no ESLint rule resolves to `warn`, no source file grows past a line cap. ESLint's per-file model cannot see those. These rules can.
+
+## What it will yell at you about
+
+**This is not an ESLint plugin.** Each rule is a pure function of a repo context returning violations, implementing the `IMetaRule` contract from [`@noctcore/harness`](https://www.npmjs.com/package/@noctcore/harness), and each is a factory (`createXRule(options)`) so the anchors that were once hardcoded are options with defaults. The intended consumer is the harness export pipeline, which inlines rule source into a repo's `.nightcore/lint-meta/`; nothing requires this package at runtime. **It is a bad fit** if you are not running the harness, and several defaults (the `@nightcore` scope, a 400-line cap) are starting points you are expected to override. The `/i18n`, `/prisma` and `/resolved-config` entry points load ESLint and are kept off the main entry for that reason.
+
+## Install and configure
+
+<QuickStart pkg="lint-meta-rules" />
+
+## Rules
+
+Each rule links to its page, with the options it takes and Incorrect and Correct examples. A good first
+read is [`github-actions-sha-pinned`](/eslint-plugins/rules/lint-meta-rules/github-actions-sha-pinned/).
+
+<RuleTable pkg="lint-meta-rules" />

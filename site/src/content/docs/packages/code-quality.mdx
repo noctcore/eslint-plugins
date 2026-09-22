@@ -1,0 +1,31 @@
+---
+title: "@noctcore/eslint-plugin-code-quality"
+description: "Guard clauses, comment hygiene, test discipline and deterministic time."
+sidebar:
+  label: code-quality
+  order: 5
+---
+
+import QuickStart from '../../../components/QuickStart.astro';
+import RuleTable from '../../../components/RuleTable.astro';
+
+Guard clauses, comment hygiene, test discipline and deterministic time.
+
+## What it solves
+
+A grab bag with one theme: code and tests that stay honest over time. Focused and silently skipped tests, assertions that can never fail, fake timers that leak into the next test, unit tests that hit the real network, comments that narrate or reference a PR number that means nothing in a year, `Date.now()` scattered through business logic.
+
+## What it will yell at you about
+
+It will yell at you about **tests and comments** more than about runtime code. The comment rules (`no-narration-comments`, `no-historical-comments`, `no-pr-reference-comments`) are opinionated and will fire on a lot of existing code; that is the point, but expect a cleanup pass. `no-bare-date-now` assumes you read time through a shared clock. The test rules match on method names, so they cover Jest, Vitest and Bun alike. **It is a bad fit** if your team writes explanatory step-by-step comments on purpose. `interface-prefix-i` and `no-template-trim-empty-ternary` are exported but left out of the preset: they are house style, not correctness.
+
+## Install and configure
+
+<QuickStart pkg="code-quality" />
+
+## Rules
+
+Each rule links to its page, with the options it takes and Incorrect and Correct examples. A good first
+read is [`no-conditional-expect`](/eslint-plugins/rules/code-quality/no-conditional-expect/).
+
+<RuleTable pkg="code-quality" />

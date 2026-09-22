@@ -1,0 +1,76 @@
+---
+title: Getting started
+description: Install a noctcore plugin, enable its preset, and configure the rules that need to know your project.
+---
+
+All nine ESLint plugins share one shape. Requirements: **ESLint 9 or newer**, **flat config**
+(`eslint.config.js`), Node 22 or newer. TypeScript sources are parsed with `@typescript-eslint/parser`,
+which you almost certainly have already.
+
+## 1. Install the plugin you need
+
+```sh
+npm install --save-dev @noctcore/eslint-plugin-react
+# bun add -D / pnpm add -D work the same way
+```
+
+## 2. Enable its `recommended` preset
+
+Every plugin exports `configs.recommended`, a complete flat-config block that registers the plugin
+under its namespace (`noctcore-<plugin>`) and sets each rule's severity.
+
+```js
+// eslint.config.js
+import react from '@noctcore/eslint-plugin-react';
+import asyncSafety from '@noctcore/eslint-plugin-async-safety';
+
+export default [
+  // ...your existing config
+  react.configs.recommended,
+  asyncSafety.configs.recommended,
+];
+```
+
+## 3. Turn on the rules that need your project's knowledge
+
+Some rules cannot do anything useful until they know something about your codebase: your workspace
+scope, your tenant-scoped models, your translation catalogs. Those ship `off` or are left out of the
+preset, because a rule that reports nothing reads as coverage you do not have. Each package page's rule
+table shows which ones, and each rule page documents its options.
+
+```js
+export default [
+  monorepo.configs.recommended,
+  {
+    rules: {
+      'noctcore-monorepo/no-deep-package-imports': ['error', { scopes: ['@acme'] }],
+    },
+  },
+];
+```
+
+## 4. One rule needs type information
+
+`noctcore-prisma/mutation-entry-must-reach-audit` follows calls across files, so it needs a
+type-checked program. Linting it without one is an error, not a silent pass. Every other rule is
+syntactic and runs without type information.
+
+```js
+export default [
+  {
+    languageOptions: { parserOptions: { projectService: true } },
+  },
+];
+```
+
+## Severity policy
+
+Every rule in every preset is `error` or `off`. A warning is a rule nobody obeys: if a rule matters it
+fails the build, and if it does not fit your codebase you switch it off. The
+[`no-warn-severity`](/eslint-plugins/rules/lint-meta-rules/no-warn-severity/) lint-meta rule exists to
+hold a repo to the same policy.
+
+## Where the error links go
+
+Every rule's `meta.docs.url` points at its page on this site, so the link your editor or CI shows next to
+a report lands on the rendered rule doc.

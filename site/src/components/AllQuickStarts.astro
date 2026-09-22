@@ -1,0 +1,16 @@
+---
+import { TabItem, Tabs } from '@astrojs/starlight/components';
+
+import { packages } from '../lib/catalog';
+import QuickStart from './QuickStart.astro';
+---
+
+<Tabs syncKey="package">
+  {
+    packages.map((pkg) => (
+      <TabItem label={pkg.short}>
+        <QuickStart pkg={pkg.short} />
+      </TabItem>
+    ))
+  }
+</Tabs>

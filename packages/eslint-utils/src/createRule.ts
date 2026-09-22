@@ -1,13 +1,16 @@
 import { ESLintUtils } from '@typescript-eslint/utils';
 
-const REPO = 'https://github.com/noctcore/eslint-plugins';
+/** The docs site: project Pages for github.com/noctcore/eslint-plugins. */
+const DOCS = 'https://noctcore.github.io/eslint-plugins';
 
 /**
  * Build a typed `RuleCreator` for a `@noctcore` plugin package.
  *
- * `domain` is the plugin's short name (e.g. `react`, `architecture`). It is
- * cosmetic — it only points each rule's docs URL at
- * `packages/eslint-plugin-<domain>/docs/rules/<rule>.md`.
+ * `domain` is the plugin's short name (e.g. `react`, `architecture`), the part
+ * of the package name after `eslint-plugin-`. It only shapes each rule's docs
+ * URL, which points at the rule's page on the docs site:
+ * `https://noctcore.github.io/eslint-plugins/rules/<domain>/<rule>/`. That page
+ * is generated from `packages/eslint-plugin-<domain>/docs/rules/<rule>.md`.
  *
  * ```ts
  * // packages/eslint-plugin-react/src/createRule.ts
@@ -15,7 +18,4 @@ const REPO = 'https://github.com/noctcore/eslint-plugins';
  * ```
  */
 export const makeCreateRule = (domain: string) =>
-  ESLintUtils.RuleCreator(
-    (ruleName) =>
-      `${REPO}/blob/main/packages/eslint-plugin-${domain}/docs/rules/${ruleName}.md`,
-  );
+  ESLintUtils.RuleCreator((ruleName) => `${DOCS}/rules/${domain}/${ruleName}/`);

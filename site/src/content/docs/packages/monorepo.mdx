@@ -1,0 +1,31 @@
+---
+title: "@noctcore/eslint-plugin-monorepo"
+description: "Workspace package boundaries: barrel-only imports and exports-map-aware subpaths."
+sidebar:
+  label: monorepo
+  order: 3
+---
+
+import QuickStart from '../../../components/QuickStart.astro';
+import RuleTable from '../../../components/RuleTable.astro';
+
+Workspace package boundaries: barrel-only imports and exports-map-aware subpaths.
+
+## What it solves
+
+In a workspace, reaching into `@acme/ui/src/button/internal` works on your machine and couples two packages to a file layout neither of them published. These rules keep cross-package imports on the surface each package actually exposes.
+
+## What it will yell at you about
+
+It will yell at you about **deep imports across workspace packages**. `no-deep-package-imports` is the strict policy (barrel only), `no-unexported-subpath-import` the looser one (anything the target's `exports` map publishes); pick one. **Both ship `off` in the preset**, because neither can do anything without your `scopes`, so enabling `recommended` alone checks nothing. **It is a bad fit** for a single-package repo, and `no-unexported-subpath-import` reads each target's `package.json` from disk, so it needs a real checkout.
+
+## Install and configure
+
+<QuickStart pkg="monorepo" />
+
+## Rules
+
+Each rule links to its page, with the options it takes and Incorrect and Correct examples. A good first
+read is [`no-unexported-subpath-import`](/eslint-plugins/rules/monorepo/no-unexported-subpath-import/).
+
+<RuleTable pkg="monorepo" />

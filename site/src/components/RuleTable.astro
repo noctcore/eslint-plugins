@@ -1,0 +1,93 @@
+---
+/**
+ * A package's rule table, generated from the plugin's exported `rules` and each
+ * rule's `meta` via the catalog. Nothing in it is typed by hand.
+ */
+import { getPackage, href } from '../lib/catalog';
+
+interface Props {
+  pkg: string;
+}
+
+const pkg = getPackage(Astro.props.pkg);
+const isPlugin = pkg.kind === 'eslint-plugin';
+const presetLabel = (severity: string | null) =>
+  severity === 'error' ? 'error' : severity === 'off' ? 'off' : 'not listed';
+const typeLabel = { required: 'required', optional: 'optional', none: '' } as const;
+// Rule descriptions use Markdown code spans; odd segments of a split on the
+// backtick are code.
+const spans = (text: string) => text.split('`').map((part, i) => ({ part, code: i % 2 === 1 }));
+---
+
+<div class="rule-table-wrap">
+  <table class="rule-table">
+    <thead>
+      {
+        isPlugin ? (
+          <tr>
+            <th scope="col">Rule</th>
+            <th scope="col">What it reports</th>
+            <th scope="col">Preset</th>
+            <th scope="col">Fix</th>
+            <th scope="col">Types</th>
+          </tr>
+        ) : (
+          <tr>
+            <th scope="col">Rule</th>
+            <th scope="col">What it enforces</th>
+            <th scope="col">Category</th>
+            <th scope="col">Entry point</th>
+          </tr>
+        )
+      }
+    </thead>
+    <tbody>
+      {
+        pkg.rules.map((rule) =>
+          isPlugin ? (
+            <tr>
+              <td>
+                <a href={href(rule.route)}>
+                  <code>{rule.name}</code>
+                </a>
+              </td>
+              <td>{spans(rule.description).map(({ part, code }) => (code ? <code>{part}</code> : part))}</td>
+              <td>
+                <span class:list={['pill', `pill-${presetLabel(rule.recommended).replace(' ', '-')}`]}>
+                  {presetLabel(rule.recommended)}
+                </span>
+              </td>
+              <td>{rule.fixable ? 'autofix' : rule.hasSuggestions ? 'suggestion' : ''}</td>
+              <td>{typeLabel[rule.typeInfo as keyof typeof typeLabel]}</td>
+            </tr>
+          ) : (
+            <tr>
+              <td>
+                <a href={href(rule.route)}>
+                  <code>{rule.name}</code>
+                </a>
+              </td>
+              <td>{spans(rule.description).map(({ part, code }) => (code ? <code>{part}</code> : part))}</td>
+              <td>
+                <code>{rule.category}</code>
+              </td>
+              <td>
+                <code>{rule.entry}</code>
+              </td>
+            </tr>
+          ),
+        )
+      }
+    </tbody>
+  </table>
+</div>
+{
+  isPlugin && (
+    <p class="rule-table-legend">
+      <strong>Preset</strong>: severity in <code>configs.recommended</code>; <em>off</em> means the preset
+      registers the rule switched off, <em>not listed</em> means it leaves the rule out. <strong>Fix</strong>:
+      whether the rule ships an autofix or an editor suggestion. <strong>Types</strong>: whether the rule needs a
+      type-checked program (<code>parserOptions.projectService</code>).
+    </p>
+  )
+}

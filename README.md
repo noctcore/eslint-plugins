@@ -8,6 +8,9 @@
 
 <p align="center"><em>Flat-config only · ESLint 9+ · zero-config presets · independently versioned.</em></p>
 
+<p align="center"><strong><a href="https://noctcore.github.io/eslint-plugins/">Documentation: noctcore.github.io/eslint-plugins</a></strong><br/>
+What each plugin is for, when it is a bad fit, and every rule with its options and examples.</p>
+
 ---
 
 ## Packages
@@ -45,7 +48,15 @@ bun install
 bun run build          # tsup — every package (ESM + CJS + d.ts)
 bun run test           # vitest — every package's RuleTester suites
 bun run typecheck
+bun run docs:dev       # the docs site (site/), live at http://localhost:4321/eslint-plugins/
+bun run docs:build     # build it and check routes, base paths and every rule's docs URL
 ```
+
+The docs site in [`site/`](./site) is generated: each rule page is built from that rule's
+`packages/*/docs/rules/<rule>.md`, and each package's rule table from the plugin's exported rule
+metadata. Edit the doc in the package, never a file under `site/src/content/docs/rules/`. A test in
+`site/scripts/parity.test.ts` fails if a rule has no doc or a doc has no rule. The site deploys to
+GitHub Pages from `main` through `.github/workflows/docs.yml`.
 
 ## Releasing
 

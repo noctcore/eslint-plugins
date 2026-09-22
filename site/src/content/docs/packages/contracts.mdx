@@ -1,0 +1,31 @@
+---
+title: "@noctcore/eslint-plugin-contracts"
+description: "IO boundaries, error taxonomy, schema and wire naming, env access and money precision."
+sidebar:
+  label: contracts
+  order: 4
+---
+
+import QuickStart from '../../../components/QuickStart.astro';
+import RuleTable from '../../../components/RuleTable.astro';
+
+IO boundaries, error taxonomy, schema and wire naming, env access and money precision.
+
+## What it solves
+
+The places a system talks to the outside world are where types stop being true: a `fetch` whose body is parsed without checking `.ok`, a `JSON.parse(...) as User`, an error re-thrown without its `cause`, `process.env.FOO` read in forty places, money typed as a float. These rules hold the contract layer to conventions that make those boundaries explicit and checkable.
+
+## What it will yell at you about
+
+It will yell at you about **naming and boundary discipline**: zod schemas must be `PascalCaseSchema` with a paired inferred type, wire messages need a literal `type` discriminant, `process.env` goes through one config module, thrown errors come from an approved taxonomy. Several conventions are opinionated, and the naming rules assume zod. **It is a bad fit** if you do not use zod, or if your error handling is intentionally untyped. Four rules ship `off`: three are inert until you give them a sink list, schema file or translation catalogs, and `require-schema-parse-at-boundary` is a conservative syntactic slice of a concern a type-aware setup does better.
+
+## Install and configure
+
+<QuickStart pkg="contracts" />
+
+## Rules
+
+Each rule links to its page, with the options it takes and Incorrect and Correct examples. A good first
+read is [`fetch-must-check-ok`](/eslint-plugins/rules/contracts/fetch-must-check-ok/).
+
+<RuleTable pkg="contracts" />

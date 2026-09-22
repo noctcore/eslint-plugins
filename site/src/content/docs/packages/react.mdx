@@ -1,0 +1,31 @@
+---
+title: "@noctcore/eslint-plugin-react"
+description: "React architecture and correctness: prop drilling, state colocation, memoized context values, effect safety."
+sidebar:
+  label: react
+  order: 1
+---
+
+import QuickStart from '../../../components/QuickStart.astro';
+import RuleTable from '../../../components/RuleTable.astro';
+
+React architecture and correctness: prop drilling, state colocation, memoized context values, effect safety.
+
+## What it solves
+
+React components that compile, render, and still rot: a props bundle forwarded unchanged through three layers, state and effects written inline in the `.tsx`, a context `value` that is a fresh object every render, a `setState` that lands after the component unmounted. TypeScript and `eslint-plugin-react-hooks` see none of these, because each is a structural decision rather than a type or hook-order error.
+
+## What it will yell at you about
+
+It will yell at you about **where code lives** as much as what it does. `no-state-in-component-body` wants state and effects in a colocated `<Name>.hooks.ts`, `max-props-per-component` and `max-hook-return-surface` cap how wide a component or hook is allowed to get, and `props-must-be-visual` rejects identity props like `userId` on presentational components. That is a deliberate architecture: containers own data, components render it. **It is a bad fit** if your codebase keeps hooks inline by convention, or if you are linting a library of generic primitives where wide prop surfaces are the point. Start with the correctness half (`context-value-must-be-memoized`, `require-effect-cancellation`, `no-effect-derived-state`) and switch the structural rules off rather than living with a wall of reports.
+
+## Install and configure
+
+<QuickStart pkg="react" />
+
+## Rules
+
+Each rule links to its page, with the options it takes and Incorrect and Correct examples. A good first
+read is [`no-prop-drilling`](/eslint-plugins/rules/react/no-prop-drilling/).
+
+<RuleTable pkg="react" />
