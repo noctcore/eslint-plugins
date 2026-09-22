@@ -8,14 +8,16 @@ a report.
 These packages run at development time and in CI with the developer's privileges, on the
 developer's own source. That narrows the surface, but it does not empty it:
 
-- **Code execution or file access beyond the lint target.** Some rules read files from disk by
-  design: `noctcore-monorepo/no-unexported-subpath-import` reads a workspace package's
-  `package.json`, `noctcore-contracts/env-var-schema-parity` reads the configured env schema file,
-  `noctcore-architecture/colocated-test-required` lists a directory,
-  `noctcore-code-quality/fake-timers-must-be-restored` reads sibling files, the prisma tenant rules
-  read `prisma/schema.prisma`, and every `lint-meta-rules` check walks the repo. A path taken
-  from lint input that escapes the repo, or anything that evaluates repository content, is a
-  vulnerability.
+- **Code execution or file access beyond the lint target.** Some rules read the file system by
+  design: the `architecture` folder rules (`component-folder-structure`,
+  `index-must-reexport-default`, `colocated-test-required`) look at sibling files,
+  `noctcore-contracts/env-var-schema-parity` reads the configured env schema file,
+  `noctcore-contracts/translation-key-exists` reads the i18n catalogs,
+  `noctcore-monorepo/no-unexported-subpath-import` reads a workspace package's `package.json`,
+  `noctcore-code-quality/fake-timers-must-be-restored` reads sibling files, the prisma rules read
+  `prisma/schema.prisma` and look upward for the repo root, and every `lint-meta-rules` check
+  walks the repo. A path taken from lint input that escapes the repo, or anything that evaluates
+  repository content, is a vulnerability.
 - **A fixer or suggestion that changes what code does.** An autofix is applied by
   `eslint --fix` without review. A fix that silently alters semantics is a defect in this repo,
   not in the consumer's.

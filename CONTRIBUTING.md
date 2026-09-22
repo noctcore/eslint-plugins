@@ -88,8 +88,9 @@ in both ESLint legs, so a doc that drifts from its rule fails CI.
 The rules of the fences, from `packages/eslint-test-utils/src/docExamples.ts`:
 
 - Every `ts` or `tsx` fence needs a label after the language: `bad`, `good` or `prose`. An
-  unlabelled `ts` fence is itself a failure, so nothing sits in a doc unexamined. Other
-  languages (`js` config snippets, `jsonc`, `text`) are left alone.
+  unlabelled `ts` fence is itself a failure, so nothing sits in a doc unexamined. An unlabelled
+  `js` or `jsx` fence (a config snippet) is left alone, but label one and it runs like the rest.
+  Other languages (`jsonc`, `text`, `sh`) are never run.
 - A `bad` example must draw at least one report from the rule. Add `reports=N` to pin the count
   when the block shows several violations. A parse error is a failure, not a report.
 - A `good` example must draw no message at all. A parse error counts as a message.
@@ -125,9 +126,12 @@ too.
 
 Every rule in every preset is `error` or `off`. A warning is a rule nobody obeys. This is enforced,
 not just stated: each plugin's `tests/configs/recommended.test.ts` fails on any preset entry that is
-not `error` or `off`, and a second test in the same file requires every rule to be either in the
-preset or listed by name in `OMITTED_FROM_PRESETS`, so leaving a rule out is a decision you write
-down, with a comment in `src/configs/recommended.ts` saying why.
+not `error` or `off`, and a second test in the same file makes leaving a rule out a decision you
+write down. In `code-quality`, `prisma` and `security`, which already ship opt-in rules, that test
+requires every rule to be in the preset or listed by name in `OMITTED_FROM_PRESETS`. In the other
+six it requires every rule to be in the preset, full stop, so the first opt-in rule in one of those
+packages also adds that list to its test, copied from `eslint-plugin-security`. Either way, add a
+comment in `src/configs/recommended.ts` saying why the rule is left out.
 
 That gives a new rule two ways to ship, and you should know which before writing it:
 

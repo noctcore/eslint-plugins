@@ -2,7 +2,7 @@
 
 <p align="center">
   A family of focused, general-purpose ESLint plugins that encode architecture and
-  correctness conventions generic linters can't see — cross-file boundaries, IO contracts,
+  correctness conventions generic linters can't see: cross-file boundaries, IO contracts,
   and "this compiles but bites in production" patterns.
 </p>
 
@@ -45,9 +45,9 @@ export default [react.configs.recommended];
 
 ```sh
 bun install
-bun run build          # tsup — every package (ESM + CJS + d.ts). Run this before typecheck.
+bun run build          # tsup: every package (ESM + CJS + d.ts). Run this before typecheck.
 bun run typecheck      # resolves @noctcore/eslint-utils through its built d.ts, so build first
-bun run test           # vitest — every package's suites, on ESLint 10 and then on ESLint 9
+bun run test           # vitest: every package's suites, on ESLint 10 and then on ESLint 9
 bun run docs:dev       # the docs site (site/), live at http://localhost:4321/eslint-plugins/
 bun run docs:build     # build it and check routes, base paths and every rule's docs URL
 ```
