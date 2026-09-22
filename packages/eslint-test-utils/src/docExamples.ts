@@ -22,7 +22,7 @@
  * options). Moving the code is the documented fix for some rules and an
  * evasion for the rest, so the doc has to claim it out loud.
  */
-import { readdirSync, readFileSync } from 'node:fs';
+import { existsSync, readdirSync, readFileSync } from 'node:fs';
 import { createRequire } from 'node:module';
 import { basename, join } from 'node:path';
 
@@ -356,6 +356,15 @@ export interface RunDocExamplesOptions {
 
 /** Registers a Vitest suite that runs every example in one rule doc. */
 export function runDocExamples({ plugin, ruleName, docPath }: RunDocExamplesOptions): void {
+  // A missing doc is one failing test, not a collection error that hides every other result.
+  if (!existsSync(docPath)) {
+    describe(`${ruleName} doc examples`, () => {
+      it('has a doc', () => {
+        expect(existsSync(docPath), `no doc at ${docPath}`).toBe(true);
+      });
+    });
+    return;
+  }
   const { blocks, problems } = parseDocExamples(readFileSync(docPath, 'utf8'));
   describe(`${ruleName} doc examples`, () => {
     it('labels every example and pairs each good one with a bad one', () => {
