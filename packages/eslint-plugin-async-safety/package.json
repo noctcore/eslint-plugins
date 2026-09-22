@@ -1,6 +1,6 @@
 {
   "name": "@noctcore/eslint-plugin-async-safety",
-  "version": "0.3.0",
+  "version": "0.3.1",
   "description": "ESLint rules for async correctness: fetch timeouts, AbortSignal forwarding, and shared-state / concurrency races.",
   "license": "MIT",
   "type": "module",
