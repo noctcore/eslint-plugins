@@ -1,6 +1,6 @@
 {
   "name": "@noctcore/eslint-plugin-security",
-  "version": "0.2.2",
+  "version": "0.2.3",
   "description": "Injection / path-traversal / SSRF / open-redirect precision ESLint rules.",
   "license": "MIT",
   "type": "module",
