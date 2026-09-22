@@ -1,0 +1,221 @@
+---
+title: Adopting in an existing codebase
+description: Turn a preset on in a repo that will show hundreds of errors on day one. Switch the flooding rules off, re-enable them directory by directory, and never warn.
+sidebar:
+  order: 1
+---
+
+A preset turned on in a codebase that grew without it will report hundreds of errors on the first
+run. The usual advice at that point is to downgrade the noisy rules to `warn` and burn the count
+down over time. **That advice is wrong for these plugins.** Every noctcore preset is `error` or
+`off`, on purpose ([why](/eslint-plugins/getting-started/#severity-policy)): a warning nobody fixes
+is noise pretending to be a guardrail, and it hides the real reports under it. This page is the
+path that works instead:
+
+1. Enable the preset, run once, read the damage.
+2. Switch the rules that flood **off**, explicitly, so the config shows what you deferred.
+3. Re-enable each one where it already passes, scoped by directory with a flat-config `files` block.
+4. Grow the scope until it covers everything, then delete the block. That is the exit.
+
+The worked example is `noctcore-architecture/filename-matches-export`. Settly, a monorepo that
+consumes these plugins, measured it at **417 hits** (web 340, ui 32, api 22, email 19, desktop 3,
+database 1) on 2026-09-22, and `noctcore-contracts/zod-schema-naming` at **206** (shared 202, api
+2, desktop 2). Both numbers come from the adoption ledger in Settly's
+`packages/eslint-config/tests/preset-adoption.test.js`, which records every preset rule the repo
+has not adopted yet, with a count and a reason. A rule with 417 hits is an honest example of a rule
+that floods. It is also a rule whose fix is a rename, so it is the kind you adopt one directory at a
+time rather than in one sitting.
+
+## 1. Enable the preset and read the damage
+
+Add the presets and run ESLint once. Do not fix anything yet.
+
+```js
+// eslint.config.js
+import architecture from '@noctcore/eslint-plugin-architecture';
+import contracts from '@noctcore/eslint-plugin-contracts';
+
+export default [
+  // ...your existing config
+  architecture.configs.recommended,
+  contracts.configs.recommended,
+];
+```
+
+Then count reports per rule. ESLint's `--format json` is the reliable route; the old `compact`
+formatter is no longer part of ESLint core (since v9), so `--format compact | sort | uniq -c`
+fails on a current install unless you install `eslint-formatter-compact` first.
+
+With `jq`:
+
+```sh
+npx eslint . --format json | jq -r '.[].messages[].ruleId' | sort | uniq -c | sort -rn
+```
+
+Without it, one line of Node:
+
+```sh
+npx eslint . --format json | node -e '
+  const counts = {};
+  for (const file of JSON.parse(require("fs").readFileSync(0, "utf8")))
+    for (const m of file.messages) counts[m.ruleId] = (counts[m.ruleId] ?? 0) + 1;
+  for (const [id, n] of Object.entries(counts).sort((a, b) => b[1] - a[1]))
+    console.log(String(n).padStart(6), id);
+'
+```
+
+Either prints something like:
+
+```text
+   417 noctcore-architecture/filename-matches-export
+   206 noctcore-contracts/zod-schema-naming
+   153 noctcore-architecture/barrel-purity
+    39 noctcore-architecture/max-import-depth
+    11 noctcore-contracts/require-error-cause
+```
+
+(Those are Settly's counts from the ledger above, for the two presets in the snippet.)
+
+ESLint exits 1 when there are errors, so the pipe still runs; it is the counts you are after. To
+see which files one rule hits, which tells you the directories to scope by later:
+
+```sh
+npx eslint . --format json \
+  | jq -r '.[] | select(any(.messages[]; .ruleId == "noctcore-architecture/filename-matches-export")) | .filePath'
+```
+
+Fix the rules with a handful of hits now. They are cheaper to fix than to defer.
+
+## 2. Switch the flooding rules off, explicitly
+
+Keep the preset. Add a block after it that turns the flooding rules `off` by id, with the count
+next to each. The point of writing the ids down rather than leaving the preset out is that the
+config now shows exactly what you have deferred, and the list can only shrink.
+
+```js
+// eslint.config.js
+import architecture from '@noctcore/eslint-plugin-architecture';
+import contracts from '@noctcore/eslint-plugin-contracts';
+
+export default [
+  architecture.configs.recommended,
+  contracts.configs.recommended,
+  {
+    // Deferred, not abandoned. Each line is a preset rule this repo does not
+    // pass yet. Counted 2026-09-22.
+    rules: {
+      'noctcore-architecture/filename-matches-export': 'off', // 417 hits
+      'noctcore-contracts/zod-schema-naming': 'off', // 206 hits
+    },
+  },
+];
+```
+
+Lint is green again, and every rule that is on is on at `error`. Not `warn`: a `warn` here would
+mean 417 reports scrolling past every run, and a team that learns to ignore the output. `off` with
+a count next to it is a decision you can read; `warn` is a decision you have not made.
+
+`--max-warnings` does nothing for these plugins, because nothing they report is a warning. Do not
+reach for it as a ratchet. The ratchet is the next step.
+
+## 3. Re-enable per rule, scoped by directory
+
+Flat config applies blocks in order, and **later blocks win** for the files they match. So the
+scoped block goes after the preset and after the `off` block, and it names the directories where
+the rule already passes or where the fix is small enough to do now:
+
+```js
+// eslint.config.js
+import architecture from '@noctcore/eslint-plugin-architecture';
+import contracts from '@noctcore/eslint-plugin-contracts';
+
+export default [
+  architecture.configs.recommended,
+  contracts.configs.recommended,
+  {
+    rules: {
+      'noctcore-architecture/filename-matches-export': 'off', // 417 hits
+      'noctcore-contracts/zod-schema-naming': 'off', // 206 hits
+    },
+  },
+  {
+    // Back on where it already passes, or where the fix is small enough to do now.
+    files: ['packages/database/**'],
+    rules: {
+      'noctcore-architecture/filename-matches-export': 'error',
+    },
+  },
+];
+```
+
+With that config, `filename-matches-export` is `error` for every file under `packages/database/`
+and `off` everywhere else. Fix the one hit in `database`, and the directory is held at `error` from
+then on: a new mismatch there fails the build, which is the guardrail you wanted from the preset in
+the first place. You can confirm what a file resolves to with `--print-config`:
+
+```sh
+npx eslint --print-config packages/database/src/index.ts \
+  | jq '.rules["noctcore-architecture/filename-matches-export"]'
+# [2]        (error)
+npx eslint --print-config apps/web/src/index.ts \
+  | jq '.rules["noctcore-architecture/filename-matches-export"]'
+# [0]        (off)
+```
+
+Order matters. If the scoped block sits **before** the `off` block, the `off` block matches
+`packages/database/**` too, because a block with no `files` matches everything, and it wins by
+coming later. The rule is then off everywhere and the scoped block does nothing. Put the scoped
+block last.
+
+Then grow the pattern. Pick the next directory by its count, fix the hits, add it:
+
+```js
+  {
+    files: ['packages/database/**', 'apps/desktop/**', 'apps/api/**'],
+    rules: {
+      'noctcore-architecture/filename-matches-export': 'error',
+    },
+  },
+```
+
+One scoped block per deferred rule, because each rule is adopted at its own pace. Two rules with
+the same coverage can share a block; split it the moment their coverage diverges.
+
+## 4. The exit condition
+
+A deferred rule is done when its `files` pattern covers everything the preset covers. At that
+point the scoped block is saying the same thing the preset already says, so delete both the
+`off` line and the scoped block and let the preset carry the rule again:
+
+```js
+// eslint.config.js
+import architecture from '@noctcore/eslint-plugin-architecture';
+import contracts from '@noctcore/eslint-plugin-contracts';
+
+export default [
+  architecture.configs.recommended,
+  contracts.configs.recommended,
+  // filename-matches-export: adopted everywhere, back in the preset.
+  {
+    rules: {
+      'noctcore-contracts/zod-schema-naming': 'off', // 206 hits
+    },
+  },
+];
+```
+
+The config ends where it started: the presets, and nothing else. Anything still in the `off`
+block is a rule you have not adopted, and it is listed there by id with its count, so the state
+is visible in the file rather than in someone's memory. A guide without this step describes a
+permanent state; this one describes a migration.
+
+## Holding the line
+
+Two things keep the deferred list honest over time:
+
+- The [`no-warn-severity`](/eslint-plugins/rules/lint-meta-rules/no-warn-severity/) lint-meta rule
+  fails a repo whose ESLint config sets any rule to `warn`, so the shortcut this page argues against
+  cannot creep back in.
+- A test that reads your exported config and fails when a preset turns on a rule the repo neither
+  wires at `error` nor lists as deferred with a reason. Settly's ledger is one; it is a few dozen
+  lines of vitest and it is what produced the counts on this page.
