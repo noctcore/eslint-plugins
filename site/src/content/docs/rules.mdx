@@ -10,6 +10,44 @@ import AllRules from '../../components/AllRules.astro';
 
 One row per rule, every package, generated from each plugin's exported metadata. Each rule links to its page,
 which has the options it takes and the Incorrect and Correct examples that run in that package's test suite.
-Use the site search (<kbd>⌘</kbd> <kbd>K</kbd>) or your browser's find on this page.
+Use the site search (<kbd>⌘</kbd> <kbd>K</kbd>) or your browser's find on this page. The same index is
+served as JSON at [`/eslint-plugins/rules.json`](/eslint-plugins/rules.json) for tools and agents; the
+shape is [documented below](#machine-readable-index).
 
 <AllRules />
+
+## Machine-readable index
+
+[`rules.json`](/eslint-plugins/rules.json) is generated at build time from the same catalog as the
+table above, so it cannot disagree with it. [`llms.txt`](/eslint-plugins/llms.txt) at the site root
+points here and at it. The shape is a public contract: fields are added, never renamed or removed,
+without a `schemaVersion` bump. A build check asserts the file has exactly one entry per rule doc and
+that every `url` resolves to a page on this site.
+
+Top level:
+
+| Field           | Meaning                                                                 |
+| --------------- | ----------------------------------------------------------------------- |
+| `schemaVersion` | Integer, currently `1`. Bumped only on a breaking change to this shape. |
+| `generatedAt`   | ISO timestamp of the build that emitted the file.                       |
+| `site`          | The site root URL.                                                      |
+| `rulesPage`     | URL of this page.                                                       |
+| `count`         | Number of entries in `rules`.                                           |
+| `packages`      | One entry per package: `name` (npm), `short`, `version`, `description`, `kind`, `namespace`, `url`. |
+| `rules`         | One entry per rule, in package order then by name.                      |
+
+Each entry in `rules`:
+
+| Field            | Meaning                                                                                       |
+| ---------------- | --------------------------------------------------------------------------------------------- |
+| `id`             | The id a config or a report uses: `noctcore-react/no-prop-drilling`, or the bare lint-meta id. |
+| `name`           | The rule name without its namespace.                                                          |
+| `package`        | npm name of the package that exports it.                                                      |
+| `runner`         | `eslint`, or `harness` for a lint-meta rule that runs under `@noctcore/harness`.              |
+| `description`    | The rule's `meta.docs.description`.                                                           |
+| `url`            | The rule's page on this site, the same URL as its `meta.docs.url`.                            |
+| `recommended`    | `error` or `off` in the package's `recommended` preset; `null` when the preset leaves it out, and for lint-meta rules. |
+| `fixable`        | Whether the rule has an autofix.                                                              |
+| `hasSuggestions` | Whether the rule offers suggestions.                                                          |
+| `typeInfo`       | `required`, `optional` or `none`: whether the rule needs a type-checked program.              |
+| `category`, `ciCritical`, `factory`, `entry` | lint-meta rules only: the harness category, whether a violation fails CI by default, the factory export and the entry point that exposes it. |
