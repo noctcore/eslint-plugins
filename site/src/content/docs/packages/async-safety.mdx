@@ -1,0 +1,31 @@
+---
+title: "@noctcore/eslint-plugin-async-safety"
+description: "Async correctness TypeScript cannot catch: unbounded fetch, dropped AbortSignals, concurrency races."
+sidebar:
+  label: async-safety
+  order: 6
+---
+
+import QuickStart from '../../../components/QuickStart.astro';
+import RuleTable from '../../../components/RuleTable.astro';
+
+Async correctness TypeScript cannot catch: unbounded fetch, dropped AbortSignals, concurrency races.
+
+## What it solves
+
+An async bug usually type-checks. A `fetch` with no timeout hangs a worker forever, a function that accepts an `AbortSignal` and never forwards it cannot be cancelled, two iterations of a `Promise.all(arr.map(async ...))` read and write the same counter and lose an update, a module-level variable written in a request handler leaks between requests.
+
+## What it will yell at you about
+
+It will yell at you about **timeouts and cancellation** first: `require-fetch-timeout` fires on every bare `fetch`, which is intentional and noisy on first run. `no-shared-mutable-module-state` and `require-client-timeout` ship enabled but inert until you tell them which files are server code and which clients to check. Timeouts and parallelism change runtime behaviour, so the fixes are editor suggestions, never autofixes. `prefer-parallel-awaits` ships `off`: sequential awaits are often deliberate. **It is a bad fit** for browser-only code that relies on the platform's own fetch lifetime, and for scripts where hanging is harmless.
+
+## Install and configure
+
+<QuickStart pkg="async-safety" />
+
+## Rules
+
+Each rule links to its page, with the options it takes and Incorrect and Correct examples. A good first
+read is [`forward-abort-signal`](/eslint-plugins/rules/async-safety/forward-abort-signal/).
+
+<RuleTable pkg="async-safety" />

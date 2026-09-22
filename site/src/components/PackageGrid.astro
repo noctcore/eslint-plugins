@@ -1,0 +1,28 @@
+---
+/**
+ * Landing-page index of every package: name, npm description, rule and preset
+ * counts. All of it comes from the catalog, so a new rule shows up here without
+ * anyone editing the landing page.
+ */
+import { enabledInPreset, href, packages } from '../lib/catalog';
+---
+
+<ul class="package-grid">
+  {
+    packages.map((pkg) => (
+      <li class="package-card">
+        <a href={href(`packages/${pkg.short}/`)}>
+          <span class="package-card-name">{pkg.npmName}</span>
+          <span class="package-card-desc">{pkg.description}</span>
+          <span class="package-card-meta">
+            {pkg.rules.length} rules
+            {pkg.kind === 'eslint-plugin'
+              ? ` · ${enabledInPreset(pkg)} on in recommended`
+              : ' · harness lint-meta catalog'}
+            {` · v${pkg.version}`}
+          </span>
+        </a>
+      </li>
+    ))
+  }
+</ul>

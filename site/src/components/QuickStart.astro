@@ -1,0 +1,55 @@
+---
+/**
+ * Install and flat-config snippets for one package, built from the catalog so
+ * the package name, namespace and rule counts cannot drift from the source.
+ */
+import { Code } from '@astrojs/starlight/components';
+
+import { enabledInPreset, getPackage, importName } from '../lib/catalog';
+
+interface Props {
+  pkg: string;
+}
+
+const pkg = getPackage(Astro.props.pkg);
+const name = importName(pkg.short);
+const install = `npm install --save-dev ${pkg.npmName}\n# or: bun add -D / pnpm add -D ${pkg.npmName}`;
+
+const enabled = enabledInPreset(pkg);
+const firstOptIn = pkg.rules.find((rule) => rule.recommended !== 'error');
+
+let config: string;
+let note: string;
+if (pkg.kind === 'eslint-plugin') {
+  config = [
+    '// eslint.config.js',
+    `import ${name} from '${pkg.npmName}';`,
+    '',
+    `export default [${name}.configs.recommended];`,
+  ].join('\n');
+  if (firstOptIn) {
+    config += [
+      '',
+      '',
+      '// Rules outside the preset are enabled one by one, e.g.',
+      `// { rules: { '${firstOptIn.id}': 'error' } }`,
+    ].join('\n');
+  }
+  note = `The recommended preset enables ${enabled} of ${pkg.rules.length} rules.`;
+} else {
+  config = [
+    `import { createAllRules, createPackageShapeRule } from '${pkg.npmName}';`,
+    '',
+    '// Every catalog rule with default options:',
+    'const rules = createAllRules();',
+    '',
+    '// Or one rule, retargeted at your repo:',
+    "const shape = createPackageShapeRule({ scope: '@acme' });",
+  ].join('\n');
+  note = `A source catalog for the @noctcore/harness lint-meta runner, not an ESLint plugin. ${pkg.rules.length} rules.`;
+}
+---
+
+<Code code={install} lang="sh" title="Install" />
+<Code code={config} lang={pkg.kind === 'eslint-plugin' ? 'js' : 'ts'} title={pkg.kind === 'eslint-plugin' ? 'eslint.config.js' : 'registry.ts'} />
+<p class="quickstart-note">{note}</p>

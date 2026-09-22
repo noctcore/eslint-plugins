@@ -1,0 +1,25 @@
+{
+  "name": "@noctcore/docs-site",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "sync": "bun scripts/sync.ts",
+    "dev": "bun run sync && astro dev",
+    "docs:build": "bun run sync && astro build && bun scripts/check-build.ts",
+    "preview": "astro preview",
+    "typecheck": "bun run sync && astro sync && tsc --noEmit",
+    "test": "bun test scripts"
+  },
+  "dependencies": {
+    "@astrojs/starlight": "^0.42.2",
+    "@fontsource-variable/jetbrains-mono": "^5.3.0",
+    "@fontsource-variable/space-grotesk": "^5.3.0",
+    "astro": "^7.3.3",
+    "satteri": "^0.10.5"
+  },
+  "devDependencies": {
+    "@types/bun": "^1.3.0",
+    "typescript": "^5.6.0"
+  }
+}

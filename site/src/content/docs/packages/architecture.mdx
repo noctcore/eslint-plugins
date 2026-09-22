@@ -1,0 +1,31 @@
+---
+title: "@noctcore/eslint-plugin-architecture"
+description: "Folder-per-component, barrels and feature boundaries, anchored on a configurable directory."
+sidebar:
+  label: architecture
+  order: 2
+---
+
+import QuickStart from '../../../components/QuickStart.astro';
+import RuleTable from '../../../components/RuleTable.astro';
+
+Folder-per-component, barrels and feature boundaries, anchored on a configurable directory.
+
+## What it solves
+
+Folder structure that nobody enforces decays one convenient shortcut at a time: a barrel that grows a helper function, a component folder missing its test, a feature importing another feature's internals, a relative import that climbs five parents. These rules make the layout a checked property of the codebase instead of a paragraph in a contributing guide.
+
+## What it will yell at you about
+
+It will yell at you about **file layout**, and several rules read the file system: `component-folder-structure` wants every `<Name>/<Name>.tsx` to ship its full sibling set, `colocated-test-required` wants a test next to each source file it covers. Run ESLint on real file paths, not virtual sources. Every rule anchors on a directory segment (default `components`) instead of an absolute path, so it behaves the same from the repo root or a package. **It is a bad fit** for a codebase organised by technical layer (`hooks/`, `components/`, `utils/` at the top) rather than by feature, and for a small app where a component folder with five siblings is ceremony. `colocated-test-required` and `single-semantic-module` ship `off` because they are opinions many good codebases do not share.
+
+## Install and configure
+
+<QuickStart pkg="architecture" />
+
+## Rules
+
+Each rule links to its page, with the options it takes and Incorrect and Correct examples. A good first
+read is [`no-cross-feature-imports`](/eslint-plugins/rules/architecture/no-cross-feature-imports/).
+
+<RuleTable pkg="architecture" />

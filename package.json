@@ -7,7 +7,8 @@
     "node": ">=22"
   },
   "workspaces": [
-    "packages/*"
+    "packages/*",
+    "site"
   ],
   "scripts": {
     "build": "bun run --filter '*' build",
@@ -17,7 +18,9 @@
     "test:eslint9": "NODE_OPTIONS=--import=@noctcore/eslint-test-utils/eslint9 bun run --filter '*' test",
     "changeset": "changeset",
     "version-packages": "changeset version",
-    "release": "bun run build && changeset publish"
+    "release": "bun run build && changeset publish",
+    "docs:dev": "bun run --filter @noctcore/docs-site dev",
+    "docs:build": "bun run --filter @noctcore/docs-site docs:build"
   },
   "devDependencies": {
     "@changesets/changelog-github": "^0.5.0",

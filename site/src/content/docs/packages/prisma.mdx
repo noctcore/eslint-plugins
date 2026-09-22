@@ -1,0 +1,31 @@
+---
+title: "@noctcore/eslint-plugin-prisma"
+description: "Prisma tenancy, data integrity and transaction guardrails around a tenant-scoping client extension."
+sidebar:
+  label: prisma
+  order: 9
+---
+
+import QuickStart from '../../../components/QuickStart.astro';
+import RuleTable from '../../../components/RuleTable.astro';
+
+Prisma tenancy, data integrity and transaction guardrails around a tenant-scoping client extension.
+
+## What it solves
+
+Multi-tenant Prisma code fails quietly: a query through the unscoped client with no tenant filter, a tenant id taken from the request body, two writes that should be atomic and are not, an audit log written inside a transaction that rolls it back with the work, a soft-deleted row that comes back in a list.
+
+## What it will yell at you about
+
+It will yell at you about **which client you query through and what your `where` contains**. The six preset rules hold with no project knowledge. Four more need your model registry (`tenantModels`, `softDeleteModels`, `restrictions`) and are deliberately left out of the preset, because a rule that reports nothing would read as coverage you do not have. `mutation-entry-must-reach-audit` needs type information and follows calls across files. **It is a bad fit** if you are not multi-tenant, or if tenancy lives in Postgres row-level security rather than a Prisma client extension; most of these rules assume the extension pattern.
+
+## Install and configure
+
+<QuickStart pkg="prisma" />
+
+## Rules
+
+Each rule links to its page, with the options it takes and Incorrect and Correct examples. A good first
+read is [`no-unscoped-prisma-outside-allowlist`](/eslint-plugins/rules/prisma/no-unscoped-prisma-outside-allowlist/).
+
+<RuleTable pkg="prisma" />

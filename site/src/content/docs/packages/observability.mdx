@@ -1,0 +1,31 @@
+---
+title: "@noctcore/eslint-plugin-observability"
+description: "Structured logging discipline: context objects, no sensitive fields, no lost error detail."
+sidebar:
+  label: observability
+  order: 7
+---
+
+import QuickStart from '../../../components/QuickStart.astro';
+import RuleTable from '../../../components/RuleTable.astro';
+
+Structured logging discipline: context objects, no sensitive fields, no lost error detail.
+
+## What it solves
+
+Logs are an interface that nobody type-checks. An interpolated message string cannot be queried, a log call that includes `password` or `token` is an incident, and a catch block that logs only `e.message` throws away the stack and cause you needed.
+
+## What it will yell at you about
+
+It will yell at you about **how you call your logger**: a static message plus a context object, never a template literal with values in it. The sensitive-field and PII rules match on names, so they catch `user.password` but not a secret hiding in a field called `data`. The rules recognise `<logger>.info/warn/error/debug(...)` calls on logger names you configure through `loggers`. **It is a bad fit** if you log through `console` by design, or your logger has no way to carry a context object, because the fix every rule asks for is to move values out of the message and into one.
+
+## Install and configure
+
+<QuickStart pkg="observability" />
+
+## Rules
+
+Each rule links to its page, with the options it takes and Incorrect and Correct examples. A good first
+read is [`structured-log-arguments`](/eslint-plugins/rules/observability/structured-log-arguments/).
+
+<RuleTable pkg="observability" />

@@ -1,0 +1,54 @@
+---
+title: noctcore ESLint plugins
+description: Focused ESLint plugins for architecture and correctness conventions generic linters cannot see.
+template: splash
+head:
+  - tag: title
+    content: noctcore ESLint plugins
+hero:
+  tagline: A family of focused ESLint plugins that encode architecture and correctness conventions generic linters can't see. Cross-file boundaries, IO contracts, and code that compiles but bites in production.
+  actions:
+    - text: Get started
+      link: /eslint-plugins/getting-started/
+      icon: right-arrow
+    - text: Browse the packages
+      link: /eslint-plugins/packages/react/
+      variant: minimal
+    - text: GitHub
+      link: https://github.com/noctcore/eslint-plugins
+      icon: external
+      variant: minimal
+---
+
+import PackageGrid from '../../components/PackageGrid.astro';
+import AllQuickStarts from '../../components/AllQuickStarts.astro';
+
+## Is this for you?
+
+**Yes, if** you run a TypeScript codebase on ESLint 9 or newer with flat config, and the bugs that reach
+review are structural: a component that drills props five levels down, a `fetch` with no timeout, a
+Prisma write outside its transaction, a log line that interpolates a user's email. These plugins catch
+those with high-precision, mostly syntactic rules, and every rule is `error` or `off`, never `warn`.
+
+**Probably not, if** you are on legacy `.eslintrc` config (these are flat-config only), you want a
+general style guide (use `typescript-eslint` and a formatter; these plugins assume both), or your
+codebase does not share the conventions a plugin encodes. Each package page says when it is a bad fit.
+
+Every package is independently versioned. Install the one that matches the problem you have.
+
+## Packages
+
+<PackageGrid />
+
+## Install and configure
+
+Pick a package. Each tab is the install command and a working `eslint.config.js`.
+
+<AllQuickStarts />
+
+## How these docs are built
+
+Each rule page on this site is generated from the Markdown file that ships inside the npm tarball
+(`docs/rules/<rule>.md`), and the tables are generated from each plugin's exported rule metadata. The
+Incorrect and Correct examples on every rule page are executed by that package's test suite, so an example that stops
+matching the rule fails CI before it can reach this page.
