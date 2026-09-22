@@ -16,16 +16,20 @@ branch depends on the real clock. Routing wall-clock reads through a shared `clo
 `new Date(value)` with an argument is a **parse** of an explicit instant, not a bare clock read, and
 is never flagged. Files covered by `allowIn` are skipped entirely.
 
-```ts
-// ✗ bare clock reads in business logic
+```ts bad reports=2
+// bare clock reads in business logic
 const start = Date.now();
 const created = new Date();
+```
 
-// ✓ through the clock seam
+```ts good
+import { now, nowMs } from './clock';
+
+// through the clock seam
 const start = nowMs();
 const created = now();
 
-// ✓ parsing an explicit instant
+// parsing an explicit instant
 const at = new Date('2026-01-01T00:00:00Z');
 ```
 

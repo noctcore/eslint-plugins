@@ -18,16 +18,18 @@ The **last** statement of a function block that is an `if` with:
 A single-statement `if`, an `if/else`, or an `if` that is not the final statement is left alone —
 those are not body-wraps.
 
-```ts
-// ✗ the whole body is wrapped
+```ts bad
+// the whole body is wrapped
 function handle(x) {
   if (x) {
     doA();
     doB();
   }
 }
+```
 
-// ✓ guard clause
+```ts good
+// guard clause
 function handle(x) {
   if (!x) {
     return;

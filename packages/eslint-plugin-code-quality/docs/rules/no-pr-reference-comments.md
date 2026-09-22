@@ -18,13 +18,15 @@ Comments containing:
 - a `PR #123` / `PR 123` reference;
 - a bare `#123` at a word boundary.
 
-```ts
-// ✗ fixes #123
-// ✗ See https://github.com/noctcore/eslint-plugins/pull/42 for context.
-// ✗ workaround (#88)
+```ts bad reports=3
+// fixes #123
+// See https://github.com/noctcore/eslint-plugins/pull/42 for context.
+// workaround (#88)
+```
 
-// ✓ Trust-proxy depth for single-host Traefik.
-const channel = "#general"; // ✓ not a comment
+```ts good
+// Trust-proxy depth for single-host Traefik.
+const channel = "#general"; // the string is not a comment
 ```
 
 ## Options

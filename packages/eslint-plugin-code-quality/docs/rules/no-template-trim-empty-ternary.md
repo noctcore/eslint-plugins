@@ -17,12 +17,12 @@ explicitly if the shape recurs in your codebase.
 A `ConditionalExpression` whose test is a `===` / `!==` comparison between an **empty-string literal**
 and a **`.trim()` call on a template literal**, in either order.
 
-```ts
-// ✗
+```ts bad reports=2
 const name = `${first} ${last}`.trim() === '' ? email : `${first} ${last}`.trim();
-const name = '' !== `${a}`.trim() ? `${a}`.trim() : fallback;
+const label = '' !== `${a}`.trim() ? `${a}`.trim() : fallback;
+```
 
-// ✓
+```ts good
 const name = buildDisplayName({ first, last, fallback: email });
 const trimmed = value.trim() === '' ? fallback : value; // not a template literal
 ```

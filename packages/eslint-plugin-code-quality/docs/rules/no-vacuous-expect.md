@@ -25,8 +25,7 @@ The rule matches on method names, not on a runner import, so it covers Jest, Vit
 A test counts every `expect(...)` matcher plus any call matching `assertionCallees`, so a weak
 `expect` next to `assert.equal(...)`, `expectValidUser(...)` or supertest's `.expect(200)` is fine.
 
-```ts
-// Bad
+```ts bad filename=src/token.test.ts reports=3
 it('should be defined', () => {
   expect(service).toBeDefined();
 });
@@ -40,8 +39,7 @@ it('works', () => {
 });
 ```
 
-```ts
-// Good
+```ts good filename=src/token.test.ts
 it('issues a signed token for the user', () => {
   const token = issueToken({ userId: 'u-1' });
   expect(verify(token)).toEqual({ userId: 'u-1' });

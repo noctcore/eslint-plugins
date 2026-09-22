@@ -16,6 +16,24 @@ Any `process.exit(...)` call in a file **not** covered by `allowIn`. Both the do
 (`process.exit()`) and the computed form (`process['exit']()`) are caught so a computed callee
 cannot bypass the rule.
 
+```ts bad filename=src/orders/orders.service.ts
+if (!order) {
+  process.exit(1);
+}
+```
+
+```ts good filename=src/orders/orders.service.ts
+if (!order) {
+  throw new Error('order not found');
+}
+```
+
+Moving the exit to a CLI entrypoint is the other fix:
+
+```ts good filename=scripts/migrate.ts relocation
+main().catch(() => process.exit(1));
+```
+
 ## Options
 
 | Option | Type | Default | Meaning |

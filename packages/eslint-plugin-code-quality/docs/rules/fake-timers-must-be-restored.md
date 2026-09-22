@@ -22,7 +22,7 @@ the file runs.
 A contract suite often owns the restore: the spec installs fake timers inside a helper it hands to
 the suite, and the suite restores them in its own `afterEach`.
 
-```ts
+```ts prose reason="two files: the rule reads the imported suite from disk"
 // provider.contract-suite.ts
 export function runProviderContract(subject: Subject): void {
   describe('provider contract', () => {
@@ -51,8 +51,7 @@ re-exported, never called, does not count.
 For a suite the rule cannot resolve (a path alias or a workspace package), name it in
 `sharedSuiteModules`.
 
-```ts
-// Bad
+```ts bad filename=src/session.test.ts
 beforeEach(() => {
   vi.useFakeTimers();
 });
@@ -63,8 +62,7 @@ it('expires the session', () => {
 });
 ```
 
-```ts
-// Good
+```ts good filename=src/session.test.ts
 beforeEach(() => {
   vi.useFakeTimers();
 });

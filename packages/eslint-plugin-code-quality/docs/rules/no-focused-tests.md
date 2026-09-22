@@ -15,13 +15,15 @@ focused test a lint error so it can't merge.
 - The Jest/Jasmine focused-call forms `fdescribe(...)`, `fit(...)`, `ddescribe(...)` — but only as a
   bare-identifier callee, so an unrelated `obj.fit(...)` method is not flagged.
 
-```ts
-// ✗ it.only('runs', () => {});
-// ✗ test.concurrent.only('case', () => {});
-// ✗ fdescribe('suite', () => {});
+```ts bad filename=src/example.test.ts reports=3
+it.only('runs', () => {});
+test.concurrent.only('case', () => {});
+fdescribe('suite', () => {});
+```
 
-// ✓ it('runs', () => {});
-// ✓ layout.fit('contain');   // not a test runner
+```ts good filename=src/example.test.ts
+it('runs', () => {});
+layout.fit('contain'); // not a test runner
 ```
 
 ## Options

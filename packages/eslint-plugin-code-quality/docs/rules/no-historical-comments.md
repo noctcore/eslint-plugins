@@ -15,11 +15,13 @@ Line and block comments (JSDoc `/** … */` blocks are exempt) matching narrow p
 `before/after the fix`, `before/after the refactor`, `we/this used to`, `used to be`, `no longer`,
 `kept for backwards/legacy/compat`, `was/were a bug/footgun`, and `historical(ly)`.
 
-```ts
-// ✗ We used to read process.env directly here.
-// ✗ Before the fix this collapsed to {}.
+```ts bad reports=2
+// We used to read process.env directly here.
+// Before the fix this collapsed to {}.
+```
 
-// ✓ Caps concurrent connections to avoid pool exhaustion.
+```ts good
+// Caps concurrent connections to avoid pool exhaustion.
 ```
 
 ## Options

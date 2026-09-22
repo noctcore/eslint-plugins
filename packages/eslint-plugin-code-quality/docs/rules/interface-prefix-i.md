@@ -19,12 +19,14 @@ dictated by the module being augmented (`Register`, `Window`).
 
 Report-only: a rename touches every reference, which a single-file fixer cannot do safely.
 
-```ts
-// ✗ interface UserProfile { id: string; }
-// ✗ interface Input { value: string; }
+```ts bad reports=2
+interface UserProfile { id: string; }
+interface Input { value: string; }
+```
 
-// ✓ interface IUserProfile { id: string; }
-// ✓ declare global { interface Window { electron: unknown; } }  // augmentation
+```ts good
+interface IUserProfile { id: string; }
+declare global { interface Window { electron: unknown; } } // augmentation
 ```
 
 ## Options

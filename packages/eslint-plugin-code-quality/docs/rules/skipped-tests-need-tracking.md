@@ -21,16 +21,18 @@ window above it.
 Faithful to the original text-scanning implementation, the source is scanned line by line, so a marker
 in a trailing comment, a preceding comment, or anywhere in the lookback window is honoured.
 
-```ts
-// ✓ tracked
+```ts bad filename=src/example.test.ts reports=2
+// untracked
+it.skip('later', () => {});
+xdescribe('later', () => {});
+```
+
+```ts good filename=src/example.test.ts
+// tracked
 // TODO(@alice): flaky under CI
 it.skip('later', () => {});
 
 it.skip('later', () => {}); // https://github.com/org/repo/issues/1
-
-// ✗ untracked
-it.skip('later', () => {});
-xdescribe('later', () => {});
 ```
 
 ## Options

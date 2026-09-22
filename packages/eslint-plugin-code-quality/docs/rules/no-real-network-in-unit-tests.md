@@ -29,22 +29,27 @@ It does not flag:
 - a client whose module the file mocks (`vi.mock('axios')`, `jest.mock('node-fetch')`);
 - a method that only shares a name (`repository.fetch(1)`, `store.get('k')`).
 
-```ts
-// Bad: src/api/client.test.ts
+```ts bad filename=src/api/client.test.ts
 it('loads the profile', async () => {
   const res = await fetch('https://api.example.com/me');
   expect(res.status).toBe(200);
 });
 ```
 
-```ts
-// Good: src/api/client.test.ts
+```ts good filename=src/api/client.test.ts
 it('loads the profile', async () => {
   vi.stubGlobal('fetch', vi.fn().mockResolvedValue(new Response('{"id":1}')));
   expect(await loadProfile()).toEqual({ id: 1 });
 });
+```
 
-// Good: src/api/client.integration.test.ts runs against a real server.
+A test that needs the real server moves to an integration suite:
+
+```ts good filename=src/api/client.integration.test.ts relocation
+it('loads the profile', async () => {
+  const res = await fetch('https://api.example.com/me');
+  expect(res.status).toBe(200);
+});
 ```
 
 ## Options

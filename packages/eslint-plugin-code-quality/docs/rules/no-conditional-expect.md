@@ -26,8 +26,7 @@ loop or `if` that generates tests does not flag the expects inside those tests.
 A test that calls `expect.assertions(n)` or `expect.hasAssertions()` is exempt: a skipped branch
 already fails it.
 
-```ts
-// Bad
+```ts bad filename=src/parse.test.ts reports=2
 it('rejects bad input', async () => {
   try {
     await parse('');
@@ -44,8 +43,7 @@ it('returns the value', () => {
 });
 ```
 
-```ts
-// Good
+```ts good filename=src/parse.test.ts
 it('rejects bad input', async () => {
   await expect(parse('')).rejects.toBeInstanceOf(ParseError);
 });

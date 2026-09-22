@@ -17,12 +17,14 @@ construction: `here we`, `now we`, `first[,] we`, `then[,] we`, `next[,] we`, `f
 
 A bare leading word ("Next attempt…", "First run…") is fine — only the "we"/"let's" narration form matches.
 
-```ts
-// ✗ Now we attach the user to the socket.
-// ✗ Let's validate the session token.
+```ts bad reports=2
+// Now we attach the user to the socket.
+// Let's validate the session token.
+```
 
-// ✓ WHY: Prisma reuses the pooled connection across requests.
-// ✓ call next() to continue the middleware chain
+```ts good
+// WHY: Prisma reuses the pooled connection across requests.
+// call next() to continue the middleware chain
 ```
 
 ## Options
