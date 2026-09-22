@@ -1,4 +1,4 @@
 import { makeCreateRule } from '@noctcore/eslint-utils';
 
-/** RuleCreator for this plugin; docs URLs resolve under `eslint-plugin-prisma/docs/rules`. */
+/** RuleCreator for this plugin; docs URLs resolve to the docs site under `rules/prisma/`. */
 export const createRule = makeCreateRule('prisma');
