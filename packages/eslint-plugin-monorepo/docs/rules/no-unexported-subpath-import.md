@@ -29,7 +29,7 @@ If the workspace, the package, or its `exports` cannot be resolved, the rule sta
 guess. The barrel (`@scope/pkg`) and `@scope/pkg/package.json` are always allowed. A package with no
 `exports` map is not restricted.
 
-```ts
+```ts prose reason="the rule reads the target package's exports map from the workspace on disk"
 // @acme/contracts exports: { ".": "...", "./schemas": "...", "./features/*": "..." }
 
 import a from '@acme/contracts';                 // ✓ barrel

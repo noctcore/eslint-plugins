@@ -20,12 +20,14 @@ For each configured scope, an import/export/`import()` whose specifier is `@scop
 scopes you did **not** configure are left alone. The rule inspects the specifier string only — it
 never reads the file path, so it is layout-independent.
 
-```ts
-// ✗ deep subpath into a package's internals
+```ts bad reports=2 options={"scopes":["@acme"]}
+// deep subpath into a package's internals
 import { thing } from '@acme/contracts/internal/thing';
 export { x } from '@acme/engine/src/sdk-adapter';
+```
 
-// ✓ the barrel is the public surface
+```ts good options={"scopes":["@acme"]}
+// the barrel is the public surface
 import { TaskSchema } from '@acme/contracts';
 ```
 

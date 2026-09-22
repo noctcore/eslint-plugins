@@ -29,7 +29,7 @@ const PLUGINS: Record<string, { readonly plugin: DocPlugin; readonly status: Doc
   'async-safety': { plugin: asyncSafety, status: 'executed' },
   'code-quality': { plugin: codeQuality, status: 'executed' },
   contracts: { plugin: contracts, status: 'executed' },
-  monorepo: { plugin: monorepo, status: 'pending' },
+  monorepo: { plugin: monorepo, status: 'executed' },
   observability: { plugin: observability, status: 'pending' },
   prisma: { plugin: prisma, status: 'pending' },
   react: { plugin: react, status: 'pending' },
