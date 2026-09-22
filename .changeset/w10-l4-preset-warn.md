@@ -1,7 +1,6 @@
 ---
 "@noctcore/eslint-plugin-react": minor
 "@noctcore/eslint-plugin-contracts": minor
-"@noctcore/eslint-plugin-architecture": minor
 ---
 
 `@noctcore/eslint-plugin-react`: **behaviour change for consumers.** The `recommended` preset no
@@ -23,10 +22,3 @@ Payment APIs such as Stripe carry money as an integer count of minor units (`amo
 19.99), which is exact in a `number`. List the regex fragments (case-insensitive, unanchored, so
 anchor them: `['^amount$', 'Cents$']`) that name such fields and the rule skips them. The default is
 empty, so nothing changes until you opt in.
-
-`@noctcore/eslint-plugin-architecture`: `component-folder-structure` no longer requires a
-`<Name>.hooks.ts` sibling by default. A presentational component has no logic to extract, and
-requiring the file produced empty `export {}` modules that exist only to satisfy the linter. The
-default set is now `.types.ts`, `.stories.tsx`, `.test.tsx` and `index.ts`. To keep the old
-behaviour, pass `requiredSiblings: ['.hooks.ts', '.types.ts', '.stories.tsx', '.test.tsx',
-'index.ts']`. This only removes findings; it cannot surface new ones.

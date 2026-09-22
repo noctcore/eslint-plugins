@@ -24,15 +24,11 @@ type MessageIds = 'missingSiblings';
 
 /*
  * A component entry file (`<Name>/<Name>.tsx` anywhere under
- * `<componentRoot>/<feature>/`) must ship its sibling set on disk so types,
- * story, and test always travel with the component. The default set is the
- * colocated `.types.ts`, `.stories.tsx`, `.test.tsx`, and the `index.ts` barrel,
- * so every component folder carries BOTH a story and a test by construction.
- *
- * `.hooks.ts` is not in the default: a presentational component has no logic to
- * extract, and requiring the file anyway produces empty `export {}` modules that
- * exist only to satisfy the linter. A codebase that wants every component to
- * carry one adds `.hooks.ts` to `requiredSiblings`.
+ * `<componentRoot>/<feature>/`) must ship its sibling set on disk so logic,
+ * types, story, and test always travel with the component. The default set is
+ * the colocated `.hooks.ts`, `.types.ts`, `.stories.tsx`, `.test.tsx`, and the
+ * `index.ts` barrel — so every component folder carries BOTH a story and a test
+ * by construction.
  *
  * De-projected from nightcore: `componentRoot` (the anchor segment), the
  * `requiredSiblings` grammar, and `ignorePaths` are all options.
@@ -45,6 +41,7 @@ type MessageIds = 'missingSiblings';
 const DEFAULT_COMPONENT_ROOT = 'components';
 const DEFAULT_IGNORE_PATHS: readonly string[] = ['**/ui/**'];
 const DEFAULT_REQUIRED_SIBLINGS: readonly string[] = [
+  '.hooks.ts',
   '.types.ts',
   '.stories.tsx',
   '.test.tsx',
@@ -72,12 +69,12 @@ export const componentFolderStructureRule = createRule<RuleOptions, MessageIds>(
     type: 'problem',
     docs: {
       description:
-        'A component `<Name>/<Name>.tsx` under `<componentRoot>/<feature>/...` must have its sibling set (by default `.types.ts`, `.stories.tsx`, `.test.tsx`, `index.ts`) present on disk.',
+        'A component `<Name>/<Name>.tsx` under `<componentRoot>/<feature>/...` must have its sibling set (`.hooks.ts`, `.types.ts`, `.stories.tsx`, `.test.tsx`, `index.ts`) present on disk.',
     },
     schema: [optionSchema],
     messages: {
       missingSiblings:
-        'Component `{{name}}` is missing sibling file(s): {{missing}}. Every component folder must carry its required sibling set.',
+        'Component `{{name}}` is missing sibling file(s): {{missing}}. Every component folder must carry its hooks, types, stories, test, and index barrel.',
     },
   },
   defaultOptions: [

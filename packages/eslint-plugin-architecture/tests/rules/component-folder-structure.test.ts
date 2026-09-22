@@ -13,11 +13,6 @@ ruleTester.run('component-folder-structure', componentFolderStructureRule, {
       code: COMPONENT,
       filename: 'tests/fixtures/components/board/Complete/Complete.tsx',
     },
-    // A presentational component needs no `.hooks.ts`: the default omits it.
-    {
-      code: COMPONENT,
-      filename: 'tests/fixtures/components/board/Presentational/Presentational.tsx',
-    },
     // Nested component folders are still component folders and must be checked.
     {
       code: COMPONENT,
@@ -90,20 +85,6 @@ ruleTester.run('component-folder-structure', componentFolderStructureRule, {
       filename: 'tests/fixtures/widgets/panel/Bare/Bare.tsx',
       options: [{ componentRoot: 'widgets' }],
       errors: [{ messageId: 'missingSiblings' }],
-    },
-    // Opting back in: listing `.hooks.ts` reports the folder that has none.
-    {
-      code: COMPONENT,
-      filename: 'tests/fixtures/components/board/Presentational/Presentational.tsx',
-      options: [
-        { requiredSiblings: ['.hooks.ts', '.types.ts', '.stories.tsx', '.test.tsx', 'index.ts'] },
-      ],
-      errors: [
-        {
-          messageId: 'missingSiblings',
-          data: { name: 'Presentational', missing: 'Presentational.hooks.ts' },
-        },
-      ],
     },
     // De-projecting: a complete default folder still reds under a stricter
     // required set it does not satisfy (no `.parts.tsx` on disk).

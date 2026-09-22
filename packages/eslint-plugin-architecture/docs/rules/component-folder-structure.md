@@ -1,18 +1,19 @@
 # `noctcore-architecture/component-folder-structure`
 
-> A component entry file must ship its sibling set (types, story, test, barrel) on disk.
+> A component entry file must ship its full sibling set (hooks, types, story, test, barrel) on disk.
 
 ## Why
 
-In a folder-per-component layout, a component is a folder — not a lone `.tsx`. When the types
-(`.types.ts`), the story (`.stories.tsx`), the test (`.test.tsx`) and the `index.ts` barrel always
-travel with the component, refactors stay local and nothing is quietly untested or undocumented.
-This rule enforces that colocation by construction.
+In a folder-per-component layout, a component is a folder — not a lone `.tsx`. When the logic
+(`.hooks.ts`), the types (`.types.ts`), the story (`.stories.tsx`), the test (`.test.tsx`), and the
+`index.ts` barrel always travel with the component, refactors stay local and nothing is quietly
+untested or undocumented. This rule enforces that colocation by construction.
 
-`.hooks.ts` is **not** in the default set, deliberately. Requiring it produces empty modules: a
-component with no logic to extract gets a file containing `export {};` purely to satisfy the
-linter, which teaches the opposite of what the rule is for. Projects that do want a hooks file
-everywhere can add `.hooks.ts` to `requiredSiblings`.
+A purely presentational component has no logic to extract, and its `.hooks.ts` ends up as an
+`export {};` with a comment. That is the cost of the convention, and it is deliberate: the file
+being present means there is one obvious place for logic to go the day the component grows some,
+and a reviewer never has to ask where it lives. A project that disagrees drops `.hooks.ts` from
+`requiredSiblings` rather than carrying stub files.
 
 ## What it flags
 
@@ -23,11 +24,11 @@ component's directory and reports any sibling from the required set that is miss
 ```text prose reason="the rule checks for sibling files on disk"
 components/board/TaskCard/
   TaskCard.tsx          ← entry file (checked)
-  TaskCard.types.ts     ┐
-  TaskCard.stories.tsx  │ required siblings
-  TaskCard.test.tsx     │ (missing → reported)
+  TaskCard.hooks.ts     ┐
+  TaskCard.types.ts     │ required siblings
+  TaskCard.stories.tsx  │ (missing → reported)
+  TaskCard.test.tsx     │
   index.ts              ┘
-  TaskCard.hooks.ts     ← not required by default; add it to requiredSiblings if you want it
 ```
 
 Files that are not entry files (`task-card.tsx`, `Group/Widget.tsx`), files outside the
@@ -38,13 +39,13 @@ Files that are not entry files (`task-card.tsx`, `Group/Widget.tsx`), files outs
 | Option | Type | Default | Meaning |
 | --- | --- | --- | --- |
 | `componentRoot` | `string` | `'components'` | The directory segment the layout is anchored on. |
-| `requiredSiblings` | `string[]` | `['.types.ts', '.stories.tsx', '.test.tsx', 'index.ts']` | The sibling set. An entry starting with `.` is a name-relative suffix (`.hooks.ts` → `<Name>.hooks.ts`); any other entry is a literal filename (`index.ts`). |
+| `requiredSiblings` | `string[]` | `['.hooks.ts', '.types.ts', '.stories.tsx', '.test.tsx', 'index.ts']` | The sibling set. An entry starting with `.` is a name-relative suffix (`.hooks.ts` → `<Name>.hooks.ts`); any other entry is a literal filename (`index.ts`). |
 | `ignorePaths` | `string[]` | `['**/ui/**']` | Globs (supporting `**`, `*`, `?`) of paths to skip. |
 
 ```js
 'noctcore-architecture/component-folder-structure': ['error', {
   componentRoot: 'components',
-  requiredSiblings: ['.types.ts', '.stories.tsx', '.test.tsx', 'index.ts'],
+  requiredSiblings: ['.hooks.ts', '.types.ts', '.stories.tsx', '.test.tsx', 'index.ts'],
   ignorePaths: ['**/ui/**'],
 }]
 ```
