@@ -1,5 +1,13 @@
 # @noctcore/lint-meta-rules
 
+## 0.4.1
+
+### Patch Changes
+
+- Updated dependencies [[`bd6d25e`](https://github.com/noctcore/eslint-plugins/commit/bd6d25e7a0a0d46bd62b331d52acaf890171c429), [`bc5d82f`](https://github.com/noctcore/eslint-plugins/commit/bc5d82ff4871f2b865aaf0441516f73a58324fc6)]:
+  - @noctcore/eslint-plugin-contracts@0.6.0
+  - @noctcore/eslint-plugin-prisma@0.3.1
+
 ## 0.4.0
 
 ### Minor Changes
