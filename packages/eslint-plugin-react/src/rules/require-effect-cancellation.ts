@@ -17,7 +17,7 @@ type MessageIds = 'missingCancellation';
  * — and ONLY when the effect has no cancellation guard: no `AbortController`, no
  * `cancelled`/`isMounted`-style flag, no cleanup `return`. It is intentionally
  * conservative (any recognisable guard silences it) so a real finding is almost
- * always genuine. Reported as a suggestion-level warning, not autofixed.
+ * always genuine. Not autofixed.
  */
 
 const CANCEL_FLAG_RE =

@@ -21,7 +21,7 @@ type MessageIds = 'derivedState';
  *  - at least one argument actually reads a dependency (so constant-init effects
  *    are not flagged).
  * Anything with a branch, a side effect, an await, a cleanup, or an argument that
- * reaches outside the dep array bails out unflagged. Reported as a suggestion.
+ * reaches outside the dep array bails out unflagged. Not autofixed.
  */
 
 const EFFECT_NAMES = new Set(['useEffect', 'useLayoutEffect']);
