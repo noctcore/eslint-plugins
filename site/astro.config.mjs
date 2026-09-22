@@ -33,7 +33,13 @@ export default defineConfig({
       // this base covers the hand-written pages under site/.
       editLink: { baseUrl: 'https://github.com/noctcore/eslint-plugins/edit/main/site/' },
       sidebar: [
-        { label: 'Start here', items: [{ label: 'Getting started', link: '/getting-started/' }] },
+        {
+          label: 'Start here',
+          items: [
+            { label: 'Getting started', link: '/getting-started/' },
+            { label: 'Adopting in an existing codebase', link: '/adopting/' },
+          ],
+        },
         { label: 'Packages', items: [{ autogenerate: { directory: 'packages' } }] },
         {
           label: 'Rules',

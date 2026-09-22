@@ -7,6 +7,10 @@
  * 2. Every ESLint rule's baked-in `meta.docs.url` resolves to an emitted page.
  * 3. Every root-relative href/src in every page sits under the deploy base and
  *    resolves to an emitted file.
+ * 4. dist/rules.json exists, parses, has exactly one entry per rule doc, and
+ *    every `url` in it resolves to an emitted page. It is a public contract
+ *    (see src/lib/rules-index.ts), and a generated contract with no check rots.
+ * 5. dist/llms.txt exists and points at rules.json.
  */
 import { existsSync, readdirSync, readFileSync, statSync } from 'node:fs';
 import { dirname, join, resolve } from 'node:path';
@@ -77,9 +81,72 @@ for (const page of pages) {
   }
 }
 
+// 4. The machine-readable index. Entries are keyed the same way docs are
+// (package short name + rule name) so the comparison is exact in both
+// directions: a missing entry, an extra entry and a duplicate all fail.
+const RULES_JSON = join(DIST, 'rules.json');
+let indexEntries = 0;
+let indexUrlsChecked = 0;
+function shortNameOf(npmName: string): string {
+  return npmName.startsWith('@noctcore/eslint-plugin-') ? npmName.slice('@noctcore/eslint-plugin-'.length) : npmName.slice('@noctcore/'.length);
+}
+if (!existsSync(RULES_JSON)) {
+  failures.push('dist/rules.json was not emitted');
+} else {
+  let index: { count?: unknown; rules?: unknown } | null = null;
+  try {
+    index = JSON.parse(readFileSync(RULES_JSON, 'utf8'));
+  } catch (error) {
+    failures.push(`dist/rules.json does not parse: ${(error as Error).message}`);
+  }
+  const entries = Array.isArray(index?.rules) ? (index!.rules as { name?: unknown; package?: unknown; url?: unknown }[]) : null;
+  if (index && !entries) failures.push('dist/rules.json has no "rules" array');
+  if (entries) {
+    indexEntries = entries.length;
+    if (index!.count !== entries.length) failures.push(`rules.json: "count" is ${String(index!.count)} for ${entries.length} entries`);
+    const keys = entries.map((e) => (typeof e.package === 'string' && typeof e.name === 'string' ? `${shortNameOf(e.package)}/${e.name}` : '(malformed entry)'));
+    const docKeys = new Set(docs.map((doc) => `${doc.short}/${doc.rule}`));
+    const seen = new Set<string>();
+    for (const key of keys) {
+      if (seen.has(key)) failures.push(`rules.json: duplicate entry for ${key}`);
+      seen.add(key);
+      if (!docKeys.has(key)) failures.push(`rules.json: entry ${key} has no rule doc`);
+    }
+    for (const key of docKeys) {
+      if (!seen.has(key)) failures.push(`rules.json: no entry for rule doc ${key}`);
+    }
+    if (entries.length !== docs.length) failures.push(`rules.json: ${entries.length} entries for ${docs.length} rule docs`);
+    for (const [i, entry] of entries.entries()) {
+      const key = keys[i]!;
+      if (typeof entry.url !== 'string' || !entry.url.startsWith(`${SITE_ORIGIN}${SITE_BASE}/`)) {
+        failures.push(`rules.json: ${key}: url is not on the site: ${String(entry.url)}`);
+        continue;
+      }
+      indexUrlsChecked++;
+      if (!emitted(new URL(entry.url).pathname)) {
+        failures.push(`rules.json: ${key}: url does not resolve to an emitted page: ${entry.url}`);
+      }
+    }
+  }
+}
+
+// 5. llms.txt sits at the site root and points at the index.
+const LLMS_TXT = join(DIST, 'llms.txt');
+if (!existsSync(LLMS_TXT)) {
+  failures.push('dist/llms.txt was not emitted');
+} else {
+  const text = readFileSync(LLMS_TXT, 'utf8');
+  if (!text.startsWith('# ')) failures.push('llms.txt does not start with an H1');
+  for (const route of ['rules.json', 'rules/']) {
+    const url = `${SITE_ORIGIN}${SITE_BASE}/${route}`;
+    if (!text.includes(`](${url})`)) failures.push(`llms.txt does not link ${url}`);
+  }
+}
+
 console.log(
   `check-build: ${pages.length} HTML pages, ${rulePages.length} rule pages for ${docs.length} docs, ` +
-    `${urlsChecked} meta.docs.url checked, ${linksChecked} root-relative links checked`,
+    `${urlsChecked} meta.docs.url checked, ${linksChecked} root-relative links checked, ` +
+    `rules.json ${indexEntries} entries with ${indexUrlsChecked} urls checked`,
 );
 if (failures.length > 0) {
   const unique = [...new Set(failures)];
