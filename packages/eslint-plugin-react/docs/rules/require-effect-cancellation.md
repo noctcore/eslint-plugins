@@ -47,8 +47,11 @@ This rule has no options.
 
 ## Severity
 
-Reported as a suggestion-level warning; it is a heuristic, not autofixable, and ships as `warn` in
-the `recommended` preset.
+Ships as `error` in the `recommended` preset. It is a heuristic and not autofixable, which is an
+argument for making it precise rather than for making it advisory: a preset that ships `warn`
+gives a consumer a severity they cannot act on, and a project that forbids `warn` outright
+cannot use the preset at all. A state update after an await with nothing to cancel it is a real
+bug, and any recognisable guard (an AbortController, a cancel flag, a cleanup) silences it.
 
 ## When not to use it
 

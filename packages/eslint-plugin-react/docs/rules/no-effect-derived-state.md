@@ -40,7 +40,10 @@ This rule has no options.
 
 ## Severity
 
-Reported as a suggestion; it is a heuristic and ships as `warn` in the `recommended` preset.
+Ships as `error` in the `recommended` preset. It is a heuristic, which is an argument for keeping
+it narrow rather than advisory: it fires only on an effect whose whole body is `setX(...)` of
+values read from its own deps, and anything with a branch, a call or a cleanup bails out
+unflagged.
 
 ## When not to use it
 
