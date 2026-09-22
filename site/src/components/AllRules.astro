@@ -1,0 +1,82 @@
+---
+/**
+ * Every rule across every package on one page, generated from the catalog.
+ * Today a rule is reachable only through its package; this is the page for
+ * "which noctcore rule catches X?", for a human scanning and for an LLM that
+ * has been asked. Nothing here is typed by hand: the counts, the ids and the
+ * descriptions all come from the plugins' exported metadata.
+ */
+import { codeSpans, href, packages, presetLabel } from '../lib/catalog';
+
+const rows = packages.flatMap((pkg) => pkg.rules.map((rule) => ({ pkg, rule })));
+const total = rows.length;
+const plugins = packages.filter((pkg) => pkg.kind === 'eslint-plugin');
+const lintMeta = packages.filter((pkg) => pkg.kind === 'lint-meta');
+const pluginRules = rows.filter(({ pkg }) => pkg.kind === 'eslint-plugin');
+const onInPreset = pluginRules.filter(({ rule }) => rule.recommended === 'error').length;
+const registeredOff = pluginRules.filter(({ rule }) => rule.recommended === 'off').length;
+const optIn = pluginRules.filter(({ rule }) => rule.recommended === null).length;
+const lintMetaCount = rows.length - pluginRules.length;
+const typed = rows.filter(({ rule }) => rule.typeInfo !== 'none');
+const typeLabel = { required: 'required', optional: 'optional', none: '' } as const;
+/** `react` for a plugin, `lint-meta-rules` for the catalog: the id a reader searches for. */
+const ruleId = (pkg: (typeof packages)[number], rule: (typeof rows)[number]['rule']) =>
+  pkg.kind === 'eslint-plugin' ? rule.id : `${pkg.short}/${rule.name}`;
+---
+
+<p>
+  {total} rules across {plugins.length} ESLint plugins and {lintMeta.length} lint-meta catalog. Of the{' '}
+  {pluginRules.length} ESLint rules, {onInPreset} are switched on by a <code>recommended</code> preset,{' '}
+  {registeredOff} ship registered but <code>off</code>, and {optIn} are left out of every preset and enabled one
+  by one. The {lintMetaCount} lint-meta rules run under{' '}
+  <a href={href('packages/lint-meta-rules/')}><code>@noctcore/harness</code></a>, not ESLint.{' '}
+  {typed.length} rules read type information:{' '}
+  {typed.map(({ rule }, i) => (
+    <>
+      <code>{rule.id}</code> ({typeLabel[rule.typeInfo as keyof typeof typeLabel]}){i < typed.length - 1 ? ', ' : '.'}
+    </>
+  ))}
+</p>
+
+<div class="rule-table-wrap">
+  <table class="rule-table rule-table-all">
+    <thead>
+      <tr>
+        <th scope="col">Rule</th>
+        <th scope="col">What it reports</th>
+        <th scope="col">Preset</th>
+        <th scope="col">Types</th>
+      </tr>
+    </thead>
+    <tbody>
+      {
+        rows.map(({ pkg, rule }) => (
+          <tr>
+            <td>
+              <a href={href(rule.route)}>
+                <code>{ruleId(pkg, rule)}</code>
+              </a>
+            </td>
+            <td>{codeSpans(rule.description).map(({ part, code }) => (code ? <code>{part}</code> : part))}</td>
+            <td>
+              {pkg.kind === 'eslint-plugin' ? (
+                <span class:list={['pill', `pill-${presetLabel(rule.recommended).replace(' ', '-')}`]}>
+                  {presetLabel(rule.recommended)}
+                </span>
+              ) : (
+                <span class="pill pill-harness">harness</span>
+              )}
+            </td>
+            <td>{typeLabel[rule.typeInfo as keyof typeof typeLabel]}</td>
+          </tr>
+        ))
+      }
+    </tbody>
+  </table>
+</div>
+<p class="rule-table-legend">
+  <strong>Preset</strong>: severity in the package's <code>configs.recommended</code>; <em>off</em> means the
+  preset registers the rule switched off, <em>not listed</em> means it leaves the rule out, <em>harness</em>
+  means the rule is a lint-meta rule with no ESLint preset. <strong>Types</strong>: whether the rule needs a
+  type-checked program (<code>parserOptions.projectService</code>), or uses one when present.
+</p>

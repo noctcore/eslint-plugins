@@ -25,6 +25,7 @@ import {
   PACKAGES_DIR,
   REPO_ROOT,
   REPO_URL,
+  SITE_BASE,
   listRuleDocs,
   loadInventory,
   ruleRoute,
@@ -144,7 +145,10 @@ function plainText(markdown: string): string {
 
 function factsLine(pkg: PackageEntry, rule: RuleEntry): string {
   if (pkg.kind === 'lint-meta') {
+    // A reader who lands here from search has no other route to what runs a
+    // lint-meta rule: not ESLint, the harness. The package page explains it.
     return [
+      `**Runs under:** [\`@noctcore/harness\` lint-meta](${SITE_BASE}/packages/${pkg.short}/), not ESLint`,
       `**Factory:** \`${rule.factory}\` from \`${rule.entry}\``,
       `**Category:** \`${rule.category}\``,
       `**Fails CI by default:** ${rule.ciCritical ? 'yes' : 'no'}`,

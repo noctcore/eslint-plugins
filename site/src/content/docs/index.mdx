@@ -28,7 +28,8 @@ import AllQuickStarts from '../../components/AllQuickStarts.astro';
 **Yes, if** you run a TypeScript codebase on ESLint 9 or newer with flat config, and the bugs that reach
 review are structural: a component that drills props five levels down, a `fetch` with no timeout, a
 Prisma write outside its transaction, a log line that interpolates a user's email. These plugins catch
-those with high-precision, mostly syntactic rules, and every rule is `error` or `off`, never `warn`.
+those with high-precision, mostly syntactic rules, and every rule is `error` or `off`, never `warn`
+([why](/eslint-plugins/getting-started/#severity-policy)).
 
 **Probably not, if** you are on legacy `.eslintrc` config (these are flat-config only), you want a
 general style guide (use `typescript-eslint` and a formatter; these plugins assume both), or your
@@ -39,6 +40,8 @@ Every package is independently versioned. Install the one that matches the probl
 ## Packages
 
 <PackageGrid />
+
+Looking for one rule? [Every rule on one page](/eslint-plugins/rules/), across all packages.
 
 ## Install and configure
 

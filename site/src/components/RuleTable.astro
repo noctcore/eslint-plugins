@@ -3,7 +3,7 @@
  * A package's rule table, generated from the plugin's exported `rules` and each
  * rule's `meta` via the catalog. Nothing in it is typed by hand.
  */
-import { getPackage, href } from '../lib/catalog';
+import { codeSpans, getPackage, href, presetLabel } from '../lib/catalog';
 
 interface Props {
   pkg: string;
@@ -11,12 +11,7 @@ interface Props {
 
 const pkg = getPackage(Astro.props.pkg);
 const isPlugin = pkg.kind === 'eslint-plugin';
-const presetLabel = (severity: string | null) =>
-  severity === 'error' ? 'error' : severity === 'off' ? 'off' : 'not listed';
 const typeLabel = { required: 'required', optional: 'optional', none: '' } as const;
-// Rule descriptions use Markdown code spans; odd segments of a split on the
-// backtick are code.
-const spans = (text: string) => text.split('`').map((part, i) => ({ part, code: i % 2 === 1 }));
 ---
 
 <div class="rule-table-wrap">
@@ -51,7 +46,7 @@ const spans = (text: string) => text.split('`').map((part, i) => ({ part, code: 
                   <code>{rule.name}</code>
                 </a>
               </td>
-              <td>{spans(rule.description).map(({ part, code }) => (code ? <code>{part}</code> : part))}</td>
+              <td>{codeSpans(rule.description).map(({ part, code }) => (code ? <code>{part}</code> : part))}</td>
               <td>
                 <span class:list={['pill', `pill-${presetLabel(rule.recommended).replace(' ', '-')}`]}>
                   {presetLabel(rule.recommended)}
@@ -67,7 +62,7 @@ const spans = (text: string) => text.split('`').map((part, i) => ({ part, code: 
                   <code>{rule.name}</code>
                 </a>
               </td>
-              <td>{spans(rule.description).map(({ part, code }) => (code ? <code>{part}</code> : part))}</td>
+              <td>{codeSpans(rule.description).map(({ part, code }) => (code ? <code>{part}</code> : part))}</td>
               <td>
                 <code>{rule.category}</code>
               </td>

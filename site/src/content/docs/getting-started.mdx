@@ -52,8 +52,11 @@ export default [
 ## 4. One rule needs type information
 
 `noctcore-prisma/mutation-entry-must-reach-audit` follows calls across files, so it needs a
-type-checked program. Linting it without one is an error, not a silent pass. Every other rule is
-syntactic and runs without type information.
+type-checked program. Linting it without one is an error, not a silent pass. One more rule,
+`noctcore-contracts/translation-key-exists`, runs without type information and uses it when present
+(to resolve a namespace from an identifier's type). Every other rule is syntactic. The **Types**
+column of each package's rule table, and the [all-rules index](/eslint-plugins/rules/), say which is
+which.
 
 ```js
 export default [
