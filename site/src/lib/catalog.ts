@@ -31,3 +31,15 @@ export function importName(short: string): string {
 export function enabledInPreset(pkg: CatalogPackage): number {
   return pkg.rules.filter((rule) => rule.recommended === 'error').length;
 }
+
+/**
+ * Rule descriptions use Markdown code spans. Split on the backtick: odd
+ * segments are code. Shared by every table that renders a description.
+ */
+export function codeSpans(text: string): { part: string; code: boolean }[] {
+  return text.split('`').map((part, i) => ({ part, code: i % 2 === 1 }));
+}
+
+export function presetLabel(severity: string | null): 'error' | 'off' | 'not listed' {
+  return severity === 'error' ? 'error' : severity === 'off' ? 'off' : 'not listed';
+}

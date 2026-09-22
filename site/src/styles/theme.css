@@ -1,6 +1,9 @@
 /* noctcore docs theme.
-   A night palette: ink-violet surfaces, a lavender accent and a single amber
-   highlight. Starlight is dark by default, so :root is the dark theme and
+   The noctcore brand: a night sky (near-black navy, not violet), a crescent moon
+   that runs from violet (#8b7cff) on one limb to cyan (#4dd0e1) on the other,
+   and a white wordmark over a short violet-to-cyan rule. Surfaces here are that
+   navy; the gradient is the signature and cyan does the link and highlight work.
+   Starlight is dark by default, so :root is the dark theme and
    :root[data-theme='light'] overrides it. */
 
 :root {
@@ -8,53 +11,132 @@
   --sl-font-mono: 'JetBrains Mono Variable', ui-monospace, 'SFMono-Regular', monospace;
   --nc-font-display: 'Space Grotesk Variable', ui-sans-serif, system-ui, sans-serif;
 
-  --sl-color-accent-low: #221c45;
-  --sl-color-accent: #8b78f0;
-  --sl-color-accent-high: #d4cbff;
+  /* Brand constants. Decorative only (gradients, the moon): never body text. */
+  --nc-violet: #8b7cff;
+  --nc-cyan: #4dd0e1;
+  --nc-gradient: linear-gradient(90deg, var(--nc-violet), var(--nc-cyan));
+  --nc-night: #0b1020;
 
-  --sl-color-white: #f4f2fb;
-  --sl-color-gray-1: #e2def2;
-  --sl-color-gray-2: #bab4cf;
-  --sl-color-gray-3: #8d87a6;
-  --sl-color-gray-4: #635d7c;
-  --sl-color-gray-5: #3a3552;
-  --sl-color-gray-6: #1d1a2e;
-  --sl-color-gray-7: #151322;
-  --sl-color-black: #0e0c18;
+  /* Starlight maps text-accent to accent-high in dark mode: links, the
+     selected sidebar item and the primary button all use it, so it is the
+     brand cyan. accent (violet) drives hover borders and focus. */
+  --sl-color-accent-low: #1b2450;
+  --sl-color-accent: #8b7cff;
+  --sl-color-accent-high: #5fd6e5;
 
-  --nc-amber: #f2c46d;
+  --sl-color-white: #eef2fb;
+  --sl-color-gray-1: #dde3f1;
+  --sl-color-gray-2: #b7c0d8;
+  --sl-color-gray-3: #939fbf;
+  --sl-color-gray-4: #5b6a90;
+  --sl-color-gray-5: #26324f;
+  --sl-color-gray-6: #141c33;
+  --sl-color-gray-7: #10172b;
+  --sl-color-black: #0b1020;
+
+  /* Cyan as text: the card meta line. Same hue family as the links. */
+  --nc-glow: #5fd6e5;
   --nc-bad: #ff7b72;
   --nc-bad-bg: rgba(255, 123, 114, 0.1);
   --nc-good: #56d68f;
   --nc-good-bg: rgba(86, 214, 143, 0.1);
-  --nc-card: #151322;
-  --nc-card-hover: #1d1a2e;
+  --nc-card: #10172b;
+  --nc-card-hover: #161f3a;
 
   --sl-content-width: 50rem;
 }
 
 :root[data-theme='light'] {
-  --sl-color-accent-low: #e9e4ff;
-  --sl-color-accent: #5a43d6;
-  --sl-color-accent-high: #2b1f73;
+  /* Light mode is genuinely light: white paper, navy ink, the violet darkened
+     until it holds 4.5:1 as link text, cyan deepened to teal for the same
+     reason. The gradient constants stay the brand hexes because they only
+     ever sit under navy text or on their own. */
+  --sl-color-accent-low: #e7e5ff;
+  --sl-color-accent: #5a4ad6;
+  --sl-color-accent-high: #2a2470;
 
-  --sl-color-white: #15131f;
-  --sl-color-gray-1: #262335;
-  --sl-color-gray-2: #423e55;
-  --sl-color-gray-3: #625d78;
-  --sl-color-gray-4: #8e89a3;
-  --sl-color-gray-5: #cfcbdc;
-  --sl-color-gray-6: #eeecf5;
-  --sl-color-gray-7: #f7f6fb;
+  --sl-color-white: #0b1020;
+  --sl-color-gray-1: #232c44;
+  --sl-color-gray-2: #3a4560;
+  --sl-color-gray-3: #5a6684;
+  --sl-color-gray-4: #7b86a4;
+  --sl-color-gray-5: #c9d1e3;
+  --sl-color-gray-6: #e9edf7;
+  --sl-color-gray-7: #f5f7fc;
   --sl-color-black: #ffffff;
 
-  --nc-amber: #9a6400;
+  --nc-glow: #0b6f7e;
   --nc-bad: #c22f26;
   --nc-bad-bg: rgba(194, 47, 38, 0.07);
   --nc-good: #1a7f47;
   --nc-good-bg: rgba(26, 127, 71, 0.07);
-  --nc-card: #ffffff;
-  --nc-card-hover: #f7f6fb;
+  --nc-card: #f5f7fc;
+  --nc-card-hover: #eef1f9;
+}
+
+/* Night sky. A faint violet and cyan glow at the top of the page in dark
+   mode, the way the banner lifts from black at the horizon. Light mode gets
+   none of this: paper stays paper. */
+:root:not([data-theme='light']) body {
+  background-image:
+    radial-gradient(70rem 30rem at 20% -8rem, rgba(139, 124, 255, 0.16), transparent 65%),
+    radial-gradient(50rem 24rem at 90% -10rem, rgba(77, 208, 225, 0.1), transparent 65%);
+  background-repeat: no-repeat;
+}
+
+/* The wordmark is monospace white over a gradient rule in the banner; the
+   site title follows it. */
+.site-title {
+  font-family: var(--sl-font-mono);
+  font-weight: 600;
+  letter-spacing: -0.02em;
+  color: var(--sl-color-white) !important;
+}
+
+.site-title span {
+  text-overflow: ellipsis;
+}
+
+/* Below Starlight's 50em breakpoint the header has room for the logo, the
+   search and menu buttons and about 15rem of title. Monospace at h4 size
+   clips "plugins" on a 390px phone, base size fits. */
+@media (max-width: 50em) {
+  .site-title {
+    font-size: var(--sl-text-base);
+  }
+}
+
+/* Hero: the banner's short violet-to-cyan rule under the title, and the
+   primary action carries the gradient with night-navy text, which holds AA
+   against both ends in both modes. */
+.hero h1::after {
+  content: '';
+  display: block;
+  width: 6rem;
+  height: 0.25rem;
+  margin-top: 1rem;
+  border-radius: 999px;
+  background: var(--nc-gradient);
+}
+
+/* Starlight centres the hero below 50rem and starts it above; the rule
+   follows the title. */
+@media (max-width: 49.99rem) {
+  .hero h1::after {
+    margin-inline: auto;
+  }
+}
+
+.hero .sl-link-button.primary {
+  background: var(--nc-gradient);
+  border-color: transparent;
+  color: var(--nc-night);
+}
+
+.hero .sl-link-button.primary:hover,
+.hero .sl-link-button.primary:focus-visible {
+  color: var(--nc-night);
+  filter: brightness(1.08);
 }
 
 .site-title,
@@ -138,6 +220,21 @@ h1#_top,
   overflow-wrap: anywhere;
 }
 
+/* At phone width a 30% name column is under 100px and rule names wrap one
+   syllable per line. Give the name column a floor and let .rule-table-wrap
+   scroll sideways instead. The options tables in the rule docs have the same
+   problem in their last column ("Meaning"), so it gets a floor too. */
+@media (max-width: 40rem) {
+  .sl-markdown-content .rule-table td:first-child {
+    width: auto;
+    min-width: 11rem;
+  }
+
+  .sl-markdown-content table:not(.rule-table) td:last-child {
+    min-width: 16rem;
+  }
+}
+
 .pill {
   display: inline-block;
   padding: 0.05rem 0.5rem;
@@ -145,7 +242,7 @@ h1#_top,
   font-size: var(--sl-text-xs);
   font-weight: 600;
   white-space: nowrap;
-  border: 1px solid var(--sl-color-gray-5);
+  border: 1px solid var(--sl-color-gray-4);
   color: var(--sl-color-gray-2);
 }
 
@@ -153,6 +250,12 @@ h1#_top,
   color: var(--sl-color-accent-high);
   background: var(--sl-color-accent-low);
   border-color: transparent;
+}
+
+/* The all-rules index shows the full id (`noctcore-react/...`), which is
+   wider than a bare name: the first column gets more of the row. */
+.sl-markdown-content .rule-table-all td:first-child {
+  width: 36%;
 }
 
 .rule-table-legend,
@@ -182,6 +285,8 @@ h1#_top,
 }
 
 .package-card a {
+  position: relative;
+  overflow: hidden;
   display: flex;
   flex-direction: column;
   gap: 0.4rem;
@@ -195,10 +300,25 @@ h1#_top,
   transition: border-color 0.15s ease, background 0.15s ease;
 }
 
+.package-card a::before {
+  content: '';
+  position: absolute;
+  inset: 0 0 auto 0;
+  height: 3px;
+  background: var(--nc-gradient);
+  opacity: 0;
+  transition: opacity 0.15s ease;
+}
+
 .package-card a:hover,
 .package-card a:focus-visible {
   border-color: var(--sl-color-accent);
   background: var(--nc-card-hover);
+}
+
+.package-card a:hover::before,
+.package-card a:focus-visible::before {
+  opacity: 1;
 }
 
 .package-card-name {
@@ -216,7 +336,7 @@ h1#_top,
 .package-card-meta {
   margin-top: auto;
   font-size: var(--sl-text-xs);
-  color: var(--nc-amber);
+  color: var(--nc-glow);
 }
 
 .site-footer-note {

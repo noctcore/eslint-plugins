@@ -1,0 +1,15 @@
+---
+title: All rules
+description: Every noctcore rule across every package on one page, with what each one reports, its preset severity and whether it needs type information.
+sidebar:
+  order: 0
+tableOfContents: false
+---
+
+import AllRules from '../../components/AllRules.astro';
+
+One row per rule, every package, generated from each plugin's exported metadata. Each rule links to its page,
+which has the options it takes and the Incorrect and Correct examples that run in that package's test suite.
+Use the site search (<kbd>⌘</kbd> <kbd>K</kbd>) or your browser's find on this page.
+
+<AllRules />
