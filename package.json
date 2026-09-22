@@ -17,10 +17,11 @@
     "test:eslint10": "bun run --filter '*' test",
     "test:eslint9": "NODE_OPTIONS=--import=@noctcore/eslint-test-utils/eslint9 bun run --filter '*' test",
     "changeset": "changeset",
-    "version-packages": "changeset version",
+    "version-packages": "changeset version && bun run sync:versions",
     "release": "bun run build && changeset publish",
     "docs:dev": "bun run --filter @noctcore/docs-site dev",
-    "docs:build": "bun run --filter @noctcore/docs-site docs:build"
+    "docs:build": "bun run --filter @noctcore/docs-site docs:build",
+    "sync:versions": "bun scripts/sync-plugin-versions.ts"
   },
   "devDependencies": {
     "@changesets/changelog-github": "^0.5.0",
