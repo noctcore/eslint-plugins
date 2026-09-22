@@ -6,16 +6,16 @@
 
 A dynamically-interpolated command string handed to a shell is the classic command-injection sink:
 
-```ts
-// ✗ a crafted `branch` runs arbitrary commands
+```ts bad
+// a crafted `branch` runs arbitrary commands
 exec(`git checkout ${branch}`);
 ```
 
 If `branch` is `main; rm -rf /`, the shell happily runs both. The fix is to pass the program and its
 arguments separately, so the OS never re-parses a shell string:
 
-```ts
-// ✓ no shell — arguments cannot inject
+```ts good
+// no shell: arguments cannot inject
 execFile('git', ['checkout', branch]);
 ```
 
@@ -29,12 +29,14 @@ Precision is the whole point — this rule fires **only** on the genuinely dange
   when an options object passes `shell: true` (or a shell path string). The array-args, no-shell forms
   are safe and left entirely alone.
 
-```ts
-// ✓ left alone — no shell
+```ts good
+// left alone: no shell
 spawn('ls', [dir]);
 execFile('git', ['log', branch]);
+```
 
-// ✗ shell:true re-parses the interpolated command
+```ts bad
+// shell:true re-parses the interpolated command
 spawn(`cmd ${x}`, { shell: true });
 ```
 
@@ -47,7 +49,7 @@ There is **no autofix**: the safe rewrite changes the call shape (string → pro
 
 ## Options
 
-```ts
+```ts prose reason="the options type, not a lint example"
 type Options = {
   /**
    * Extra callee names to treat as always-shell command runners (checked like `exec`).

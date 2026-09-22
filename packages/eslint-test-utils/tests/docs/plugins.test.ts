@@ -33,7 +33,7 @@ const PLUGINS: Record<string, { readonly plugin: DocPlugin; readonly status: Doc
   observability: { plugin: observability, status: 'executed' },
   prisma: { plugin: prisma, status: 'pending' },
   react: { plugin: react, status: 'pending' },
-  security: { plugin: security, status: 'pending' },
+  security: { plugin: security, status: 'executed' },
 };
 
 const packagesDir = fileURLToPath(new URL('../../../', import.meta.url));

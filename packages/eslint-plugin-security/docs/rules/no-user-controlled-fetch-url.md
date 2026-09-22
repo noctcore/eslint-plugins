@@ -12,26 +12,26 @@ SSRF is control of the **host**, not the path. `fetch(`/api/todos/${id}`)` can o
 current origin however hostile `id` is, so the rule does not demand a plain literal. What it demands
 is that the author wrote the origin, and closed it, before any runtime value appears.
 
-```ts
-// ✗ the whole URL is runtime
+```ts bad reports=3
+// the whole URL is runtime
 await fetch(url);
 
-// ✗ runtime value in the host position
+// runtime value in the host position
 await fetch(`https://${tenant}.example.com/api`);
 
-// ✗ the userinfo trick: `path = "@evil.com/x"` resolves to host evil.com,
+// the userinfo trick: `path = "@evil.com/x"` resolves to host evil.com,
 //   because everything before `@` in the authority is userinfo
 await fetch(`https://api.example.com${path}`);
 ```
 
-```ts
-// ✓ relative, same origin
+```ts good
+// relative, same origin
 await fetch(`/api/todos/${id}`);
 
-// ✓ authority closed by `/` before the first `${...}`
+// authority closed by `/` before the first `${...}`
 await fetch(`https://api.example.com/users/${id}`);
 
-// ✓ a `const` bound to a literal is resolved before reporting
+// a `const` bound to a literal is resolved before reporting
 const TURNSTILE_VERIFY_URL = 'https://challenges.cloudflare.com/turnstile/v0/siteverify';
 await fetch(TURNSTILE_VERIFY_URL, { method: 'POST', body });
 ```
@@ -58,7 +58,7 @@ protocol-relative.
 
 ## Options
 
-```ts
+```ts prose reason="the options type, not a lint example"
 type CalleeSpec = {
   /** Function or method name. */
   name: string;
@@ -109,13 +109,15 @@ A base URL that comes from config is runtime to a syntactic rule. Name it once:
 }],
 ```
 
-```ts
-// ✓ with the options above
+```ts good options={"trustedOrigins":["getApiBaseUrl()","process.env.API_URL"],"trustedPaths":["CSRF_TOKEN_PATH"],"sanitizers":["toSafePath"]}
+// with the options above
 await fetch(`${getApiBaseUrl()}/todos/${id}`);
 await fetch(getApiBaseUrl() + CSRF_TOKEN_PATH); // imported constant, declared trusted
 await fetch(`${process.env.API_URL}${toSafePath(input)}`);
+```
 
-// ✗ still flagged: nothing closes the authority after the trusted origin
+```ts bad options={"trustedOrigins":["getApiBaseUrl()","process.env.API_URL"],"trustedPaths":["CSRF_TOKEN_PATH"],"sanitizers":["toSafePath"]}
+// still flagged: nothing closes the authority after the trusted origin
 await fetch(`${getApiBaseUrl()}${input}`);
 ```
 

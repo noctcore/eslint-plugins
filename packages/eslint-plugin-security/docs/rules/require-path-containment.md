@@ -4,8 +4,8 @@
 
 ## Why
 
-```ts
-// ✗ `../../../etc/passwd` escapes the intended directory
+```ts bad
+// `../../../etc/passwd` escapes the intended directory
 const file = path.join(baseDir, req.params.file);
 ```
 
@@ -13,8 +13,8 @@ A crafted `req.params.file` of `../../etc/passwd` walks out of `baseDir` and rea
 The safe pattern is to resolve, then verify the result still lives under the base directory before
 touching the filesystem:
 
-```ts
-// ✓ verify containment
+```ts good
+// verify containment
 const resolved = path.resolve(baseDir, req.params.file);
 if (!resolved.startsWith(baseDir)) throw new ForbiddenError();
 ```
@@ -32,8 +32,8 @@ the escape-hatch comment convention (below). Because a sanitized value is normal
 first (`const safe = clean(req.x)` → `path.join(base, safe)`), that shape is **not** a direct `req.*`
 argument and is never flagged.
 
-```ts
-// ✓ sanitized into a local — not a direct req.* argument
+```ts good
+// sanitized into a local: not a direct req.* argument
 const safe = sanitize(req.params.file);
 return path.join(base, safe);
 ```
@@ -43,7 +43,7 @@ return path.join(base, safe);
 If a flagged site is already safe, add a comment containing `path-containment` anywhere in the
 function:
 
-```ts
+```ts good
 function serve(req) {
   // path-containment: base is a fixed constant and req.params.file is validated upstream
   return path.join(base, req.params.file);
@@ -59,7 +59,7 @@ soundly, and guessing would flood the codebase with false positives. Only the un
 
 ## Options
 
-```ts
+```ts prose reason="the options type, not a lint example"
 type Options = {
   /** Root object names treated as request-shaped input. Default: ['req', 'request']. */
   requestObjects?: string[];

@@ -10,20 +10,22 @@ checks for a fixed origin (shared with
 
 ## Why
 
-```ts
-// ✗ `?next=https://evil.com` sends the user anywhere
+```ts bad reports=2
+// `?next=https://evil.com` sends the user anywhere
 res.redirect(req.query.next);
 
-// ✗ the userinfo trick: `returnTo = "@evil.com"` makes the host evil.com
+// the userinfo trick: `returnTo = "@evil.com"` makes the host evil.com
 res.redirect(302, `${appUrl}${returnTo}`);
 ```
 
-```ts
-// ✓ literal or same-origin path
+```ts good
+// literal or same-origin path
 res.redirect('/login');
 res.redirect(302, `/users/${id}`);
+```
 
-// ✓ trusted origin closed by `/`, or followed by a sanitized path (see options)
+```ts good options={"trustedOrigins":["this.shared.appUrl","buildAuthErrorRedirect()"],"sanitizers":["sanitizeReturnTo"],"trustedPaths":["OAUTH_TWO_FACTOR_CHALLENGE_PATH"]}
+// trusted origin closed by `/`, or followed by a sanitized path (see options)
 res.redirect(302, `${this.shared.appUrl}/dashboard`);
 res.redirect(302, `${this.shared.appUrl}${sanitizeReturnTo(flow.returnTo)}`);
 ```
@@ -41,7 +43,7 @@ or a runtime value right after an origin that no `/`, `?` or `#` has closed is f
 
 ## Options
 
-```ts
+```ts prose reason="the options type, not a lint example"
 type CalleeSpec = {
   name: string;          // method or function name
   object?: string;       // receiver source text; omit for a bare call
@@ -74,11 +76,13 @@ When the URL argument is an object literal, the URL is read from its `urlPropert
 and an object without that property is skipped. That is what keeps TanStack Router quiet:
 `throw redirect({ to: '/dashboard' })` names a route, while `redirect({ href })` is a real location.
 
-```ts
-// ✓ a route, not a location
+```ts good
+// a route, not a location
 throw redirect({ to: '/auth/login', search: { redirect: location.href } });
+```
 
-// ✗ a runtime location
+```ts bad
+// a runtime location
 throw redirect({ href: search.next });
 ```
 
@@ -109,13 +113,14 @@ A worked example for a NestJS OAuth controller that redirects back into the web 
 }],
 ```
 
-```ts
-// ✓
+```ts good options={"trustedOrigins":["this.shared.appUrl","buildAuthErrorRedirect()"],"sanitizers":["sanitizeReturnTo"],"trustedPaths":["OAUTH_TWO_FACTOR_CHALLENGE_PATH"]}
 res.redirect(302, `${this.shared.appUrl}${OAUTH_TWO_FACTOR_CHALLENGE_PATH}`);
 res.redirect(302, `${this.shared.appUrl}${sanitizeReturnTo(flow.returnTo)}`);
 res.redirect(302, buildAuthErrorRedirect(this.shared.appUrl, code));
+```
 
-// ✗ still flagged: `flow.returnTo` was sanitized somewhere else, which this site cannot see
+```ts bad options={"trustedOrigins":["this.shared.appUrl","buildAuthErrorRedirect()"],"sanitizers":["sanitizeReturnTo"],"trustedPaths":["OAUTH_TWO_FACTOR_CHALLENGE_PATH"]}
+// still flagged: `flow.returnTo` was sanitized somewhere else, which this site cannot see
 res.redirect(302, `${this.shared.appUrl}${flow.returnTo}`);
 ```
 
