@@ -33,6 +33,20 @@ ruleTester.run('money-must-be-decimal', moneyMustBeDecimalRule, {
       code: 'class Order { total: number; }',
       options: [{ fieldPatterns: ['amount', 'price'] }],
     },
+    // A Stripe-style integer amount in minor units, declared as such.
+    {
+      code: 'class PaymentIntent { amount: number; }',
+      options: [{ minorUnitPatterns: ['^amount$'] }],
+    },
+    {
+      code: 'const unitAmount: number = 1999;',
+      options: [{ minorUnitPatterns: ['^amount$', '^unitAmount$'] }],
+    },
+    // A suffix convention exempts every field that carries it, case-insensitively.
+    {
+      code: 'class Charge { amountCents: number; totalInCents: number; }',
+      options: [{ minorUnitPatterns: ['cents$'] }],
+    },
   ],
   invalid: [
     // The canonical case: a class property named like money, typed number.
@@ -59,6 +73,25 @@ ruleTester.run('money-must-be-decimal', moneyMustBeDecimalRule, {
       code: 'class Tx { discount: number; }',
       options: [{ fieldPatterns: ['discount'] }],
       errors: [{ messageId: 'moneyMustBeDecimal' }],
+    },
+    // An anchored minor-unit pattern exempts only the field it names.
+    {
+      code: 'class Invoice { amount: number; totalAmount: number; }',
+      options: [{ minorUnitPatterns: ['^amount$'] }],
+      errors: [{ messageId: 'moneyMustBeDecimal', line: 1, column: 33 }],
+    },
+    // An empty list exempts nothing: the default behaviour.
+    {
+      code: 'class PaymentIntent { amount: number; }',
+      options: [{ minorUnitPatterns: [] }],
+      errors: [{ messageId: 'moneyMustBeDecimal' }],
+    },
+    // A minor-unit pattern does not widen what counts as money: `discount` is
+    // still only flagged because a custom fieldPatterns names it.
+    {
+      code: 'class Tx { discount: number; discountCents: number; }',
+      options: [{ fieldPatterns: ['discount'], minorUnitPatterns: ['cents$'] }],
+      errors: [{ messageId: 'moneyMustBeDecimal', column: 12 }],
     },
     // Custom decimalType flows into the message data.
     {

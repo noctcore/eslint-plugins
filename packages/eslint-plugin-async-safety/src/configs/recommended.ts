@@ -2,7 +2,7 @@
  * Rule id → severity for the `recommended` preset. Keys carry the plugin namespace.
  *
  * House policy: every rule is `error` or `off`, never `warn`. A warning is a rule
- * nobody obeys. `tests/configs.test.ts` fails if a `warn` comes back.
+ * nobody obeys. `tests/configs/recommended.test.ts` fails if a `warn` comes back.
  */
 export const recommended = {
   // Precise, syntactic — safe as errors.
