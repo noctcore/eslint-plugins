@@ -1,6 +1,6 @@
 {
   "name": "@noctcore/eslint-plugin-code-quality",
-  "version": "0.2.1",
+  "version": "0.2.2",
   "description": "Portable code-quality, comment-hygiene, and test-discipline ESLint rules.",
   "license": "MIT",
   "type": "module",
@@ -46,7 +46,7 @@
     "test": "vitest run"
   },
   "dependencies": {
-    "@noctcore/eslint-utils": "^0.1.0",
+    "@noctcore/eslint-utils": "^0.1.1",
     "@typescript-eslint/utils": "^8.61.1"
   },
   "peerDependencies": {
