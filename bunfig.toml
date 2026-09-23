@@ -2,3 +2,11 @@
 # Never resolve a dependency version published less than 3 days ago: most
 # compromised npm releases are caught and pulled within that window.
 minimumReleaseAge = 259200 # seconds
+# Our own first-party packages, published from this org with provenance, are
+# exempt: they are routinely consumed within hours of a release.
+minimumReleaseAgeExcludes = [
+  "@noctcore/eslint-plugin-contracts",
+  "@noctcore/eslint-plugin-prisma",
+  "@noctcore/eslint-utils",
+  "@noctcore/harness",
+]
