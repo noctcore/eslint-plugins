@@ -7,7 +7,8 @@ name: release
 #   - Merging that PR (no pending changesets) publishes the changed packages to npm.
 # On the very first run there are no changesets, so it publishes the initial 0.1.0
 # versions directly. Publishing goes through `npm publish` (via `changeset publish`)
-# with OIDC provenance — `id-token: write` + each package's publishConfig.provenance.
+# through npm trusted publishing (OIDC: `id-token: write`, npm 11.5.1+, and a trusted
+# publisher per package on npmjs.com), with provenance from publishConfig.provenance.
 on:
   push:
     branches: [main]
@@ -35,10 +36,16 @@ jobs:
       - uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2.2.0
         with:
           bun-version: 1.3.14
+      # Node 24 ships npm 11. npm trusted publishing (OIDC) needs npm 11.5.1 or
+      # later; Node 22's bundled npm 10 silently falls back to NPM_TOKEN.
       - uses: actions/setup-node@a0853c24544627f65ddf259abe73b1d18a591444 # v5.0.0
         with:
-          node-version: 22
+          node-version: 24
           registry-url: 'https://registry.npmjs.org'
+      - name: Require npm with trusted publishing support
+        run: |
+          npm --version
+          node -e "const [a,b,c]=process.argv[1].split('.').map(Number); if (a<11 || (a===11 && (b<5 || (b===5 && c<1)))) { console.error('npm ' + process.argv[1] + ' is older than 11.5.1, which trusted publishing needs'); process.exit(1) }" "$(npm --version)"
       - run: bun install --frozen-lockfile
       - run: bun run build
       - run: bun run test
@@ -49,5 +56,8 @@ jobs:
           publish: bunx changeset publish
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          # Fallback only: npm tries OIDC trusted publishing first. Remove once a
+          # release log shows OIDC succeeding, then set every package to
+          # "Require 2FA and disallow tokens" on npmjs.com.
           NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
           NPM_CONFIG_PROVENANCE: 'true'
