@@ -1,5 +1,5 @@
 /**
- * Prebuild sync: turns the 98 `packages/*\/docs/rules/*.md` files into Starlight
+ * Prebuild sync: turns the 100 `packages/*\/docs/rules/*.md` files into Starlight
  * pages, and each plugin's exported `rules` + `meta` into the catalog the package
  * pages and the landing page render their tables from.
  *

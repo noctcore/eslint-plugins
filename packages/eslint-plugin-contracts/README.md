@@ -51,7 +51,7 @@ Legend: 🔧 = autofixable · 💤 = ships inert / `off` in `recommended` (enabl
 | [`restrict-throw-to-taxonomy`](./docs/rules/restrict-throw-to-taxonomy.md) | `throw` only allowlisted error classes; ban throwing non-Error values. | | |
 | [`require-registered-keys`](./docs/rules/require-registered-keys.md) | Key/name argument of a configured sink API must be an imported constant, not a raw string. | | 💤 |
 | [`env-var-schema-parity`](./docs/rules/env-var-schema-parity.md) | `process.env.FOO` / `import.meta.env.FOO` keys must be declared in a schema file. | | 💤 |
-| [`require-schema-parse-at-boundary`](./docs/rules/require-schema-parse-at-boundary.md) | Ban `JSON.parse(...) as T` / `(await res.json()) as T`; parse boundary data at runtime. | | 💤 |
+| [`require-schema-parse-at-boundary`](./docs/rules/require-schema-parse-at-boundary.md) | Ban `as T` on boundary reads (`JSON.parse`, `res.json()`, web storage, search params, message events, LLM tool input), directly or through a `const`; parse at runtime. | | 💤 |
 | [`schema-enum-field-consistency`](./docs/rules/schema-enum-field-consistency.md) | A field that is an enum in one zod object schema must not be `z.string()` in another schema of the same module. | | |
 | [`fetch-must-check-ok`](./docs/rules/fetch-must-check-ok.md) | A fetch response must be checked with `.ok` or a status comparison before `.json()` parses its body. | | |
 | [`translation-key-exists`](./docs/rules/translation-key-exists.md) | A static i18next / react-i18next key (`t(...)`, `i18n.t(...)`, `<Trans i18nKey>`) must exist in the catalog of the namespace in scope. | | 💤 |
