@@ -88,12 +88,39 @@ describe('sub-path entry points', () => {
     }
   });
 
+  test('session and trpc export their factories, inert with no options, and the main entry does not', async () => {
+    const session = await import('../src/session');
+    const trpc = await import('../src/trpc');
+    const factories: Record<string, unknown> = {
+      createSessionEpochCapturedRule: session.createSessionEpochCapturedRule,
+      createSessionKindStampedRule: session.createSessionKindStampedRule,
+      createSessionLandingDeclaredRule: session.createSessionLandingDeclaredRule,
+      createSessionMintCallersRule: session.createSessionMintCallersRule,
+      createIdempotencyKeyParityRule: trpc.createIdempotencyKeyParityRule,
+    };
+    // A ctx whose every file is a mint, a door and a guarded router: a default
+    // rule that read anything would report.
+    const ctx = {
+      root: '/fake',
+      read: () => "@Router({ alias: 'a' }) @UseMiddlewares(IdempotencyMiddleware) async b() {} this.establishSession({}); x.beginOrEstablish({});",
+      exists: () => true,
+      glob: () => ['apps/api/src/a.router.ts'],
+      exec: () => ({ code: 0, stdout: '', stderr: '' }),
+    };
+    for (const [name, factory] of Object.entries(factories)) {
+      expect(typeof factory).toBe('function');
+      const rule = (factory as () => { run: (c: typeof ctx) => unknown[] })();
+      expect(rule.run(ctx)).toEqual([]);
+      expect((pkg as Record<string, unknown>)[name]).toBeUndefined();
+    }
+  });
+
   test('package.json exports every entry the build emits', async () => {
     const manifest = (await import('../package.json')).default as {
       exports: Record<string, unknown>;
       scripts: { build: string };
     };
-    for (const entry of ['i18n', 'prisma', 'resolved-config']) {
+    for (const entry of ['i18n', 'prisma', 'resolved-config', 'session', 'trpc']) {
       expect(manifest.exports[`./${entry}`]).toEqual({
         types: `./dist/${entry}.d.ts`,
         import: `./dist/${entry}.js`,

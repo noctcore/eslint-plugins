@@ -106,3 +106,27 @@ needs the optional peer `eslint`. Neither is in `RULE_FACTORIES`: both need the 
 | --- | --- | --- |
 | [`createTenantModelRegistryParityRule`](./docs/rules/tenant-model-registry-parity.md) | config | Every tenant-bearing schema model is scoped at runtime or exempt with a reason, and the tenant lint rules resolve with exactly that registry. |
 | [`createPrismaMethodSurfaceRule`](./docs/rules/prisma-method-surface.md) | config | The reads and writes the rules police are exactly the generated client's delegate methods, so a Prisma upgrade cannot add an unguarded one. |
+
+### `@noctcore/lint-meta-rules/session`
+
+Fences around the one seam that turns an authenticated principal into a session. Each rule is inert
+until you name that seam: the method that mints, the gate in front of it, the files allowed to call it,
+the landings a sign-in can end in. None is in `RULE_FACTORIES`. They load nothing beyond the harness
+contract. Ported from a production NestJS app, where each one exists because its bug shipped once.
+
+| Factory | Category | What it enforces |
+| --- | --- | --- |
+| [`createSessionMintCallersRule`](./docs/rules/session-mint-callers.md) | source-text | The method that mints a session is called only from allowlisted files, so a new sign-in entry point cannot skip the gate in front of it. |
+| [`createSessionKindStampedRule`](./docs/rules/session-kind-stamped.md) | source-text | Every mint stamps the principal kind onto the session, or sits in an allowlisted, provably single-kind flow. |
+| [`createSessionEpochCapturedRule`](./docs/rules/session-epoch-captured.md) | source-text | Every call into the sign-in seam passes the revocation epoch captured before the credential was read. |
+| [`createSessionLandingDeclaredRule`](./docs/rules/session-landing-declared.md) | source-text | Every file that opens a door into a session declares its landing, and a door whose landing demands a return shape has it. |
+
+### `@noctcore/lint-meta-rules/trpc`
+
+Cross-tree checks between tRPC routers and the clients that call them. The decorator shape defaults to
+`nestjs-trpc`'s; the rule is inert until you name the middleware and the two trees. Not in
+`RULE_FACTORIES`.
+
+| Factory | Category | What it enforces |
+| --- | --- | --- |
+| [`createIdempotencyKeyParityRule`](./docs/rules/idempotency-key-parity.md) | source-text | A procedure guarded by an idempotency middleware has a client caller that sends the key, or no client caller at all. |

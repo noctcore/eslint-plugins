@@ -84,3 +84,20 @@ export function unquote(value: string): string {
 export function anywhereGlobs(baseNames: readonly string[]): string[] {
   return baseNames.flatMap((name) => [`**/${name}`, `**/.*/**/${name}`]);
 }
+
+/**
+ * A repo-relative file's text, or `null` when it cannot be read as a file.
+ *
+ * `ctx.glob` can return a DIRECTORY whose name matches a file pattern (a
+ * snapshot folder named `button.test.tsx/` matches `**\/*.tsx`), and the
+ * harness's `ctx.read` throws `EISDIR` on one. A glob-then-read rule treats
+ * that entry as not a source file rather than letting one folder abort the run.
+ */
+export function readSourceText(read: (rel: string) => string | null, rel: string): string | null {
+  try {
+    return read(rel);
+  } catch {
+    // EISDIR (a directory matched the glob) or a file that vanished mid-run.
+    return null;
+  }
+}
