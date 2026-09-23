@@ -1,6 +1,6 @@
 {
   "name": "@noctcore/lint-meta-rules",
-  "version": "0.4.1",
+  "version": "0.4.2",
   "description": "Portable, parameterized lint-meta rules — whole-repo / cross-file invariants ESLint cannot reach — for the @noctcore/harness lint-meta runner.",
   "license": "MIT",
   "type": "module",
@@ -62,7 +62,7 @@
   },
   "dependencies": {
     "@noctcore/eslint-plugin-contracts": "^0.6.0",
-    "@noctcore/eslint-plugin-prisma": "^0.3.1",
+    "@noctcore/eslint-plugin-prisma": "^0.4.0",
     "@noctcore/harness": "^0.3.0",
     "@typescript-eslint/utils": "^8.61.1"
   },

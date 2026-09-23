@@ -1,5 +1,12 @@
 # @noctcore/lint-meta-rules
 
+## 0.4.2
+
+### Patch Changes
+
+- Updated dependencies [[`2f0ab61`](https://github.com/noctcore/eslint-plugins/commit/2f0ab6132241ae12c5c6793ee1829f64d1fd6ffc)]:
+  - @noctcore/eslint-plugin-prisma@0.4.0
+
 ## 0.4.1
 
 ### Patch Changes

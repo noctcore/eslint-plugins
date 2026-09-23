@@ -3,7 +3,7 @@ import { rules } from './rules';
 
 /** Flat-config namespace: rule ids are keyed `noctcore-prisma/<rule>`. */
 const NAMESPACE = 'noctcore-prisma';
-const VERSION = '0.3.2';
+const VERSION = '0.4.0';
 
 const plugin = {
   meta: { name: '@noctcore/eslint-plugin-prisma', version: VERSION },
