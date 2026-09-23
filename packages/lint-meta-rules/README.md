@@ -45,7 +45,8 @@ over the whole catalog.
 13 nightcore lint-meta rules are ported as 12 factories — nightcore's `web-file-size-ratchet` and
 `engine-file-size-ratchet` were byte-identical logic and collapse into a single
 `createFileSizeRatchetRule` (instantiated once per capped area). Five CI-hygiene rules (category
-`ci`) are ported from a production NestJS + Vite monorepo, one factory each, for 17 factories in all.
+`ci`) are ported from a production NestJS + Vite monorepo, one factory each, and two GitHub Actions
+security rules (also `ci`) are written for this catalog, for 19 factories in all.
 
 | Factory | Source rule(s) | Category | What it enforces |
 | --- | --- | --- | --- |
@@ -63,6 +64,8 @@ over the whole catalog.
 | [`createTestRunnerSegregationRule`](./docs/rules/test-runner-segregation.md) | `test-runner-segregation` | testing | Bun-side and foreign-side test runners are never mixed within a package. |
 | [`createGithubActionsShaPinnedRule`](./docs/rules/github-actions-sha-pinned.md) | `github-actions-sha-pinned` | ci | Workflow `uses:` refs are pinned to a full commit SHA with a `# vN` comment. |
 | [`createGithubActionsRunnerPinnedRule`](./docs/rules/github-actions-runner-pinned.md) | `github-actions-runner-pinned` | ci | Workflow jobs run on a named runner image, never a `*-latest` label. |
+| [`createGithubActionsNoTemplateInjectionRule`](./docs/rules/github-actions-no-template-injection.md) | `github-actions-no-template-injection` | ci | `run:` and github-script bodies never expand attacker-controllable `${{ }}` context (issue/PR titles, comments, branch names). |
+| [`createGithubActionsLeastPrivilegePermissionsRule`](./docs/rules/github-actions-least-privilege-permissions.md) | `github-actions-least-privilege-permissions` | ci | A workflow's top-level `permissions:` exists, is not `write-all`/`read-all`, and grants no write. |
 | [`createServiceImageDigestPinRule`](./docs/rules/service-image-digest-pin.md) | `service-image-digest-pin` | ci | Workflow service/container images and compose images are pinned by `@sha256:` digest. |
 | [`createDockerfileBaseImageDigestPinRule`](./docs/rules/dockerfile-base-image-digest-pin.md) | `dockerfile-base-image-digest-pin` | ci | Dockerfile `FROM` base images are pinned by `@sha256:` digest. |
 | [`createSecurityScannerVersionParityRule`](./docs/rules/security-scanner-version-parity.md) | `security-scanner-version-parity` | ci | CI and the local pre-push hook pin the same secret-scanner version, and the hook checks it at run time. |

@@ -22,6 +22,7 @@ export const recommended = {
   'noctcore-prisma/no-audit-write-in-transaction': 'error',
   'noctcore-prisma/no-cross-tenant-id-in-where': 'error',
   'noctcore-prisma/no-raw-sql-outside-allowlist': 'error',
+  'noctcore-prisma/no-request-body-in-write': 'error',
   'noctcore-prisma/no-unscoped-prisma-outside-allowlist': 'error',
   'noctcore-prisma/prisma-tx-uses-tx-not-client': 'error',
   'noctcore-prisma/prisma-write-in-transaction': 'error',

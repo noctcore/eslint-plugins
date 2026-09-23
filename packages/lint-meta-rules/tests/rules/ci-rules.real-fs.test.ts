@@ -3,7 +3,7 @@ import { describe, expect, test } from 'bun:test';
 import { runLintMetaOnRealTree } from '../test-utils/runLintMetaOnRealTree';
 
 /*
- * Reachability tests for the five CI-hygiene rules, on a REAL temp directory run
+ * Reachability tests for the CI-hygiene rules, on a REAL temp directory run
  * through the real harness CLI under Bun. The per-rule `createFakeCtx` tests
  * cover the logic; these exist because a fake glob matches whatever it is handed.
  *
@@ -52,6 +52,44 @@ describe('CI rules on a real tree with a dot-directory', () => {
       expect(run.violations).toHaveLength(1);
       expect(run.violations[0]).toContain('(.github/workflows/ci.yml)');
       expect(run.violations[0]).toContain('ubuntu-latest');
+      expect(run.code).toBe(1);
+    },
+    TIMEOUT_MS,
+  );
+
+  test(
+    'github-actions-no-template-injection reaches .github/workflows and an action.yml in .github/actions',
+    () => {
+      const run = runLintMetaOnRealTree(
+        {
+          '.github/workflows/ci.yml': `${WORKFLOW_HEAD}    runs-on: ubuntu-24.04\n    steps:\n      - run: echo "\${{ github.head_ref }}"\n`,
+          '.github/actions/setup/action.yml':
+            'runs:\n  using: composite\n  steps:\n    - run: echo "${{ github.event.issue.title }}"\n      shell: bash\n',
+        },
+        'createGithubActionsNoTemplateInjectionRule',
+      );
+
+      expect(run.stdout).toContain('github-actions-no-template-injection');
+      expect(run.violations).toHaveLength(2);
+      expect(run.violations.join('\n')).toContain('(.github/workflows/ci.yml)');
+      expect(run.violations.join('\n')).toContain('(.github/actions/setup/action.yml)');
+      expect(run.code).toBe(1);
+    },
+    TIMEOUT_MS,
+  );
+
+  test(
+    'github-actions-least-privilege-permissions reaches .github/workflows',
+    () => {
+      const run = runLintMetaOnRealTree(
+        { '.github/workflows/ci.yml': `name: ci\non: push\npermissions: write-all\njobs:\n  build:\n    runs-on: ubuntu-24.04\n` },
+        'createGithubActionsLeastPrivilegePermissionsRule',
+      );
+
+      expect(run.stdout).toContain('github-actions-least-privilege-permissions');
+      expect(run.violations).toHaveLength(1);
+      expect(run.violations[0]).toContain('(.github/workflows/ci.yml)');
+      expect(run.violations[0]).toContain('write-all');
       expect(run.code).toBe(1);
     },
     TIMEOUT_MS,
