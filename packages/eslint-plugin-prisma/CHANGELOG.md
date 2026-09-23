@@ -1,5 +1,11 @@
 # @noctcore/eslint-plugin-prisma
 
+## 0.4.0
+
+### Minor Changes
+
+- [`2f0ab61`](https://github.com/noctcore/eslint-plugins/commit/2f0ab6132241ae12c5c6793ee1829f64d1fd6ffc) Thanks [@Shironex](https://github.com/Shironex)! - `soft-deletable-tables-require-deleted-at` gains `allowInFunctions`, which exempts named functions in matching files instead of whole files. A call belongs to its nearest named enclosing function, looking through anonymous callbacks, so every other query in an exempt file stays policed.
+
 ## 0.3.2
 
 ### Patch Changes
