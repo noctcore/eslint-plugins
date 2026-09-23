@@ -1,0 +1,32 @@
+# Keeps pinned GitHub Actions SHAs (and their `# vX.Y.Z` comments, which
+# @noctcore/lint-meta-rules' github-actions-sha-pinned expects) and the Bun
+# lockfile current. A 7-day cooldown means a freshly published release, the
+# usual window for a compromised version, is never proposed the day it lands.
+version: 2
+updates:
+  - package-ecosystem: github-actions
+    directory: /
+    schedule:
+      interval: weekly
+    cooldown:
+      default-days: 7
+    groups:
+      actions:
+        patterns: ['*']
+    commit-message:
+      prefix: ci
+
+  - package-ecosystem: bun
+    directory: /
+    schedule:
+      interval: weekly
+    cooldown:
+      default-days: 7
+    groups:
+      dev-dependencies:
+        dependency-type: development
+      dependencies:
+        dependency-type: production
+    commit-message:
+      prefix: chore
+      include: scope
