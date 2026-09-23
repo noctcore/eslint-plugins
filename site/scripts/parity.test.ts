@@ -9,7 +9,11 @@
  * The ESLint plugins already get a per-plugin version of the first two checks
  * from runPluginDocs in @noctcore/eslint-test-utils. The 21 lint-meta rules get
  * none there, and nothing else counts the whole set, so this guard covers all
+<<<<<<< HEAD
  * 100 in one place.
+=======
+ * 99 in one place.
+>>>>>>> origin/main
  *
  * EXPECTED_RULE_COUNT is a deliberate tripwire on the inventory itself. The set
  * comparison alone passes if the inventory goes blind (a listing of
@@ -21,7 +25,11 @@ import { describe, expect, test } from 'bun:test';
 
 import { listRuleDocs, loadInventory } from './inventory';
 
+<<<<<<< HEAD
 const EXPECTED_RULE_COUNT = 100;
+=======
+const EXPECTED_RULE_COUNT = 102;
+>>>>>>> origin/main
 
 // Source, not dist: a rule added and not yet built must still fail here.
 const inventory = await loadInventory('src');

@@ -47,6 +47,7 @@ export default [
 | [`no-shared-mutable-module-state`](./docs/rules/no-shared-mutable-module-state.md) | A module-scoped mutable binding written from an exported async/handler function is shared across concurrent requests (opt in via `include`). | |
 | [`prefer-parallel-awaits`](./docs/rules/prefer-parallel-awaits.md) | Consecutive independent awaits can run concurrently with `Promise.all`. | 💡 |
 | [`no-concurrent-shared-mutation`](./docs/rules/no-concurrent-shared-mutation.md) | A read-modify-write of an outer binding inside a concurrent `Promise.all(map(async …))` callback can lose updates. | |
+| [`no-leaky-race-timeout`](./docs/rules/no-leaky-race-timeout.md) | A `setTimeout` timeout raced with `Promise.race` must be cleared, or the timer outlives the race whenever the other promise wins. | |
 
 ## `recommended` preset
 
@@ -57,6 +58,7 @@ export default [
 | `no-shared-mutable-module-state` | `error` | Inert until you set `include` globs, so it ships enabled but off by default. |
 | `forward-abort-signal` | `error` | A dead `signal` is a real bug; any forwarding shape counts as a pass. |
 | `no-concurrent-shared-mutation` | `error` | A lost update is a real bug; order-tolerant writes are skipped. |
+| `no-leaky-race-timeout` | `error` | A timer left pending after the race is a real leak; any clear after the race counts as a pass. |
 | `prefer-parallel-awaits` | `off` | A latency hint, not a bug. Sequential awaits are often deliberate. Opt in where you want it. |
 
 Every rule is `error` or `off`, never `warn`: a warning is a rule nobody obeys.
