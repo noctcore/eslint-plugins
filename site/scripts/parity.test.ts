@@ -21,7 +21,7 @@ import { describe, expect, test } from 'bun:test';
 
 import { listRuleDocs, loadInventory } from './inventory';
 
-const EXPECTED_RULE_COUNT = 100;
+const EXPECTED_RULE_COUNT = 102;
 
 // Source, not dist: a rule added and not yet built must still fail here.
 const inventory = await loadInventory('src');

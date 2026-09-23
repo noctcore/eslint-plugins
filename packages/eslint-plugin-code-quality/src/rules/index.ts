@@ -2,12 +2,14 @@ import { fakeTimersMustBeRestoredRule } from './fake-timers-must-be-restored';
 import { interfacePrefixIRule } from './interface-prefix-i';
 import { noBareDateNowRule } from './no-bare-date-now';
 import { noConditionalExpectRule } from './no-conditional-expect';
+import { noElidedCodeCommentsRule } from './no-elided-code-comments';
 import { noFocusedTestsRule } from './no-focused-tests';
 import { noHistoricalCommentsRule } from './no-historical-comments';
 import { noNarrationCommentsRule } from './no-narration-comments';
 import { noPrReferenceCommentsRule } from './no-pr-reference-comments';
 import { noProcessExitRule } from './no-process-exit';
 import { noRealNetworkInUnitTestsRule } from './no-real-network-in-unit-tests';
+import { noSwallowedAssertionRule } from './no-swallowed-assertion';
 import { noTemplateTrimEmptyTernaryRule } from './no-template-trim-empty-ternary';
 import { preferEarlyReturnRule } from './prefer-early-return';
 import { noVacuousExpectRule } from './no-vacuous-expect';
@@ -21,10 +23,12 @@ export const rules = {
   'no-historical-comments': noHistoricalCommentsRule,
   'no-narration-comments': noNarrationCommentsRule,
   'no-pr-reference-comments': noPrReferenceCommentsRule,
+  'no-elided-code-comments': noElidedCodeCommentsRule,
   'no-focused-tests': noFocusedTestsRule,
   'skipped-tests-need-tracking': skippedTestsNeedTrackingRule,
   'no-vacuous-expect': noVacuousExpectRule,
   'no-conditional-expect': noConditionalExpectRule,
+  'no-swallowed-assertion': noSwallowedAssertionRule,
   'fake-timers-must-be-restored': fakeTimersMustBeRestoredRule,
   'no-real-network-in-unit-tests': noRealNetworkInUnitTestsRule,
   // Available but omitted from `recommended` (opinionated / niche).
