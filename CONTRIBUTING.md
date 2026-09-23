@@ -51,7 +51,7 @@ in: two-space indent, single quotes, trailing commas, prose wrapped near 100 col
 
 ## How a rule is put together
 
-Take `packages/eslint-plugin-security` as the model; all nine ESLint plugins have the same shape.
+Take `packages/eslint-plugin-security` as the model; all ten ESLint plugins have the same shape.
 
 | Piece | Where | Notes |
 | --- | --- | --- |

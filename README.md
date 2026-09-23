@@ -25,6 +25,7 @@ What each plugin is for, when it is a bad fit, and every rule with its options a
 | [`@noctcore/eslint-plugin-async-safety`](./packages/eslint-plugin-async-safety) | await/abort/fetch + async races |
 | [`@noctcore/eslint-plugin-observability`](./packages/eslint-plugin-observability) | Structured logging discipline |
 | [`@noctcore/eslint-plugin-security`](./packages/eslint-plugin-security) | Injection / path-traversal precision |
+| [`@noctcore/eslint-plugin-rsc`](./packages/eslint-plugin-rsc) | React Server Components / App Router correctness (navigation errors that must not be swallowed) |
 | [`@noctcore/eslint-utils`](./packages/eslint-utils) | Shared rule-creator + AST helpers (internal building block) |
 | [`@noctcore/lint-meta-rules`](./packages/lint-meta-rules) | Whole-repo structure-lock rules for [`@noctcore/harness`](https://www.npmjs.com/package/@noctcore/harness) |
 
