@@ -4,7 +4,7 @@ import type { JSONSchema4 } from '@typescript-eslint/utils/json-schema';
 import { createRule } from '../createRule';
 import { isAllowlisted } from '../utils/allowlist';
 import { PRISMA_FILTERED_WRITE_METHODS, PRISMA_SCOPED_READ_METHODS } from '../utils/prisma-methods';
-import { nameListSchema } from '../utils/prisma-receiver';
+import { nameListSchema, nonEmptyNameListSchema } from '../utils/prisma-receiver';
 
 const RULE_NAME = 'soft-deletable-tables-require-deleted-at';
 
@@ -31,6 +31,27 @@ export interface SoftDeletableTablesRequireDeletedAtOptions {
    * reason it holds.
    */
   readonly allowIn?: readonly string[];
+  /**
+   * Narrower than `allowIn`: exempt only the calls made inside the named
+   * functions of the matching files, and keep policing every other call in
+   * them. Use it when the omission is one query's judgement, not the file's.
+   *
+   * A call belongs to its NEAREST NAMED enclosing function: a class method, a
+   * function declaration, or a function bound to a variable or an object key.
+   * Anonymous callbacks are looked through, so a count inside
+   * `Promise.all([...])` or a `$transaction(async (tx) => ...)` body still
+   * belongs to the method around it. A named helper declared inside an
+   * exempt function is its own function and is policed.
+   */
+  readonly allowInFunctions?: readonly SoftDeleteFunctionExemption[];
+}
+
+/** One `allowInFunctions` entry: these functions, in these files. */
+export interface SoftDeleteFunctionExemption {
+  /** Globs of the files the entry applies to, matched like `allowIn`. */
+  readonly files: readonly string[];
+  /** Names of the functions whose own calls are not policed. */
+  readonly functions: readonly string[];
 }
 
 type RuleOptions = [SoftDeletableTablesRequireDeletedAtOptions];
@@ -87,6 +108,7 @@ const DEFAULT_DELETED_AT_FIELD = 'deletedAt';
 const DEFAULT_SOFT_DELETE_SPREADS: readonly string[] = [];
 /* Empty: an exemption is only ever granted from the config, never by default. */
 const DEFAULT_ALLOW_IN: readonly string[] = [];
+const DEFAULT_ALLOW_IN_FUNCTIONS: readonly SoftDeleteFunctionExemption[] = [];
 
 /** Cheap blowup guard; real Prisma filters nest a handful of levels. */
 const MAX_WHERE_DEPTH = 12;
@@ -99,6 +121,18 @@ const optionSchema: JSONSchema4 = {
     deletedAtField: { type: 'string', minLength: 1 },
     softDeleteSpreads: nameListSchema,
     allowIn: nameListSchema,
+    allowInFunctions: {
+      type: 'array',
+      items: {
+        type: 'object',
+        additionalProperties: false,
+        required: ['files', 'functions'],
+        properties: {
+          files: nonEmptyNameListSchema,
+          functions: nonEmptyNameListSchema,
+        },
+      },
+    },
   },
 };
 
@@ -166,6 +200,66 @@ function isSoftDeleteSpread(argument: TSESTree.Node, spreadNames: ReadonlySet<st
     return name !== null && spreadNames.has(name);
   }
   return false;
+}
+
+/** The name a function node is known by at its definition site, if any. */
+function functionName(fn: TSESTree.FunctionLike): string | null {
+  if (
+    (fn.type === AST_NODE_TYPES.FunctionDeclaration ||
+      fn.type === AST_NODE_TYPES.FunctionExpression) &&
+    fn.id !== null
+  ) {
+    return fn.id.name;
+  }
+  const parent = fn.parent;
+  if (
+    (parent.type === AST_NODE_TYPES.MethodDefinition ||
+      parent.type === AST_NODE_TYPES.PropertyDefinition ||
+      parent.type === AST_NODE_TYPES.Property) &&
+    !parent.computed &&
+    parent.value === fn
+  ) {
+    if (parent.key.type === AST_NODE_TYPES.Identifier) {
+      return parent.key.name;
+    }
+    if (parent.key.type === AST_NODE_TYPES.Literal && typeof parent.key.value === 'string') {
+      return parent.key.value;
+    }
+    return null;
+  }
+  if (
+    parent.type === AST_NODE_TYPES.VariableDeclarator &&
+    parent.init === fn &&
+    parent.id.type === AST_NODE_TYPES.Identifier
+  ) {
+    return parent.id.name;
+  }
+  return null;
+}
+
+const FUNCTION_TYPES: ReadonlySet<AST_NODE_TYPES> = new Set([
+  AST_NODE_TYPES.FunctionDeclaration,
+  AST_NODE_TYPES.FunctionExpression,
+  AST_NODE_TYPES.ArrowFunctionExpression,
+]);
+
+/**
+ * The nearest named function around a node, looking through anonymous ones
+ * (callbacks), or null at module level.
+ */
+function enclosingFunctionName(node: TSESTree.Node): string | null {
+  // A truthiness test, not `!== undefined`: ESLint 10 sets `Program.parent` to
+  // null while the typings declare it absent, so a strict check walks off the
+  // root.
+  for (let current: TSESTree.Node | undefined = node.parent; current; current = current.parent) {
+    if (FUNCTION_TYPES.has(current.type)) {
+      const name = functionName(current as TSESTree.FunctionLike);
+      if (name !== null) {
+        return name;
+      }
+    }
+  }
+  return null;
 }
 
 interface ICoverageContext {
@@ -278,12 +372,21 @@ export const softDeletableTablesRequireDeletedAtRule = createRule<RuleOptions, M
       deletedAtField: DEFAULT_DELETED_AT_FIELD,
       softDeleteSpreads: [...DEFAULT_SOFT_DELETE_SPREADS],
       allowIn: [...DEFAULT_ALLOW_IN],
+      allowInFunctions: [...DEFAULT_ALLOW_IN_FUNCTIONS],
     },
   ],
   create(context, [options]) {
     if (isAllowlisted(context.filename, options.allowIn ?? DEFAULT_ALLOW_IN)) {
       return {};
     }
+
+    // The functions exempt in THIS file: the union over every entry whose
+    // globs match it. Empty for most files, which then pay nothing per call.
+    const exemptFunctions = new Set(
+      (options.allowInFunctions ?? DEFAULT_ALLOW_IN_FUNCTIONS)
+        .filter((entry) => isAllowlisted(context.filename, entry.files))
+        .flatMap((entry) => entry.functions),
+    );
 
     const softDeleteModels = new Set(options.softDeleteModels ?? DEFAULT_SOFT_DELETE_MODELS);
     const deletedAtField = options.deletedAtField ?? DEFAULT_DELETED_AT_FIELD;
@@ -316,7 +419,11 @@ export const softDeletableTablesRequireDeletedAtRule = createRule<RuleOptions, M
           deletedAtField,
           spreadNames,
         };
-        if (!callCoversSoftDelete(node.arguments[0], ctx)) {
+        if (callCoversSoftDelete(node.arguments[0], ctx)) {
+          return;
+        }
+        const owner = exemptFunctions.size === 0 ? null : enclosingFunctionName(node);
+        if (owner === null || !exemptFunctions.has(owner)) {
           context.report({
             node,
             messageId: 'missingDeletedAtWhere',

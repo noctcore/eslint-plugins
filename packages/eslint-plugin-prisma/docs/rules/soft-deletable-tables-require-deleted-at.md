@@ -59,6 +59,23 @@ constrains the right model would need type information.
 | `deletedAtField` | `string` | `'deletedAt'` | The soft-delete column a guarded `where` must mention. |
 | `softDeleteSpreads` | `string[]` | `[]` | Names of a shared filter helper recognised when spread into a `where` (`...notDeleted`, `...this.notDeleted`). |
 | `allowIn` | `string[]` (globs) | `[]` | Files not policed, e.g. a purge job whose subject IS the deleted rows. |
+| `allowInFunctions` | `{ files: string[]; functions: string[] }[]` | `[]` | Functions not policed, in the files their globs match. Every other call in those files still is. |
+
+Prefer `allowInFunctions` to `allowIn` when the omission is one query's judgement rather than the
+file's. `allowIn` exempts the whole file, so a compliant query beside the exempt one can later drop
+its filter without the rule noticing. A call belongs to its nearest named enclosing function (a
+class method, a function declaration, or a function bound to a variable or object key). Anonymous
+callbacks are looked through, so a count inside `Promise.all([...])` still belongs to the method
+around it, while a named helper declared inside an exempt function is policed as its own function.
+
+```js
+allowInFunctions: [
+  {
+    files: ['**/modules/auth/staff-invite/staff-invite.repository.ts'],
+    functions: ['countAllUsersInTenant'],
+  },
+],
+```
 
 `softDeleteSpreads` decides whether the rule is usable in a codebase with a helper convention: a
 rule blind to the spread reports correct code more often than defects, and gets turned off.
