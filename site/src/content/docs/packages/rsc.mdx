@@ -1,0 +1,31 @@
+---
+title: "@noctcore/eslint-plugin-rsc"
+description: "React Server Components and App Router correctness: the control-flow errors a server component must not swallow."
+sidebar:
+  label: rsc
+  order: 10
+---
+
+import QuickStart from '../../../components/QuickStart.astro';
+import RuleTable from '../../../components/RuleTable.astro';
+
+React Server Components and App Router correctness: the control-flow errors a server component must not swallow.
+
+## What it solves
+
+Server-side React code has control flow that does not look like control flow. In the Next.js App Router, `redirect()`, `notFound()`, `forbidden()` and `unauthorized()` work by throwing an error the framework catches further up. Put one inside a `try` whose `catch` handles every error and the navigation silently never happens: the page renders its fallback, the Server Action returns `{ error }`, and nothing in the types or the tests says why.
+
+## What it will yell at you about
+
+It will yell at you about **a navigation call inside a `try` that swallows it**. The rule resolves the call to its `next/navigation` import, aliases and namespace imports included, so a function of the same name from anywhere else is left alone, and it accepts a `catch` that calls `unstable_rethrow(error)` or rethrows the caught error. It needs no configuration and ships at `error` in `recommended`. The package aims to stay framework-neutral where the RSC model allows; rules tied to one framework's API, like this one, say so and only fire on that framework's imports. **It is a bad fit** only in the sense that it does nothing outside a React Server Components codebase.
+
+## Install and configure
+
+<QuickStart pkg="rsc" />
+
+## Rules
+
+Each rule links to its page, with the options it takes and Incorrect and Correct examples. A good first
+read is [`no-navigation-throw-in-try`](/eslint-plugins/rules/rsc/no-navigation-throw-in-try/).
+
+<RuleTable pkg="rsc" />

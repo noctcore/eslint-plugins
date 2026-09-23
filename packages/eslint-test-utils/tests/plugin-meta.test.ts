@@ -24,6 +24,7 @@ import monorepo from '../../eslint-plugin-monorepo/src/index';
 import observability from '../../eslint-plugin-observability/src/index';
 import prisma from '../../eslint-plugin-prisma/src/index';
 import react from '../../eslint-plugin-react/src/index';
+import rsc from '../../eslint-plugin-rsc/src/index';
 import security from '../../eslint-plugin-security/src/index';
 
 interface MetaPlugin {
@@ -40,6 +41,7 @@ const PLUGINS: Record<string, MetaPlugin> = {
   observability,
   prisma,
   react,
+  rsc,
   security,
 };
 

@@ -4,6 +4,8 @@ import { createAgentsDocPresenceRule } from './agents-doc-presence';
 import { createCanonicalHelpersSingleHomeRule } from './canonical-helpers-single-home';
 import { createDockerfileBaseImageDigestPinRule } from './dockerfile-base-image-digest-pin';
 import { createFileSizeRatchetRule } from './file-size-ratchet';
+import { createGithubActionsLeastPrivilegePermissionsRule } from './github-actions-least-privilege-permissions';
+import { createGithubActionsNoTemplateInjectionRule } from './github-actions-no-template-injection';
 import { createGithubActionsRunnerPinnedRule } from './github-actions-runner-pinned';
 import { createGithubActionsShaPinnedRule } from './github-actions-sha-pinned';
 import { createLayerRankRule } from './layer-rank';
@@ -26,6 +28,10 @@ export { createDockerfileBaseImageDigestPinRule } from './dockerfile-base-image-
 export type { DockerfileBaseImageDigestPinOptions } from './dockerfile-base-image-digest-pin';
 export { createFileSizeRatchetRule } from './file-size-ratchet';
 export type { FileSizeRatchetOptions } from './file-size-ratchet';
+export { createGithubActionsLeastPrivilegePermissionsRule } from './github-actions-least-privilege-permissions';
+export type { GithubActionsLeastPrivilegePermissionsOptions } from './github-actions-least-privilege-permissions';
+export { createGithubActionsNoTemplateInjectionRule } from './github-actions-no-template-injection';
+export type { GithubActionsNoTemplateInjectionOptions } from './github-actions-no-template-injection';
 export { createGithubActionsRunnerPinnedRule } from './github-actions-runner-pinned';
 export type { GithubActionsRunnerPinnedOptions } from './github-actions-runner-pinned';
 export { createGithubActionsShaPinnedRule } from './github-actions-sha-pinned';
@@ -72,6 +78,8 @@ export const RULE_FACTORIES = {
   'canonical-helpers-single-home': createCanonicalHelpersSingleHomeRule,
   'dockerfile-base-image-digest-pin': createDockerfileBaseImageDigestPinRule,
   'file-size-ratchet': createFileSizeRatchetRule,
+  'github-actions-least-privilege-permissions': createGithubActionsLeastPrivilegePermissionsRule,
+  'github-actions-no-template-injection': createGithubActionsNoTemplateInjectionRule,
   'github-actions-runner-pinned': createGithubActionsRunnerPinnedRule,
   'github-actions-sha-pinned': createGithubActionsShaPinnedRule,
   'layer-rank': createLayerRankRule,

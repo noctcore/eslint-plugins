@@ -20,6 +20,7 @@ import monorepo from '../../../eslint-plugin-monorepo/src/index';
 import observability from '../../../eslint-plugin-observability/src/index';
 import prisma from '../../../eslint-plugin-prisma/src/index';
 import react from '../../../eslint-plugin-react/src/index';
+import rsc from '../../../eslint-plugin-rsc/src/index';
 import security from '../../../eslint-plugin-security/src/index';
 import { compareRulesToDocs, type DocPlugin, runPluginDocs } from '../../src';
 
@@ -35,6 +36,7 @@ const PLUGINS: Record<string, { readonly plugin: DocPlugin; readonly status: Doc
   observability: { plugin: observability, status: 'executed' },
   prisma: { plugin: prisma, status: 'executed' },
   react: { plugin: react, status: 'executed' },
+  rsc: { plugin: rsc, status: 'executed' },
   security: { plugin: security, status: 'executed' },
 };
 

@@ -2,6 +2,7 @@ import { mutationEntryMustReachAuditRule } from './mutation-entry-must-reach-aud
 import { noAuditWriteInTransactionRule } from './no-audit-write-in-transaction';
 import { noCrossTenantIdInWhereRule } from './no-cross-tenant-id-in-where';
 import { noRawSqlOutsideAllowlistRule } from './no-raw-sql-outside-allowlist';
+import { noRequestBodyInWriteRule } from './no-request-body-in-write';
 import { noUnscopedPrismaOutsideAllowlistRule } from './no-unscoped-prisma-outside-allowlist';
 import { prismaTxUsesTxNotClientRule } from './prisma-tx-uses-tx-not-client';
 import { prismaWriteInTransactionRule } from './prisma-write-in-transaction';
@@ -16,6 +17,7 @@ export const rules = {
   'no-audit-write-in-transaction': noAuditWriteInTransactionRule,
   'no-cross-tenant-id-in-where': noCrossTenantIdInWhereRule,
   'no-raw-sql-outside-allowlist': noRawSqlOutsideAllowlistRule,
+  'no-request-body-in-write': noRequestBodyInWriteRule,
   'no-unscoped-prisma-outside-allowlist': noUnscopedPrismaOutsideAllowlistRule,
   'prisma-tx-uses-tx-not-client': prismaTxUsesTxNotClientRule,
   'prisma-write-in-transaction': prismaWriteInTransactionRule,
