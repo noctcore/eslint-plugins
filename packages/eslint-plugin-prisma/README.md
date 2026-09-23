@@ -41,6 +41,7 @@ export default [
       'noctcore-prisma/prisma-write-in-transaction': ['error', { clientProperties: ['client'] }],
       'noctcore-prisma/prisma-tx-uses-tx-not-client': ['error', { clientProperties: ['client'] }],
       'noctcore-prisma/no-cross-tenant-id-in-where': 'error',
+      'noctcore-prisma/no-request-body-in-write': 'error',
       'noctcore-prisma/no-audit-write-in-transaction': 'error',
 
       // Needs type information: see its docs.
@@ -72,7 +73,7 @@ export default [
 ];
 ```
 
-`recommended` turns on the six rules whose defaults hold with no project knowledge. Four more
+`recommended` turns on the seven rules whose defaults hold with no project knowledge. Four more
 need your model registry (`tenantModels`, `softDeleteModels`, `restrictions`) and are left out of the
 preset on purpose: an entry that reports nothing would read as coverage you do not have. The last one,
 `mutation-entry-must-reach-audit`, needs type information.
@@ -101,6 +102,7 @@ mutating method audits.
 | [`no-audit-write-in-transaction`](./docs/rules/no-audit-write-in-transaction.md) | No audit-log write inside a `$transaction` callback. Does not check that mutations are audited. |
 | [`no-cross-tenant-id-in-where`](./docs/rules/no-cross-tenant-id-in-where.md) | A tenant id in `where` / `data` comes from server context, never from client input. |
 | [`no-raw-sql-outside-allowlist`](./docs/rules/no-raw-sql-outside-allowlist.md) | Raw SQL that can touch a table only in allowlisted files; `*Unsafe` never. |
+| [`no-request-body-in-write`](./docs/rules/no-request-body-in-write.md) | A write's `data` or `where` is never the raw request body (mass assignment, filter injection). |
 | [`no-unscoped-prisma-outside-allowlist`](./docs/rules/no-unscoped-prisma-outside-allowlist.md) | The unscoped client and tenant-scope escape hatches only in allowlisted files. |
 | [`prisma-tx-uses-tx-not-client`](./docs/rules/prisma-tx-uses-tx-not-client.md) | Inside an interactive `$transaction`, writes go through `tx`, not the outer client. |
 | [`prisma-write-in-transaction`](./docs/rules/prisma-write-in-transaction.md) | Two or more writes in one function must be wrapped in a `$transaction`. |
