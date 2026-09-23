@@ -59,7 +59,7 @@
     "@noctcore/eslint-test-utils": "workspace:*",
     "@types/node": "^22.0.0",
     "@typescript-eslint/parser": "^8.61.1",
-    "@typescript-eslint/rule-tester": "^8.61.1",
+    "@typescript-eslint/rule-tester": "^8.70.0",
     "tsup": "^8.5.1",
     "typescript": "^5.6.0",
     "vitest": "^4"
