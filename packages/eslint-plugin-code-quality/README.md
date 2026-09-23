@@ -52,10 +52,12 @@ documented but off by default (opinionated / niche) — enable them explicitly.
 | [`no-historical-comments`](./docs/rules/no-historical-comments.md) | Ban comments framing code against its past ("before the fix", "used to"). | ✅ | |
 | [`no-narration-comments`](./docs/rules/no-narration-comments.md) | Ban step-by-step "Now we… / First we…" narration comments. | ✅ | |
 | [`no-pr-reference-comments`](./docs/rules/no-pr-reference-comments.md) | Ban PR/issue references in comments. | ✅ | |
+| [`no-elided-code-comments`](./docs/rules/no-elided-code-comments.md) | Ban `// ... existing code ...` placeholders that stand in for deleted code. | ✅ | |
 | [`no-focused-tests`](./docs/rules/no-focused-tests.md) | Ban focused tests (`.only` / `fdescribe` / `fit`). | ✅ | |
 | [`skipped-tests-need-tracking`](./docs/rules/skipped-tests-need-tracking.md) | Skipped tests must carry a tracking marker (issue URL or `TODO(@owner)`). | ✅ | `markers`, `lookback` |
 | [`no-vacuous-expect`](./docs/rules/no-vacuous-expect.md) | Ban `typeof` expects, literal tautologies and a sole `toBeDefined`/`toBeTruthy`. | ✅ | `weakMatchers`, `assertionCallees` |
 | [`no-conditional-expect`](./docs/rules/no-conditional-expect.md) | Ban `expect()` inside a branch or `catch` that may not run. | ✅ | `checkLoops` |
+| [`no-swallowed-assertion`](./docs/rules/no-swallowed-assertion.md) | Ban assertions in a `try` whose `catch` swallows the failure, and `.catch()` on `expect().rejects`. | ✅ | |
 | [`fake-timers-must-be-restored`](./docs/rules/fake-timers-must-be-restored.md) | `useFakeTimers()` needs a `useRealTimers()`, here or in the shared suite the file runs. | ✅ | `fakeTimerMethods`, `restoreTimerMethods`, `followImportedSuites`, `sharedSuiteModules` |
 | [`no-real-network-in-unit-tests`](./docs/rules/no-real-network-in-unit-tests.md) | Ban real `fetch` / `axios` calls in unit test files. | ✅ | `testFileSuffixes`, `integrationMarkers`, `networkCallees`, `httpClients` |
 | [`interface-prefix-i`](./docs/rules/interface-prefix-i.md) | Interface names must be `I` + uppercase. Opinionated house style. | | |
