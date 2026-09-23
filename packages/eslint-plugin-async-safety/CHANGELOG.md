@@ -1,5 +1,11 @@
 # @noctcore/eslint-plugin-async-safety
 
+## 0.4.0
+
+### Minor Changes
+
+- [#13](https://github.com/noctcore/eslint-plugins/pull/13) [`05c3764`](https://github.com/noctcore/eslint-plugins/commit/05c37643340ad634a8f16a9b7c3d45a218bc8f4f) Thanks [@Shironex](https://github.com/Shironex)! - New rule `no-leaky-race-timeout`, in `recommended` at `error`. It flags the hand-rolled timeout `Promise.race([work, new Promise((_, reject) => setTimeout(reject, ms))])` when the `setTimeout` handle is discarded, or kept but never passed to `clearTimeout` after the race, so the timer stays pending (and keeps a Node process alive) whenever `work` wins. A `clearTimeout` in a `finally`, in a `.finally(...)` on the race, or after the awaited race counts as a fix, as does switching to `AbortSignal.timeout(ms)`. It leaves alone races without a timer, a `setTimeout` imported from `node:timers/promises`, and handles it cannot follow. A project that spreads `recommended` as-is will see new errors wherever it races an uncleared timer.
+
 ## 0.3.2
 
 ### Patch Changes

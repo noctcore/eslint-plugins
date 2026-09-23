@@ -1,6 +1,6 @@
 {
   "name": "@noctcore/eslint-plugin-llm",
-  "version": "0.0.0",
+  "version": "0.1.0",
   "description": "ESLint rules for code that calls LLM SDKs: model output treated as untrusted input before it reaches a dangerous sink.",
   "license": "MIT",
   "type": "module",
