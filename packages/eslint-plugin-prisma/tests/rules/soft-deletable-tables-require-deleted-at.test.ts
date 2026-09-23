@@ -6,6 +6,14 @@ import { softDeletableTablesRequireDeletedAtRule } from '../../src/rules/soft-de
 // upstream hardcodes neither the models nor the spread helper.
 const SOFT = { softDeleteModels: ['user', 'member'], softDeleteSpreads: ['notDeleted'] };
 
+const REPO = 'apps/api/src/modules/auth/invite.repository.ts';
+const EXEMPT = {
+  ...SOFT,
+  allowInFunctions: [
+    { files: ['**/modules/auth/invite.repository.ts'], functions: ['countAllUsers', 'isAbandonable'] },
+  ],
+};
+
 ruleTester.run(
   'soft-deletable-tables-require-deleted-at',
   softDeletableTablesRequireDeletedAtRule,
@@ -148,6 +156,36 @@ ruleTester.run(
         filename: 'apps/api/src/modules/user/nested/other.service.ts',
         options: [{ ...SOFT, allowIn: ['**/modules/user/**'] }],
       },
+      // allowInFunctions: the named class method's own call is exempt.
+      {
+        code: 'class R { async countAllUsers(tx, tenantId) { return tx.user.count({ where: { tenantId } }); } }',
+        filename: REPO,
+        options: [EXEMPT],
+      },
+      // Anonymous callbacks are looked through to the method around them.
+      {
+        code: `class S {
+          async isAbandonable(tx) {
+            return run(async () => {
+              const [users] = await Promise.all([tx.user.count()]);
+              return users === 0;
+            });
+          }
+        }`,
+        filename: REPO,
+        options: [EXEMPT],
+      },
+      // A function declaration and a variable-bound arrow count as named.
+      {
+        code: 'function countAllUsers(tx) { return tx.user.count(); }',
+        filename: REPO,
+        options: [EXEMPT],
+      },
+      {
+        code: 'const isAbandonable = (tx) => tx.member.count();',
+        filename: REPO,
+        options: [EXEMPT],
+      },
     ],
     invalid: [
       // The plain miss: a live-rows read that reads deleted rows too.
@@ -277,6 +315,43 @@ ruleTester.run(
         code: 'this.client.user.count({ where: { tenantId } });',
         filename: 'apps/api/src/modules/user/user-purge.service.ts',
         options: [{ ...SOFT, allowIn: [] }],
+        errors: [{ messageId: 'missingDeletedAtWhere' }],
+      },
+      // allowInFunctions keeps policing every OTHER function in the file,
+      // which is the whole point of preferring it over allowIn.
+      {
+        code: `class R {
+          async countAllUsers(tx, tenantId) { return tx.user.count({ where: { tenantId } }); }
+          async acceptInPlace(tx, id) { return tx.user.updateMany({ where: { id }, data: {} }); }
+        }`,
+        filename: REPO,
+        options: [EXEMPT],
+        errors: [{ messageId: 'missingDeletedAtWhere', line: 3 }],
+      },
+      // The same method name in a file outside the entry's globs is policed.
+      {
+        code: 'class R { async countAllUsers(tx) { return tx.user.count(); } }',
+        filename: 'apps/api/src/modules/user/user.repository.ts',
+        options: [EXEMPT],
+        errors: [{ messageId: 'missingDeletedAtWhere' }],
+      },
+      // A named helper declared inside an exempt method is its own function.
+      {
+        code: `class S {
+          async isAbandonable(tx) {
+            async function probe() { return tx.user.count(); }
+            return probe();
+          }
+        }`,
+        filename: REPO,
+        options: [EXEMPT],
+        errors: [{ messageId: 'missingDeletedAtWhere' }],
+      },
+      // Module-level code belongs to no function and is never exempt.
+      {
+        code: 'tx.user.count();',
+        filename: REPO,
+        options: [EXEMPT],
         errors: [{ messageId: 'missingDeletedAtWhere' }],
       },
     ],
