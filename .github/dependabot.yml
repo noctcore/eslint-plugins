@@ -22,7 +22,14 @@ updates:
       interval: weekly
     cooldown:
       default-days: 7
+    # Dependabot puts a dependency in the first group that matches it, so this
+    # one has to come first. The typescript-eslint packages share types and
+    # must always move in lockstep: bumping only rule-tester (a production
+    # dependency of eslint-test-utils) while utils/parser stay behind breaks
+    # typecheck with mismatched RuleContext types.
     groups:
+      typescript-eslint:
+        patterns: ['@typescript-eslint/*', 'typescript-eslint']
       dev-dependencies:
         dependency-type: development
       dependencies:
