@@ -12,9 +12,17 @@
  * every exported action, so a shared preset cannot turn it on for a stranger's
  * repo. Enable it with your own clients, e.g.
  *   'noctcore-security/server-action-through-client': ['error', { actionClients: ['actionClient', 'authActionClient'] }]
+ *
+ * `require-sanitized-html` is omitted because a real codebase has trusted HTML
+ * the rule cannot prove safe: a syntax highlighter's output, compiled Markdown,
+ * a JSON-LD `<script>`. Staying quiet on those takes a per-project
+ * `trustedSources` list, which is the mark of an opt-in rule. Enable it with
+ * your own producers, e.g.
+ *   'noctcore-security/require-sanitized-html': ['error', { trustedSources: ['highlighter.codeToHtml()'] }]
  */
 export const recommended = {
   'noctcore-security/no-shell-interpolation': 'error',
+  'noctcore-security/no-timing-unsafe-compare': 'error',
   'noctcore-security/no-user-controlled-fetch-url': 'error',
   'noctcore-security/no-user-controlled-redirect': 'error',
 } as const;

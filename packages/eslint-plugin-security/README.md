@@ -1,6 +1,6 @@
 # @noctcore/eslint-plugin-security
 
-Injection, path-traversal, SSRF and open-redirect precision rules. High-precision syntactic sinks only; precision is the
+Injection, path-traversal, SSRF, open-redirect, XSS and timing-attack precision rules. High-precision syntactic sinks only; precision is the
 point. Flat-config only, ESLint 9+.
 
 ## Install
@@ -32,6 +32,8 @@ export default [
       'noctcore-security/no-shell-interpolation': ['error', { extraCallees: ['sh'] }],
       // High false-positive; enable explicitly (omitted from `recommended`).
       'noctcore-security/require-path-containment': ['error', { requestObjects: ['req', 'ctx'] }],
+      // Omitted from `recommended`: name the HTML producers you trust.
+      'noctcore-security/require-sanitized-html': ['error', { trustedSources: ['highlighter.codeToHtml()'] }],
       // Needs your action-client names; with none configured it reports every exported action.
       'noctcore-security/server-action-through-client': ['error', { actionClients: ['actionClient', 'authActionClient'] }],
     },
@@ -44,7 +46,9 @@ export default [
 | Rule | Description | Recommended |
 | --- | --- | --- |
 | [`no-shell-interpolation`](./docs/rules/no-shell-interpolation.md) | A dynamically-built command string must not flow into a shell runner (`exec`/`execSync`, or `spawn`/`execFile` with `shell: true`). | `error` |
+| [`no-timing-unsafe-compare`](./docs/rules/no-timing-unsafe-compare.md) | An HMAC digest or signature compared with `===` / `!==` or `Buffer#equals` instead of `crypto.timingSafeEqual`; decided by provenance, not by names. | `error` |
 | [`no-user-controlled-fetch-url`](./docs/rules/no-user-controlled-fetch-url.md) | `fetch` / `axios` URL whose origin is not fixed at authoring time (SSRF), including the `https://host${p}` userinfo trick. | `error` |
 | [`no-user-controlled-redirect`](./docs/rules/no-user-controlled-redirect.md) | Redirect target whose origin is not fixed at authoring time (open redirect); understands Express `res.redirect(302, url)`. | `error` |
 | [`require-path-containment`](./docs/rules/require-path-containment.md) | `req.*` input passed directly into `path.join` / `path.resolve` without a containment guard. | opt-in (off) |
+| [`require-sanitized-html`](./docs/rules/require-sanitized-html.md) | HTML reaching `dangerouslySetInnerHTML`, `innerHTML`, `outerHTML` or `insertAdjacentHTML` must be static markup or pass through a sanitizer. | opt-in (off), `trustedSources` for trusted HTML |
 | [`server-action-through-client`](./docs/rules/server-action-through-client.md) | In a `'use server'` module, every exported action must be built from a configured action client; no raw `export async function`. | opt-in (off), needs `actionClients` |
