@@ -3,7 +3,7 @@ import { rules } from './rules';
 
 /** Flat-config namespace: rule ids are keyed `noctcore-rsc/<rule>`. */
 const NAMESPACE = 'noctcore-rsc';
-const VERSION = '0.0.0';
+const VERSION = '0.1.0';
 
 const plugin = {
   meta: { name: '@noctcore/eslint-plugin-rsc', version: VERSION },

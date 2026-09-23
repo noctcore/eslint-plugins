@@ -1,6 +1,6 @@
 {
   "name": "@noctcore/eslint-plugin-rsc",
-  "version": "0.0.0",
+  "version": "0.1.0",
   "description": "React Server Components and App Router correctness rules: control-flow errors that must not be swallowed.",
   "license": "MIT",
   "type": "module",
