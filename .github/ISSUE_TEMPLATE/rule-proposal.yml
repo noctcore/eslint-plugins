@@ -31,6 +31,7 @@ body:
         - eslint-plugin-security
         - eslint-plugin-prisma
         - eslint-plugin-rsc
+        - eslint-plugin-llm
         - lint-meta-rules (whole-repo checks for the harness)
         - a new package
     validations:

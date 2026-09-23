@@ -1,0 +1,31 @@
+---
+title: "@noctcore/eslint-plugin-llm"
+description: "LLM output treated as untrusted input: model text kept out of eval, shells, raw SQL, HTML, fetch origins and fs paths."
+sidebar:
+  label: llm
+  order: 10
+---
+
+import QuickStart from '../../../components/QuickStart.astro';
+import RuleTable from '../../../components/RuleTable.astro';
+
+LLM output treated as untrusted input: model text kept out of eval, shells, raw SQL, HTML, fetch origins and fs paths.
+
+## What it solves
+
+A model writes what its prompt steers it toward, and the prompt carries the user's message, retrieved documents and tool results along with your instructions. A prompt injection in any of them comes back out as model output. Sent to `innerHTML` it is XSS, to `exec` it is code execution, to `$queryRawUnsafe` it is SQL injection. This is [OWASP LLM05, Improper Output Handling](https://genai.owasp.org/llmrisk/llm052025-improper-output-handling/).
+
+## What it will yell at you about
+
+It will yell at you about **the result of an OpenAI, Anthropic or Vercel AI SDK call reaching a dangerous sink in the same function**, with nothing in between that validates or sanitizes it. It follows `const` bindings and destructuring, not function calls, so it stays silent whenever the chain is not visible in the source. **It is a bad fit** if you call models through your own wrapper everywhere, because the rule recognises the SDKs' own response shapes and will not see through the wrapper.
+
+## Install and configure
+
+<QuickStart pkg="llm" />
+
+## Rules
+
+Each rule links to its page, with the options it takes and Incorrect and Correct examples. Start with
+[`no-llm-output-to-sink`](/eslint-plugins/rules/llm/no-llm-output-to-sink/).
+
+<RuleTable pkg="llm" />

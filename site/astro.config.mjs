@@ -56,6 +56,7 @@ export default defineConfig({
               ['security', 'Security'],
               ['prisma', 'Prisma'],
               ['rsc', 'RSC'],
+              ['llm', 'LLM'],
               ['lint-meta-rules', 'lint-meta rules'],
             ].map(([directory, label]) => ({
               label,

@@ -129,7 +129,7 @@ not just stated: each plugin's `tests/configs/recommended.test.ts` fails on any 
 not `error` or `off`, and a second test in the same file makes leaving a rule out a decision you
 write down. In `code-quality`, `prisma` and `security`, which already ship opt-in rules, that test
 requires every rule to be in the preset or listed by name in `OMITTED_FROM_PRESETS`. In the other
-six it requires every rule to be in the preset, full stop, so the first opt-in rule in one of those
+seven it requires every rule to be in the preset, full stop, so the first opt-in rule in one of those
 packages also adds that list to its test, copied from `eslint-plugin-security`. Either way, add a
 comment in `src/configs/recommended.ts` saying why the rule is left out.
 

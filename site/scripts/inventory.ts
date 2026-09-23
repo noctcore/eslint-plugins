@@ -37,6 +37,7 @@ export const PLUGIN_SHORT_NAMES = [
   'security',
   'prisma',
   'rsc',
+  'llm',
 ] as const;
 
 export const LINT_META = 'lint-meta-rules';
