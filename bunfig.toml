@@ -1,0 +1,4 @@
+[install]
+# Never resolve a dependency version published less than 3 days ago: most
+# compromised npm releases are caught and pulled within that window.
+minimumReleaseAge = 259200 # seconds
