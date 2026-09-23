@@ -19,7 +19,7 @@
       },
       "devDependencies": {
         "@noctcore/eslint-test-utils": "workspace:*",
-        "@types/node": "^22.0.0",
+        "@types/node": "^22.20.3",
         "@typescript-eslint/parser": "^8.70.0",
         "@typescript-eslint/rule-tester": "^8.70.0",
         "tsup": "^8.5.1",
@@ -40,7 +40,7 @@
       },
       "devDependencies": {
         "@noctcore/eslint-test-utils": "workspace:*",
-        "@types/node": "^22.0.0",
+        "@types/node": "^22.20.3",
         "@typescript-eslint/parser": "^8.70.0",
         "@typescript-eslint/rule-tester": "^8.70.0",
         "tsup": "^8.5.1",
@@ -61,7 +61,7 @@
       },
       "devDependencies": {
         "@noctcore/eslint-test-utils": "workspace:*",
-        "@types/node": "^22.0.0",
+        "@types/node": "^22.20.3",
         "@typescript-eslint/parser": "^8.70.0",
         "@typescript-eslint/rule-tester": "^8.70.0",
         "tsup": "^8.5.1",
@@ -82,7 +82,7 @@
       },
       "devDependencies": {
         "@noctcore/eslint-test-utils": "workspace:*",
-        "@types/node": "^22.0.0",
+        "@types/node": "^22.20.3",
         "@typescript-eslint/parser": "^8.70.0",
         "@typescript-eslint/rule-tester": "^8.70.0",
         "tsup": "^8.5.1",
@@ -103,7 +103,7 @@
       },
       "devDependencies": {
         "@noctcore/eslint-test-utils": "workspace:*",
-        "@types/node": "^22.0.0",
+        "@types/node": "^22.20.3",
         "@typescript-eslint/parser": "^8.70.0",
         "@typescript-eslint/rule-tester": "^8.70.0",
         "tsup": "^8.5.1",
@@ -124,7 +124,7 @@
       },
       "devDependencies": {
         "@noctcore/eslint-test-utils": "workspace:*",
-        "@types/node": "^22.0.0",
+        "@types/node": "^22.20.3",
         "@typescript-eslint/parser": "^8.70.0",
         "@typescript-eslint/rule-tester": "^8.70.0",
         "tsup": "^8.5.1",
@@ -145,7 +145,7 @@
       },
       "devDependencies": {
         "@noctcore/eslint-test-utils": "workspace:*",
-        "@types/node": "^22.0.0",
+        "@types/node": "^22.20.3",
         "@typescript-eslint/parser": "^8.70.0",
         "@typescript-eslint/rule-tester": "^8.70.0",
         "tsup": "^8.5.1",
@@ -166,7 +166,7 @@
       },
       "devDependencies": {
         "@noctcore/eslint-test-utils": "workspace:*",
-        "@types/node": "^22.0.0",
+        "@types/node": "^22.20.3",
         "@typescript-eslint/parser": "^8.70.0",
         "@typescript-eslint/rule-tester": "^8.70.0",
         "tsup": "^8.5.1",
@@ -187,7 +187,7 @@
       },
       "devDependencies": {
         "@noctcore/eslint-test-utils": "workspace:*",
-        "@types/node": "^22.0.0",
+        "@types/node": "^22.20.3",
         "@typescript-eslint/parser": "^8.70.0",
         "@typescript-eslint/rule-tester": "^8.70.0",
         "tsup": "^8.5.1",
@@ -208,7 +208,7 @@
       },
       "devDependencies": {
         "@noctcore/eslint-test-utils": "workspace:*",
-        "@types/node": "^22.0.0",
+        "@types/node": "^22.20.3",
         "@typescript-eslint/parser": "^8.70.0",
         "@typescript-eslint/rule-tester": "^8.70.0",
         "tsup": "^8.5.1",
@@ -229,7 +229,7 @@
       },
       "devDependencies": {
         "@noctcore/eslint-test-utils": "workspace:*",
-        "@types/node": "^22.0.0",
+        "@types/node": "^22.20.3",
         "@typescript-eslint/parser": "^8.70.0",
         "@typescript-eslint/rule-tester": "^8.70.0",
         "tsup": "^8.5.1",
@@ -251,7 +251,7 @@
         "eslint-v9": "npm:eslint@9.0.0",
       },
       "devDependencies": {
-        "@types/node": "^22.0.0",
+        "@types/node": "^22.20.3",
         "typescript": "^5.6.0",
         "vitest": "^4",
       },
@@ -266,7 +266,7 @@
         "@typescript-eslint/utils": "^8.61.1",
       },
       "devDependencies": {
-        "@types/node": "^22.0.0",
+        "@types/node": "^22.20.3",
         "tsup": "^8.5.1",
         "typescript": "^5.6.0",
       },
@@ -285,7 +285,7 @@
         "@typescript-eslint/utils": "^8.61.1",
       },
       "devDependencies": {
-        "@types/node": "^22.0.0",
+        "@types/node": "^22.20.3",
         "@typescript-eslint/parser": "^8.70.0",
         "eslint": "^10.10.0",
         "tsup": "^8.5.1",
@@ -795,7 +795,7 @@
 
     "@types/nlcst": ["@types/nlcst@2.0.3", "", { "dependencies": { "@types/unist": "*" } }, "sha512-vSYNSDe6Ix3q+6Z7ri9lyWqgGhJTmzRjZRqyq15N0Z/1/UnVsno9G/N40NBijoYx2seFDIl0+B2mgAb9mezUCA=="],
 
-    "@types/node": ["@types/node@22.20.1", "", { "dependencies": { "undici-types": "~6.21.0" } }, "sha512-EANqOCF9QFyra+4pfxUcX9STKJpCLjMbObVzljIJomAWSnuSIEAvyzEU53GaajbXJEgdh0iEcPL+DGvpUd4k1Q=="],
+    "@types/node": ["@types/node@22.20.3", "", { "dependencies": { "undici-types": "~6.21.0" } }, "sha512-DZmzkmwHzXrLPAXPyKNDzlIwMMUZCVacoD25ywdy5YTKGbOx/2ld+Q38Im2zJ0vBuZP5Prd3VZutKZyXwkOS8A=="],
 
     "@types/sax": ["@types/sax@1.2.7", "", { "dependencies": { "@types/node": "*" } }, "sha512-rO73L89PJxeYM3s3pPPjiPgVVcymqU490g0YO5n5By0k2Erzj6tay/4lr1CHAAU4JyOWd1rpQ8bCf6cZfHU96A=="],
 
@@ -1658,6 +1658,8 @@
     "anymatch/picomatch": ["picomatch@2.3.2", "", {}, "sha512-V7+vQEJ06Z+c5tSye8S+nHUfI51xoXIXjHQ99cQtKUkQqqO1kO/KCJUfZXuB47h/YBlDhah2H3hdUGXn8ie0oA=="],
 
     "astro/package-manager-detector": ["package-manager-detector@1.8.0", "", {}, "sha512-yQA4H19AmPEoMUeavPMDIe1higySl/gH/yaQrkT/s07Qp+7pp2hYz30N3z2l5BkjVkF9Ow6o0wjJamm2y7Sn0A=="],
+
+    "bun-types/@types/node": ["@types/node@22.20.1", "", { "dependencies": { "undici-types": "~6.21.0" } }, "sha512-EANqOCF9QFyra+4pfxUcX9STKJpCLjMbObVzljIJomAWSnuSIEAvyzEU53GaajbXJEgdh0iEcPL+DGvpUd4k1Q=="],
 
     "cacheable/keyv": ["keyv@5.6.0", "", { "dependencies": { "@keyv/serialize": "^1.1.1" } }, "sha512-CYDD3SOtsHtyXeEORYRx2qBtpDJFjRTGXUtmNEMGyzYOKj1TE3tycdlho7kA1Ufx9OYWZzg52QFBGALTirzDSw=="],
 
