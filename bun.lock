@@ -12,7 +12,7 @@
     },
     "packages/eslint-plugin-architecture": {
       "name": "@noctcore/eslint-plugin-architecture",
-      "version": "0.3.1",
+      "version": "0.3.2",
       "dependencies": {
         "@noctcore/eslint-utils": "^0.1.0",
         "@typescript-eslint/utils": "^8.61.1",
@@ -33,7 +33,7 @@
     },
     "packages/eslint-plugin-async-safety": {
       "name": "@noctcore/eslint-plugin-async-safety",
-      "version": "0.3.1",
+      "version": "0.3.2",
       "dependencies": {
         "@noctcore/eslint-utils": "^0.1.0",
         "@typescript-eslint/utils": "^8.61.1",
@@ -54,7 +54,7 @@
     },
     "packages/eslint-plugin-code-quality": {
       "name": "@noctcore/eslint-plugin-code-quality",
-      "version": "0.2.1",
+      "version": "0.2.2",
       "dependencies": {
         "@noctcore/eslint-utils": "^0.1.0",
         "@typescript-eslint/utils": "^8.61.1",
@@ -75,7 +75,7 @@
     },
     "packages/eslint-plugin-contracts": {
       "name": "@noctcore/eslint-plugin-contracts",
-      "version": "0.6.0",
+      "version": "0.6.1",
       "dependencies": {
         "@noctcore/eslint-utils": "^0.1.0",
         "@typescript-eslint/utils": "^8.61.1",
@@ -94,9 +94,30 @@
         "typescript": ">=5.0.0",
       },
     },
+    "packages/eslint-plugin-llm": {
+      "name": "@noctcore/eslint-plugin-llm",
+      "version": "0.0.0",
+      "dependencies": {
+        "@noctcore/eslint-utils": "^0.1.1",
+        "@typescript-eslint/utils": "^8.61.1",
+      },
+      "devDependencies": {
+        "@noctcore/eslint-test-utils": "workspace:*",
+        "@types/node": "^22.0.0",
+        "@typescript-eslint/parser": "^8.61.1",
+        "@typescript-eslint/rule-tester": "^8.61.1",
+        "tsup": "^8.5.1",
+        "typescript": "^5.6.0",
+        "vitest": "^4",
+      },
+      "peerDependencies": {
+        "eslint": ">=9.0.0",
+        "typescript": ">=5.0.0",
+      },
+    },
     "packages/eslint-plugin-monorepo": {
       "name": "@noctcore/eslint-plugin-monorepo",
-      "version": "0.2.1",
+      "version": "0.2.2",
       "dependencies": {
         "@noctcore/eslint-utils": "^0.1.0",
         "@typescript-eslint/utils": "^8.61.1",
@@ -117,7 +138,7 @@
     },
     "packages/eslint-plugin-observability": {
       "name": "@noctcore/eslint-plugin-observability",
-      "version": "0.3.1",
+      "version": "0.3.2",
       "dependencies": {
         "@noctcore/eslint-utils": "^0.1.0",
         "@typescript-eslint/utils": "^8.61.1",
@@ -138,7 +159,7 @@
     },
     "packages/eslint-plugin-prisma": {
       "name": "@noctcore/eslint-plugin-prisma",
-      "version": "0.3.1",
+      "version": "0.4.0",
       "dependencies": {
         "@noctcore/eslint-utils": "^0.1.0",
         "@typescript-eslint/utils": "^8.61.1",
@@ -159,7 +180,7 @@
     },
     "packages/eslint-plugin-react": {
       "name": "@noctcore/eslint-plugin-react",
-      "version": "0.3.0",
+      "version": "0.4.0",
       "dependencies": {
         "@noctcore/eslint-utils": "^0.1.0",
         "@typescript-eslint/utils": "^8.61.1",
@@ -180,7 +201,7 @@
     },
     "packages/eslint-plugin-security": {
       "name": "@noctcore/eslint-plugin-security",
-      "version": "0.2.1",
+      "version": "0.3.0",
       "dependencies": {
         "@noctcore/eslint-utils": "^0.1.0",
         "@typescript-eslint/utils": "^8.61.1",
@@ -219,7 +240,7 @@
     },
     "packages/eslint-utils": {
       "name": "@noctcore/eslint-utils",
-      "version": "0.1.0",
+      "version": "0.1.1",
       "dependencies": {
         "@typescript-eslint/utils": "^8.61.1",
       },
@@ -235,7 +256,7 @@
     },
     "packages/lint-meta-rules": {
       "name": "@noctcore/lint-meta-rules",
-      "version": "0.4.1",
+      "version": "0.4.2",
       "dependencies": {
         "@noctcore/eslint-plugin-contracts": "^0.5.0",
         "@noctcore/eslint-plugin-prisma": "^0.2.0",
@@ -568,6 +589,8 @@
     "@noctcore/eslint-plugin-code-quality": ["@noctcore/eslint-plugin-code-quality@workspace:packages/eslint-plugin-code-quality"],
 
     "@noctcore/eslint-plugin-contracts": ["@noctcore/eslint-plugin-contracts@workspace:packages/eslint-plugin-contracts"],
+
+    "@noctcore/eslint-plugin-llm": ["@noctcore/eslint-plugin-llm@workspace:packages/eslint-plugin-llm"],
 
     "@noctcore/eslint-plugin-monorepo": ["@noctcore/eslint-plugin-monorepo@workspace:packages/eslint-plugin-monorepo"],
 

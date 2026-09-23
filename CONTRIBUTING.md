@@ -51,7 +51,7 @@ in: two-space indent, single quotes, trailing commas, prose wrapped near 100 col
 
 ## How a rule is put together
 
-Take `packages/eslint-plugin-security` as the model; all nine ESLint plugins have the same shape.
+Take `packages/eslint-plugin-security` as the model; all ten ESLint plugins have the same shape.
 
 | Piece | Where | Notes |
 | --- | --- | --- |
@@ -129,7 +129,7 @@ not just stated: each plugin's `tests/configs/recommended.test.ts` fails on any 
 not `error` or `off`, and a second test in the same file makes leaving a rule out a decision you
 write down. In `code-quality`, `prisma` and `security`, which already ship opt-in rules, that test
 requires every rule to be in the preset or listed by name in `OMITTED_FROM_PRESETS`. In the other
-six it requires every rule to be in the preset, full stop, so the first opt-in rule in one of those
+seven it requires every rule to be in the preset, full stop, so the first opt-in rule in one of those
 packages also adds that list to its test, copied from `eslint-plugin-security`. Either way, add a
 comment in `src/configs/recommended.ts` saying why the rule is left out.
 
