@@ -7,6 +7,7 @@ import {
 } from '@noctcore/eslint-plugin-prisma';
 
 import { firstOptionOf, resolveRules, severityOf } from '../resolved-config/resolve';
+import { stripTrailingSlashes } from '../rules/shared';
 
 /** Where the runtime scope map is declared, when it is read from source. */
 export interface ScopedModelsSource {
@@ -181,7 +182,7 @@ export function parseObjectLiteralKeys(source: string, exportName: string): stri
 
 /** The schema at `schemaPath` (a file or a folder of `.prisma` files), or `null`. */
 function readSchema(ctx: IMetaCtx, schemaPath: string): ParsedPrismaSchema | null {
-  const base = schemaPath.replace(/\/+$/u, '');
+  const base = stripTrailingSlashes(schemaPath);
   const files = ctx.glob(`${base}/**/*.prisma`).sort();
   // Concatenated, not parsed per file: a relation's target may be declared in a
   // different file than the field pointing at it.

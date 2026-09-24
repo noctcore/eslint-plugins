@@ -55,6 +55,17 @@ describe('parseDelegateSurfaces', () => {
       ['User', SURFACE.length],
     ]);
   });
+
+  test('ignores a delegate that sits inside a block comment', () => {
+    const source = `/*\n${modelFile('Ghost')}*/\n${modelFile('Invoice')}`;
+    expect(parseDelegateSurfaces(source).map((s) => s.model)).toEqual(['Invoice']);
+  });
+
+  test('stays linear on many unclosed block comments', () => {
+    const start = performance.now();
+    expect(parseDelegateSurfaces(`/*${'a/*'.repeat(200_000)}`)).toEqual([]);
+    expect(performance.now() - start).toBeLessThan(1000);
+  });
 });
 
 describe('prisma-method-surface', () => {

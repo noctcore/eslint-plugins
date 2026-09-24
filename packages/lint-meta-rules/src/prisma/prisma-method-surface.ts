@@ -45,11 +45,21 @@ export interface DelegateSurface {
   readonly methods: readonly string[];
 }
 
-/** Blank block and line comments, keeping line breaks so line structure survives. */
+/**
+ * Blank block and line comments, keeping line breaks so line structure survives.
+ * Block comments are found with `indexOf`, not a lazy regex, so an unclosed
+ * `/*` costs one pass instead of a rescan from every later `/*`.
+ */
 function blankComments(source: string): string {
-  return source
-    .replace(/\/\*[\s\S]*?\*\//gu, (comment) => comment.replace(/[^\n]/gu, ' '))
-    .replace(/(^|[^:])\/\/.*$/gmu, '$1');
+  let out = '';
+  let from = 0;
+  for (let open = source.indexOf('/*'); open !== -1; open = source.indexOf('/*', from)) {
+    const close = source.indexOf('*/', open + 2);
+    if (close === -1) break;
+    out += source.slice(from, open) + source.slice(open, close + 2).replace(/[^\n]/gu, ' ');
+    from = close + 2;
+  }
+  return (out + source.slice(from)).replace(/(^|[^:])\/\/.*$/gmu, '$1');
 }
 
 /**
