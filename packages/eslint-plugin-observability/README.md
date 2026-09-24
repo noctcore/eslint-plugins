@@ -1,16 +1,27 @@
 # @noctcore/eslint-plugin-observability
 
+Structured-logging discipline rules: context objects over interpolated messages, no sensitive fields
+in logs, no error-detail loss.
+
 **Docs:** [noctcore.github.io/eslint-plugins/packages/observability](https://noctcore.github.io/eslint-plugins/packages/observability/)
 
-Structured-logging discipline rules — context objects over interpolated messages, no sensitive fields
-in logs, no error-detail loss. Flat-config only, ESLint 9+.
+Not a good fit for a codebase that logs through `console` by design, or whose logger cannot carry a
+context object.
 
 ## Requirements
 
 - ESLint 9 or newer, flat config (`eslint.config.js`) only.
 - `configs.recommended` registers the plugin and sets rule severities, nothing else. It sets no
   `files` and no parser, so it applies to whatever files the rest of your config lints. To lint
-  TypeScript, add a `files` pattern and `@typescript-eslint/parser`:
+  TypeScript, add a `files` pattern and `@typescript-eslint/parser`, as in the quick start.
+
+## Install
+
+```sh
+bun add -D @noctcore/eslint-plugin-observability @typescript-eslint/parser   # or npm i -D / pnpm add -D
+```
+
+## Quick start
 
 ```js
 // eslint.config.js
@@ -23,36 +34,32 @@ export default [
     files: ['**/*.{ts,tsx}'],
     languageOptions: { parser: tsParser },
   },
+  // Optional: tune a preset rule's options.
+  {
+    files: ['**/*.{ts,tsx}'],
+    rules: {
+      'noctcore-observability/structured-log-arguments': ['error', { loggers: ['log', 'audit'] }],
+    },
+  },
 ];
 ```
 
-## Install
+## Opt-in rules
 
-```sh
-bun add -D @noctcore/eslint-plugin-observability   # or npm i -D / pnpm add -D
-```
-
-## Use
+`audit-pii-declared` is in `recommended` but inert until `auditCallees` names your audit writes:
 
 ```js
 // eslint.config.js
-import observability from '@noctcore/eslint-plugin-observability';
-
 export default [
-  observability.configs.recommended,
-];
-```
-
-Or wire rules individually:
-
-```js
-import observability from '@noctcore/eslint-plugin-observability';
-
-export default [
+  // ...the quick start's entries, then:
   {
-    plugins: { 'noctcore-observability': observability },
+    files: ['**/*.{ts,tsx}'],
+    languageOptions: { parser: tsParser },
     rules: {
-      'noctcore-observability/structured-log-arguments': ['error', { loggers: ['log', 'audit'] }],
+      'noctcore-observability/audit-pii-declared': ['error', {
+        auditCallees: ['auditService.log'],
+        registeredFields: ['email', 'newEmail'],
+      }],
     },
   },
 ];
@@ -72,3 +79,8 @@ export default [
 | [`no-sensitive-fields-in-logs`](https://noctcore.github.io/eslint-plugins/rules/observability/no-sensitive-fields-in-logs/) | A logger call must not reference an identifier, property, or object key whose name matches a sensitive-field denylist (password, token, secret, ...). Redact it before logging. | ✅ |  |  |  |  |
 | [`structured-log-arguments`](https://noctcore.github.io/eslint-plugins/rules/observability/structured-log-arguments/) | A logger call must not interpolate dynamic values into the message string (a template literal with expressions). Pass a static message and a structured context object instead. | ✅ |  |  |  |  |
 <!-- end generated rules -->
+
+## Severity policy
+
+Every rule is `error` or `off`, never `warn`: a warning is a rule nobody obeys. See the
+[severity policy](https://noctcore.github.io/eslint-plugins/getting-started/#severity-policy).

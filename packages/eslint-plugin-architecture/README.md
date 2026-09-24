@@ -1,16 +1,27 @@
 # @noctcore/eslint-plugin-architecture
 
+Folder-per-component and feature-boundary rules: catches the imports and file layouts that quietly
+erode a feature-organised codebase. Framework-agnostic.
+
 **Docs:** [noctcore.github.io/eslint-plugins/packages/architecture](https://noctcore.github.io/eslint-plugins/packages/architecture/)
 
-Framework-agnostic folder-per-component and feature-boundary architecture rules. Flat-config only,
-ESLint 9+.
+Not a good fit for a codebase organised by technical layer (`hooks/`, `components/`, `utils/` at the
+top) rather than by feature.
 
 ## Requirements
 
 - ESLint 9 or newer, flat config (`eslint.config.js`) only.
 - `configs.recommended` registers the plugin and sets rule severities, nothing else. It sets no
   `files` and no parser, so it applies to whatever files the rest of your config lints. To lint
-  TypeScript, add a `files` pattern and `@typescript-eslint/parser`:
+  TypeScript, add a `files` pattern and `@typescript-eslint/parser`, as in the quick start.
+
+## Install
+
+```sh
+bun add -D @noctcore/eslint-plugin-architecture @typescript-eslint/parser   # or npm i -D / pnpm add -D
+```
+
+## Quick start
 
 ```js
 // eslint.config.js
@@ -23,38 +34,12 @@ export default [
     files: ['**/*.{ts,tsx}'],
     languageOptions: { parser: tsParser },
   },
-];
-```
-
-## Install
-
-```sh
-bun add -D @noctcore/eslint-plugin-architecture   # or npm i -D / pnpm add -D
-```
-
-## Use
-
-```js
-// eslint.config.js
-import architecture from '@noctcore/eslint-plugin-architecture';
-
-export default [
-  architecture.configs.recommended,
-];
-```
-
-Or wire rules individually:
-
-```js
-import architecture from '@noctcore/eslint-plugin-architecture';
-
-export default [
+  // Optional: tune a preset rule's options.
   {
-    plugins: { 'noctcore-architecture': architecture },
+    files: ['**/*.{ts,tsx}'],
     rules: {
       'noctcore-architecture/component-folder-structure': ['error', { componentRoot: 'components' }],
       'noctcore-architecture/no-cross-feature-imports': ['error', { alias: '@/components' }],
-      'noctcore-architecture/index-must-reexport-default': 'error',
     },
   },
 ];
@@ -64,6 +49,27 @@ Every rule anchors on a configurable directory segment (default `components`) ra
 path, so it behaves the same whether ESLint runs from the repo root or per-package, on POSIX or
 Windows. Several rules inspect files on disk (sibling sets, barrel siblings, colocated tests), so run
 ESLint against real file paths, not virtual sources.
+
+## Opt-in rules
+
+Two rules ship `off` because they are opinions many good codebases do not share. Turn them on
+explicitly:
+
+```js
+// eslint.config.js
+export default [
+  // ...the quick start's entries, then:
+  {
+    files: ['**/*.{ts,tsx}'],
+    languageOptions: { parser: tsParser },
+    rules: {
+      // Does nothing until `include` names the files that need a colocated test.
+      'noctcore-architecture/colocated-test-required': ['error', { include: ['src/**/*.{ts,tsx}'] }],
+      'noctcore-architecture/single-semantic-module': 'error',
+    },
+  },
+];
+```
 
 ## Rules
 
@@ -83,3 +89,8 @@ ESLint against real file paths, not virtual sources.
 | [`no-cross-feature-imports`](https://noctcore.github.io/eslint-plugins/rules/architecture/no-cross-feature-imports/) | A file in one feature may not import runtime code from another feature. Move shared code to a shared module or a shared feature. | ✅ |  |  |  |  |
 | [`single-semantic-module`](https://noctcore.github.io/eslint-plugins/rules/architecture/single-semantic-module/) | Require each module to export only one semantic concern (types, constants, functions, classes, components, hooks, schemas or enums). |  |  |  |  |  |
 <!-- end generated rules -->
+
+## Severity policy
+
+Every rule is `error` or `off`, never `warn`: a warning is a rule nobody obeys. See the
+[severity policy](https://noctcore.github.io/eslint-plugins/getting-started/#severity-policy).

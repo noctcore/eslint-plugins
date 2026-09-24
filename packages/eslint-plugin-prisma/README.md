@@ -1,18 +1,28 @@
 # @noctcore/eslint-plugin-prisma
 
-**Docs:** [noctcore.github.io/eslint-plugins/packages/prisma](https://noctcore.github.io/eslint-plugins/packages/prisma/)
-
 Prisma tenancy, data-integrity and transaction guardrails: fence the escape hatches around a
 tenant-scoping client extension, keep tenant and soft-delete filters on the queries that need them,
-fence single-writer models to their owners, and keep multi-write code transactional. Flat-config
-only, ESLint 9+.
+fence single-writer models to their owners, and keep multi-write code transactional.
+
+**Docs:** [noctcore.github.io/eslint-plugins/packages/prisma](https://noctcore.github.io/eslint-plugins/packages/prisma/)
+
+Not a good fit for an app that is not multi-tenant, or keeps tenancy in Postgres row-level security
+rather than a Prisma client extension.
 
 ## Requirements
 
 - ESLint 9 or newer, flat config (`eslint.config.js`) only.
 - `configs.recommended` registers the plugin and sets rule severities, nothing else. It sets no
   `files` and no parser, so it applies to whatever files the rest of your config lints. To lint
-  TypeScript, add a `files` pattern and `@typescript-eslint/parser`:
+  TypeScript, add a `files` pattern and `@typescript-eslint/parser`, as in the quick start.
+
+## Install
+
+```sh
+bun add -D @noctcore/eslint-plugin-prisma @typescript-eslint/parser   # or npm i -D / pnpm add -D
+```
+
+## Quick start
 
 ```js
 // eslint.config.js
@@ -22,55 +32,47 @@ import prisma from '@noctcore/eslint-plugin-prisma';
 export default [
   {
     ...prisma.configs.recommended,
-    files: ['**/*.{ts,tsx}'],
-    languageOptions: { parser: tsParser },
-  },
-];
-```
-
-## Install
-
-```sh
-bun add -D @noctcore/eslint-plugin-prisma   # or npm i -D / pnpm add -D
-```
-
-## Use
-
-```js
-// eslint.config.js
-import prisma from '@noctcore/eslint-plugin-prisma';
-
-export default [
-  prisma.configs.recommended,
-];
-```
-
-Or wire rules individually, with your project's conventions:
-
-```js
-import prisma from '@noctcore/eslint-plugin-prisma';
-
-export default [
-  {
     files: ['apps/api/src/**/*.ts'],
     ignores: ['**/*.{spec,test}.ts'],
-    plugins: { 'noctcore-prisma': prisma },
+    languageOptions: { parser: tsParser },
+  },
+  // Optional: tune a preset rule's options.
+  {
+    files: ['apps/api/src/**/*.ts'],
     rules: {
       'noctcore-prisma/no-unscoped-prisma-outside-allowlist': ['error', {
         allowedFiles: ['**/prisma/seed.ts', '**/prisma/migrations/**', '**/common/database/prisma.service.ts'],
         escapeHatchFns: ['runWithoutTenantScope'],
       }],
-      'noctcore-prisma/no-raw-sql-outside-allowlist': 'error',
       'noctcore-prisma/prisma-write-in-transaction': ['error', { clientProperties: ['client'] }],
       'noctcore-prisma/prisma-tx-uses-tx-not-client': ['error', { clientProperties: ['client'] }],
-      'noctcore-prisma/no-cross-tenant-id-in-where': 'error',
-      'noctcore-prisma/no-request-body-in-write': 'error',
-      'noctcore-prisma/no-audit-write-in-transaction': 'error',
+    },
+  },
+];
+```
 
-      // Needs type information: see its docs.
-      'noctcore-prisma/mutation-entry-must-reach-audit': ['error', { unauditedModels: ['tourProgress'] }],
+No project convention is hardcoded. What a Prisma receiver is called (`receiverPattern`), the
+unscoped client's property (`unscopedProperty`), escape-hatch functions (`escapeHatchFns`), extra
+client properties (`clientProperties`) and transaction-client names (`txRootNames`) are all options
+with defaults that fit a conventional Prisma codebase. Which models are tenant-scoped,
+soft-deletable or single-writer is never guessed: those lists default to empty.
 
-      // These need your registry and report nothing without it.
+## Opt-in rules
+
+`recommended` turns on the seven rules whose defaults hold with no project knowledge. Four more need
+your model registry (`tenantModels`, `softDeleteModels`, `restrictions`) and are left out of the
+preset on purpose: an entry that reports nothing would read as coverage you do not have. The last
+one, `mutation-entry-must-reach-audit`, follows calls across files through the type checker, refuses
+to run without it, and is not in `recommended` for that reason.
+
+```js
+// eslint.config.js
+export default [
+  // ...the quick start's entries, then:
+  {
+    files: ['apps/api/src/**/*.ts'],
+    languageOptions: { parser: tsParser, parserOptions: { projectService: true } },
+    rules: {
       'noctcore-prisma/tenant-scoped-tables-require-where': ['error', {
         tenantModels: ['invoice', 'customer'],
         handScopedModels: { notification: ['userId'] },
@@ -91,31 +93,12 @@ export default [
           },
         ],
       }],
+      // Needs type information: `parserOptions.projectService` above.
+      'noctcore-prisma/mutation-entry-must-reach-audit': ['error', { unauditedModels: ['tourProgress'] }],
     },
   },
 ];
 ```
-
-`recommended` turns on the seven rules whose defaults hold with no project knowledge. Four more
-need your model registry (`tenantModels`, `softDeleteModels`, `restrictions`) and are left out of the
-preset on purpose: an entry that reports nothing would read as coverage you do not have. The last one,
-`mutation-entry-must-reach-audit`, needs type information.
-
-No project convention is hardcoded. What a Prisma receiver is called (`receiverPattern`), the
-unscoped client's property (`unscopedProperty`), escape-hatch functions (`escapeHatchFns`), extra
-client properties (`clientProperties`) and transaction-client names (`txRootNames`) are all options
-with defaults that fit a conventional Prisma codebase. Which models are tenant-scoped,
-soft-deletable or single-writer is never guessed: those lists default to empty. The rules are name-
-and shape-based and need no type information, with one exception: `mutation-entry-must-reach-audit`
-follows calls across files through the type checker, refuses to run without it, and is not in
-`recommended` for that reason.
-
-Three rules state a limit loudly, because their names could be read as promising more:
-`restrict-model-writes` fences WHO writes a model, and does not validate state transitions;
-`no-audit-write-in-transaction` polices WHERE an audit write sits, and does not check that mutations
-are audited. `mutation-entry-must-reach-audit` is the rule that checks audits exist, and it states its
-own limit in its name: it proves an audit is reachable from each mutation entry point, not that every
-mutating method audits.
 
 ## Rules
 
@@ -140,10 +123,22 @@ mutating method audits.
 | [`tenant-write-must-carry-tenant-id`](https://noctcore.github.io/eslint-plugins/rules/prisma/tenant-write-must-carry-tenant-id/) | Require every tenant field in the `data` of a create on a tenant-scoped Prisma model through the unscoped client, which does not inject the tenant scope. |  | ⚙️ |  |  |  |
 <!-- end generated rules -->
 
-## Building blocks
+Three rules state a limit loudly, because their names could be read as promising more:
+`restrict-model-writes` fences WHO writes a model, and does not validate state transitions;
+`no-audit-write-in-transaction` polices WHERE an audit write sits, and does not check that mutations
+are audited. `mutation-entry-must-reach-audit` is the rule that checks audits exist, and it states its
+own limit in its name: it proves an audit is reachable from each mutation entry point, not that every
+mutating method audits.
+
+### Building blocks
 
 The package also exports the pieces its rules are built on, so a project's own tooling reads the
 same definitions instead of a copy that drifts: the Prisma method sets (`PRISMA_WRITE_METHODS`,
 `PRISMA_DELEGATE_METHODS`, ...), a small schema reader (`parsePrismaSchema`, `loadPrismaSchema`,
 `tenantBearingAccessors`) and `reconcileTenantRegistry`, which checks a tenant-scope registry
 against the schema so a new tenant-bearing table cannot ship with no boundary.
+
+## Severity policy
+
+Every rule is `error` or `off`, never `warn`: a warning is a rule nobody obeys. See the
+[severity policy](https://noctcore.github.io/eslint-plugins/getting-started/#severity-policy).

@@ -1,16 +1,27 @@
 # @noctcore/eslint-plugin-security
 
+Injection, path-traversal, SSRF, open-redirect, XSS and timing-attack rules that match
+high-precision syntactic sinks only; precision is the point.
+
 **Docs:** [noctcore.github.io/eslint-plugins/packages/security](https://noctcore.github.io/eslint-plugins/packages/security/)
 
-Injection, path-traversal, SSRF, open-redirect, XSS and timing-attack precision rules. High-precision syntactic sinks only; precision is the
-point. Flat-config only, ESLint 9+.
+Not a good fit for a project that wants broad taint tracking; this plugin trades recall for reports
+you can trust.
 
 ## Requirements
 
 - ESLint 9 or newer, flat config (`eslint.config.js`) only.
 - `configs.recommended` registers the plugin and sets rule severities, nothing else. It sets no
   `files` and no parser, so it applies to whatever files the rest of your config lints. To lint
-  TypeScript, add a `files` pattern and `@typescript-eslint/parser`:
+  TypeScript, add a `files` pattern and `@typescript-eslint/parser`, as in the quick start.
+
+## Install
+
+```sh
+bun add -D @noctcore/eslint-plugin-security @typescript-eslint/parser   # or npm i -D / pnpm add -D
+```
+
+## Quick start
 
 ```js
 // eslint.config.js
@@ -23,39 +34,31 @@ export default [
     files: ['**/*.{ts,tsx}'],
     languageOptions: { parser: tsParser },
   },
+  // Optional: tune a preset rule's options.
+  {
+    files: ['**/*.{ts,tsx}'],
+    rules: {
+      'noctcore-security/no-shell-interpolation': ['error', { extraCallees: ['sh'] }],
+    },
+  },
 ];
 ```
 
-## Install
+## Opt-in rules
 
-```sh
-bun add -D @noctcore/eslint-plugin-security   # or npm i -D / pnpm add -D
-```
-
-## Use
+Three rules are exported but left out of `recommended`. Enable them with your own options:
 
 ```js
 // eslint.config.js
-import security from '@noctcore/eslint-plugin-security';
-
 export default [
-  security.configs.recommended,
-];
-```
-
-Or wire rules individually — including the opt-in `require-path-containment`:
-
-```js
-import security from '@noctcore/eslint-plugin-security';
-
-export default [
+  // ...the quick start's entries, then:
   {
-    plugins: { 'noctcore-security': security },
+    files: ['**/*.{ts,tsx}'],
+    languageOptions: { parser: tsParser },
     rules: {
-      'noctcore-security/no-shell-interpolation': ['error', { extraCallees: ['sh'] }],
-      // High false-positive; enable explicitly (omitted from `recommended`).
+      // High false-positive rate; enable where request objects reach the filesystem.
       'noctcore-security/require-path-containment': ['error', { requestObjects: ['req', 'ctx'] }],
-      // Omitted from `recommended`: name the HTML producers you trust.
+      // Name the HTML producers you trust.
       'noctcore-security/require-sanitized-html': ['error', { trustedSources: ['highlighter.codeToHtml()'] }],
       // Needs your action-client names; with none configured it reports every exported action.
       'noctcore-security/server-action-through-client': ['error', { actionClients: ['actionClient', 'authActionClient'] }],
@@ -81,3 +84,8 @@ export default [
 | [`require-sanitized-html`](https://noctcore.github.io/eslint-plugins/rules/security/require-sanitized-html/) | HTML reaching `dangerouslySetInnerHTML`, `innerHTML`, `outerHTML` or `insertAdjacentHTML` must be static markup or pass through a configured sanitizer. |  |  |  |  |  |
 | [`server-action-through-client`](https://noctcore.github.io/eslint-plugins/rules/security/server-action-through-client/) | In a `'use server'` module every exported action must be built from a configured action client; a raw exported function bypasses input validation, error shaping and middleware. Opt-in: needs `actionClients`. |  | ⚙️ |  |  |  |
 <!-- end generated rules -->
+
+## Severity policy
+
+Every rule is `error` or `off`, never `warn`: a warning is a rule nobody obeys. See the
+[severity policy](https://noctcore.github.io/eslint-plugins/getting-started/#severity-policy).

@@ -1,15 +1,26 @@
 # @noctcore/eslint-plugin-monorepo
 
+Workspace package-boundary rules: catches imports that reach into another package's internals
+instead of its public entry points.
+
 **Docs:** [noctcore.github.io/eslint-plugins/packages/monorepo](https://noctcore.github.io/eslint-plugins/packages/monorepo/)
 
-Workspace / monorepo package-boundary rules. Flat-config only, ESLint 9+.
+Not a good fit for a single-package repo.
 
 ## Requirements
 
 - ESLint 9 or newer, flat config (`eslint.config.js`) only.
 - `configs.recommended` registers the plugin and sets rule severities, nothing else. It sets no
   `files` and no parser, so it applies to whatever files the rest of your config lints. To lint
-  TypeScript, add a `files` pattern and `@typescript-eslint/parser`:
+  TypeScript, add a `files` pattern and `@typescript-eslint/parser`, as in the quick start.
+
+## Install
+
+```sh
+bun add -D @noctcore/eslint-plugin-monorepo @typescript-eslint/parser   # or npm i -D / pnpm add -D
+```
+
+## Quick start
 
 ```js
 // eslint.config.js
@@ -25,32 +36,18 @@ export default [
 ];
 ```
 
-## Install
+## Opt-in rules
 
-```sh
-bun add -D @noctcore/eslint-plugin-monorepo   # or npm i -D / pnpm add -D
-```
-
-## Use
-
-```js
-// eslint.config.js
-import monorepo from '@noctcore/eslint-plugin-monorepo';
-
-export default [
-  monorepo.configs.recommended,
-];
-```
-
-The `recommended` preset registers the plugin but ships every rule **off**, because each needs your
+The `recommended` preset registers the plugin but ships every rule `off`, because each needs your
 scopes to do anything. Turn them on with your own `scopes`:
 
 ```js
-import monorepo from '@noctcore/eslint-plugin-monorepo';
-
+// eslint.config.js
 export default [
+  // ...the quick start's entries, then:
   {
-    plugins: { 'noctcore-monorepo': monorepo },
+    files: ['**/*.{ts,tsx}'],
+    languageOptions: { parser: tsParser },
     rules: {
       'noctcore-monorepo/no-deep-package-imports': ['error', { scopes: ['@acme'] }],
       'noctcore-monorepo/no-unexported-subpath-import': ['error', { scopes: ['@acme'] }],
@@ -58,6 +55,10 @@ export default [
   },
 ];
 ```
+
+`no-deep-package-imports` is the strict, barrel-only policy; `no-unexported-subpath-import` is the
+looser one: it permits the subpaths a package publishes in `exports` and flags only the ones it does
+not. Pick whichever matches how your packages are meant to be consumed.
 
 ## Rules
 
@@ -72,8 +73,9 @@ export default [
 | [`no-unexported-subpath-import`](https://noctcore.github.io/eslint-plugins/rules/monorepo/no-unexported-subpath-import/) | Importing a `@scope/pkg/<subpath>` that the target workspace package's `exports` map does not expose. Reads the target `package.json` from disk. |  | ⚙️ |  |  |  |
 <!-- end generated rules -->
 
-`no-deep-package-imports` is the strict, barrel-only policy; `no-unexported-subpath-import` is the
-looser one — it permits the subpaths a package publishes in `exports` and flags only the ones it does
-not. Pick whichever matches how your packages are meant to be consumed.
-
 <!-- More rules land as the `monorepo` package fills out (workspace-dependency hygiene, cross-package layering). -->
+
+## Severity policy
+
+Every rule is `error` or `off`, never `warn`: a warning is a rule nobody obeys. See the
+[severity policy](https://noctcore.github.io/eslint-plugins/getting-started/#severity-policy).

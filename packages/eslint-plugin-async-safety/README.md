@@ -1,16 +1,27 @@
 # @noctcore/eslint-plugin-async-safety
 
+Async-correctness rules TypeScript can't catch: unbounded `fetch`, dropped `AbortSignal`s, and
+shared-state / concurrency races.
+
 **Docs:** [noctcore.github.io/eslint-plugins/packages/async-safety](https://noctcore.github.io/eslint-plugins/packages/async-safety/)
 
-Async-correctness rules TypeScript can't catch: unbounded `fetch`, dropped `AbortSignal`s, and
-shared-state / concurrency races. Flat-config only, ESLint 9+.
+Not a good fit for browser-only code that relies on the platform's own fetch lifetime, and scripts
+where hanging is harmless.
 
 ## Requirements
 
 - ESLint 9 or newer, flat config (`eslint.config.js`) only.
 - `configs.recommended` registers the plugin and sets rule severities, nothing else. It sets no
   `files` and no parser, so it applies to whatever files the rest of your config lints. To lint
-  TypeScript, add a `files` pattern and `@typescript-eslint/parser`:
+  TypeScript, add a `files` pattern and `@typescript-eslint/parser`, as in the quick start.
+
+## Install
+
+```sh
+bun add -D @noctcore/eslint-plugin-async-safety @typescript-eslint/parser   # or npm i -D / pnpm add -D
+```
+
+## Quick start
 
 ```js
 // eslint.config.js
@@ -23,38 +34,35 @@ export default [
     files: ['**/*.{ts,tsx}'],
     languageOptions: { parser: tsParser },
   },
+  // Optional: tune a preset rule's options.
+  {
+    files: ['**/*.{ts,tsx}'],
+    rules: {
+      'noctcore-async-safety/require-fetch-timeout': ['error', { callees: ['undici.request'] }],
+    },
+  },
 ];
 ```
 
-## Install
+## Opt-in rules
 
-```sh
-bun add -D @noctcore/eslint-plugin-async-safety   # or npm i -D / pnpm add -D
-```
-
-## Use
+`require-client-timeout` and `no-shared-mutable-module-state` are in `recommended` but inert until
+you give them `clients` and `include`. `prefer-parallel-awaits` ships `off`: it is a latency hint,
+not a bug, and sequential awaits are often deliberate.
 
 ```js
 // eslint.config.js
-import asyncSafety from '@noctcore/eslint-plugin-async-safety';
-
 export default [
-  asyncSafety.configs.recommended,
-];
-```
-
-Or wire rules individually:
-
-```js
-import asyncSafety from '@noctcore/eslint-plugin-async-safety';
-
-export default [
+  // ...the quick start's entries, then:
   {
-    plugins: { 'noctcore-async-safety': asyncSafety },
+    files: ['**/*.{ts,tsx}'],
+    languageOptions: { parser: tsParser },
     rules: {
-      'noctcore-async-safety/require-fetch-timeout': ['error', { callees: ['undici.request'] }],
-      // Off until you point it at server files:
+      'noctcore-async-safety/require-client-timeout': ['error', {
+        clients: [{ callee: 'nodemailer.createTransport', requireAnyOf: ['connectionTimeout', 'socketTimeout'] }],
+      }],
       'noctcore-async-safety/no-shared-mutable-module-state': ['error', { include: ['**/server/**'] }],
+      'noctcore-async-safety/prefer-parallel-awaits': 'error',
     },
   },
 ];
@@ -78,19 +86,10 @@ export default [
 | [`require-fetch-timeout`](https://noctcore.github.io/eslint-plugins/rules/async-safety/require-fetch-timeout/) | A `fetch` (or configured wrapper) call must carry a `signal`/`timeout` in its options — an unbounded request can hang forever. | ✅ |  |  | 💡 |  |
 <!-- end generated rules -->
 
-## `recommended` preset
+The 💡 rules provide editor suggestions, not autofixes: parallelizing awaits and adding a timeout
+both change runtime behavior, so they are never applied automatically.
 
-| Rule | Severity | Notes |
-| --- | --- | --- |
-| `require-fetch-timeout` | `error` | Precise and syntactic. |
-| `require-client-timeout` | `error` | Inert until you list `clients`, so it ships enabled but checks nothing by default. |
-| `no-shared-mutable-module-state` | `error` | Inert until you set `include` globs, so it ships enabled but off by default. |
-| `forward-abort-signal` | `error` | A dead `signal` is a real bug; any forwarding shape counts as a pass. |
-| `no-concurrent-shared-mutation` | `error` | A lost update is a real bug; order-tolerant writes are skipped. |
-| `no-leaky-race-timeout` | `error` | A timer left pending after the race is a real leak; any clear after the race counts as a pass. |
-| `prefer-parallel-awaits` | `off` | A latency hint, not a bug. Sequential awaits are often deliberate. Opt in where you want it. |
+## Severity policy
 
-Every rule is `error` or `off`, never `warn`: a warning is a rule nobody obeys.
-
-The 💡 rules provide editor suggestions (not autofixes) — parallelizing awaits and adding a timeout both change
-runtime behavior, so they are never applied automatically.
+Every rule is `error` or `off`, never `warn`: a warning is a rule nobody obeys. See the
+[severity policy](https://noctcore.github.io/eslint-plugins/getting-started/#severity-policy).

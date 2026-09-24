@@ -1,16 +1,28 @@
 # @noctcore/eslint-plugin-contracts
 
+Rules for shared **contract** conventions: zod schema naming, wire-message discriminants, error
+stringification, direct `process.env` access and money precision, where drift between producer and
+consumer breaks at runtime.
+
 **Docs:** [noctcore.github.io/eslint-plugins/packages/contracts](https://noctcore.github.io/eslint-plugins/packages/contracts/)
 
-Rules for shared **contract** conventions — zod schema naming, wire-message discriminants, error
-stringification, direct `process.env` access, and money precision. Flat-config only, ESLint 9+.
+Not a good fit for a codebase that does not use zod, or whose error handling is intentionally
+untyped.
 
 ## Requirements
 
 - ESLint 9 or newer, flat config (`eslint.config.js`) only.
 - `configs.recommended` registers the plugin and sets rule severities, nothing else. It sets no
   `files` and no parser, so it applies to whatever files the rest of your config lints. To lint
-  TypeScript, add a `files` pattern and `@typescript-eslint/parser`:
+  TypeScript, add a `files` pattern and `@typescript-eslint/parser`, as in the quick start.
+
+## Install
+
+```sh
+bun add -D @noctcore/eslint-plugin-contracts @typescript-eslint/parser   # or npm i -D / pnpm add -D
+```
+
+## Quick start
 
 ```js
 // eslint.config.js
@@ -23,37 +35,39 @@ export default [
     files: ['**/*.{ts,tsx}'],
     languageOptions: { parser: tsParser },
   },
-];
-```
-
-## Install
-
-```sh
-bun add -D @noctcore/eslint-plugin-contracts   # or npm i -D / pnpm add -D
-```
-
-## Use
-
-```js
-// eslint.config.js
-import contracts from '@noctcore/eslint-plugin-contracts';
-
-export default [
-  contracts.configs.recommended,
-];
-```
-
-Or wire rules individually:
-
-```js
-import contracts from '@noctcore/eslint-plugin-contracts';
-
-export default [
+  // Optional: tune a preset rule's options.
   {
-    plugins: { 'noctcore-contracts': contracts },
+    files: ['**/*.{ts,tsx}'],
     rules: {
       'noctcore-contracts/zod-schema-naming': ['error', { roleSuffixes: ['Event', 'Command', 'Query'] }],
       'noctcore-contracts/no-direct-process-env': ['error', { configModule: '@acme/config' }],
+    },
+  },
+];
+```
+
+## Opt-in rules
+
+Four rules ship `off`: `require-registered-keys`, `env-var-schema-parity` and
+`translation-key-exists` do nothing until their `sinks` / `schema` / `catalogs` options are set, and
+`require-schema-parse-at-boundary` is a conservative syntactic slice of a type-aware concern.
+
+```js
+// eslint.config.js
+export default [
+  // ...the quick start's entries, then:
+  {
+    files: ['**/*.{ts,tsx}'],
+    languageOptions: { parser: tsParser },
+    rules: {
+      'noctcore-contracts/require-registered-keys': ['error', {
+        sinks: [{ callee: 'localStorage.getItem', argIndex: 0 }],
+      }],
+      'noctcore-contracts/env-var-schema-parity': ['error', { schema: '.env.example' }],
+      'noctcore-contracts/translation-key-exists': ['error', {
+        catalogs: [{ file: 'locales/en/common.json', namespace: 'common' }],
+      }],
+      'noctcore-contracts/require-schema-parse-at-boundary': 'error',
     },
   },
 ];
@@ -83,6 +97,7 @@ export default [
 | [`zod-schema-naming`](https://noctcore.github.io/eslint-plugins/rules/contracts/zod-schema-naming/) | Every exported zod schema is a PascalCase const suffixed `Schema`, paired with a same-named inferred type (`export type Foo = z.infer<typeof FooSchema>`). | ✅ |  |  |  |  |
 <!-- end generated rules -->
 
-Four rules ship `off` in `recommended`: `require-registered-keys`, `env-var-schema-parity` and
-`translation-key-exists` do nothing until their `sinks` / `schema` / `catalogs` options are set, and `require-schema-parse-at-boundary` is a
-conservative syntactic slice of a type-aware concern. Turn them on explicitly once configured.
+## Severity policy
+
+Every rule is `error` or `off`, never `warn`: a warning is a rule nobody obeys. See the
+[severity policy](https://noctcore.github.io/eslint-plugins/getting-started/#severity-policy).

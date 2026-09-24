@@ -1,16 +1,27 @@
 # @noctcore/eslint-plugin-code-quality
 
+Portable code-quality, comment-hygiene and test-discipline rules: catches vacuous tests, focused or
+untracked skipped tests, and comments that rot. Every rule keys off code and generic file-path
+globs, never a specific repo layout.
+
 **Docs:** [noctcore.github.io/eslint-plugins/packages/code-quality](https://noctcore.github.io/eslint-plugins/packages/code-quality/)
 
-Portable code-quality, comment-hygiene, and test-discipline rules. Flat-config only, ESLint 9+.
-Every rule keys off code and generic file-path globs, never a specific repo layout.
+Not a good fit for a team that writes explanatory step-by-step comments on purpose.
 
 ## Requirements
 
 - ESLint 9 or newer, flat config (`eslint.config.js`) only.
 - `configs.recommended` registers the plugin and sets rule severities, nothing else. It sets no
   `files` and no parser, so it applies to whatever files the rest of your config lints. To lint
-  TypeScript, add a `files` pattern and `@typescript-eslint/parser`:
+  TypeScript, add a `files` pattern and `@typescript-eslint/parser`, as in the quick start.
+
+## Install
+
+```sh
+bun add -D @noctcore/eslint-plugin-code-quality @typescript-eslint/parser   # or npm i -D / pnpm add -D
+```
+
+## Quick start
 
 ```js
 // eslint.config.js
@@ -23,37 +34,28 @@ export default [
     files: ['**/*.{ts,tsx}'],
     languageOptions: { parser: tsParser },
   },
+  // Optional: tune a preset rule's options.
+  {
+    files: ['**/*.{ts,tsx}'],
+    rules: {
+      'noctcore-code-quality/no-process-exit': ['error', { allowIn: ['**/scripts/**'] }],
+    },
+  },
 ];
 ```
 
-## Install
+## Opt-in rules
 
-```sh
-bun add -D @noctcore/eslint-plugin-code-quality   # or npm i -D / pnpm add -D
-```
-
-## Use
+Two rules are exported but left out of `recommended`: they are house style, not correctness.
 
 ```js
 // eslint.config.js
-import codeQuality from '@noctcore/eslint-plugin-code-quality';
-
 export default [
-  codeQuality.configs.recommended,
-];
-```
-
-Or wire rules individually (including the ones not in `recommended`):
-
-```js
-import codeQuality from '@noctcore/eslint-plugin-code-quality';
-
-export default [
+  // ...the quick start's entries, then:
   {
-    plugins: { 'noctcore-code-quality': codeQuality },
+    files: ['**/*.{ts,tsx}'],
+    languageOptions: { parser: tsParser },
     rules: {
-      'noctcore-code-quality/no-process-exit': ['error', { allowIn: ['**/scripts/**'] }],
-      // Opinionated / niche — off by default, opt in here:
       'noctcore-code-quality/interface-prefix-i': 'error',
       'noctcore-code-quality/no-template-trim-empty-ternary': 'error',
     },
@@ -88,7 +90,12 @@ export default [
 | [`skipped-tests-need-tracking`](https://noctcore.github.io/eslint-plugins/rules/code-quality/skipped-tests-need-tracking/) | Skipped tests (`.skip` / `.fixme` / `xit` / `xdescribe`) must carry a tracking marker (an issue URL or `TODO(@owner)`) on or above the line, so the debt has an owner instead of rotting silently. | ✅ |  |  |  |  |
 <!-- end generated rules -->
 
-## Attribution
+## Severity policy
+
+Every rule is `error` or `off`, never `warn`: a warning is a rule nobody obeys. See the
+[severity policy](https://noctcore.github.io/eslint-plugins/getting-started/#severity-policy).
+
+## Credits
 
 `no-vacuous-expect`, `no-conditional-expect`, `fake-timers-must-be-restored` and
 `no-real-network-in-unit-tests` are ported from [tsforge](https://github.com/boringstack-xyz/tsforge)

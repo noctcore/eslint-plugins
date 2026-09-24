@@ -1,15 +1,27 @@
 # @noctcore/eslint-plugin-react
 
+React architecture and correctness rules: unmemoized context values, effects without cleanup, state
+derived in effects, and components that grow past what one file should hold.
+
 **Docs:** [noctcore.github.io/eslint-plugins/packages/react](https://noctcore.github.io/eslint-plugins/packages/react/)
 
-General-purpose React architecture + correctness rules. Flat-config only, ESLint 9+.
+Not a good fit for a codebase that keeps hooks inline by convention, or a library of generic
+primitives where wide prop surfaces are the point.
 
 ## Requirements
 
 - ESLint 9 or newer, flat config (`eslint.config.js`) only.
 - `configs.recommended` registers the plugin and sets rule severities, nothing else. It sets no
   `files` and no parser, so it applies to whatever files the rest of your config lints. To lint
-  TypeScript, add a `files` pattern and `@typescript-eslint/parser`:
+  TypeScript, add a `files` pattern and `@typescript-eslint/parser`, as in the quick start.
+
+## Install
+
+```sh
+bun add -D @noctcore/eslint-plugin-react @typescript-eslint/parser   # or npm i -D / pnpm add -D
+```
+
+## Quick start
 
 ```js
 // eslint.config.js
@@ -22,34 +34,9 @@ export default [
     files: ['**/*.{ts,tsx}'],
     languageOptions: { parser: tsParser },
   },
-];
-```
-
-## Install
-
-```sh
-bun add -D @noctcore/eslint-plugin-react   # or npm i -D / pnpm add -D
-```
-
-## Use
-
-```js
-// eslint.config.js
-import react from '@noctcore/eslint-plugin-react';
-
-export default [
-  react.configs.recommended,
-];
-```
-
-Or wire rules individually:
-
-```js
-import react from '@noctcore/eslint-plugin-react';
-
-export default [
+  // Optional: tune a preset rule's options.
   {
-    plugins: { 'noctcore-react': react },
+    files: ['**/*.{ts,tsx}'],
     rules: {
       'noctcore-react/no-prop-drilling': ['error', { maxForwarded: 4 }],
     },
@@ -81,3 +68,8 @@ export default [
 | [`props-must-be-visual`](https://noctcore.github.io/eslint-plugins/rules/react/props-must-be-visual/) | Component props must be visual. Auth/business-identity and credential prop names (`userId`, `currentUser`, `*token*`, `*jwt*`, `*secret*`, `apiKey`, ...) are disallowed. A live `password` input is a legitimate visual concern and is intentionally allowed. | ✅ |  |  |  |  |
 | [`require-effect-cancellation`](https://noctcore.github.io/eslint-plugins/rules/react/require-effect-cancellation/) | A `setState`/`dispatch` that runs after an `await` or `.then()` inside a `useEffect` must be guarded against a unmounted/re-run effect (AbortController, a cancelled flag, or a cleanup return). | ✅ |  |  |  |  |
 <!-- end generated rules -->
+
+## Severity policy
+
+Every rule is `error` or `off`, never `warn`: a warning is a rule nobody obeys. See the
+[severity policy](https://noctcore.github.io/eslint-plugins/getting-started/#severity-policy).
