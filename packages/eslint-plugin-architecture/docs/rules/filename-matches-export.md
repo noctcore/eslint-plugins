@@ -52,14 +52,20 @@ export default function TaskCard() {}
 export const useThing = () => {};
 ```
 
-`index` files and files matching an `ignore` glob are always skipped.
-
-## Suggestion, not autofix
+### Suggestion, not autofix
 
 A mismatch offers a **suggestion** to rename the export to the filename (the code-side resolution —
 the other is renaming the file). It is never an autofix: renaming a public identifier is a decision a
 human should confirm. When the basename is not a valid identifier (e.g. `2fa.ts`), the mismatch is
 reported without a suggestion.
+
+## What it does not flag
+
+- `index` files and files matching an `ignore` glob.
+- A file with no primary export: an anonymous default (`export default () => 1`), several named
+  exports and no default, or no exports at all.
+- A pure re-export (`export { Foo } from './Foo'`), which has no local identity.
+- A file whose default export matches, even when it also has other named exports.
 
 ## Options
 

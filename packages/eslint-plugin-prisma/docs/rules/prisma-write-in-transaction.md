@@ -41,6 +41,16 @@ async function issue(prisma: PrismaClient) {
 }
 ```
 
+## What it does not flag
+
+- A single write in a function, including the one-write-per-method repository idiom
+  (`this.client.invoice.create(...)`).
+- Writes inside either transaction form, interactive callback or array.
+- Writes split across two methods: each function body is counted on its own.
+- Write-named calls on something that is not a Prisma client (`createHash('sha256').update(x)`,
+  `this.cache.delete(k)`, an SDK's `this.client.messages.create(...)` while `client` is not in
+  `clientProperties`).
+
 ## Options
 
 | Option | Type | Default | Meaning |

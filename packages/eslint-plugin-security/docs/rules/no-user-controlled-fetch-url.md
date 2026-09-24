@@ -37,7 +37,7 @@ const TURNSTILE_VERIFY_URL = 'https://challenges.cloudflare.com/turnstile/v0/sit
 await fetch(TURNSTILE_VERIFY_URL, { method: 'POST', body });
 ```
 
-## What it checks
+## What it flags
 
 The URL argument is flattened into author-written text and runtime parts: template quasis, `+`
 operands, `new URL(input, base)`, `url.toString()` / `url.href`, and `const` bindings declared in the
@@ -57,31 +57,29 @@ same file (followed transitively). `let`, parameters, imports and anything compu
 A backslash is read as `/`, the way browsers parse `http(s)` URLs, so `/\evil.com` is caught as
 protocol-relative.
 
+## What it does not flag
+
+- Relative URLs (`/api/todos/${id}`): a runtime part can only move the path.
+- An absolute URL whose authority is closed by `/`, `?` or `#` before the first runtime part
+  (`https://api.example.com/users/${id}`, `https://api.example.com?q=${q}`).
+- A `const` bound to a literal URL, followed through templates, `+`, `new URL(relative, base)`,
+  `.toString()` and `.href`.
+- A `trustedOrigins` match followed by `/`, `?`, `#`, a sanitizer or a trusted path.
+- Calls to an HTTP client not listed in `fetchCallees`: a custom client is out of scope until you add it.
+
 ## Options
 
-```ts prose reason="the options type, not a lint example"
-type CalleeSpec = {
-  /** Function or method name. */
-  name: string;
-  /** Receiver source text (`axios`, `this.http`). Omit for a bare call like `fetch(...)`. */
-  object?: string;
-  /** Index of the URL argument, or 'last'. Default 0. */
-  urlArgument?: number | 'last';
-  /** When that argument is an object literal, the property holding the URL. Default 'href'. */
-  urlProperty?: string;
-};
+| Option | Type | Default | Meaning |
+| --- | --- | --- | --- |
+| `fetchCallees` | `CalleeSpec[]` | `fetch`, `axios.{get,post,put,patch,delete,head,options}` | Call shapes that issue a request. Setting this replaces the defaults. |
+| `trustedOrigins` | `string[]` | `[]` | Expressions (source text) that are a fixed-origin URL. `name()` matches any call to `name`. |
+| `sanitizers` | `string[]` | `[]` | Functions whose result is a safe same-origin path. |
+| `trustedPaths` | `string[]` | `[]` | Expressions (source text) that hold a safe same-origin path, e.g. an imported constant. |
 
-type Options = {
-  /** Call shapes that issue a request. Setting this replaces the defaults. */
-  fetchCallees?: CalleeSpec[]; // default: fetch, axios.{get,post,put,patch,delete,head,options}
-  /** Expressions (source text) that are a fixed-origin URL. `name()` matches any call to `name`. */
-  trustedOrigins?: string[]; // default []
-  /** Functions whose result is a safe same-origin path. */
-  sanitizers?: string[]; // default []
-  /** Expressions (source text) that hold a safe same-origin path, e.g. an imported constant. */
-  trustedPaths?: string[]; // default []
-};
-```
+A `CalleeSpec` is `{ name, object?, urlArgument?, urlProperty? }`: `name` is the function or method
+name; `object` the receiver source text (`axios`, `this.http`), omitted for a bare call like
+`fetch(...)`; `urlArgument` the index of the URL argument, or `'last'` (default `0`); `urlProperty`
+the property holding the URL when that argument is an object literal (default `'href'`).
 
 ### `fetchCallees`
 

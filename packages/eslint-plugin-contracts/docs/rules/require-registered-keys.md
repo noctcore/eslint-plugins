@@ -30,8 +30,17 @@ localStorage.getItem(USER_PROFILE_KEY);
 emitter.on(TASK_DONE, handler);
 ```
 
+## What it does not flag
+
 Only string literals are flagged. An already-imported identifier, a template literal, or any computed
 expression is left alone — those are not the raw-string smell.
+
+`callee` is matched against the call's dotted identifier path (`localStorage.getItem`, `emitter.on`).
+A callee that is computed or not a plain identifier chain (`this.emitter.on`, `obj[k].on`, `a().b`)
+cannot be matched and is skipped.
+
+Calls to callees not listed in `sinks` (`sessionStorage.getItem` when only `localStorage.getItem` is
+configured) are not policed.
 
 ## Options
 
@@ -54,10 +63,6 @@ key sinks to hard-code, so you declare which callees matter for your project.
   registry: '@/keys',
 }]
 ```
-
-`callee` is matched against the call's dotted identifier path (`localStorage.getItem`, `emitter.on`).
-A callee that is computed or not a plain identifier chain (`this.emitter.on`, `obj[k].on`, `a().b`)
-cannot be matched and is skipped.
 
 ## When not to use it
 

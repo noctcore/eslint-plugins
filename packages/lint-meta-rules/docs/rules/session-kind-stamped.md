@@ -21,7 +21,7 @@ mint that wrote it. A session minted without the field reads as whatever the rea
 fence between the two kinds that is a silent promotion: a portal account whose session lost its stamp
 is a staff caller inside its own tenant, and the tenant boundary waves it through as legitimate.
 
-This is not hypothetical. In the project this rule was extracted from, two re-issue paths (a password
+This is not hypothetical. In one production codebase, two re-issue paths (a password
 change and a revoke-other-sessions action, both reachable by a portal account) shipped without the
 stamp while every gate was green, because nothing mechanical looked.
 
@@ -36,10 +36,7 @@ parentheses, so a multi-line options object with nested calls is read whole):
    somewhere. Coarser, but no silent hole.
 3. Otherwise the file must be in `allowUnstamped`.
 
-Residual gap, stated rather than hidden: a file that stamps the field on one delegated mint and forgets
-it on a second delegated mint passes clause 2.
-
-## What it leaves alone
+## What it does not flag
 
 - `.<mintCall>Something(`, and the method's definition.
 - `kindless` or `kinds`: the field must appear as a whole word.
@@ -47,7 +44,10 @@ it on a second delegated mint passes clause 2.
 
 With no `mintCall` the rule is inert.
 
-## Factory
+Residual gap, stated rather than hidden: a file that stamps the field on one delegated mint and forgets
+it on a second delegated mint passes clause 2.
+
+## Options
 
 ```ts
 createSessionKindStampedRule(options?: SessionKindStampedOptions): IMetaRule
@@ -66,7 +66,11 @@ createSessionKindStampedRule(options?: SessionKindStampedOptions): IMetaRule
 | `hint` | `string` | none | Appended to every message. |
 | `ciCritical` | `boolean` | `true` | Whether a violation fails CI. |
 
-## Worked example: Settly
+### Worked example: an app with staff and portal accounts
+
+One sign-in serves staff accounts and invite-only portal accounts, and every session mint goes
+through `establishSession`. Self-signup only ever creates staff accounts, so its file is allowed to
+mint without a stamp:
 
 ```ts
 createSessionKindStampedRule({

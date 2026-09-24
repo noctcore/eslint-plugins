@@ -24,14 +24,23 @@ Measured in raw physical lines (`wc -l` semantics). Against a committed baseline
 
 - a **new** over-cap file (not in the baseline), or a baselined one that **grew** past its frozen
   count — a live violation;
-- a baselined file still within its frozen count — **grandfathered** (a stderr notice, no violation);
 - **self-tightening**: a baseline entry whose file is gone, is now at/under the cap, or shrank far
   below its frozen value (`< frozen * tightenRatio`) is itself a violation demanding a baseline update.
 
 The rule implements `baseline(ctx)` (the `IMetaRule` ratchet hook), which snapshots the current
 offender map so the runner can regenerate the frozen file.
 
-## Factory
+## What it does not flag
+
+- A file at or under `cap`.
+- A baselined file still within its frozen count: it is **grandfathered** (a stderr notice, no
+  violation). One that shrank only a little (still at or above `frozen * tightenRatio`) stays
+  grandfathered too.
+- Paths containing an `excludeContains` fragment (tests, specs, stories by default) or starting with an
+  `excludePrefixes` entry, and files whose extension is not in `extensions`.
+- Anything at all when `roots` is empty: the rule is inert until you name a root.
+
+## Options
 
 ```ts
 createFileSizeRatchetRule(options?: FileSizeRatchetOptions): IMetaRule

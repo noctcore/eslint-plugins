@@ -22,10 +22,6 @@ In a `.tsx` file, a `value={{ ... }}` attribute (an inline object literal) on:
 - `<FooContext ...>` — a bare element whose name ends `Context` (the React 19 context-as-provider
   form).
 
-Custom wrapper components (`<FooProvider value={...}>`) are intentionally **not** matched: the value
-they forward is memoized at their single call site, and matching every `*Provider`-named element
-would flag unrelated library providers.
-
 ```tsx bad filename=src/tasks/TaskStream.tsx
 // fresh object every render
 <TaskStreamContext.Provider value={{ a: 1, b: 2 }}>{children}</TaskStreamContext.Provider>
@@ -37,9 +33,16 @@ const value = useMemo(() => ({ a, b }), [a, b]);
 <TaskStreamContext.Provider value={value}>{children}</TaskStreamContext.Provider>
 ```
 
-## Options
+## What it does not flag
 
-This rule has no options.
+- A `value` that is an identifier or any other non-literal expression (`value={value}`), on either
+  provider form.
+- Inline objects on other elements and attributes (`<div style={{ color: 'red' }} />`).
+- Files that are not `.tsx`.
+
+Custom wrapper components (`<FooProvider value={...}>`) are intentionally **not** matched: the value
+they forward is memoized at their single call site, and matching every `*Provider`-named element
+would flag unrelated library providers.
 
 ## When not to use it
 

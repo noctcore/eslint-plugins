@@ -15,9 +15,9 @@ can change under an unchanged commit, and a local run cannot promise the bytes C
 ## What it flags
 
 - In workflow files: `image:` under a job's `services:`, and a job's `container:` in scalar or mapping
-  form. An action step's `with: image:` input is not an image pull and is ignored.
-- In compose files: every service's `image:`, except a service that also has `build:` (there `image:`
-  tags an image built locally, which has no upstream digest).
+  form.
+- In compose files: every service's `image:`, including one behind an env default
+  (`${REDIS_IMAGE:-redis:7}`), which is reported as written since the text does not show a digest.
 
 Each violation carries the 1-indexed line.
 
@@ -36,7 +36,17 @@ services:
     image: app-api:local
 ```
 
-## Factory
+## What it does not flag
+
+- An image pinned as `tag@sha256:<digest>`.
+- An action step's `with: image:` input: it is not an image pull.
+- A compose service that also has `build:`: there `image:` tags an image built locally, which has no
+  upstream digest.
+- An exact ref listed in `allowUnpinned`, and compose files under a `skipDirs` segment.
+
+The check is line-based text, not a YAML parse.
+
+## Options
 
 ```ts
 createServiceImageDigestPinRule(options?: ServiceImageDigestPinOptions): IMetaRule
@@ -50,7 +60,7 @@ createServiceImageDigestPinRule(options?: ServiceImageDigestPinOptions): IMetaRu
 | `allowUnpinned` | `string[]` | `[]` | Exact image refs allowed unpinned, for a ref the registry cannot serve a digest for. Only that exact ref passes; a bumped tag is checked again. |
 | `ciCritical` | `boolean` | `true` | Whether a violation fails CI. |
 
-## Limits
+## When not to use it
 
-Line-based text, not a YAML parse. An image behind an env default (`${REDIS_IMAGE:-redis:7}`) is
-reported as written, since the text does not show a digest.
+If your workflows and compose files only run throwaway local services where you accept whatever a tag
+serves today, skip it.

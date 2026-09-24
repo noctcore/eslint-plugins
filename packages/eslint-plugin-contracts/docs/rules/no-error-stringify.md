@@ -35,6 +35,12 @@ const msg = error instanceof Error ? error.message : String(error);
 const m = `${error.message}`;
 ```
 
+## What it does not flag
+
+- Bare `String(error)`, which the guarded extractor idiom relies on.
+- Member reads such as `` `${error.message}` `` or `error.stack`.
+- `x + ""` where `x` is not one of `errorIdentifierNames` (`count + ""`).
+
 ## Options
 
 | Option | Type | Default | Meaning |

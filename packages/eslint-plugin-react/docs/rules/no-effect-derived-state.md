@@ -13,6 +13,13 @@ not exist — the value should be computed during render (or with `useMemo`). Th
 an extra render pass, flashes stale UI for a frame, and is a common source of update loops. See the
 React docs, ["You Might Not Need an Effect"](https://react.dev/learn/you-might-not-need-an-effect).
 
+### Severity
+
+Ships as `error` in the `recommended` preset. It is a heuristic, which is an argument for keeping
+it narrow rather than advisory: it fires only on an effect whose whole body is `setX(...)` of
+values read from its own deps, and anything with a branch, a call or a cleanup bails out
+unflagged.
+
 ## What it flags
 
 This rule is deliberately **conservative** — it fires only on the unambiguous shape:
@@ -35,19 +42,15 @@ useEffect(() => {
 const fullName = firstName + ' ' + lastName;
 ```
 
+## What it does not flag
+
 Anything with a branch, a side effect, an await, a cleanup, or an argument that reaches outside the
-dependency array bails out unflagged.
+dependency array bails out unflagged:
 
-## Options
-
-This rule has no options.
-
-## Severity
-
-Ships as `error` in the `recommended` preset. It is a heuristic, which is an argument for keeping
-it narrow rather than advisory: it fires only on an effect whose whole body is `setX(...)` of
-values read from its own deps, and anything with a branch, a call or a cleanup bails out
-unflagged.
+- a setter argument that is a call (`setX(compute(a))`), which could be impure;
+- an effect with no dependency array, or an `async` callback;
+- a constant initialiser (`setX(0)`) that reads no dependency;
+- an `if`, a cleanup `return`, or any statement besides the setters.
 
 ## When not to use it
 

@@ -31,8 +31,12 @@ const url = process.env.DATABASE_URL;
 const port = import.meta.env.PORT;
 ```
 
-Only static accesses are policed. Computed (`process.env[dynamic]`) and destructured reads are left
-alone.
+## What it does not flag
+
+- Computed reads such as `process.env[dynamicKey]`: only static `.FOO` accesses are policed.
+- Destructured reads (`const { FOO } = process.env`).
+- Anything at all when `schema` is unset, or when the schema file cannot be read: the rule goes inert
+  rather than flagging every access.
 
 ## Options
 

@@ -19,10 +19,6 @@ breaks that: a non-Error carries no stack and no cause, and an unclassified erro
 - `throw new SomethingError(...)` whose constructor is **not** in the `allow` list.
 - `throw <non-Error value>` — a string, number, boolean, template literal, object, or array literal.
 
-Conservative on the ambiguous forms. A bare identifier (`throw err` — the re-throw), a member
-(`throw ctx.error`), and a call (`throw makeError()`) are all left alone: a syntactic rule cannot know
-whether they resolve to an Error, and re-throwing a caught error is the most common `throw` there is.
-
 ```ts bad reports=3
 // built-in not in the taxonomy
 throw new TypeError('bad');
@@ -37,6 +33,12 @@ throw { code: 500 };
 throw new Error('boom');
 try { work(); } catch (err) { throw err; }
 ```
+
+## What it does not flag
+
+Conservative on the ambiguous forms. A bare identifier (`throw err` — the re-throw), a member
+(`throw ctx.error`), and a call (`throw makeError()`) are all left alone: a syntactic rule cannot know
+whether they resolve to an Error, and re-throwing a caught error is the most common `throw` there is.
 
 ## Options
 

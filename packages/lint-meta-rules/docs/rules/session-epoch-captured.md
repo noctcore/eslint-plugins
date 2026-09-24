@@ -29,9 +29,11 @@ never mention the epoch.
 ## What it flags
 
 Each `.<call>(...)` call in a file matched by `sourceGlobs` whose argument text (found by balancing
-parentheses) does not mention `field` as a whole word.
+parentheses) does not mention `field` as a whole word. The parenthesis scanner reads each call on its
+own, so a call written on one line is checked too, and an unstamped call cannot borrow the epoch of
+the next one.
 
-## What it leaves alone
+## What it does not flag
 
 - `epochless: true`, or any identifier that merely contains the field: whole words only.
 - Files in `exempt` (the seam's own home, which defines the method and its default).
@@ -39,11 +41,7 @@ parentheses) does not mention `field` as a whole word.
 
 With no `call` the rule is inert.
 
-Ported from Settly, whose rule matched calls with a regex that stopped at the first `\n );` after the
-call. That missed a call written on one line, and let an unstamped one-line call borrow the epoch of
-the next multi-line call. The parenthesis scanner here reads each call on its own.
-
-## Factory
+## Options
 
 ```ts
 createSessionEpochCapturedRule(options?: SessionEpochCapturedOptions): IMetaRule
@@ -62,7 +60,11 @@ createSessionEpochCapturedRule(options?: SessionEpochCapturedOptions): IMetaRule
 | `hint` | `string` | none | Appended to every message. |
 | `ciCritical` | `boolean` | `true` | Whether a violation fails CI. |
 
-## Worked example: Settly
+### Worked example: an app with a post-credential sign-in seam
+
+Every sign-in entry point (password, OAuth, second factor) ends by calling one seam,
+`beginOrEstablish`, which a two-factor challenge service defines. Each entry point reads the epoch with
+`sessionService.readEpoch(userId)` before it checks the credential, and passes it in:
 
 ```ts
 createSessionEpochCapturedRule({
@@ -78,7 +80,7 @@ createSessionEpochCapturedRule({
 });
 ```
 
-Two Settly flows mint without a captured epoch and are outside the rule by construction, because they
+Two flows in such an app mint without a captured epoch and are outside the rule by construction, because they
 never call the seam: signup (the account did not exist when the request began) and password change (it
 revokes first and then re-issues, so the current counter is the right one).
 

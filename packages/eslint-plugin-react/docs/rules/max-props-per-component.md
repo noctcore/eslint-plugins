@@ -47,6 +47,14 @@ export interface BoardProps extends BaseProps {
 }
 ```
 
+## What it does not flag
+
+- Members inherited via `extends` or an intersection: `BaseProps` with 10 members plus 12 local ones
+  passes.
+- Types not named `*Props`, and a `*Props` alias that is not an object type literal (a union or a
+  mapped type).
+- A contract at exactly `max` members.
+
 ## Options
 
 | Option | Type | Default | Meaning |

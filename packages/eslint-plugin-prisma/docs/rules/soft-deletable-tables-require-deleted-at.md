@@ -39,6 +39,12 @@ await this.prisma.user.findFirst({ where: { email, deletedAt: null } });
 await this.prisma.user.findFirst({ where: { email, ...this.notDeleted } });
 ```
 
+An **unresolvable spread** (`{ id, ...this.somethingElse }`) is not an excuse and is reported:
+otherwise any spread would silence the rule. A helper that does carry the filter belongs in
+`softDeleteSpreads`.
+
+## What it does not flag
+
 Deliberately **not** reported:
 
 - `findUnique`, `findUniqueOrThrow`, `update`, `delete`, `upsert`: their `where` is a unique
@@ -46,10 +52,6 @@ Deliberately **not** reported:
   so review those sites by hand; this rule does not claim them.
 - an opaque `where` or argument object (`findMany({ where: buildWhere() })`, `findMany(args)`):
   nothing to read, so nothing is claimed.
-
-An **unresolvable spread** (`{ id, ...this.somethingElse }`) is not an excuse and is reported:
-otherwise any spread would silence the rule. A helper that does carry the filter belongs in
-`softDeleteSpreads`.
 
 A mention anywhere in the tree counts, including through a relation (`{ owner: { deletedAt: null }
 }`). The rule asks whether soft delete was considered at the call site; proving the mention
@@ -73,13 +75,22 @@ callbacks are looked through, so a count inside `Promise.all([...])` still belon
 around it, while a named helper declared inside an exempt function is policed as its own function.
 
 ```js
-allowInFunctions: [
-  {
-    files: ['**/modules/auth/staff-invite/staff-invite.repository.ts'],
-    functions: ['countAllUsersInTenant'],
-  },
-],
+'noctcore-prisma/soft-deletable-tables-require-deleted-at': ['error', {
+  softDeleteModels: ['user', 'account'],
+  softDeleteSpreads: ['notDeleted'],
+  allowInFunctions: [
+    {
+      files: ['**/modules/auth/staff-invite/staff-invite.repository.ts'],
+      functions: ['countAllUsersInTenant'],
+    },
+  ],
+}],
 ```
 
 `softDeleteSpreads` decides whether the rule is usable in a codebase with a helper convention: a
 rule blind to the spread reports correct code more often than defects, and gets turned off.
+
+## When not to use it
+
+If deleted rows are filtered for you (a client extension or database view that hides them), or your
+schema has no soft-deletable models, leave it off: with no `softDeleteModels` it reports nothing.

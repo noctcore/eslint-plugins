@@ -62,6 +62,23 @@ async function runPlan(anthropic, messages) {
 }
 ```
 
+### Why it is in `recommended`
+
+It is precise without configuration. A report needs three things at once: an awaited call whose
+method chain or import is specific to an LLM SDK, the exact response path that carries model text,
+and a sink that interprets its argument as code, markup, SQL, a host or a path. Code that has all
+three and is still correct is rare, and when it exists (a trusted internal model, a sandboxed
+`eval`) a disable comment that says so is the right record.
+
+The trade-off is coverage: output that leaves the function, or goes through a helper, is not
+followed. Interlace's
+[`eslint-plugin-vercel-ai-security`](https://www.npmjs.com/package/eslint-plugin-vercel-ai-security)
+has a broader `no-unsafe-output-handling`: it treats any expression whose source text contains
+`.text`, `completion` or `generated` as model output, and any callee whose text contains `exec`,
+`query` or `run` as a sink, in files that import the AI SDK. That reaches further and also reports
+`regex.exec(input.text)` or `db.run(completionCount)`. This rule takes the other side of that trade,
+the shape of a real SDK response instead of a name, so it can run at `error`.
+
 ## What it flags
 
 The rule reports only when the whole path from the SDK call to the sink is visible in the source.
@@ -120,7 +137,7 @@ async function report(openai, prisma, messages) {
 }
 ```
 
-## What it leaves alone
+## What it does not flag
 
 Staying silent is the default. Each of these ends the chain, so none is reported:
 
@@ -149,27 +166,6 @@ async function answer(openai, messages, panel) {
   anywhere other than `ai`.
 - `regex.exec(text)`, a local function named `exec`, and `spawn` / `execFile` without a shell.
 - `path.join(root, text)` and every other transform besides the ones listed above.
-
-## Why it is in `recommended`
-
-It is precise without configuration. A report needs three things at once: an awaited call whose
-method chain or import is specific to an LLM SDK, the exact response path that carries model text,
-and a sink that interprets its argument as code, markup, SQL, a host or a path. Code that has all
-three and is still correct is rare, and when it exists (a trusted internal model, a sandboxed
-`eval`) a disable comment that says so is the right record.
-
-The trade-off is coverage: output that leaves the function, or goes through a helper, is not
-followed. Interlace's
-[`eslint-plugin-vercel-ai-security`](https://www.npmjs.com/package/eslint-plugin-vercel-ai-security)
-has a broader `no-unsafe-output-handling`: it treats any expression whose source text contains
-`.text`, `completion` or `generated` as model output, and any callee whose text contains `exec`,
-`query` or `run` as a sink, in files that import the AI SDK. That reaches further and also reports
-`regex.exec(input.text)` or `db.run(completionCount)`. This rule takes the other side of that trade,
-the shape of a real SDK response instead of a name, so it can run at `error`.
-
-## Options
-
-None.
 
 ## When not to use it
 

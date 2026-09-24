@@ -21,9 +21,6 @@ fragment):
 - arithmetic — `-`, `*`, `/`, `%`, `**`;
 - **chained** logical expressions (`a && b && c`) — reported once on the outermost link.
 
-A single `{cond && <X/>}` guard and ternaries stay allowed. Computation inside event handlers
-(`onClick={() => items.map(...)}`) is not render-time work and is not flagged.
-
 ```tsx bad reports=2
 // computation in JSX
 function Usage(props: UsageProps) {
@@ -50,9 +47,11 @@ function Usage(props: UsageProps) {
 }
 ```
 
-## Options
+## What it does not flag
 
-This rule has no options.
+A single `{cond && <X/>}` guard and ternaries stay allowed. Computation inside event handlers
+(`onClick={() => items.map(...)}`) is not render-time work and is not flagged. Plain member access
+(`{props.label}`) and a list pre-computed into a `const` and rendered as `{rows}` are fine.
 
 ## When not to use it
 

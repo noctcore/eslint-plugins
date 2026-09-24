@@ -22,6 +22,13 @@ exported action goes through a client the project has named, so the choice of cl
 at the definition site, where a reviewer reads `unauthenticatedAction` and asks whether that was
 intended.
 
+### Severity
+
+Ships **off** and is left out of `recommended`. Client names are a per-project fact with no
+universal default, and with none configured the rule reports every action, so a shared preset
+cannot turn it on for a stranger's repo. Once configured, `error`: every report is an action that
+bypasses the project's own pipeline.
+
 ## What it flags
 
 In a module whose **first statement** is the `'use server'` directive:
@@ -128,7 +135,7 @@ export default function Page() {
 The fix that keeps the default is to move the action into a `'use server'` module and build it from
 a client there, then import it into the page.
 
-### What it does not flag
+## What it does not flag
 
 - Exported values that are not functions: a constant, a type, an interface, a class, a re-export
   (`export { x } from './x'`, `export * from './x'`).
@@ -172,13 +179,6 @@ every client the project builds actions from, including the public one.
   actionClients: ['actionClient', 'authActionClient', 'unauthenticatedAction'],
 }]
 ```
-
-## Severity
-
-Ships **off** and is left out of `recommended`. Client names are a per-project fact with no
-universal default, and with none configured the rule reports every action, so a shared preset
-cannot turn it on for a stranger's repo. Once configured, `error`: every report is an action that
-bypasses the project's own pipeline.
 
 ## When not to use it
 

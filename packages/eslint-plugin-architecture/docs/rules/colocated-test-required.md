@@ -13,6 +13,11 @@ afterthought — hooks, services, reducers, money math. This rule lets you name 
 requires each matching file to carry its test right next to it, so the test travels with the code and
 is obvious when missing.
 
+### In `recommended`
+
+Ships **`'off'`**. There is no universal "everything needs a colocated test" default, so the
+`recommended` preset cannot safely enable it — turn it on with your own `include` globs.
+
 ## What it flags
 
 For a file matching `include`, the rule reads the file's directory and looks for a sibling whose name
@@ -24,8 +29,14 @@ src/hooks/useCart.test.ts      ✓ colocated test present
 src/hooks/useWishlist.ts       ✗ no useWishlist.test.* / .spec.* sibling
 ```
 
-A test file that itself matches `include` is never asked to test itself. Directory listings are
-cached for the lint run, so a folder full of gated files is read once.
+Directory listings are cached for the lint run, so a folder full of gated files is read once.
+
+## What it does not flag
+
+- Anything, until `include` is configured: with no globs the rule never fires.
+- Files that do not match `include`, and files matched by `ignore`.
+- A test file that itself matches `include`: it is never asked to test itself.
+- A gated file with either a `.test.*` or a `.spec.*` sibling.
 
 ## Options
 
@@ -40,11 +51,6 @@ cached for the lint run, so a folder full of gated files is read once.
   ignore: ['**/*.d.ts'],
 }]
 ```
-
-## In `recommended`
-
-Ships **`'off'`**. There is no universal "everything needs a colocated test" default, so the
-`recommended` preset cannot safely enable it — turn it on with your own `include` globs.
 
 ## When not to use it
 

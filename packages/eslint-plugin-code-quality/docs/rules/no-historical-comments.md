@@ -15,7 +15,7 @@ This is also a common tell that a comment was generated to narrate a change rath
 
 ## What it flags
 
-Line and block comments (JSDoc `/** … */` blocks are exempt) matching narrow past-framing phrases:
+Line and block comments matching narrow past-framing phrases:
 `before/after the fix`, `before/after the refactor`, `we/this used to`, `used to be`, `no longer`,
 `kept for backwards/legacy/compat`, `was/were a bug/footgun`, and `historical(ly)`.
 
@@ -28,9 +28,11 @@ Line and block comments (JSDoc `/** … */` blocks are exempt) matching narrow p
 // Caps concurrent connections to avoid pool exhaustion.
 ```
 
-## Options
+## What it does not flag
 
-None.
+- JSDoc `/** … */` blocks, even when they mention past behaviour.
+- Comments that describe what the code does now (`// The pool size caps concurrent DB connections.`).
+- Code and string literals: only comments are read.
 
 ## When not to use it
 

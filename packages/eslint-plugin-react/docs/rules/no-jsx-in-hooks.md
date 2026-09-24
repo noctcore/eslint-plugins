@@ -37,12 +37,13 @@ function UserBadge({ user }) {
 }
 ```
 
+## What it does not flag
+
 Returns inside **nested** functions (render callbacks, `.map` bodies) belong to those functions, not
-the hook, and are not attributed to it.
+the hook, and are not attributed to it. Also left alone:
 
-## Options
-
-This rule has no options.
+- a hook returning data, a primitive, or the result of a call such as `useMemo(() => <X />, [])`;
+- a PascalCase component returning JSX.
 
 ## When not to use it
 

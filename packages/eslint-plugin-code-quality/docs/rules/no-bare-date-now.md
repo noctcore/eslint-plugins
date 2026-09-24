@@ -17,9 +17,6 @@ branch depends on the real clock. Routing wall-clock reads through a shared `clo
 - `Date.now()` → suggests `nowMs()`.
 - Zero-argument `new Date()` → suggests `now()`.
 
-`new Date(value)` with an argument is a **parse** of an explicit instant, not a bare clock read, and
-is never flagged. Files covered by `allowIn` are skipped entirely.
-
 ```ts bad reports=2
 // bare clock reads in business logic
 const start = Date.now();
@@ -36,6 +33,11 @@ const created = now();
 // parsing an explicit instant
 const at = new Date('2026-01-01T00:00:00Z');
 ```
+
+## What it does not flag
+
+- `new Date(value)` with an argument: that is a **parse** of an explicit instant, not a bare clock read.
+- Files covered by `allowIn`, which by default is the clock util itself (`**/clock.ts`, `**/clock/**`).
 
 ## Options
 

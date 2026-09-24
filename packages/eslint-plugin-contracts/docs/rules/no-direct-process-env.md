@@ -31,8 +31,12 @@ import { config } from '@/config';
 const isProd = config.isProduction;
 ```
 
-Files matched by the `allowedFiles` glob allowlist are skipped entirely, so bootstrap entrypoints,
-config files, and tests may still read `process.env` directly.
+## What it does not flag
+
+- Files matched by the `allowedFiles` glob allowlist are skipped entirely, so bootstrap entrypoints,
+  config files, and tests may still read `process.env` directly.
+- `import.meta.env` reads and other `process` properties (`process.environment`, `process.argv`):
+  only `process.env` itself is policed.
 
 ```ts good filename=vite.config.ts relocation
 const isProd = process.env.NODE_ENV === 'production';

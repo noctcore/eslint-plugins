@@ -39,20 +39,18 @@ async function loadHome() {
 }
 ```
 
+### Suggestion
+
+Reports offer an editor suggestion (never an autofix, since parallelizing also changes rejection timing) that
+rewrites the run into a single `const [a, b] = await Promise.all([...])`.
+
+## What it does not flag
+
 Only runs inside a block (a function body, or any `{ ... }`) are checked. Top-level `await`s at
 module scope are not.
 
 The rule is intentionally conservative — a data dependency, a mutation-looking callee, a `let`, a nested call
 argument, or any non-await statement between them all suppress it.
-
-## Suggestion
-
-Reports offer an editor suggestion (never an autofix, since parallelizing also changes rejection timing) that
-rewrites the run into a single `const [a, b] = await Promise.all([...])`.
-
-## Options
-
-None.
 
 ## When not to use it
 

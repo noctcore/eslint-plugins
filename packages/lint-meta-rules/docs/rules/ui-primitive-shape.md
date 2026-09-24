@@ -22,7 +22,15 @@ tested + storied.
   `<Name>.<role><extension>` at the ui root is flagged: those proof files belong inside a `<Name>/`
   folder.
 
-## Factory
+## What it does not flag
+
+- A bare flat primitive (`<uiRoot>/Button.tsx`) with no proof sibling at the ui root.
+- A folder primitive that ships every configured role (`Dialog/Dialog.test.tsx`,
+  `Dialog/Dialog.stories.tsx`).
+- A folder without the `barrelFile`, and flat files whose name does not start with a capital letter.
+- Anything outside `uiRoot`.
+
+## Options
 
 ```ts
 createUiPrimitiveShapeRule(options?: UiPrimitiveShapeOptions): IMetaRule

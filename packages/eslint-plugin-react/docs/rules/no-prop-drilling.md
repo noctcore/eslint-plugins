@@ -43,6 +43,14 @@ function Board({ a, b, c, d }: BoardProps) {
 }
 ```
 
+## What it does not flag
+
+- Fewer than `maxForwarded` unchanged forwards to one child, including a bundle split across
+  children (two to `Column`, two to `Sidebar`).
+- Renamed forwards (`x={y}`), spread forwarding, a prop with any local use, and forwards to a
+  lowercase DOM element.
+- A component whose first parameter is not annotated with a `*Props` type.
+
 ## Options
 
 | Option | Type | Default | Meaning |

@@ -40,8 +40,14 @@ export async function GET() {
 }
 ```
 
-The lazy-initialization idioms `x ??= …` and `x ||= …` are always skipped (the common singleton/memoization
-pattern), and names in `allow` are exempt.
+## What it does not flag
+
+- Anything, until `include` is set, and any file outside the `include` globs.
+- The lazy-initialization idioms `x ??= …` and `x ||= …` (the common singleton/memoization pattern), and
+  names in `allow`.
+- A write inside a non-exported helper, or inside an exported function that is neither `async` nor
+  handler-named.
+- A module-level `const` that is only read.
 
 ## Options
 

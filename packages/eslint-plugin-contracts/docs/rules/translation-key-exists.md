@@ -60,13 +60,22 @@ Plural forms (`key_one`, `key_few`, `key_ordinal_other`) answer for `key` only w
 `count`, and context variants (`key_male`) only when it passes `context`, because without them
 i18next looks up the bare key and misses. A subtree or array answers only with `returnObjects`.
 
-### What it never reports
+## What it does not flag
 
 Anything it cannot resolve statically: a variable key (`t(someKey)`), a template key
 (`` t(`status.${s}`) ``), a key computed by a helper, a namespace held in an identifier it cannot
 resolve (an import not listed in `namespaceIdentifiers`), an options bag it cannot read
 (`t('k', opts)`, `{ ...opts }`, `{ ns: someNs }`), and a `t` parameter with no `TFunction` type. The
 rule stays silent on those rather than guessing.
+
+### Dead keys are out of scope
+
+The reverse check, "a catalog key nothing uses", is not something a per-file ESLint rule can do
+soundly: it needs every source file at once, and ESLint may lint one file (editor), a subset
+(`--cache`, lint-staged), or shard files across workers. Worse, keys routinely flow as data
+(navigation tables, key-builder helpers, `` `errors:${code}` ``), which no call-site analysis
+sees. Run it as a whole-tree check instead, one that unions static keys, template-key prefixes
+and string literals that equal a key.
 
 ## Options
 
@@ -143,15 +152,6 @@ With that configuration the rule resolved 1,500 static keys across 1,110 files o
 found one real bug (`t('common.cancel')` in the default namespace, which renders the raw key). A
 namespace registered at runtime only inside a test (`registerFeatureNamespace('late-arrival', ...)`)
 is reported as unknown; exclude test files or add a catalog entry for it.
-
-## Dead keys are out of scope
-
-The reverse check, "a catalog key nothing uses", is not something a per-file ESLint rule can do
-soundly: it needs every source file at once, and ESLint may lint one file (editor), a subset
-(`--cache`, lint-staged), or shard files across workers. Worse, keys routinely flow as data
-(navigation tables, key-builder helpers, `` `errors:${code}` ``), which no call-site analysis
-sees. Run it as a whole-tree check instead, one that unions static keys, template-key prefixes
-and string literals that equal a key.
 
 ## When not to use it
 

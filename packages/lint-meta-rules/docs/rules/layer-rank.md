@@ -19,11 +19,19 @@ are caught before they calcify.
 Each source file is assigned an **importer rank**: surface files (matched by `surfacePrefix`) get
 `surfaceRank`; otherwise the `packageDirPattern` capture is looked up in `ranks`. For each
 `<scope>/<pkg>` import whose target is also ranked, the rule flags it when the target rank is `>=` the
-importer rank (sideways when equal, upward when greater). Unranked importers and unranked targets are
-skipped, so a package outside the documented spine never produces a false positive. Test files are
-skipped.
+importer rank (sideways when equal, upward when greater).
 
-## Factory
+## What it does not flag
+
+- A downward import: the target's rank is strictly lower than the importer's.
+- Unranked importers and unranked targets, so a package outside the documented spine never produces a
+  false positive. Surface files are unranked unless `surfaceRank` is set.
+- Test files (`.test.ts`, `.test.tsx`).
+- Imports without a `from` clause (`import '<scope>/x'`, `import()`, `require()`): only
+  `from '<scope>/<pkg>'` is read.
+- Anything at all while `ranks` is empty.
+
+## Options
 
 ```ts
 createLayerRankRule(options?: LayerRankOptions): IMetaRule

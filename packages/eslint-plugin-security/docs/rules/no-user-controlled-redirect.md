@@ -33,43 +33,19 @@ The second bad example is the one worth the rule. `${appUrl}${returnTo}` looks o
 is safe exactly as long as some sanitizer upstream keeps `returnTo` a path. If that sanitizer ever
 regresses, nothing at the redirect site says so. This rule does.
 
-## What it checks
+## What it flags
 
 The URL argument of each configured redirect callee goes through the same fixed-origin analysis as
 `no-user-controlled-fetch-url`: author-written text, in-file `const` resolution, `+`, `new URL(input,
 base)`. A same-origin relative path passes; a runtime host, a runtime value right after a lone `/`,
 or a runtime value right after an origin that no `/`, `?` or `#` has closed is flagged.
 
-## Options
+## What it does not flag
 
-```ts prose reason="the options type, not a lint example"
-type CalleeSpec = {
-  name: string;          // method or function name
-  object?: string;       // receiver source text; omit for a bare call
-  urlArgument?: number | 'last'; // default 0
-  urlProperty?: string;  // when the URL argument is an object literal; default 'href'
-};
-
-type Options = {
-  /** Call shapes that redirect. Setting this replaces the defaults. */
-  redirectCallees?: CalleeSpec[];
-  trustedOrigins?: string[]; // default []
-  sanitizers?: string[];     // default []
-  trustedPaths?: string[];   // default []
-};
-```
-
-Default `redirectCallees`:
-
-| Call | URL argument |
-| --- | --- |
-| `redirect(url)` (Next.js, Remix, React Router) | 0 |
-| `NextResponse.redirect(url)` | 0 |
-| `reply.redirect(url)` (Fastify v5) | 0 |
-| `res.redirect([status,] url)` (Express) | last |
-| `response.redirect([status,] url)` (Express) | last |
-
-`'last'` covers both Express forms: `res.redirect(url)` and `res.redirect(302, url)`.
+- A literal URL, or a same-origin relative path even with a runtime segment (`/users/${id}`).
+- A `trustedOrigins` match closed by `/`, `?` or `#`, or followed by a sanitizer's result or a
+  trusted path; a sanitizer's result on its own.
+- Redirect calls not listed in `redirectCallees` (`ctx.redirect` needs configuring).
 
 When the URL argument is an object literal, the URL is read from its `urlProperty` (default `href`),
 and an object without that property is skipped. That is what keeps TanStack Router quiet:
@@ -84,6 +60,32 @@ throw redirect({ to: '/auth/login', search: { redirect: location.href } });
 // a runtime location
 throw redirect({ href: search.next });
 ```
+
+## Options
+
+| Option | Type | Default | Meaning |
+| --- | --- | --- | --- |
+| `redirectCallees` | `CalleeSpec[]` | see below | Call shapes that redirect. Setting this replaces the defaults. |
+| `trustedOrigins` | `string[]` | `[]` | Expressions (source text) that are a fixed-origin URL. `name()` matches any call to `name`. |
+| `sanitizers` | `string[]` | `[]` | Functions whose result is a safe same-origin path. |
+| `trustedPaths` | `string[]` | `[]` | Expressions (source text) that hold a safe same-origin path, e.g. an imported constant. |
+
+A `CalleeSpec` is `{ name, object?, urlArgument?, urlProperty? }`: `name` is the method or function
+name; `object` the receiver source text, omitted for a bare call; `urlArgument` the index of the URL
+argument, or `'last'` (default `0`); `urlProperty` the property to read when the URL argument is an
+object literal (default `'href'`).
+
+Default `redirectCallees`:
+
+| Call | URL argument |
+| --- | --- |
+| `redirect(url)` (Next.js, Remix, React Router) | 0 |
+| `NextResponse.redirect(url)` | 0 |
+| `reply.redirect(url)` (Fastify v5) | 0 |
+| `res.redirect([status,] url)` (Express) | last |
+| `response.redirect([status,] url)` (Express) | last |
+
+`'last'` covers both Express forms: `res.redirect(url)` and `res.redirect(302, url)`.
 
 ### `redirectCallees`
 

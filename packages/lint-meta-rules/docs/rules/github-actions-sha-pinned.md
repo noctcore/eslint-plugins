@@ -21,7 +21,7 @@ Every `uses:` line (step-level and job-level reusable workflow calls) in the sca
 - a SHA-pinned ref with no `# vN` comment,
 - a `docker://` ref with no `@sha256:<digest>`.
 
-Local actions (`uses: ./path`) are exempt. Each violation carries the 1-indexed line.
+Each violation carries the 1-indexed line.
 
 ```yaml
 # Bad
@@ -33,7 +33,17 @@ Local actions (`uses: ./path`) are exempt. Each violation carries the 1-indexed 
 - uses: ./.github/actions/setup
 ```
 
-## Factory
+## What it does not flag
+
+- Local actions (`uses: ./path`).
+- A full 40-character SHA with a `# vN` comment, quoted or not, including a path inside the action
+  repo (`github/codeql-action/analyze@<sha> # v3`).
+- A `docker://` ref pinned by `@sha256:<digest>`.
+
+The check is line-based text, not a YAML parse. A `uses:` value split across lines, or built from an
+expression, is not seen.
+
+## Options
 
 ```ts
 createGithubActionsShaPinnedRule(options?: GithubActionsShaPinnedOptions): IMetaRule
@@ -44,7 +54,7 @@ createGithubActionsShaPinnedRule(options?: GithubActionsShaPinnedOptions): IMeta
 | `workflowGlobs` | `string[]` | `['.github/workflows/*.yml', '.github/workflows/*.yaml']` | Workflow files to scan. |
 | `ciCritical` | `boolean` | `true` | Whether a violation fails CI. |
 
-## Limits
+## When not to use it
 
-The check is line-based text, not a YAML parse. A `uses:` value split across lines, or built from an
-expression, is not seen.
+If your repo has no GitHub Actions workflows, or you accept tag refs and review action updates some
+other way, skip it.

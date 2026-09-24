@@ -21,7 +21,15 @@ Reports a missing doc at:
 - every directory derived from `surfaceGlobs` (all surfaces), and
 - every directory derived from `packageGlobs`, except those in `optOut`.
 
-## Factory
+## What it does not flag
+
+- A package directory listed in `optOut`.
+- The repo root when `requireAtRoot` is `false`.
+- Directories that no `surfaceGlobs` or `packageGlobs` entry matches (the defaults look one level deep
+  under `apps/` and `packages/`).
+- The doc's content: an empty or stale file passes, since only its presence is checked.
+
+## Options
 
 ```ts
 createAgentsDocPresenceRule(options?: AgentsDocPresenceOptions): IMetaRule

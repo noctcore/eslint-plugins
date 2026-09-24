@@ -32,14 +32,7 @@ function Button(props: ButtonProps) {
 }
 ```
 
-Precision guardrails (all syntactic — no type information):
-
-- only PascalCase functions that actually return JSX count as components, so factories and hooks are
-  never touched;
-- the first-param annotation must be a bare type reference with no type arguments, so wrappers like
-  `PropsWithChildren<Props>` and `React.FC` argument shapes are left alone.
-
-## Autofix
+### Autofix
 
 The fix renames the type declaration and every in-file reference to `<Component>Props`. It runs
 **only** when it is safe:
@@ -50,6 +43,17 @@ The fix renames the type declaration and every in-file reference to `<Component>
 - no other component shares the same props type.
 
 When any of these does not hold, the rule reports without a fix.
+
+## What it does not flag
+
+Precision guardrails (all syntactic — no type information):
+
+- only PascalCase functions that actually return JSX count as components, so factories and hooks are
+  never touched;
+- the first-param annotation must be a bare type reference with no type arguments, so wrappers like
+  `PropsWithChildren<Props>` and `React.FC` argument shapes are left alone;
+- untyped props (`function Thing(props)`) have no name to check;
+- with `requireExported: true`, internal components are skipped.
 
 ## Options
 

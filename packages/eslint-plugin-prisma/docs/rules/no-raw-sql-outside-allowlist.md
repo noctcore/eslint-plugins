@@ -24,8 +24,6 @@ rows. The extension cannot parse SQL, so this door can only be guarded staticall
 - `$queryRawUnsafe` / `$executeRawUnsafe` **everywhere, allowlist or not**: they take a string, so
   they are an injection sink as well as a tenant escape.
 
-Allowlisted files skip everything except the `*Unsafe` report.
-
 ```ts bad reports=4
 const rows = await tx.$queryRaw`SELECT id FROM "Invoice" WHERE "accountId" = ${accountId}`;
 await tx.$queryRaw(Prisma.sql`SELECT 1`);
@@ -42,8 +40,18 @@ await tx.$executeRaw`SELECT pg_advisory_xact_lock(${lockKey})`;
 const rows = await prisma.invoice.findMany({ where: { accountId } });
 ```
 
-`pg_advisory_xact_lock` does not match `LOCK`: keywords match as whole words, and `_` is a word
-character.
+## What it does not flag
+
+- A tagged template whose literal text names no table keyword (`SELECT 1`,
+  `SELECT pg_advisory_xact_lock(${lockKey})`). `pg_advisory_xact_lock` does not match `LOCK`:
+  keywords match as whole words, and `_` is a word character.
+- A keyword inside an interpolated value: `${fromDate}` is a bound parameter, not the text `FROM`.
+- Any raw SQL in an `allowedFiles` file, except the `*Unsafe` variants. Allowlisted files skip
+  everything except the `*Unsafe` report.
+
+The carve-out is a floor, not a proof: a tableless statement can still call a SQL function that
+reads a table. That is a reviewed-code problem; the rule exists so the obvious
+`SELECT ... FROM "Invoice"` cannot land silently.
 
 ## Options
 
@@ -58,11 +66,11 @@ Globs match the absolute path and the workspace-root-relative path, as described
 The rule keys on Prisma's `$`-prefixed raw method names rather than on the receiver, so it takes no
 receiver options.
 
-## Limits
-
-The carve-out is a floor, not a proof: a tableless statement can still call a SQL function that
-reads a table. That is a reviewed-code problem; the rule exists so the obvious
-`SELECT ... FROM "Invoice"` cannot land silently.
+```js
+'noctcore-prisma/no-raw-sql-outside-allowlist': ['error', {
+  allowedFiles: ['**/prisma/seed.ts', '**/prisma/migrations/**', 'src/reports/**/*.sql.ts'],
+}],
+```
 
 ## When not to use it
 

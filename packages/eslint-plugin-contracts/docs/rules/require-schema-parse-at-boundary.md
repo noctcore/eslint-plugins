@@ -102,7 +102,7 @@ async function loadUser(res: Response) {
 }
 ```
 
-### What it leaves alone
+## What it does not flag
 
 - Casts to `unknown`, `any`, `const` or a primitive keyword (`as string | null`): the safe or
   neutral forms.
@@ -115,12 +115,15 @@ async function loadUser(res: Response) {
 
 ## Options
 
+| Option | Type | Default | Meaning |
+| --- | --- | --- | --- |
+| `boundaries` | `string[]` | `[]` | Extra callees whose result is boundary data: a bare name or a dotted path. |
+
 ```js
-{
-  // Extra callees whose result is boundary data: a bare name or a dotted path.
+'noctcore-contracts/require-schema-parse-at-boundary': ['error', {
   // `readBody(event) as T` and `(await readBody(event)) as T` are then flagged.
-  boundaries: ['readBody', 'ipcRenderer.invoke'], // default []
-}
+  boundaries: ['readBody', 'ipcRenderer.invoke'],
+}]
 ```
 
 ```ts bad options={"boundaries":["readBody"]}

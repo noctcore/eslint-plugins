@@ -18,8 +18,8 @@ import { createIdempotencyKeyParityRule } from '@noctcore/lint-meta-rules/trpc';
 An idempotency middleware only de-duplicates when the client sends a key, and neither half fails when
 the other is missing. The server passes the request straight through, the client gets a normal
 response, and both test suites pass. A guard nobody sends a key to is decoration advertising
-double-submit protection that does not exist. In the project this rule was extracted from, an audit
-found 14 of 30 guarded procedures whose only web caller had never sent a key.
+double-submit protection that does not exist. One audit of a production API found 14 of 30 guarded
+procedures whose only web caller had never sent a key.
 
 The gap is only visible by holding the two lists side by side, which is what this rule does.
 
@@ -34,7 +34,7 @@ reported.
 The method is read from the decorator to the next `async <name>(`, the shape `nestjs-trpc` routers
 take.
 
-## What it leaves alone
+## What it does not flag
 
 - A guarded procedure with no client caller: the guard is correct in advance of the screen that will
   use it, and demanding a caller would be demanding the screen.
@@ -48,7 +48,7 @@ file, if `clientGlobs` match it: the check is per procedure, across the client t
 
 With no `middleware` the rule is inert.
 
-## Factory
+## Options
 
 ```ts
 createIdempotencyKeyParityRule(options?: IdempotencyKeyParityOptions): IMetaRule
@@ -70,7 +70,11 @@ createIdempotencyKeyParityRule(options?: IdempotencyKeyParityOptions): IMetaRule
 | `hint` | `string` | none | Appended to every message: how this project threads the key. |
 | `ciCritical` | `boolean` | `true` | Whether a violation fails CI. |
 
-## Worked example: Settly
+### Worked example: an app with an idempotency middleware
+
+A NestJS API guards its mutations with an `IdempotencyMiddleware` in `*.router.ts` files, and a web app
+calls them through tRPC hooks. The `hint` tells whoever hits a violation how the web app threads the
+key:
 
 ```ts
 createIdempotencyKeyParityRule({

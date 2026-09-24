@@ -20,7 +20,15 @@ A `<feature>/<Name>/<barrelFile>` path marks a component folder. Grouping by `<N
 `allowedClones` — is flagged. The allowlist freezes today's clone groups and only shrinks: an
 `allowedClones` entry whose clone group no longer exists is itself flagged as stale.
 
-## Factory
+## What it does not flag
+
+- A component folder name that exists under only one feature.
+- Folders under `excludedFeatures` (`ui` and `app` by default).
+- Names in `allowedClones` while their clone group still exists.
+- Folders without the `barrelFile`, and folders nested deeper than `<feature>/<Name>/` under
+  `componentsRoot`.
+
+## Options
 
 ```ts
 createNoClonedComponentFoldersRule(options?: NoClonedComponentFoldersOptions): IMetaRule

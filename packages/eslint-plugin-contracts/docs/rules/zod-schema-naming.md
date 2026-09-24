@@ -34,6 +34,12 @@ export const TaskSchema = z.object({ id: z.string() });
 export type Task = z.infer<typeof TaskSchema>;
 ```
 
+## What it does not flag
+
+- Exported consts whose initializer is not rooted at `z` (`export const MAX = 10`).
+- Zod schemas that are not exported.
+- Consts ending in one of the configured `roleSuffixes` (see Options).
+
 ## Options
 
 | Option | Type | Default | Meaning |

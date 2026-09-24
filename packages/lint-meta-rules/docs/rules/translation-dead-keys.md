@@ -25,7 +25,27 @@ This rule resolves call sites with the same visitor and catalog loader as
 two checks never disagree on which key a call means. It then adds the data routes a per-file rule
 cannot see.
 
-## What counts as reached
+## What it flags
+
+Every key in `catalogs` that no scanned source reaches (the routes are listed under
+[What it does not flag](#what-it-does-not-flag)). What is left was named by no call and spelled by no
+string. On a production app with 1,824 keys this reported 55, and every one of them had zero
+references outside the catalogs.
+
+### Blind spots
+
+It is conservative, not complete. It reports a reached key as dead when the key arrives by a route it
+cannot see:
+
+- **Keys that never appear in the scanned source**: server-sent codes, a CMS, another app, JSON
+  config. List them in `allow`, or add the files that spell them to `sourceGlobs`.
+- **A variable key under a `keyPrefix` binding**: `useTranslation('ns', { keyPrefix: 'form' })` then
+  `t(field)` with `field = 'name'` reaches `form.name`, but no string spells `form.name`. (A static key
+  under a `keyPrefix` is resolved correctly.)
+- **Keys built by anything other than `+` or a template literal**: `[a, b].join('.')`,
+  `` `${a}` `` split across variables, `String.prototype.concat`.
+
+## What it does not flag
 
 A key is reached, and never reported, when ANY of these holds:
 
@@ -40,29 +60,13 @@ A key is reached, and never reported, when ANY of these holds:
   `` `nav.${id}.label` `` and `'errors.' + code` are patterns, not just call arguments;
 - it matches an `allow` pattern.
 
-And it reports **no dead key at all** when a scanned file cannot be analysed (a parse error), or when
+It reports **no dead key at all** when a scanned file cannot be analysed (a parse error), or when
 `sourceGlobs` match nothing: in both cases the rule would otherwise call reached keys dead.
-
-What is left was named by no call and spelled by no string. On a production app with 1,824 keys this
-reported 55, and every one of them had zero references outside the catalogs.
-
-## Blind spots
-
-It is conservative, not complete. It reports a reached key as dead when the key arrives by a route it
-cannot see:
-
-- **Keys that never appear in the scanned source**: server-sent codes, a CMS, another app, JSON
-  config. List them in `allow`, or add the files that spell them to `sourceGlobs`.
-- **A variable key under a `keyPrefix` binding**: `useTranslation('ns', { keyPrefix: 'form' })` then
-  `t(field)` with `field = 'name'` reaches `form.name`, but no string spells `form.name`. (A static key
-  under a `keyPrefix` is resolved correctly.)
-- **Keys built by anything other than `+` or a template literal**: `[a, b].join('.')`,
-  `` `${a}` `` split across variables, `String.prototype.concat`.
 
 It also misses some dead keys, by design: any string that happens to equal a key (in any namespace)
 keeps it alive, and a broad pattern such as `` `${x}.title` `` keeps every `*.title` alive.
 
-## Factory
+## Options
 
 ```ts
 createTranslationDeadKeysRule(options?: TranslationDeadKeysOptions): IMetaRule
@@ -96,7 +100,12 @@ createTranslationDeadKeysRule({
 });
 ```
 
-## Requirements
+### Requirements
 
 The `i18n` entry needs the optional peers `eslint` (>= 9) and `@typescript-eslint/parser`. Scanned
 files are parsed as TypeScript with JSX enabled, without type information.
+
+## When not to use it
+
+If most keys reach the app from outside the scanned source (server-sent codes, a CMS, another app),
+`allow` would have to list most of the catalog and the rule proves little, so skip it.

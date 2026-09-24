@@ -19,9 +19,6 @@ The **last** statement of a function block that is an `if` with:
 - no `else` branch, and
 - a block consequent holding **two or more** statements.
 
-A single-statement `if`, an `if/else`, or an `if` that is not the final statement is left alone —
-those are not body-wraps.
-
 ```ts bad
 // the whole body is wrapped
 function handle(x) {
@@ -43,9 +40,10 @@ function handle(x) {
 }
 ```
 
-## Options
+## What it does not flag
 
-None.
+A single-statement `if`, an `if/else`, or an `if` that is not the final statement is left alone —
+those are not body-wraps.
 
 ## When not to use it
 

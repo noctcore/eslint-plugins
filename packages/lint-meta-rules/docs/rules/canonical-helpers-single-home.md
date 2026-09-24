@@ -19,7 +19,15 @@ extracts top-level exported identifiers (from `export function|const|let|var …
 lists — keyed on the **local** name before any `as`), and flags any name that appears as an export in
 more than one file. Strict, no baseline.
 
-## Factory
+## What it does not flag
+
+- A name exported from only one helper home, however many files import it.
+- An `export { x as y }` alias under a new public name: the check keys on the local name `x`.
+- Files outside `include`, and any path containing an `excludeContains` fragment (`/lib/` by default).
+- `export default`, `export class`, `export type` and `export interface` declarations: only
+  `function`, `const`, `let`, `var` declarations and `export { … }` lists are read.
+
+## Options
 
 ```ts
 createCanonicalHelpersSingleHomeRule(options?: CanonicalHelpersSingleHomeOptions): IMetaRule

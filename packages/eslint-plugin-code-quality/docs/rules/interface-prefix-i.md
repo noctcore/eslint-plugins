@@ -13,13 +13,18 @@ name. This is a house-style naming convention, not a correctness rule — some t
 noisy. It is therefore **excluded from the `recommended` preset**; enable it explicitly if your team
 wants it.
 
+### Enabling it
+
+Not part of `recommended`. Turn it on directly:
+
+```js
+'noctcore-code-quality/interface-prefix-i': 'error'
+```
+
 ## What it flags
 
 A `TSInterfaceDeclaration` whose name is **not** `I` followed by an uppercase letter
 (`/^I[A-Z]/`). `Input` fails (the letter after `I` is lowercase); `IUserProfile` passes.
-
-Interfaces inside an ambient `declare module` / `declare global` block are **exempt** — their names are
-dictated by the module being augmented (`Register`, `Window`).
 
 Report-only: a rename touches every reference, which a single-file fixer cannot do safely.
 
@@ -33,17 +38,11 @@ interface IUserProfile { id: string; }
 declare global { interface Window { electron: unknown; } } // augmentation
 ```
 
-## Options
+## What it does not flag
 
-None.
-
-## Enabling it
-
-Not part of `recommended`. Turn it on directly:
-
-```js
-'noctcore-code-quality/interface-prefix-i': 'error'
-```
+- Interfaces inside an ambient `declare module` / `declare global` block — their names are
+  dictated by the module being augmented (`Register`, `Window`).
+- `type` aliases: only `interface` declarations are checked.
 
 ## When not to use it
 

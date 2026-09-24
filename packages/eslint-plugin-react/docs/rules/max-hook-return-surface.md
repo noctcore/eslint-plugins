@@ -18,8 +18,7 @@ cohesive sub-objects.
 In a hook file (basename ending with a `hookFileSuffixes` entry, default `.hooks.ts`), an **exported**
 `use*` hook whose returned object literal exposes more than `max` (default **20**) members. Both the
 top-level return and objects nested **one** level deep (the `board: {...}` controller pattern) are
-measured. Each spread element counts as 1 (though it hides arbitrary extra surface). Non-exported
-hooks and non-hook functions are ignored, as is nesting deeper than one level.
+measured. Each spread element counts as 1 (though it hides arbitrary extra surface).
 
 ```ts bad filename=src/board/Board.hooks.ts
 // a 21-member controller
@@ -36,6 +35,13 @@ export function useBoard() {
   return { columns, selection, actions };
 }
 ```
+
+## What it does not flag
+
+- Non-exported helper hooks and exported functions that are not `use*` hooks.
+- Nesting deeper than one level below the returned object.
+- A return at exactly `max` members.
+- Files whose basename does not end with a `hookFileSuffixes` entry.
 
 ## Options
 

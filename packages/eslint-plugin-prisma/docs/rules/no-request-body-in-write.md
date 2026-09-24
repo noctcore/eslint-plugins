@@ -77,15 +77,31 @@ app.post('/users', async (c) => {
 });
 ```
 
+## What it does not flag
+
 It does not flag a value parsed first (`Schema.parse(req.body)`, `.safeParse(...).data`), fields picked
 one by one (`{ name: body.name }`), a spread of a value it cannot trace to a source, or client data
 stored in a JSON column (`{ payload: req.body }`), which assigns one column, not many.
+
+The sources are spellings, not types. Input that reaches the write under another name (a NestJS
+`@Body() dto`, an Elysia `({ body })` parameter, a helper's return value) is not traced; add its path to
+`sources` if your framework has one. A `let` binding is not followed, since it may have been
+reassigned to a sanitized value. Reads (`findMany({ where: req.query })`) are out of scope, and a
+`where` is only inspected at its top level, not inside `AND` / `OR` arms. If validation middleware
+replaces `req.body` with the parsed value in place, the rule still reports it: pass the parsed value
+to the write instead of reading it back off the request.
 
 ## Options
 
 | Option | Type | Default | Meaning |
 | --- | --- | --- | --- |
 | `sources` | `string[]` | see above | Dotted paths that hold raw client input. A path ending in `()` is a call (`readBody()`); any other path is a member access and covers everything below it. Replaces the default list. |
+
+```js
+'noctcore-prisma/no-request-body-in-write': ['error', {
+  sources: ['req.body', 'request.body', 'request.json()', 'event.body', 'readBody()'],
+}],
+```
 
 ```ts bad options={"sources":["event.body","readBody()"]}
 await prisma.user.create({ data: await readBody(event) });
@@ -95,12 +111,8 @@ await prisma.user.create({ data: await readBody(event) });
 await prisma.user.create({ data: CreateUser.parse(await readBody(event)) });
 ```
 
-## Limits
+## When not to use it
 
-The sources are spellings, not types. Input that reaches the write under another name (a NestJS
-`@Body() dto`, an Elysia `({ body })` parameter, a helper's return value) is not traced; add its path to
-`sources` if your framework has one. A `let` binding is not followed, since it may have been
-reassigned to a sanitized value. Reads (`findMany({ where: req.query })`) are out of scope, and a
-`where` is only inspected at its top level, not inside `AND` / `OR` arms. If validation middleware
-replaces `req.body` with the parsed value in place, the rule still reports it: pass the parsed value
-to the write instead of reading it back off the request.
+If raw request bodies never reach your handlers (the framework validates input before the handler
+runs and exposes only the parsed value, under names outside `sources`), the rule has nothing to find
+and can stay off.

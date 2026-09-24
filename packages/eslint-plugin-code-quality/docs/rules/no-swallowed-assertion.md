@@ -59,6 +59,8 @@ it('rejects an unknown id', async () => {
 });
 ```
 
+## What it does not flag
+
 It leaves alone a `catch` that rethrows (even conditionally), asserts, calls `fail()`, or does
 something with the error (`done(error)`, `lastError = error`); a `try/finally` with no `catch`;
 an assertion that sits in the `catch` rather than the `try`; supertest's `request(app).expect(200)`;
@@ -88,10 +90,6 @@ it('closes the connection', async () => {
   }
 });
 ```
-
-## Options
-
-None.
 
 ## When not to use it
 

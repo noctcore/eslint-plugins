@@ -34,10 +34,16 @@ configured reads and writes are exactly its delegate surface.
 It **fails closed**: no generated client under `clientGlobs` is a violation, because a checkout that
 never ran `prisma generate` is exactly where drift hides. Run `prisma generate` before lint-meta.
 
-Members are read line by line: a delegate method is a generic, `name<T ...>(...)`, at the interface's
-member indentation. `fields`, the symbol brand and `$`-prefixed members are not query methods.
+## What it does not flag
 
-## Factory
+- A generated client whose delegates expose exactly the configured reads and writes, in either the
+  per-model (`prisma-client`) or the single-file (`prisma-client-js`) layout.
+- Members that are not query methods: `fields`, the symbol brand and `$`-prefixed members.
+
+Members are read line by line: a delegate method is a generic, `name<T ...>(...)`, at the interface's
+member indentation, so a non-generic member is not counted.
+
+## Options
 
 ```ts
 createPrismaMethodSurfaceRule(options?: PrismaMethodSurfaceOptions): IMetaRule
@@ -54,7 +60,7 @@ createPrismaMethodSurfaceRule(options?: PrismaMethodSurfaceOptions): IMetaRule
 With the defaults, the rule checks the exact lists `@noctcore/eslint-plugin-prisma`'s rules read.
 If your own rules read their own lists, pass those.
 
-## Worked example: a monorepo with a database package
+### Worked example: a monorepo with a database package
 
 A schema that generates into `packages/database/generated/prisma` with the `prisma-client`
 generator:
@@ -67,3 +73,8 @@ createPrismaMethodSurfaceRule({
 
 Adding a method to every generated delegate reports it as unguarded; adding it to one model only
 reports that delegate as divergent; removing the generated folder reports that no client was found.
+
+## When not to use it
+
+If no lint rule of yours reads a list of Prisma method names (no tenant, writer or transaction fence),
+there is no list to keep in step, so skip it.

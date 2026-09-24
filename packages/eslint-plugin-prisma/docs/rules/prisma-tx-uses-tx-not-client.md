@@ -18,8 +18,7 @@ when the transaction rolls back. The code reads as transactional and is not.
 Inside an interactive `$transaction` callback whose first parameter is a plain identifier, any
 Prisma write whose receiver chain is not rooted at that parameter, when the receiver looks like a
 Prisma client (see `receiverPattern`, `clientProperties`, `txRootNames`) or is rooted at an OUTER
-transaction's parameter. Nested transactions each police their own parameter. Reads are not
-reported, and neither is the array form `$transaction([...])`.
+transaction's parameter. Nested transactions each police their own parameter.
 
 ```ts bad reports=2
 await this.prisma.$transaction(async (tx) => {
@@ -41,6 +40,15 @@ await this.prisma.$transaction(async (tx) => {
 ```
 
 Report only: rewriting the receiver is not a trivially safe autofix.
+
+## What it does not flag
+
+- Reads through the outer client inside the callback (`findMany`, `count`).
+- The array form `$transaction([...])`, which has no callback.
+- Writes outside any transaction, including a repository's `this.client.account.create(...)`.
+- A write-named method on something that is not a Prisma client (`createHash(...).update(x)`,
+  `this.cache.delete(k)`, an SDK's `this.client.messages.create(...)` while `client` is not in
+  `clientProperties`).
 
 ## Options
 

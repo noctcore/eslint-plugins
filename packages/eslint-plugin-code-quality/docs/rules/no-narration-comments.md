@@ -15,11 +15,9 @@ delete it.
 
 ## What it flags
 
-Line and block comments (JSDoc `/** … */` blocks are exempt) that **begin** with a narration
+Line and block comments that **begin** with a narration
 construction: `here we`, `now we`, `first[,] we`, `then[,] we`, `next[,] we`, `finally[,] we`,
 `let's`, `let me`.
-
-A bare leading word ("Next attempt…", "First run…") is fine — only the "we"/"let's" narration form matches.
 
 ```ts bad reports=2
 // Now we attach the user to the socket.
@@ -31,9 +29,12 @@ A bare leading word ("Next attempt…", "First run…") is fine — only the "we
 // call next() to continue the middleware chain
 ```
 
-## Options
+## What it does not flag
 
-None.
+- JSDoc `/** … */` blocks.
+- A bare leading word ("Next attempt…", "First run…") — only the "we"/"let's" narration form matches.
+- A narration word mid-sentence (`// call next() to continue the middleware chain`): the phrase must
+  open the comment.
 
 ## When not to use it
 

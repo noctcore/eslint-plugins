@@ -35,6 +35,8 @@ A `catch (e)` block where **all** of the following hold:
 - the binding **is** referenced (an unused binding is a different concern); and
 - **every** reference to the binding is a lossy form — `e.message`, `String(e)`, or bare `` `${e}` ``.
 
+## What it does not flag
+
 If the error is passed whole anywhere (`logger.error('x', e)`, `{ err: e }`), or `.stack` / `.cause` /
 any other property is read, or it is re-thrown, its diagnostics survive and the rule stays silent:
 
@@ -49,9 +51,8 @@ try { await run(); } catch (e) { logger.error(`${e.message}`, { err: e }); }
 Distinct from a fully-**unused** catch binding (`catch (e) { cleanup(); }`), which this rule
 deliberately does not touch.
 
-## Options
-
-This rule has no options.
+A catch block with no logger call at all (`catch (e) { throw e; }`) is not reporting a failure, so it
+is not checked.
 
 ## When not to use it
 

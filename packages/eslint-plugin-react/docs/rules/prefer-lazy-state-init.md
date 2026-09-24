@@ -19,7 +19,7 @@ a function — `useState(() => expensiveCall())` — makes React call it once, l
 A `useState` call (or `React.useState`) whose first argument is a **call expression** whose callee
 path is listed in `initializers`. By default that is `JSON.parse`, `localStorage.getItem`, and
 `sessionStorage.getItem`. A callee is matched by its dotted path (`localStorage.getItem`) or bare
-name (`buildInitialState`). Anything already wrapped in a function is left alone.
+name (`buildInitialState`).
 
 ```tsx bad
 // runs JSON.parse on every render
@@ -31,7 +31,15 @@ const [state, setState] = useState(JSON.parse(raw));
 const [state, setState] = useState(() => JSON.parse(raw));
 ```
 
+### Autofix
+
 The autofix wraps the argument in `() => ...`.
+
+## What it does not flag
+
+Anything already wrapped in a function is left alone. So are initializers that are not a listed
+call: a literal (`useState(0)`), an identifier or member access (`useState(props.initial)`), and a
+call whose callee is not in `initializers` (`useState(compute())`).
 
 ## Options
 

@@ -30,9 +30,12 @@ it('runs', () => {});
 layout.fit('contain'); // not a test runner
 ```
 
-## Options
+## What it does not flag
 
-None.
+- `.only` on something that is not a test runner (`queue.only(...)`, `db.batch.only(...)`), and a plain
+  variable named `only`.
+- A method named `fit` on some object (`layout.fit('contain')`): only the bare global counts.
+- Skipped tests (`it.skip`, `xit`): see [`skipped-tests-need-tracking`](./skipped-tests-need-tracking.md).
 
 ## When not to use it
 

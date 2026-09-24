@@ -24,10 +24,16 @@ For each `package.json` matched by `libraryGlobs` (full checks) or `appGlobs` (n
   `distMarker`, and `exports` must reference it.
 - **invalid JSON** — reported as a violation.
 
-App/surface packages are deployable entrypoints (vite/tauri/bun), so only the name check applies to
-them.
+## What it does not flag
 
-## Factory
+- Barrel and build-field problems in app/surface packages: they are deployable entrypoints
+  (vite/tauri/bun), so only the name check applies to them.
+- A package whose directory has an `externalNames` entry and whose name equals it.
+- A missing `distFields` entry or a missing `exports`: only fields that are present are checked, and
+  `exports` passes when any of its targets contains `distMarker`.
+- `package.json` files outside `libraryGlobs` and `appGlobs`.
+
+## Options
 
 ```ts
 createPackageShapeRule(options?: PackageShapeOptions): IMetaRule

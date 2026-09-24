@@ -14,6 +14,14 @@ the component unmounts before the promise settles, the update lands on a dead ef
 response can overwrite a newer one. Guard it with an `AbortController`, a `cancelled`/`isMounted`
 flag, or a cleanup `return`.
 
+### Severity
+
+Ships as `error` in the `recommended` preset. It is a heuristic and not autofixable, which is an
+argument for making it precise rather than for making it advisory: a preset that ships `warn`
+gives a consumer a severity they cannot act on, and a project that forbids `warn` outright
+cannot use the preset at all. A state update after an await with nothing to cancel it is a real
+bug, and any recognisable guard (an AbortController, a cancel flag, a cleanup) silences it.
+
 ## What it flags
 
 An `await` (or a `.then(cb)`) inside a `useEffect` / `useLayoutEffect` callback, followed by a
@@ -41,21 +49,14 @@ useEffect(() => {
 }, [id]);
 ```
 
+## What it does not flag
+
 The rule is intentionally conservative: any recognisable guard — an `AbortController`/`AbortSignal`,
 a `cancelled`/`isMounted`-style boolean flag that is read, an `if` test on such a flag, or a cleanup
-`return` — silences it, so a real finding is almost always genuine.
+`return` — silences it, so a real finding is almost always genuine. It also leaves alone:
 
-## Options
-
-This rule has no options.
-
-## Severity
-
-Ships as `error` in the `recommended` preset. It is a heuristic and not autofixable, which is an
-argument for making it precise rather than for making it advisory: a preset that ships `warn`
-gives a consumer a severity they cannot act on, and a project that forbids `warn` outright
-cannot use the preset at all. A state update after an await with nothing to cancel it is a real
-bug, and any recognisable guard (an AbortController, a cancel flag, a cleanup) silences it.
+- a synchronous `setState` in an effect, with no async step;
+- an `await` or `.then` with no state update after it.
 
 ## When not to use it
 

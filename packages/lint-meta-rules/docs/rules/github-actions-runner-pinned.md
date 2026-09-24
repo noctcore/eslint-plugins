@@ -15,8 +15,7 @@ repo. Pinning a named image makes the move a reviewed diff.
 ## What it flags
 
 Every floating label in a `runs-on:` value, read as a scalar, a flow list (`[a, b]`), a block list, or
-a `group:` / `labels:` mapping. An expression (`${{ matrix.os }}`) cannot be judged from the text and
-is left alone; a commented-out `runs-on:` is ignored.
+a `group:` / `labels:` mapping.
 
 ```yaml
 # Bad
@@ -28,7 +27,17 @@ runs-on: ubuntu-24.04
 runs-on: ${{ matrix.os }}
 ```
 
-## Factory
+## What it does not flag
+
+- A named image (`ubuntu-24.04`), quoted or with a trailing comment, and a custom label such as
+  `self-hosted`.
+- An expression (`${{ matrix.os }}`): it cannot be judged from the text.
+- A commented-out `runs-on:`, and a later key in the job (`name: ubuntu-latest`) after the label list.
+
+Line-based text, not a YAML parse. A matrix value such as `os: [ubuntu-latest]` that feeds
+`runs-on: ${{ matrix.os }}` is not checked.
+
+## Options
 
 ```ts
 createGithubActionsRunnerPinnedRule(options?: GithubActionsRunnerPinnedOptions): IMetaRule
@@ -40,7 +49,7 @@ createGithubActionsRunnerPinnedRule(options?: GithubActionsRunnerPinnedOptions):
 | `floatingLabel` | `RegExp` | `/^[\w.-]+-latest$/u` | A label matching this is floating. Do not pass a `g`-flagged regex. |
 | `ciCritical` | `boolean` | `true` | Whether a violation fails CI. |
 
-## Limits
+## When not to use it
 
-Line-based text, not a YAML parse. A matrix value such as `os: [ubuntu-latest]` that feeds
-`runs-on: ${{ matrix.os }}` is not checked.
+If you want your CI to track GitHub's newest runner images automatically and accept the unreviewed
+moves, skip it.

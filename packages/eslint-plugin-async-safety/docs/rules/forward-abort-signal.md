@@ -38,12 +38,13 @@ async function load(url: string, signal: AbortSignal) {
 }
 ```
 
-A function with no awaited call or `fetch` (e.g. a pure `while (!signal.aborted)` polling loop) is never flagged
-— there is nothing to forward to.
+## What it does not flag
 
-## Options
-
-None.
+- A function with no awaited call or `fetch` (e.g. a pure `while (!signal.aborted)` polling loop) — there is
+  nothing to forward to.
+- A signal forwarded in any form: as a call argument, into an options object (`{ signal }` or
+  `{ signal: sig }` under another parameter name), or from inside a nested callback such as a `.map`.
+- A function with no signal-shaped parameter.
 
 ## When not to use it
 

@@ -18,7 +18,13 @@ For each file matched by an `include` glob, the sibling test is the same path wi
 extension replaced by each configured test extension. If none of those siblings exists, the source
 file is flagged. Strict — there is no baseline; the pattern is opt-in via which files `include` selects.
 
-## Factory
+## What it does not flag
+
+- A matched file with a sibling for any one of `testExtensions` (`foo.utils.test.ts` or
+  `foo.utils.test.tsx` for `foo.utils.ts`).
+- Files outside `include` (only `apps/web/src/**/*.utils.ts` by default).
+
+## Options
 
 ```ts
 createTestSiblingEnforcementRule(options?: TestSiblingEnforcementOptions): IMetaRule

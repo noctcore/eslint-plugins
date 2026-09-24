@@ -30,8 +30,19 @@ Precision is the whole point — this rule fires **only** on the genuinely dange
 - **`exec` / `execSync`** (always run a shell): a first argument that is a template literal with
   expressions, or a `+` concatenation with a dynamic part.
 - **`spawn` / `spawnSync` / `execFile` / `execFileSync`**: the same dynamic first argument, but **only**
-  when an options object passes `shell: true` (or a shell path string). The array-args, no-shell forms
-  are safe and left entirely alone.
+  when an options object passes `shell: true` (or a shell path string).
+
+```ts bad
+// shell:true re-parses the interpolated command
+spawn(`cmd ${x}`, { shell: true });
+```
+
+There is **no autofix**: the safe rewrite changes the call shape (string → program + args array).
+
+## What it does not flag
+
+The array-args, no-shell forms are safe and left alone, even with a dynamic argument (and with an
+explicit `shell: false`):
 
 ```ts good
 // left alone: no shell
@@ -39,28 +50,22 @@ spawn('ls', [dir]);
 execFile('git', ['log', branch]);
 ```
 
-```ts bad
-// shell:true re-parses the interpolated command
-spawn(`cmd ${x}`, { shell: true });
-```
-
 `exec` called as a **member on a non-`child_process` object** — notably `regex.exec(...)` — is
 excluded so `RegExp.prototype.exec` never false-positives. The `child_process` member form is
 recognised via the conventional object names `cp` / `childProcess` / `child_process`, or the bare
 imported `exec(...)`.
 
-There is **no autofix**: the safe rewrite changes the call shape (string → program + args array).
+A fully static command is not flagged either: `exec('ls -la')`, a template literal with no
+expressions, or a `+` of literals only (`'ls ' + '-la'`).
 
 ## Options
 
-```ts prose reason="the options type, not a lint example"
-type Options = {
-  /**
-   * Extra callee names to treat as always-shell command runners (checked like `exec`).
-   * Default: [].
-   */
-  extraCallees?: string[];
-};
+| Option | Type | Default | Meaning |
+| --- | --- | --- | --- |
+| `extraCallees` | `string[]` | `[]` | Extra callee names to treat as always-shell command runners (checked like `exec`). |
+
+```js
+'noctcore-security/no-shell-interpolation': ['error', { extraCallees: ['runShell', 'sh'] }]
 ```
 
 ## When not to use it

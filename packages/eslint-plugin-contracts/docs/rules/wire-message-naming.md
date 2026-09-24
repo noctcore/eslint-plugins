@@ -33,7 +33,11 @@ export const TaskCompletedEvent = z.object({ type: z.literal('task-completed') }
 export const RunTaskCommand = z.object({ type: z.literal('run-task') });
 ```
 
-Consts without a role suffix, and role-suffixed consts without a `type` literal, are ignored.
+## What it does not flag
+
+- Consts without a role suffix (`TaskSchema`), whatever their `type` literal says.
+- Role-suffixed consts without a `type: z.literal(...)` property.
+- Consts that are not exported: only `export const` declarations are checked.
 
 ## Options
 

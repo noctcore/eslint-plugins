@@ -18,6 +18,11 @@ It is the enforcement counterpart to [`no-deep-package-imports`](./no-deep-packa
 rule forbids *any* deep subpath (barrel-only); this one *permits* the subpaths a package deliberately
 publishes and only flags the ones it does not.
 
+### In `recommended`
+
+Ships **`'off'`** — like `no-deep-package-imports`, it needs your `scopes`, so a shared preset cannot
+safely enable it. Turn it on yourself with your own scopes.
+
 ## What it flags
 
 For each configured scope, a specifier `@scope/pkg/<subpath>` is checked against `@scope/pkg`'s
@@ -29,10 +34,6 @@ For each configured scope, a specifier `@scope/pkg/<subpath>` is checked against
 - the subpath matches no entry (exact key, `*` wildcard, or trailing-slash folder form; an entry
   mapped to `null` is a block).
 
-If the workspace, the package, or its `exports` cannot be resolved, the rule stays silent rather than
-guess. The barrel (`@scope/pkg`) and `@scope/pkg/package.json` are always allowed. A package with no
-`exports` map is not restricted.
-
 ```ts prose reason="the rule reads the target package's exports map from the workspace on disk"
 // @acme/contracts exports: { ".": "...", "./schemas": "...", "./features/*": "..." }
 
@@ -43,12 +44,20 @@ import d from '@acme/contracts/internal/secret'; // ✗ not exported
 import e from '@acme/contracts/schemas/extra';   // ✗ ./schemas does not cover ./schemas/extra
 ```
 
-## Resolution
+### Resolution
 
 The rule walks up from the importing file to the nearest workspace root — a `package.json` with a
 `workspaces` field, or a `pnpm-workspace.yaml` — then indexes the workspace packages by name and
 reads the target's `exports`. Directory listings and parsed `exports` maps are cached per lint run,
 so run ESLint against real file paths, not virtual sources.
+
+## What it does not flag
+
+If the workspace, the package, or its `exports` cannot be resolved, the rule stays silent rather than
+guess. The barrel (`@scope/pkg`) and `@scope/pkg/package.json` are always allowed. A package with no
+`exports` map is not restricted.
+
+Specifiers in scopes you did not configure are ignored.
 
 ## Options
 
@@ -62,11 +71,6 @@ nothing.
 ```js
 'noctcore-monorepo/no-unexported-subpath-import': ['error', { scopes: ['@acme'] }]
 ```
-
-## In `recommended`
-
-Ships **`'off'`** — like `no-deep-package-imports`, it needs your `scopes`, so a shared preset cannot
-safely enable it. Turn it on yourself with your own scopes.
 
 ## When not to use it
 

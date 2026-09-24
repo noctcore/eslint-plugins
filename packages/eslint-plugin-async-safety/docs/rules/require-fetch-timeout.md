@@ -18,12 +18,6 @@ the failure observable.
 A call to global `fetch` — or any wrapper named in the `callees` option (e.g. `undici.request`, `axios`) —
 whose options carry neither a `signal` nor a `timeout`.
 
-The rule is purely syntactic and stays silent whenever it cannot see the arguments:
-
-- a spread argument (`fetch(url, ...opts)`) or a `...spread` inside the options object — opaque, skipped;
-- an options slot that is an identifier/call/member (`fetch(url, opts)`) — that bag may already set a signal, skipped;
-- a single non-string argument (`fetch(request)`) — could be a `Request` carrying its own signal, skipped.
-
 It reports only when the arguments are plainly signal-free: a bare string/template URL, or a visible options
 object literal with neither key.
 
@@ -39,10 +33,18 @@ await fetch('https://api.example.com/data', { signal: AbortSignal.timeout(10000)
 await fetch(url, { method: 'POST', signal: controller.signal });
 ```
 
-## Suggestion
+### Suggestion
 
 Reports offer an editor suggestion (not an autofix) that inserts `signal: AbortSignal.timeout(<defaultTimeoutMs>)`
 into the options object, creating one if needed.
+
+## What it does not flag
+
+The rule is purely syntactic and stays silent whenever it cannot see the arguments:
+
+- a spread argument (`fetch(url, ...opts)`) or a `...spread` inside the options object — opaque, skipped;
+- an options slot that is an identifier/call/member (`fetch(url, opts)`) — that bag may already set a signal, skipped;
+- a single non-string argument (`fetch(request)`) — could be a `Request` carrying its own signal, skipped.
 
 ## Options
 
