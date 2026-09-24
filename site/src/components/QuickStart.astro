@@ -5,7 +5,7 @@
  */
 import { Code } from '@astrojs/starlight/components';
 
-import { enabledInPreset, getPackage, importName } from '../lib/catalog';
+import { enabledInPreset, getPackage, importName, plural } from '../lib/catalog';
 
 interface Props {
   pkg: string;
@@ -13,29 +13,46 @@ interface Props {
 
 const pkg = getPackage(Astro.props.pkg);
 const name = importName(pkg.short);
-const install = `npm install --save-dev ${pkg.npmName}\n# or: bun add -D / pnpm add -D ${pkg.npmName}`;
+const installed = pkg.kind === 'eslint-plugin' ? `${pkg.npmName} @typescript-eslint/parser` : pkg.npmName;
+const install = `npm install --save-dev ${installed}\n# or: bun add -D / pnpm add -D ${installed}`;
 
 const enabled = enabledInPreset(pkg);
-const firstOptIn = pkg.rules.find((rule) => rule.recommended !== 'error');
+// Prefer a rule that works without options, so the example line runs as written.
+const optIns = pkg.rules.filter((rule) => rule.recommended !== 'error' && !rule.deprecated);
+const firstOptIn = optIns.find((rule) => !rule.requiresOptions) ?? optIns[0];
 
 let config: string;
 let note: string;
 if (pkg.kind === 'eslint-plugin') {
+  // The preset sets no `files` and no parser, so the snippet adds both, as the READMEs do.
   config = [
     '// eslint.config.js',
+    "import tsParser from '@typescript-eslint/parser';",
     `import ${name} from '${pkg.npmName}';`,
     '',
-    `export default [${name}.configs.recommended];`,
+    'export default [',
+    '  {',
+    `    ...${name}.configs.recommended,`,
+    "    files: ['**/*.{ts,tsx}'],",
+    '    languageOptions: { parser: tsParser },',
+    '  },',
+    '];',
   ].join('\n');
   if (firstOptIn) {
+    const severity = firstOptIn.requiresOptions ? "['error', { /* see the rule's Options */ }]" : "'error'";
     config += [
       '',
       '',
       '// Rules outside the preset are enabled one by one, e.g.',
-      `// { rules: { '${firstOptIn.id}': 'error' } }`,
+      `// { rules: { '${firstOptIn.id}': ${severity} } }`,
     ].join('\n');
   }
-  note = `The recommended preset enables ${enabled} of ${pkg.rules.length} rules.`;
+  note =
+    enabled === 0
+      ? `The recommended preset turns none of its ${plural(pkg.rules.length, 'rule')} on: each needs options ` +
+        'only your project can give, so the preset alone checks nothing. Enable them with your options, ' +
+        "as each rule's page shows."
+      : `The recommended preset enables ${enabled} of ${plural(pkg.rules.length, 'rule')}.`;
 } else {
   config = [
     `import { createAllRules, createPackageShapeRule } from '${pkg.npmName}';`,
@@ -46,7 +63,7 @@ if (pkg.kind === 'eslint-plugin') {
     '// Or one rule, retargeted at your repo:',
     "const shape = createPackageShapeRule({ scope: '@acme' });",
   ].join('\n');
-  note = `A source catalog for the @noctcore/harness lint-meta runner, not an ESLint plugin. ${pkg.rules.length} rules.`;
+  note = `A source catalog for the @noctcore/harness lint-meta runner, not an ESLint plugin. ${plural(pkg.rules.length, 'rule')}.`;
 }
 ---
 
