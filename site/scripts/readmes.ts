@@ -41,14 +41,33 @@ export const LEGEND =
  * A table cell: one line, no unescaped pipe, and no bare `<scope>` outside a
  * code span, which GitHub and npm would swallow as an HTML tag.
  */
-function cell(text: string): string {
-  return text
-    .replace(/\s+/g, ' ')
-    .trim()
-    .split(/(`[^`]*`)/)
-    .map((part, i) => (i % 2 === 1 ? part : part.replace(/</g, '&lt;').replace(/>/g, '&gt;')))
-    .join('')
-    .replace(/\|/g, '\\|');
+export function cell(text: string): string {
+  return escapePipes(
+    text
+      .replace(/\s+/g, ' ')
+      .trim()
+      .split(/(`[^`]*`)/)
+      .map((part, i) => (i % 2 === 1 ? part : part.replace(/</g, '&lt;').replace(/>/g, '&gt;')))
+      .join(''),
+  );
+}
+
+/**
+ * Escape every `|` for a GFM table cell. Backslashes right before a pipe are
+ * doubled too, or `\|` would become `\\|`: an escaped backslash, then a pipe that
+ * splits the cell. Other backslashes stay as they are, since doubling them would
+ * show twice inside a code span.
+ */
+function escapePipes(text: string): string {
+  const parts = text.split('|');
+  return parts
+    .map((part, i) => {
+      if (i === parts.length - 1) return part;
+      let slashes = 0;
+      while (part[part.length - 1 - slashes] === '\\') slashes += 1;
+      return `${part}${'\\'.repeat(slashes)}\\|`;
+    })
+    .join('');
 }
 
 function linkOf(pkg: PackageEntry, rule: RuleEntry): string {
