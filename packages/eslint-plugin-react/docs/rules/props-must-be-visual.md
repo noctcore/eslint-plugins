@@ -2,6 +2,10 @@
 
 > Component props describe what to render — not who is acting or what secret to use.
 
+<!-- begin generated rule header -->
+✅ In `recommended` at `error` · 💭 Type information: not needed
+<!-- end generated rule header -->
+
 ## Why
 
 Component props should describe visual concerns. Names that look like auth/business identity

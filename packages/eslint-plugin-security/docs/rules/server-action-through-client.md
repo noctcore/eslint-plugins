@@ -2,6 +2,10 @@
 
 > In a `'use server'` module, every exported action must be built from a configured action client, and no raw `export async function` may appear. Opt-in: needs `actionClients`.
 
+<!-- begin generated rule header -->
+⚙️ Opt-in: not in `recommended`; needs options (see Options) · 💭 Type information: not needed
+<!-- end generated rule header -->
+
 ## Why
 
 A module whose first statement is `'use server'` turns every export into a public POST endpoint.

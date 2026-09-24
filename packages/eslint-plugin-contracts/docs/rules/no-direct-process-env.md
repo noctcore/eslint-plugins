@@ -2,6 +2,10 @@
 
 > Read environment variables through a typed, validated config accessor — never `process.env` directly.
 
+<!-- begin generated rule header -->
+✅ In `recommended` at `error` · 💭 Type information: not needed
+<!-- end generated rule header -->
+
 ## Why
 
 `process.env.X` is `string | undefined`, unvalidated, and reachable from anywhere. A typo or a missing

@@ -2,6 +2,10 @@
 
 > Workflow jobs run on a named runner image, never a `*-latest` label.
 
+<!-- begin generated rule header -->
+Runs under `@noctcore/harness`, not ESLint · Factory `createGithubActionsRunnerPinnedRule` from `@noctcore/lint-meta-rules` · Category `ci` · Fails CI by default: yes
+<!-- end generated rule header -->
+
 ## Why
 
 GitHub repoints `ubuntu-latest` (and `macos-latest`, `windows-latest`) to a new OS image on its own

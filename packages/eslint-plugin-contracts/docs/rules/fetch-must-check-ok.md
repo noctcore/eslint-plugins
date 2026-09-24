@@ -2,6 +2,10 @@
 
 > A fetch response must be checked with `.ok` or a status comparison before `.json()` parses its body.
 
+<!-- begin generated rule header -->
+✅ In `recommended` at `error` · 💭 Type information: not needed
+<!-- end generated rule header -->
+
 Ported from tsforge's `typescript-core/fetch-must-check-ok` (MIT).
 
 ## Why

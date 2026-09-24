@@ -2,6 +2,10 @@
 
 > The key/name argument of a configured sink API must be an imported constant, not a raw string.
 
+<!-- begin generated rule header -->
+⚙️ Opt-in: `off` in `recommended`; needs options (see Options) · 💭 Type information: not needed
+<!-- end generated rule header -->
+
 ## Why
 
 String keys threaded into sink APIs — storage slots, event channels, feature flags, query-cache keys

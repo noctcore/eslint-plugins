@@ -2,6 +2,10 @@
 
 > Every static translation key must exist in the catalog of the namespace in scope.
 
+<!-- begin generated rule header -->
+⚙️ Opt-in: `off` in `recommended`; needs options (see Options) · 💭 Type information: used when available
+<!-- end generated rule header -->
+
 ## Why
 
 i18next does not fail on a missing key. It renders the key itself (`admin.portalAccounts.revokeTitle`)

@@ -3,6 +3,10 @@
 > A filtered read or bulk write on a soft-deletable model must exclude soft-deleted rows in its
 > `where`.
 
+<!-- begin generated rule header -->
+⚙️ Opt-in: not in `recommended`; needs options (see Options) · 💭 Type information: not needed
+<!-- end generated rule header -->
+
 ## Why
 
 A soft-deleted row survives its delete and is hidden by a `deletedAt: null` filter. Unlike a tenant

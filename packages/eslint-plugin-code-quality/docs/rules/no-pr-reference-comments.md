@@ -2,6 +2,10 @@
 
 > PR/issue references belong in commit messages, not in source comments.
 
+<!-- begin generated rule header -->
+✅ In `recommended` at `error` · 💭 Type information: not needed
+<!-- end generated rule header -->
+
 ## Why
 
 `// fixes #123` or a link to a pull request rots the moment the repo moves, the issue tracker

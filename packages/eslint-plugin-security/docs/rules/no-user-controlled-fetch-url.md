@@ -3,6 +3,10 @@
 > An HTTP request whose **origin** is not fixed at authoring time is a server-side request forgery
 > (SSRF) sink. Enabled in `recommended`.
 
+<!-- begin generated rule header -->
+✅ In `recommended` at `error` · 💭 Type information: not needed
+<!-- end generated rule header -->
+
 Ported from [tsforge](https://github.com/boringstack-xyz/tsforge) (MIT), with configurable callees,
 in-file `const` resolution and a trusted-origin vocabulary added.
 

@@ -2,6 +2,10 @@
 
 > A folder primitive must ship its proof siblings; a flat primitive must carry none at the ui root.
 
+<!-- begin generated rule header -->
+Runs under `@noctcore/harness`, not ESLint · Factory `createUiPrimitiveShapeRule` from `@noctcore/lint-meta-rules` · Category `source-text` · Fails CI by default: yes
+<!-- end generated rule header -->
+
 ## Why
 
 The primitives root is the one place exempt from folder-per-component: flat single files are fine for

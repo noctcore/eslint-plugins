@@ -3,6 +3,10 @@
 > Every rule in the RESOLVED ESLint config is `error` or `off`, never `warn`, including severities a
 > spread preset injects.
 
+<!-- begin generated rule header -->
+Runs under `@noctcore/harness`, not ESLint · Factory `createEslintConfigNoWarnRule` from `@noctcore/lint-meta-rules/resolved-config` · Category `config` · Fails CI by default: yes
+<!-- end generated rule header -->
+
 Import it from the `resolved-config` entry point, which (unlike the main one) loads ESLint:
 
 ```ts

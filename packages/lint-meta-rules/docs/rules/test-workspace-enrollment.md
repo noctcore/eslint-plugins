@@ -2,6 +2,10 @@
 
 > Every tested package must be enumerated in the aggregate test script.
 
+<!-- begin generated rule header -->
+Runs under `@noctcore/harness`, not ESLint · Factory `createTestWorkspaceEnrollmentRule` from `@noctcore/lint-meta-rules` · Category `testing` · Fails CI by default: yes
+<!-- end generated rule header -->
+
 ## Why
 
 When the CI test command is a hardcoded list of workspace paths, a package added without editing that

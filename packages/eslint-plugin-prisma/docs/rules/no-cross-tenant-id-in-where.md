@@ -2,6 +2,10 @@
 
 > The tenant id in a Prisma `where` or `data` must come from server context, never from client input.
 
+<!-- begin generated rule header -->
+✅ In `recommended` at `error` · 💭 Type information: not needed
+<!-- end generated rule header -->
+
 ## Why
 
 Without row-level security, the tenant id on a query is the cross-tenant boundary. A tenant id read

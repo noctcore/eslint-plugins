@@ -2,6 +2,10 @@
 
 > A `setState` after an `await`/`.then` inside an effect needs a cancellation guard.
 
+<!-- begin generated rule header -->
+✅ In `recommended` at `error` · 💭 Type information: not needed
+<!-- end generated rule header -->
+
 ## Why
 
 A state update that runs after an async step inside an effect, with nothing to cancel it, is the

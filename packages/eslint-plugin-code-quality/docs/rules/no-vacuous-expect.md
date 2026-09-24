@@ -2,6 +2,10 @@
 
 > A test must assert behaviour that a real regression would break.
 
+<!-- begin generated rule header -->
+✅ In `recommended` at `error` · 💭 Type information: not needed
+<!-- end generated rule header -->
+
 Ported from [tsforge](https://github.com/boringstack-xyz/tsforge) (MIT). See
 [THIRD_PARTY_NOTICES.md](../../THIRD_PARTY_NOTICES.md).
 

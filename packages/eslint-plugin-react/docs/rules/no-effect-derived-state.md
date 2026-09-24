@@ -2,6 +2,10 @@
 
 > An effect that only sets state derived from its dependencies is the "you might not need an effect" anti-pattern.
 
+<!-- begin generated rule header -->
+✅ In `recommended` at `error` · 💭 Type information: not needed
+<!-- end generated rule header -->
+
 ## Why
 
 An effect whose only job is to `setState` a value purely derived from its own dependencies should

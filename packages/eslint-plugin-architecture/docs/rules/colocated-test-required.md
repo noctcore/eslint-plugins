@@ -2,6 +2,10 @@
 
 > A source file matching an `include` glob must have a colocated `*.test.*` / `*.spec.*` sibling on disk. Off until `include` is configured.
 
+<!-- begin generated rule header -->
+⚙️ Opt-in: `off` in `recommended`; needs options (see Options) · 💭 Type information: not needed
+<!-- end generated rule header -->
+
 ## Why
 
 Some files are risky enough that shipping them untested should be a lint error, not a code-review

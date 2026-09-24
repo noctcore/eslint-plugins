@@ -2,6 +2,10 @@
 
 > Keep JSX declarative — lift computation to a const above the return or into the hook.
 
+<!-- begin generated rule header -->
+✅ In `recommended` at `error` · 💭 Type information: not needed
+<!-- end generated rule header -->
+
 ## Why
 
 Computation wedged directly into JSX children (`{items.map(...)}`, `{total - used}`,

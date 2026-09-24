@@ -2,6 +2,10 @@
 
 > Extract the inline `` `…`.trim() === '' ? fallback : `…`.trim() `` pattern to a named util. **Niche — not in `recommended`.**
 
+<!-- begin generated rule header -->
+Opt-in: not in `recommended` · 💭 Type information: not needed
+<!-- end generated rule header -->
+
 ## Why
 
 The inline shape `` `${a} ${b}`.trim() === '' ? fallback : `${a} ${b}`.trim() `` builds the same

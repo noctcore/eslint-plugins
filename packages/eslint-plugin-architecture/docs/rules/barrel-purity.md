@@ -2,6 +2,10 @@
 
 > A barrel (`index.ts` / `index.tsx`) must contain only re-exports — never local declarations, side effects, or default-exported values.
 
+<!-- begin generated rule header -->
+✅ In `recommended` at `error` · 💭 Type information: not needed
+<!-- end generated rule header -->
+
 ## Why
 
 A barrel exists to present a folder's public surface. The moment it also *declares* something — a

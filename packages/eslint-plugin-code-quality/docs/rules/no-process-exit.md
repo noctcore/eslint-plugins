@@ -2,6 +2,10 @@
 
 > `process.exit()` belongs to bootstrap/shutdown and CLIs — not application code.
 
+<!-- begin generated rule header -->
+✅ In `recommended` at `error` · 💭 Type information: not needed
+<!-- end generated rule header -->
+
 ## Why
 
 `process.exit()` kills the whole process immediately, skipping pending I/O, `finally` blocks, and

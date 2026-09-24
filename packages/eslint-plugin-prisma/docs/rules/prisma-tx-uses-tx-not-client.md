@@ -3,6 +3,10 @@
 > Inside an interactive `$transaction` callback, write through the callback's `tx`, not the outer
 > client.
 
+<!-- begin generated rule header -->
+✅ In `recommended` at `error` · 💭 Type information: not needed
+<!-- end generated rule header -->
+
 ## Why
 
 `prisma.$transaction(async (tx) => { ... })` only makes the writes that go through `tx` atomic. A

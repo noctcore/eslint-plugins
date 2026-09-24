@@ -2,6 +2,10 @@
 
 > Dockerfile `FROM` base images are pinned by `@sha256:` digest.
 
+<!-- begin generated rule header -->
+Runs under `@noctcore/harness`, not ESLint · Factory `createDockerfileBaseImageDigestPinRule` from `@noctcore/lint-meta-rules` · Category `ci` · Fails CI by default: yes
+<!-- end generated rule header -->
+
 ## Why
 
 `FROM node:22-slim` names whatever the registry serves at build time, so two builds of one commit can

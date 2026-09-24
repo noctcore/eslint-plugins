@@ -2,6 +2,10 @@
 
 > Cap the return surface of an exported hook so it does not become a god-controller.
 
+<!-- begin generated rule header -->
+✅ In `recommended` at `error` · 💭 Type information: not needed
+<!-- end generated rule header -->
+
 ## Why
 
 Counting how many hooks a file exports misses the shape where a **single** hook returns a 55-member

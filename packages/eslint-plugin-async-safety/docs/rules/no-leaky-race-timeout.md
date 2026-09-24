@@ -2,6 +2,10 @@
 
 > A `setTimeout` timeout raced with `Promise.race` must be cleared, or the timer outlives the race whenever the other promise wins.
 
+<!-- begin generated rule header -->
+✅ In `recommended` at `error` · 💭 Type information: not needed
+<!-- end generated rule header -->
+
 ## Why
 
 The hand-rolled timeout races the real work against a promise that rejects after `ms`:

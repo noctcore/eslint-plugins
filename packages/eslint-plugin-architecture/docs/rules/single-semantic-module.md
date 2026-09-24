@@ -4,6 +4,10 @@
 > hooks, schemas or enums. **Ships `off` in `recommended`**: choose the files and the allowed mixes
 > for your codebase, then enable it.
 
+<!-- begin generated rule header -->
+Opt-in: `off` in `recommended` · 💭 Type information: not needed
+<!-- end generated rule header -->
+
 Ported from
 [`@boring-stack-pkg/eslint-plugin-module-boundaries`](https://github.com/boringstack-xyz/eslint-plugins/tree/main/eslint-plugin-module-boundaries)
 0.2.0 (MIT). Upstream peers ESLint `8.57.0 || ^9.0.0`; this port runs on ESLint 9 and 10.

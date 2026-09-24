@@ -3,6 +3,10 @@
 > Every translation catalog key is reachable from the source: named by a translation call, or spelled
 > by some string in the code.
 
+<!-- begin generated rule header -->
+Runs under `@noctcore/harness`, not ESLint · Factory `createTranslationDeadKeysRule` from `@noctcore/lint-meta-rules/i18n` · Category `source-text` · Fails CI by default: yes
+<!-- end generated rule header -->
+
 Import it from the `i18n` entry point, which (unlike the main one) loads ESLint:
 
 ```ts

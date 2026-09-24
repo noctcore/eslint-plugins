@@ -21,6 +21,7 @@
     "release": "bun run build && changeset publish",
     "docs:dev": "bun run --filter @noctcore/docs-site dev",
     "docs:build": "bun run --filter @noctcore/docs-site docs:build",
+    "docs:readmes": "bun site/scripts/readmes.ts",
     "sync:versions": "bun scripts/sync-plugin-versions.ts"
   },
   "devDependencies": {

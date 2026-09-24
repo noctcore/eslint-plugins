@@ -2,6 +2,10 @@
 
 > Request-shaped input flowing directly into `path.join` / `path.resolve` without a containment guard is a path-traversal sink. **Opt-in — not in `recommended`.**
 
+<!-- begin generated rule header -->
+Opt-in: not in `recommended` · 💭 Type information: not needed
+<!-- end generated rule header -->
+
 ## Why
 
 ```ts bad

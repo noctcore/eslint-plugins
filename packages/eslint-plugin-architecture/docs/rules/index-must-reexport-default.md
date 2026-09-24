@@ -2,6 +2,10 @@
 
 > A component folder's `index.ts` must re-export the sibling default named after the folder.
 
+<!-- begin generated rule header -->
+✅ In `recommended` at `error` · 💭 Type information: not needed
+<!-- end generated rule header -->
+
 ## Why
 
 When a component folder's `index.ts` re-exports the component default, consumers import the folder

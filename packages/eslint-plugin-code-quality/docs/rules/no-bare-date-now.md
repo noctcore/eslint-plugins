@@ -2,6 +2,10 @@
 
 > Read wall-clock time through a mockable `clock` util, not bare `Date.now()` / `new Date()`.
 
+<!-- begin generated rule header -->
+✅ In `recommended` at `error` · 💭 Type information: not needed
+<!-- end generated rule header -->
+
 ## Why
 
 Business logic that reads `Date.now()` or `new Date()` directly is hard to test: every time-dependent

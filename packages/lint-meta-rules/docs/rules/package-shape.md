@@ -3,6 +3,10 @@
 > Every workspace is named `<scope>/<dir>`; library packages expose a barrel and point their build
 > fields at the built output.
 
+<!-- begin generated rule header -->
+Runs under `@noctcore/harness`, not ESLint · Factory `createPackageShapeRule` from `@noctcore/lint-meta-rules` · Category `config` · Fails CI by default: yes
+<!-- end generated rule header -->
+
 ## Why
 
 A monorepo stays navigable when a package's identity is mechanical: its npm name matches its folder,

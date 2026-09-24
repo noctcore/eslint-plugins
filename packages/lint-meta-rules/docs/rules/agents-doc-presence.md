@@ -2,6 +2,10 @@
 
 > An agent-contract doc must exist at the repo root, every surface, and every non-opted-out package.
 
+<!-- begin generated rule header -->
+Runs under `@noctcore/harness`, not ESLint · Factory `createAgentsDocPresenceRule` from `@noctcore/lint-meta-rules` · Category `source-text` · Fails CI by default: yes
+<!-- end generated rule header -->
+
 ## Why
 
 An agent editing a boundary should read its guardrails first. Requiring an `AGENTS.md` (or whatever

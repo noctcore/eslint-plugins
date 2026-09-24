@@ -2,6 +2,10 @@
 
 > GitHub Actions `uses:` refs are pinned to a 40-character commit SHA with a `# vN` comment.
 
+<!-- begin generated rule header -->
+Runs under `@noctcore/harness`, not ESLint · Factory `createGithubActionsShaPinnedRule` from `@noctcore/lint-meta-rules` · Category `ci` · Fails CI by default: yes
+<!-- end generated rule header -->
+
 ## Why
 
 A tag or branch ref is a moving target: whoever controls the action's repository can repoint it, and

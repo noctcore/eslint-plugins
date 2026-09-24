@@ -2,6 +2,10 @@
 
 > HTML reaching `dangerouslySetInnerHTML`, `innerHTML`, `outerHTML` or `insertAdjacentHTML` must be static markup or pass through a sanitizer. Opt-in.
 
+<!-- begin generated rule header -->
+Opt-in: not in `recommended` · 💭 Type information: not needed
+<!-- end generated rule header -->
+
 ## Why
 
 React escapes everything it renders except the one prop named for the danger, and the DOM parses

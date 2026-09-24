@@ -2,6 +2,10 @@
 
 > A `localStorage` / `sessionStorage` call must sit inside a `try` block, because the access itself can throw. 💡
 
+<!-- begin generated rule header -->
+✅ In `recommended` at `error` · 💡 Offers editor suggestions · 💭 Type information: not needed
+<!-- end generated rule header -->
+
 ## Why
 
 `localStorage` and `sessionStorage` are not plain objects. Reading the property throws a

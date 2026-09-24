@@ -2,6 +2,10 @@
 
 > A component folder name may exist under only one feature.
 
+<!-- begin generated rule header -->
+Runs under `@noctcore/harness`, not ESLint · Factory `createNoClonedComponentFoldersRule` from `@noctcore/lint-meta-rules` · Category `source-text` · Fails CI by default: yes
+<!-- end generated rule header -->
+
 ## Why
 
 Same-named component folders across features are how sibling drift starts: a component cloned into a

@@ -3,6 +3,10 @@
 > A field that is an enum in one zod object schema must not be `z.string()` in another schema of the
 > same module.
 
+<!-- begin generated rule header -->
+✅ In `recommended` at `error` · 💭 Type information: not needed
+<!-- end generated rule header -->
+
 ## Why
 
 When schemas double as wire types (tRPC procedures, a shared contract package), the output schema is

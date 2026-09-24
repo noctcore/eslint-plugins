@@ -3,6 +3,10 @@
 > The Prisma reads and writes your rules police partition the generated client's `<Model>Delegate`
 > method surface exactly, so a Prisma upgrade cannot add an unguarded method.
 
+<!-- begin generated rule header -->
+Runs under `@noctcore/harness`, not ESLint · Factory `createPrismaMethodSurfaceRule` from `@noctcore/lint-meta-rules/prisma` · Category `config` · Fails CI by default: yes
+<!-- end generated rule header -->
+
 Import it from the `prisma` entry point:
 
 ```ts

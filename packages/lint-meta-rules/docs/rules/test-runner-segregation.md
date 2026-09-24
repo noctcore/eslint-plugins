@@ -2,6 +2,10 @@
 
 > Bun-side and foreign-side test runners are never mixed within a package.
 
+<!-- begin generated rule header -->
+Runs under `@noctcore/harness`, not ESLint · Factory `createTestRunnerSegregationRule` from `@noctcore/lint-meta-rules` · Category `testing` · Fails CI by default: yes
+<!-- end generated rule header -->
+
 ## Why
 
 A package that mixes two test runners (e.g. `bun:test` and Vitest) has tests that run under one

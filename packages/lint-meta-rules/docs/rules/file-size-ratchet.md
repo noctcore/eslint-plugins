@@ -2,6 +2,10 @@
 
 > Source files stay at or under a line cap, with a one-way, self-tightening baseline ratchet.
 
+<!-- begin generated rule header -->
+Runs under `@noctcore/harness`, not ESLint · Factory `createFileSizeRatchetRule` from `@noctcore/lint-meta-rules` · Category `source-text` · Fails CI by default: yes
+<!-- end generated rule header -->
+
 This single factory subsumes **both** of nightcore's file-size rules — `web-file-size-ratchet`
 (apps/web/src, `.ts`+`.tsx`) and `engine-file-size-ratchet` (packages/engine/src, `.ts`) — which were
 byte-identical logic differing only in scanned roots, extensions and exclusions. Create one instance

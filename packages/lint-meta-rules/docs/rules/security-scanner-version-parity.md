@@ -3,6 +3,10 @@
 > CI and the local pre-push hook pin the same secret-scanner version, and the hook checks it at run
 > time.
 
+<!-- begin generated rule header -->
+Runs under `@noctcore/harness`, not ESLint · Factory `createSecurityScannerVersionParityRule` from `@noctcore/lint-meta-rules` · Category `ci` · Fails CI by default: yes
+<!-- end generated rule header -->
+
 ## Why
 
 Different scanner versions ship different rulesets, so a push can pass the local hook and fail CI (or

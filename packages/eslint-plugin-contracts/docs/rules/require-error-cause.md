@@ -2,6 +2,10 @@
 
 > Re-throwing inside a `catch` without `{ cause }` severs the chain to the original error. 🔧
 
+<!-- begin generated rule header -->
+✅ In `recommended` at `error` · 🔧 Fixable with `--fix` · 💭 Type information: not needed
+<!-- end generated rule header -->
+
 ## Why
 
 When you catch an error and throw a new one, the new error is what reaches your logger. If you do not

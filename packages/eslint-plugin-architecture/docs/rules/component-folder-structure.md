@@ -2,6 +2,10 @@
 
 > A component entry file must ship its full sibling set (hooks, types, story, test, barrel) on disk.
 
+<!-- begin generated rule header -->
+✅ In `recommended` at `error` · 💭 Type information: not needed
+<!-- end generated rule header -->
+
 ## Why
 
 In a folder-per-component layout, a component is a folder — not a lone `.tsx`. When the logic

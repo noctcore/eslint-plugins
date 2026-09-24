@@ -2,6 +2,10 @@
 
 > A message-schema's `type` discriminant must be the kebab-case of its const name minus its role suffix. 🔧
 
+<!-- begin generated rule header -->
+✅ In `recommended` at `error` · 🔧 Fixable with `--fix` · 💭 Type information: not needed
+<!-- end generated rule header -->
+
 ## Why
 
 When wire messages are modelled as zod objects with a `type: z.literal('…')` discriminant, the const

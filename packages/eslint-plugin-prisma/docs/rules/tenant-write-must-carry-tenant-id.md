@@ -3,6 +3,10 @@
 > A create on a tenant-scoped model through the unscoped client must set every tenant column in
 > `data`.
 
+<!-- begin generated rule header -->
+⚙️ Opt-in: not in `recommended`; needs options (see Options) · 💭 Type information: not needed
+<!-- end generated rule header -->
+
 ## Why
 
 A tenant-scoping client extension fills in `tenantId` on every create. The unscoped client does not,

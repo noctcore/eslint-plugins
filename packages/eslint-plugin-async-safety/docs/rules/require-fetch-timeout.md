@@ -2,6 +2,10 @@
 
 > A `fetch` (or configured wrapper) call must carry a cancellation signal or timeout — an unbounded request can hang forever. 💡
 
+<!-- begin generated rule header -->
+✅ In `recommended` at `error` · 💡 Offers editor suggestions · 💭 Type information: not needed
+<!-- end generated rule header -->
+
 ## Why
 
 `fetch` has no default timeout. A hung TCP connection or a server that accepts but never responds leaves the

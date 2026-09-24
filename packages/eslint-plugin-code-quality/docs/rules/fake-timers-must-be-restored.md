@@ -2,6 +2,10 @@
 
 > A file that installs fake timers must restore real ones.
 
+<!-- begin generated rule header -->
+✅ In `recommended` at `error` · 💭 Type information: not needed
+<!-- end generated rule header -->
+
 Ported from [tsforge](https://github.com/boringstack-xyz/tsforge) (MIT). See
 [THIRD_PARTY_NOTICES.md](../../THIRD_PARTY_NOTICES.md).
 

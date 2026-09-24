@@ -3,6 +3,10 @@
 > A redirect whose target **origin** is not fixed at authoring time is an open redirect. Enabled in
 > `recommended`.
 
+<!-- begin generated rule header -->
+✅ In `recommended` at `error` · 💭 Type information: not needed
+<!-- end generated rule header -->
+
 Ported from [tsforge](https://github.com/boringstack-xyz/tsforge) (MIT). The port adds configurable
 redirect callees with a URL argument index, so Express `res.redirect(302, url)` is recognised, and
 checks for a fixed origin (shared with

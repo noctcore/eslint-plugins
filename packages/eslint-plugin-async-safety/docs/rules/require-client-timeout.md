@@ -3,6 +3,10 @@
 > A configured network client must be constructed with a timeout option. An unbounded client can hang
 > forever.
 
+<!-- begin generated rule header -->
+✅ In `recommended` at `error` · ⚙️ Does nothing until configured: needs options (see Options) · 💭 Type information: not needed
+<!-- end generated rule header -->
+
 ## Why
 
 Many clients are configured once, at construction, and never see a per-request `signal`: an S3 client
