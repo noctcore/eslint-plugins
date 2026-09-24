@@ -2,6 +2,10 @@
 
 > A function component's first-param props type should be named `<Component>Props`.
 
+<!-- begin generated rule header -->
+✅ In `recommended` at `error` · 🔧 Fixable with `--fix` · 💭 Type information: not needed
+<!-- end generated rule header -->
+
 🔧 This rule is automatically fixable (when the rename is safe).
 
 ## Why

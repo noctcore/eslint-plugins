@@ -2,6 +2,10 @@
 
 > `throw` only members of your error taxonomy — never an ad hoc built-in nor a bare value.
 
+<!-- begin generated rule header -->
+✅ In `recommended` at `error` · 💭 Type information: not needed
+<!-- end generated rule header -->
+
 ## Why
 
 A codebase that throws a curated set of error types can handle them exhaustively at the boundary:

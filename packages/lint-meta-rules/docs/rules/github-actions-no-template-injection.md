@@ -2,6 +2,10 @@
 
 > `run:` scripts and `actions/github-script` bodies never expand attacker-controllable `${{ }}` context.
 
+<!-- begin generated rule header -->
+Runs under `@noctcore/harness`, not ESLint · Factory `createGithubActionsNoTemplateInjectionRule` from `@noctcore/lint-meta-rules` · Category `ci` · Fails CI by default: yes
+<!-- end generated rule header -->
+
 ## Why
 
 GitHub substitutes `${{ }}` into a `run:` script before the shell sees it. A PR titled

@@ -2,6 +2,10 @@
 
 > An HMAC digest or signature must not be compared with `===` / `!==` / `==` / `!=` or `Buffer#equals`; use `crypto.timingSafeEqual`.
 
+<!-- begin generated rule header -->
+✅ In `recommended` at `error` · 💭 Type information: not needed
+<!-- end generated rule header -->
+
 ## Why
 
 String equality and `Buffer#equals` return at the first byte that differs. When one side is the

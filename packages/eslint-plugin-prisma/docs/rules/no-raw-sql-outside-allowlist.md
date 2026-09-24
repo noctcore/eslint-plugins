@@ -2,6 +2,10 @@
 
 > Keep raw SQL that can touch a table inside an allowlist, and never use the `*Unsafe` variants.
 
+<!-- begin generated rule header -->
+✅ In `recommended` at `error` · 💭 Type information: not needed
+<!-- end generated rule header -->
+
 ## Why
 
 A tenant-scope client extension dispatches on the query's `model`. A raw query has no model, so it

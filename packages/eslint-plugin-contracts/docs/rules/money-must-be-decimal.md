@@ -2,6 +2,10 @@
 
 > Monetary fields typed as the JS `number` primitive lose precision to float rounding — use a Decimal money type.
 
+<!-- begin generated rule header -->
+✅ In `recommended` at `error` · 💭 Type information: not needed
+<!-- end generated rule header -->
+
 ## Why
 
 Money stored as a JS `number` accumulates IEEE-754 rounding errors (`0.1 + 0.2 !== 0.3`), which is

@@ -2,6 +2,10 @@
 
 > When a catch block reports a failure, log the error itself — not just its message.
 
+<!-- begin generated rule header -->
+✅ In `recommended` at `error` · 💭 Type information: not needed
+<!-- end generated rule header -->
+
 ## Why
 
 A caught error carries a **stack trace** and often a **`cause`** — the parts you actually need to

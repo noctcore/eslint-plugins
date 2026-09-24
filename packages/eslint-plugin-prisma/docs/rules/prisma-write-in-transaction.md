@@ -2,6 +2,10 @@
 
 > Two or more Prisma writes in one function must run inside a `$transaction`.
 
+<!-- begin generated rule header -->
+✅ In `recommended` at `error` · 💭 Type information: not needed
+<!-- end generated rule header -->
+
 ## Why
 
 Two writes in a row outside a transaction are a partial-failure split-brain: the first commits, the

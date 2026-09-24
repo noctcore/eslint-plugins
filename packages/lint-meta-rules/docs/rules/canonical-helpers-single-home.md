@@ -2,6 +2,10 @@
 
 > A helper symbol must not be exported from two different helper homes.
 
+<!-- begin generated rule header -->
+Runs under `@noctcore/harness`, not ESLint · Factory `createCanonicalHelpersSingleHomeRule` from `@noctcore/lint-meta-rules` · Category `source-text` · Fails CI by default: yes
+<!-- end generated rule header -->
+
 ## Why
 
 When the same helper name is exported from multiple files, callers import inconsistent copies and the

@@ -2,6 +2,10 @@
 
 > A `next/navigation` call that works by throwing must not sit in a `try` whose `catch` swallows it.
 
+<!-- begin generated rule header -->
+✅ In `recommended` at `error` · 💭 Type information: not needed
+<!-- end generated rule header -->
+
 ## Why
 
 In the Next.js App Router, `redirect()`, `permanentRedirect()`, `notFound()`, `forbidden()` and

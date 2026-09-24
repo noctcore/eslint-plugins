@@ -3,6 +3,10 @@
 > A module may import only strictly-lower-ranked `<scope>` packages — equal (sideways) or higher
 > (upward) is forbidden.
 
+<!-- begin generated rule header -->
+Runs under `@noctcore/harness`, not ESLint · Factory `createLayerRankRule` from `@noctcore/lint-meta-rules` · Category `source-text` · Fails CI by default: yes
+<!-- end generated rule header -->
+
 ## Why
 
 Layered architectures encode a fixed dependency direction (e.g. `contracts → shared → storage/skills

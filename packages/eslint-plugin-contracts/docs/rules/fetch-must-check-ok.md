@@ -2,6 +2,10 @@
 
 > A fetch response must be checked with `.ok` or a status comparison before `.json()` parses its body.
 
+<!-- begin generated rule header -->
+✅ In `recommended` at `error` · 💭 Type information: not needed
+<!-- end generated rule header -->
+
 ## Why
 
 `fetch` rejects only on a network failure. A 4xx or 5xx resolves normally, and `.json()` then parses

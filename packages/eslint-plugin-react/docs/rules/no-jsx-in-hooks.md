@@ -2,6 +2,10 @@
 
 > A `use*`-named function must not return JSX — that is a component wearing a hook costume.
 
+<!-- begin generated rule header -->
+✅ In `recommended` at `error` · 💭 Type information: not needed
+<!-- end generated rule header -->
+
 ## Why
 
 Hooks return data and handlers; components return markup. A `use*`-named function that returns JSX

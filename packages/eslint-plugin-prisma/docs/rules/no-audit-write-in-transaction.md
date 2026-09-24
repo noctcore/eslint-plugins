@@ -2,6 +2,10 @@
 
 > Do not write the audit log inside a `$transaction` callback. Audit after the commit.
 
+<!-- begin generated rule header -->
+✅ In `recommended` at `error` · 💭 Type information: not needed
+<!-- end generated rule header -->
+
 ## What this rule does NOT do
 
 **It does not check that mutations are audited.** A service method that writes and never calls the

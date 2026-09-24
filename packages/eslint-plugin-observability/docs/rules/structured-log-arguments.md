@@ -2,6 +2,10 @@
 
 > Pass dynamic values in a structured context object, not interpolated into the log message string.
 
+<!-- begin generated rule header -->
+✅ In `recommended` at `error` · 💭 Type information: not needed
+<!-- end generated rule header -->
+
 ## Why
 
 Dynamic values baked into a log **message** string are unqueryable. When you write

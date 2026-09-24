@@ -3,6 +3,10 @@
 > A procedure guarded by an idempotency middleware has a client caller that sends the key, or no
 > client caller at all.
 
+<!-- begin generated rule header -->
+Runs under `@noctcore/harness`, not ESLint · Factory `createIdempotencyKeyParityRule` from `@noctcore/lint-meta-rules/trpc` · Category `source-text` · Fails CI by default: yes
+<!-- end generated rule header -->
+
 Import it from the `trpc` entry point:
 
 ```ts

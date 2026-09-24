@@ -2,6 +2,10 @@
 
 > Ban step-by-step "Now we… / First we…" narration comments.
 
+<!-- begin generated rule header -->
+✅ In `recommended` at `error` · 💭 Type information: not needed
+<!-- end generated rule header -->
+
 ## Why
 
 Comments like "Here we attach the user" or "First, we parse the cookies" restate what the next line

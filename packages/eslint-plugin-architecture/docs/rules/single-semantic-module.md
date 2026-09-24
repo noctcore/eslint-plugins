@@ -4,6 +4,10 @@
 > hooks, schemas or enums. **Ships `off` in `recommended`**: choose the files and the allowed mixes
 > for your codebase, then enable it.
 
+<!-- begin generated rule header -->
+Opt-in: `off` in `recommended` · 💭 Type information: not needed
+<!-- end generated rule header -->
+
 ## Why
 
 A file that exports a component, the hook it uses, the constant that configures it and the type of its

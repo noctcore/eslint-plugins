@@ -2,6 +2,10 @@
 
 > A skipped test must carry a tracking marker (issue URL or `TODO(@owner)`) so the debt has an owner.
 
+<!-- begin generated rule header -->
+✅ In `recommended` at `error` · 💭 Type information: not needed
+<!-- end generated rule header -->
+
 ## Why
 
 `.skip` / `.fixme` / `xit` / `xdescribe` are escape hatches. Left unowned they rot into permanent dark

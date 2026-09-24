@@ -201,6 +201,7 @@ export const tenantWriteMustCarryTenantIdRule = createRule<RuleOptions, MessageI
     docs: {
       description:
         'Require every tenant field in the `data` of a create on a tenant-scoped Prisma model through the unscoped client, which does not inject the tenant scope.',
+      requiresOptions: true,
     },
     schema: [optionSchema],
     messages: {

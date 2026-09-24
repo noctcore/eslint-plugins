@@ -3,6 +3,10 @@
 > Only the files that own a model may write it, or write the columns you name on it. Nested relation
 > writes included.
 
+<!-- begin generated rule header -->
+⚙️ Opt-in: not in `recommended`; needs options (see Options) · 💭 Type information: not needed
+<!-- end generated rule header -->
+
 ## What this rule does NOT do
 
 **It does not check state transitions.** This rule decides WHO may write a model and, with

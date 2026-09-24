@@ -87,6 +87,7 @@ export const requireRegisteredKeysRule = createRule<RuleOptions, MessageIds>({
     docs: {
       description:
         'Require the key/name argument of configured sink APIs (storage, event channels, cache keys) to be an imported constant from a registry module, not a raw string literal.',
+      requiresOptions: true,
     },
     schema: [optionSchema],
     messages: {

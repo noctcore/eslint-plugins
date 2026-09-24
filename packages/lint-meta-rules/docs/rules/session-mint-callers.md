@@ -3,6 +3,10 @@
 > The method that mints a session is callable only from an allowlist of files, so a new sign-in
 > entry point cannot skip the gate in front of it.
 
+<!-- begin generated rule header -->
+Runs under `@noctcore/harness`, not ESLint · Factory `createSessionMintCallersRule` from `@noctcore/lint-meta-rules/session` · Category `source-text` · Fails CI by default: yes
+<!-- end generated rule header -->
+
 Import it from the `session` entry point:
 
 ```ts

@@ -2,6 +2,10 @@
 
 > An assertion inside a `try` whose `catch` swallows the error can never fail the test.
 
+<!-- begin generated rule header -->
+✅ In `recommended` at `error` · 💭 Type information: not needed
+<!-- end generated rule header -->
+
 ## Why
 
 A failed `expect` or `assert` throws. Put it inside a `try` whose `catch` neither rethrows nor

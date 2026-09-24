@@ -2,6 +2,10 @@
 
 > A Prisma write must not take its `data` or `where` straight from the request body.
 
+<!-- begin generated rule header -->
+✅ In `recommended` at `error` · 💭 Type information: not needed
+<!-- end generated rule header -->
+
 ## Why
 
 `prisma.user.update({ where: { id }, data: req.body })` lets the caller set every column the model

@@ -2,6 +2,10 @@
 
 > Prefer a guard clause over wrapping the whole function body in an `if`.
 
+<!-- begin generated rule header -->
+✅ In `recommended` at `error` · 💭 Type information: not needed
+<!-- end generated rule header -->
+
 ## Why
 
 When a function's entire body is wrapped in a single `if` with no `else`, the happy path is

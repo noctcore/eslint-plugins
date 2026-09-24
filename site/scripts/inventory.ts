@@ -58,6 +58,14 @@ export interface RuleEntry {
   readonly fixable: boolean;
   readonly hasSuggestions: boolean;
   readonly typeInfo: TypeInfo;
+  /**
+   * `meta.docs.requiresOptions`: the rule does nothing useful until the
+   * consumer passes options (a scope, a model registry, an action-client list).
+   */
+  readonly requiresOptions: boolean;
+  /** `meta.deprecated`, and the rule ids in `meta.replacedBy` when it names any. */
+  readonly deprecated: boolean;
+  readonly replacedBy: readonly string[];
   /** `meta.docs.url` as baked into the built rule; null for lint-meta rules. */
   readonly docsUrl: string | null;
   /** lint-meta only: rule category and whether a violation fails CI by default. */
@@ -142,10 +150,23 @@ function detectTypeInfo(dir: string, rule: string): TypeInfo {
 
 interface RuleModuleLike {
   meta?: {
-    docs?: { description?: string; url?: string };
+    docs?: { description?: string; url?: string; requiresOptions?: boolean };
     fixable?: string;
     hasSuggestions?: boolean;
+    // ESLint 9.21+ takes an object here; the boolean form is the older one.
+    deprecated?: boolean | { replacedBy?: readonly { rule?: { name?: string } }[] };
+    replacedBy?: readonly string[];
   };
+}
+
+/** Replacement rule ids, from either the old `meta.replacedBy` or the object `meta.deprecated`. */
+function replacementsOf(rule: RuleModuleLike): string[] {
+  const deprecated = rule.meta?.deprecated;
+  const fromObject =
+    typeof deprecated === 'object'
+      ? (deprecated.replacedBy ?? []).flatMap((info) => (info.rule?.name ? [info.rule.name] : []))
+      : [];
+  return [...(rule.meta?.replacedBy ?? []), ...fromObject];
 }
 
 interface MetaRuleLike {
@@ -180,6 +201,9 @@ async function loadPlugin(short: string, from: InventorySource): Promise<Package
       fixable: Boolean(rule.meta?.fixable),
       hasSuggestions: Boolean(rule.meta?.hasSuggestions),
       typeInfo: detectTypeInfo(dir, name),
+      requiresOptions: rule.meta?.docs?.requiresOptions === true,
+      deprecated: Boolean(rule.meta?.deprecated),
+      replacedBy: replacementsOf(rule),
       docsUrl: rule.meta?.docs?.url ?? null,
     };
   });
@@ -204,6 +228,9 @@ function metaRuleEntry(rule: MetaRuleLike, factory: string, entry: string): Rule
     fixable: false,
     hasSuggestions: false,
     typeInfo: 'none',
+    requiresOptions: false,
+    deprecated: false,
+    replacedBy: [],
     docsUrl: null,
     category: rule.category,
     ciCritical: rule.ciCritical,

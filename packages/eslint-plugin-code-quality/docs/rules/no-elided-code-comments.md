@@ -2,6 +2,10 @@
 
 > Ban `// ... existing code ...` placeholders that stand in for deleted code.
 
+<!-- begin generated rule header -->
+✅ In `recommended` at `error` · 💭 Type information: not needed
+<!-- end generated rule header -->
+
 ## Why
 
 When an agent rewrites a file from an abbreviated draft, it writes placeholders like

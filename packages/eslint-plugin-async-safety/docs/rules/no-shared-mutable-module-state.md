@@ -2,6 +2,10 @@
 
 > A module-scoped mutable binding written from an exported async/handler function is shared across concurrent requests.
 
+<!-- begin generated rule header -->
+✅ In `recommended` at `error` · ⚙️ Does nothing until configured: needs options (see Options) · 💭 Type information: not needed
+<!-- end generated rule header -->
+
 ## Why
 
 On a server, module scope is process-wide: every concurrent request runs against the same module-level

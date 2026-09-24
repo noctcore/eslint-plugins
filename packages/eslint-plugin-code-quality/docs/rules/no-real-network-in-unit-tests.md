@@ -2,6 +2,10 @@
 
 > Unit tests must not perform real network I/O.
 
+<!-- begin generated rule header -->
+✅ In `recommended` at `error` · 💭 Type information: not needed
+<!-- end generated rule header -->
+
 ## Why
 
 A unit test that calls `fetch` or `axios` for real depends on a server, a port, DNS and the network

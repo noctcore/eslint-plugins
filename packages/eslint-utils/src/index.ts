@@ -1,4 +1,4 @@
-export { makeCreateRule } from './createRule';
+export { makeCreateRule, type NoctcoreRuleDocs } from './createRule';
 
 // Re-exported so plugin packages can pull the creator and the AST toolkit from a
 // single dependency.

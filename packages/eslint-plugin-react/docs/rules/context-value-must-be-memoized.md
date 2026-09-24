@@ -2,6 +2,10 @@
 
 > A context Provider `value` must be a stable reference, never an inline object literal.
 
+<!-- begin generated rule header -->
+✅ In `recommended` at `error` · 💭 Type information: not needed
+<!-- end generated rule header -->
+
 ## Why
 
 A context Provider whose `value` is an inline object literal (`<XContext.Provider value={{...}}>`)

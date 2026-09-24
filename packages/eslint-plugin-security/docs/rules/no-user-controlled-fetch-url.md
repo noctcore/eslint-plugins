@@ -3,6 +3,10 @@
 > An HTTP request whose **origin** is not fixed at authoring time is a server-side request forgery
 > (SSRF) sink. Enabled in `recommended`.
 
+<!-- begin generated rule header -->
+✅ In `recommended` at `error` · 💭 Type information: not needed
+<!-- end generated rule header -->
+
 ## Why
 
 SSRF is control of the **host**, not the path. `fetch(`/api/todos/${id}`)` can only ever reach the

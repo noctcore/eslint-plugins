@@ -32,6 +32,7 @@ import {
   type PackageEntry,
   type RuleEntry,
 } from './inventory';
+import { stripRuleHeader } from './readmes';
 
 const SITE_DIR = resolve(dirname(fileURLToPath(import.meta.url)), '..');
 const RULES_OUT = join(SITE_DIR, 'src', 'content', 'docs', 'rules');
@@ -163,9 +164,13 @@ function factsLine(pkg: PackageEntry, rule: RuleEntry): string {
   ].join(' · ');
 }
 
-/** Render one rule doc as a Starlight page. Throws on a doc out of shape. */
+/**
+ * Render one rule doc as a Starlight page. Throws on a doc out of shape. The
+ * doc's generated status header is dropped: the page states the same facts in
+ * its own metadata line, and showing both would say everything twice.
+ */
 export function renderRuleDoc(source: string, docPath: string, pkg: PackageEntry, rule: RuleEntry): string {
-  const lines = source.replace(/\r\n/g, '\n').split('\n');
+  const lines = stripRuleHeader(source.replace(/\r\n/g, '\n')).split('\n');
   const heading = /^# `([^`]+)`\s*$/.exec(lines[0] ?? '');
   if (!heading) throw new Error(`${docPath}: first line must be "# \`<rule id>\`"`);
   const title = heading[1]!;

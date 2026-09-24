@@ -206,6 +206,7 @@ export const auditPiiDeclaredRule = createRule<RuleOptions, MessageIds>({
     docs: {
       description:
         'A PII-shaped key written into an audit payload must be declared, either registered for scrubbing on purge or declared non-PII.',
+      requiresOptions: true,
     },
     schema: [optionSchema],
     messages: {

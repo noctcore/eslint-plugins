@@ -2,6 +2,10 @@
 
 > Ban `.only` / `fdescribe` / `fit` so a focused test never silently lands in CI.
 
+<!-- begin generated rule header -->
+✅ In `recommended` at `error` · 💭 Type information: not needed
+<!-- end generated rule header -->
+
 ## Why
 
 A focused test (`it.only`, `fdescribe`, …) silences the rest of the suite. Committed by accident it

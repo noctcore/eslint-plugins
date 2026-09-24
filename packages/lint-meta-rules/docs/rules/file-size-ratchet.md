@@ -2,6 +2,10 @@
 
 > Source files stay at or under a line cap, with a one-way, self-tightening baseline ratchet.
 
+<!-- begin generated rule header -->
+Runs under `@noctcore/harness`, not ESLint · Factory `createFileSizeRatchetRule` from `@noctcore/lint-meta-rules` · Category `source-text` · Fails CI by default: yes
+<!-- end generated rule header -->
+
 One factory covers every capped area: create one instance per area (an app's `src`, a package's
 `src`), each with its own roots, extensions, exclusions and `id`. The `id` names both the rule and its
 committed baseline file.

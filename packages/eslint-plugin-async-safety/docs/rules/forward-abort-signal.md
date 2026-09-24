@@ -2,6 +2,10 @@
 
 > A function that accepts an `AbortSignal` but never forwards it to the work it awaits leaves that work uncancellable.
 
+<!-- begin generated rule header -->
+✅ In `recommended` at `error` · 💭 Type information: not needed
+<!-- end generated rule header -->
+
 ## Why
 
 Threading an `AbortSignal` through a call graph is only useful if every layer passes it down. A function that

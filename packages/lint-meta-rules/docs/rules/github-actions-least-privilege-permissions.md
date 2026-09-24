@@ -2,6 +2,10 @@
 
 > A workflow's top-level `permissions:` exists, is not `write-all` / `read-all`, and grants no write.
 
+<!-- begin generated rule header -->
+Runs under `@noctcore/harness`, not ESLint · Factory `createGithubActionsLeastPrivilegePermissionsRule` from `@noctcore/lint-meta-rules` · Category `ci` · Fails CI by default: yes
+<!-- end generated rule header -->
+
 ## Why
 
 The top-level `permissions:` is the `GITHUB_TOKEN` every job gets unless the job says otherwise. A

@@ -2,6 +2,10 @@
 
 > A file that installs fake timers must restore real ones.
 
+<!-- begin generated rule header -->
+✅ In `recommended` at `error` · 💭 Type information: not needed
+<!-- end generated rule header -->
+
 ## Why
 
 `jest.useFakeTimers()` / `vi.useFakeTimers()` replace the global clock. Without a matching

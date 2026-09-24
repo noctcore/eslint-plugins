@@ -2,6 +2,10 @@
 
 > Interface names must be `I` + an uppercase letter (`IUserProfile`). **Opinionated — not in `recommended`.**
 
+<!-- begin generated rule header -->
+Opt-in: not in `recommended` · 💭 Type information: not needed
+<!-- end generated rule header -->
+
 ## Why
 
 An `I`-prefixed interface reads as an interface at a glance and never collides with a value of the same

@@ -2,6 +2,10 @@
 
 > A read-modify-write of an outer-scope binding inside a concurrent `Promise.all(arr.map(async …))` callback can lose updates.
 
+<!-- begin generated rule header -->
+✅ In `recommended` at `error` · 💭 Type information: not needed
+<!-- end generated rule header -->
+
 ## Why
 
 `Promise.all(arr.map(async …))` starts every callback before any of them resolve, so their `await` points

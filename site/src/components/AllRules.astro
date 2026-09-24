@@ -45,6 +45,7 @@ const ruleId = (pkg: (typeof packages)[number], rule: (typeof rows)[number]['rul
         <th scope="col">Rule</th>
         <th scope="col">What it reports</th>
         <th scope="col">Preset</th>
+        <th scope="col">Fix</th>
         <th scope="col">Types</th>
       </tr>
     </thead>
@@ -67,6 +68,7 @@ const ruleId = (pkg: (typeof packages)[number], rule: (typeof rows)[number]['rul
                 <span class="pill pill-harness">harness</span>
               )}
             </td>
+            <td>{[rule.fixable && '🔧', rule.hasSuggestions && '💡'].filter(Boolean).join(' ')}</td>
             <td>{typeLabel[rule.typeInfo as keyof typeof typeLabel]}</td>
           </tr>
         ))
@@ -77,6 +79,7 @@ const ruleId = (pkg: (typeof packages)[number], rule: (typeof rows)[number]['rul
 <p class="rule-table-legend">
   <strong>Preset</strong>: severity in the package's <code>configs.recommended</code>; <em>off</em> means the
   preset registers the rule switched off, <em>not listed</em> means it leaves the rule out, <em>harness</em>
-  means the rule is a lint-meta rule with no ESLint preset. <strong>Types</strong>: whether the rule needs a
+  means the rule is a lint-meta rule with no ESLint preset. <strong>Fix</strong>: 🔧 fixable with
+  <code>--fix</code>, 💡 offers editor suggestions. <strong>Types</strong>: whether the rule needs a
   type-checked program (<code>parserOptions.projectService</code>), or uses one when present.
 </p>

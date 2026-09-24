@@ -2,6 +2,10 @@
 
 > A test must assert behaviour that a real regression would break.
 
+<!-- begin generated rule header -->
+✅ In `recommended` at `error` · 💭 Type information: not needed
+<!-- end generated rule header -->
+
 ## Why
 
 Some assertions pass for almost any implementation. `expect(typeof handler).toBe('function')` proves

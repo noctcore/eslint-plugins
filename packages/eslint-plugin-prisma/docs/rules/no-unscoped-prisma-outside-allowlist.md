@@ -3,6 +3,10 @@
 > Keep the unscoped Prisma client, and any "run without tenant scope" helper, inside an allowlist of
 > system files.
 
+<!-- begin generated rule header -->
+✅ In `recommended` at `error` · 💭 Type information: not needed
+<!-- end generated rule header -->
+
 ## Why
 
 A multi-tenant Prisma app without row-level security usually isolates tenants with a client

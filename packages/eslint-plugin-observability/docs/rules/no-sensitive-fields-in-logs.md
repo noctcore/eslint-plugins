@@ -2,6 +2,10 @@
 
 > A name-heuristic guard against writing credentials and secrets into log sinks. Ships at `error`.
 
+<!-- begin generated rule header -->
+✅ In `recommended` at `error` · 💭 Type information: not needed
+<!-- end generated rule header -->
+
 ## Why
 
 Logs are long-lived, widely readable, and shipped to third-party aggregators. A `password`, `token`,

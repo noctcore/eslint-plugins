@@ -2,6 +2,10 @@
 
 > A dynamically-built command string must not flow into a shell runner. Pass the program and its arguments separately.
 
+<!-- begin generated rule header -->
+✅ In `recommended` at `error` · 💭 Type information: not needed
+<!-- end generated rule header -->
+
 ## Why
 
 A dynamically-interpolated command string handed to a shell is the classic command-injection sink:

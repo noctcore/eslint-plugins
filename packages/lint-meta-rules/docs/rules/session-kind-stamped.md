@@ -3,6 +3,10 @@
 > Every call that mints a session stamps the principal's kind onto it, or sits in an allowlisted,
 > provably single-kind flow.
 
+<!-- begin generated rule header -->
+Runs under `@noctcore/harness`, not ESLint · Factory `createSessionKindStampedRule` from `@noctcore/lint-meta-rules/session` · Category `source-text` · Fails CI by default: yes
+<!-- end generated rule header -->
+
 Import it from the `session` entry point:
 
 ```ts

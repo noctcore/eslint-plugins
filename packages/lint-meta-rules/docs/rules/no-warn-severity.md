@@ -2,6 +2,10 @@
 
 > ESLint severity is `error` or `off`, never `warn`.
 
+<!-- begin generated rule header -->
+Runs under `@noctcore/harness`, not ESLint · Factory `createNoWarnSeverityRule` from `@noctcore/lint-meta-rules` · Category `config` · Fails CI by default: yes
+<!-- end generated rule header -->
+
 ## Why
 
 Agents iterate by reading CI failures. A `warn` severity is a silent miss — it neither fails the

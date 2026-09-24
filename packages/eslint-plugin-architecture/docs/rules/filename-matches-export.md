@@ -2,6 +2,10 @@
 
 > A file's basename must match its primary export (a default export, or the sole named export).
 
+<!-- begin generated rule header -->
+✅ In `recommended` at `error` · 💡 Offers editor suggestions · 💭 Type information: not needed
+<!-- end generated rule header -->
+
 ## Why
 
 When a module has one clear public export, the filename should announce it. A `helpers.ts` that

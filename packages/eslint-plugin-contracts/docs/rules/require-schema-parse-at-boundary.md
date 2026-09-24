@@ -2,6 +2,10 @@
 
 > Parse external boundary data at runtime — don't assert its shape with `as T`.
 
+<!-- begin generated rule header -->
+Opt-in: `off` in `recommended` · 💭 Type information: not needed
+<!-- end generated rule header -->
+
 ## Why
 
 External data — a fetch body, a `JSON.parse` result, a message-event payload — has whatever shape the

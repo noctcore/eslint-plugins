@@ -125,6 +125,7 @@ export const requireClientTimeoutRule = createRule<RuleOptions, MessageIds>({
     docs: {
       description:
         'A configured network client must be constructed with a timeout option; an unbounded client can hang forever.',
+      requiresOptions: true,
     },
     schema: [optionSchema],
     messages: {

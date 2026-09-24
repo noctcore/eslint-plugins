@@ -2,6 +2,10 @@
 
 > An `expect()` that may not run lets a broken test pass.
 
+<!-- begin generated rule header -->
+✅ In `recommended` at `error` · 💭 Type information: not needed
+<!-- end generated rule header -->
+
 ## Why
 
 An assertion inside an `if`, a `switch` case, a ternary, a `&&` / `||` / `??` or a `catch` only runs

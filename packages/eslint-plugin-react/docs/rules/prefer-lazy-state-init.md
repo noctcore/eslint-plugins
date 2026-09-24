@@ -2,6 +2,10 @@
 
 > Wrap an expensive `useState` initializer call in a lazy function so it runs once, not every render.
 
+<!-- begin generated rule header -->
+✅ In `recommended` at `error` · 🔧 Fixable with `--fix` · 💭 Type information: not needed
+<!-- end generated rule header -->
+
 🔧 This rule is automatically fixable.
 
 ## Why

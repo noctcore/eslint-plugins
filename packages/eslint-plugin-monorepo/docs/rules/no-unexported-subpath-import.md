@@ -2,6 +2,10 @@
 
 > Importing a `@scope/pkg/<subpath>` that the target workspace package's `exports` map does not expose.
 
+<!-- begin generated rule header -->
+⚙️ Opt-in: `off` in `recommended`; needs options (see Options) · 💭 Type information: not needed
+<!-- end generated rule header -->
+
 ## Why
 
 A package's `exports` map is its contract: it says exactly which subpaths are public. Importing a

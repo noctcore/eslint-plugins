@@ -2,6 +2,10 @@
 
 > Workspace packages must be consumed through their package barrel only — never via a deep subpath into package internals.
 
+<!-- begin generated rule header -->
+⚙️ Opt-in: `off` in `recommended`; needs options (see Options) · 💭 Type information: not needed
+<!-- end generated rule header -->
+
 ## Why
 
 A monorepo's layering only holds if each package presents a single public surface. A deep import

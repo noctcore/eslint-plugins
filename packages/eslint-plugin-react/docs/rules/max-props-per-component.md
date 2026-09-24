@@ -2,6 +2,10 @@
 
 > A props contract wider than the cap means the component does too much.
 
+<!-- begin generated rule header -->
+✅ In `recommended` at `error` · 💭 Type information: not needed
+<!-- end generated rule header -->
+
 ## Why
 
 A `*Props` contract with many members is a strong signal that the component is doing too much — it is

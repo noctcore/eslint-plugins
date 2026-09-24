@@ -2,6 +2,10 @@
 
 > Text an LLM SDK call returned must not reach `eval`, a shell, raw SQL, HTML injection, a `fetch` origin or an `fs` path without being validated or sanitized first.
 
+<!-- begin generated rule header -->
+✅ In `recommended` at `error` · 💭 Type information: not needed
+<!-- end generated rule header -->
+
 ## Why
 
 A model writes whatever its prompt steers it toward, and the prompt holds more than your

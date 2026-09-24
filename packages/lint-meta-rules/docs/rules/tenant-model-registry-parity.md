@@ -3,6 +3,10 @@
 > Every tenant-bearing Prisma model is scoped by the runtime tenant extension or exempt with a
 > reason, and the tenant lint rules resolve with exactly that registry.
 
+<!-- begin generated rule header -->
+Runs under `@noctcore/harness`, not ESLint · Factory `createTenantModelRegistryParityRule` from `@noctcore/lint-meta-rules/prisma` · Category `config` · Fails CI by default: yes
+<!-- end generated rule header -->
+
 Import it from the `prisma` entry point:
 
 ```ts

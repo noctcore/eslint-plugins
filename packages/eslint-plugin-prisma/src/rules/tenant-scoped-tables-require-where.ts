@@ -210,6 +210,7 @@ export const tenantScopedTablesRequireWhereRule = createRule<RuleOptions, Messag
     docs: {
       description:
         'Require every tenant field in the `where` of a read or bulk write on a tenant-scoped model through the unscoped client, and a scope column in the `where` of any query on a hand-scoped model.',
+      requiresOptions: true,
     },
     schema: [optionSchema],
     messages: {

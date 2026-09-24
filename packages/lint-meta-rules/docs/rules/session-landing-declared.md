@@ -3,6 +3,10 @@
 > Every file that opens a door into a session declares where it leaves the caller, and a door whose
 > landing demands a return shape has it.
 
+<!-- begin generated rule header -->
+Runs under `@noctcore/harness`, not ESLint · Factory `createSessionLandingDeclaredRule` from `@noctcore/lint-meta-rules/session` · Category `source-text` · Fails CI by default: yes
+<!-- end generated rule header -->
+
 Import it from the `session` entry point:
 
 ```ts

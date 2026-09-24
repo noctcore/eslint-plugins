@@ -3,6 +3,10 @@
 > A mutation entry point that can reach a Prisma write must also be able to reach an audit write.
 > **Requires type information.**
 
+<!-- begin generated rule header -->
+Opt-in: not in `recommended` · 💭 Type information: required
+<!-- end generated rule header -->
+
 ## What this rule proves, and only this
 
 For every method marked as a mutation entry point (by default, decorated `@Mutation()`), the rule

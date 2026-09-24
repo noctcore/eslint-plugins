@@ -2,6 +2,10 @@
 
 > A bundle of props forwarded unchanged to the same child is prop drilling — compose instead.
 
+<!-- begin generated rule header -->
+✅ In `recommended` at `error` · 💭 Type information: not needed
+<!-- end generated rule header -->
+
 ## Why
 
 Passing a single prop straight through (`onClose`, `className`) is fine — that's leaf forwarding.

@@ -3,6 +3,10 @@
 > Imported `<scope>/*` specifiers must be declared `workspace:*` deps, and tsconfig `references` must
 > mirror those deps.
 
+<!-- begin generated rule header -->
+Runs under `@noctcore/harness`, not ESLint · Factory `createWorkspaceGraphParityRule` from `@noctcore/lint-meta-rules` · Category `config` · Fails CI by default: yes
+<!-- end generated rule header -->
+
 ## Why
 
 A cross-package edge is real in three places at once: the import in source, the `workspace:*` entry in

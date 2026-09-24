@@ -2,6 +2,10 @@
 
 > Workflow service/container images and docker-compose images are pinned by `@sha256:` digest.
 
+<!-- begin generated rule header -->
+Runs under `@noctcore/harness`, not ESLint · Factory `createServiceImageDigestPinRule` from `@noctcore/lint-meta-rules` · Category `ci` · Fails CI by default: yes
+<!-- end generated rule header -->
+
 ## Why
 
 A tag (`postgres:17-alpine`) or `latest` names whatever the registry serves today, so a green build

@@ -3,6 +3,10 @@
 > Every call into the sign-in seam passes the session epoch it captured before reading the
 > credential.
 
+<!-- begin generated rule header -->
+Runs under `@noctcore/harness`, not ESLint · Factory `createSessionEpochCapturedRule` from `@noctcore/lint-meta-rules/session` · Category `source-text` · Fails CI by default: yes
+<!-- end generated rule header -->
+
 Import it from the `session` entry point:
 
 ```ts

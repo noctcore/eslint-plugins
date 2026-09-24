@@ -2,6 +2,10 @@
 
 > Comments describe the current invariant, not what the code used to do.
 
+<!-- begin generated rule header -->
+✅ In `recommended` at `error` · 💭 Type information: not needed
+<!-- end generated rule header -->
+
 ## Why
 
 A comment that frames code against its past — "before the fix", "we used to", "no longer" — rots the

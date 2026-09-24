@@ -2,6 +2,10 @@
 
 > Stringifying an error with `${error}`, `error.toString()`, or `error + ""` drops its cause chain.
 
+<!-- begin generated rule header -->
+✅ In `recommended` at `error` · 💭 Type information: not needed
+<!-- end generated rule header -->
+
 ## Why
 
 `` `${error}` ``, `error.toString()`, and `error + ""` all coerce an `Error` to its `message` alone,

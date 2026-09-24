@@ -2,6 +2,10 @@
 
 > Every source file matched by `include` must have a colocated sibling test.
 
+<!-- begin generated rule header -->
+Runs under `@noctcore/harness`, not ESLint · Factory `createTestSiblingEnforcementRule` from `@noctcore/lint-meta-rules` · Category `source-text` · Fails CI by default: yes
+<!-- end generated rule header -->
+
 ## Why
 
 A pure helper with no test is a silent liability — the kind of code that drifts because nothing pins
