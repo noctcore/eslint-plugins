@@ -7,13 +7,13 @@
  * describing something that no longer exists.
  *
  * The ESLint plugins already get a per-plugin version of the first two checks
- * from runPluginDocs in @noctcore/eslint-test-utils. The 23 lint-meta rules get
+ * from runPluginDocs in @noctcore/eslint-test-utils. The 28 lint-meta rules get
  * none there, and nothing else counts the whole set, so this guard covers all
- * 108 in one place.
+ * 113 in one place.
  *
  * EXPECTED_RULE_COUNT is a deliberate tripwire on the inventory itself. The set
  * comparison alone passes if the inventory goes blind (a listing of
- * `src/rules/` finds 96 and misses the 4 lint-meta rules on sub-entry points),
+ * `src/rules/` finds 104 and misses the 9 lint-meta rules on sub-entry points),
  * so a change to the number must be made by hand, in the same commit that adds
  * or removes a rule and its doc.
  */
@@ -21,7 +21,7 @@ import { describe, expect, test } from 'bun:test';
 
 import { listRuleDocs, loadInventory } from './inventory';
 
-const EXPECTED_RULE_COUNT = 108;
+const EXPECTED_RULE_COUNT = 113;
 
 // Source, not dist: a rule added and not yet built must still fail here.
 const inventory = await loadInventory('src');
@@ -46,12 +46,17 @@ describe('rule/doc parity', () => {
     });
   });
 
-  test('the 4 lint-meta rules behind sub-entry points are in the inventory', () => {
+  test('the 9 lint-meta rules behind sub-entry points are in the inventory', () => {
     const lintMeta = inventory.find((pkg) => pkg.kind === 'lint-meta');
     const subEntry = lintMeta?.rules.filter((rule) => rule.entry !== lintMeta.npmName) ?? [];
     expect(subEntry.map((rule) => rule.name).sort()).toEqual([
       'eslint-config-no-warn',
+      'idempotency-key-parity',
       'prisma-method-surface',
+      'session-epoch-captured',
+      'session-kind-stamped',
+      'session-landing-declared',
+      'session-mint-callers',
       'tenant-model-registry-parity',
       'translation-dead-keys',
     ]);

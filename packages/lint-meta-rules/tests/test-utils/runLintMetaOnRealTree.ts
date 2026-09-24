@@ -8,8 +8,15 @@ import type * as I18nRules from '../../src/i18n';
 import type * as PrismaRules from '../../src/prisma';
 import type * as ResolvedConfigRules from '../../src/resolved-config';
 import type * as Rules from '../../src/rules';
+import type * as SessionRules from '../../src/session';
+import type * as TrpcRules from '../../src/trpc';
 
-type Factories = typeof Rules & typeof I18nRules & typeof PrismaRules & typeof ResolvedConfigRules;
+type Factories = typeof Rules &
+  typeof I18nRules &
+  typeof PrismaRules &
+  typeof ResolvedConfigRules &
+  typeof SessionRules &
+  typeof TrpcRules;
 
 /** A rule factory exported by this package (any entry point), by name. */
 export type RuleFactoryName = {
@@ -57,6 +64,11 @@ const SUBPATH_ENTRIES: Partial<Record<RuleFactoryName, string>> = {
   createEslintConfigNoWarnRule: 'resolved-config',
   createPrismaMethodSurfaceRule: 'prisma',
   createTenantModelRegistryParityRule: 'prisma',
+  createSessionEpochCapturedRule: 'session',
+  createSessionKindStampedRule: 'session',
+  createSessionLandingDeclaredRule: 'session',
+  createSessionMintCallersRule: 'session',
+  createIdempotencyKeyParityRule: 'trpc',
 };
 
 function entryFor(factory: RuleFactoryName, runtime: 'bun' | 'node-eslint9'): string {

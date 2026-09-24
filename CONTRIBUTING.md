@@ -143,9 +143,10 @@ changed by hand, in the same commit that adds or removes a rule and its doc. If 
 green everywhere except a test named "the inventory sees exactly 98 rules and 98 docs", this is
 why. Bump it.
 
-The same file also lists by name the four `lint-meta-rules` rules that live behind sub-entry
-points (`/i18n`, `/prisma`, `/resolved-config`). Adding one of those means adding it to that list
-too.
+The same file also lists by name the nine `lint-meta-rules` rules that live behind sub-entry
+points (`/i18n`, `/prisma`, `/resolved-config`, `/session`, `/trpc`). Adding one of those means
+adding it to that list too, and a new sub-entry point also goes in `LINT_META_SUBPATHS` in
+`site/scripts/inventory.ts`.
 
 ### Severity policy: `error` or `off`, never `warn`
 
@@ -205,7 +206,10 @@ from `src/rules/index.ts` and added to `RULE_FACTORIES`. Tests use `bun test` (n
 fake context helpers in `tests/test-utils/`, and `tests/index.test.ts` lists every rule id and
 factory name by hand, so it changes with each addition. Rules that need ESLint at runtime go on a
 sub-entry point (`src/resolved-config.ts`, `src/prisma.ts`, `src/i18n.ts`) so the main entry never
-loads it. These docs are counted by the parity guard but their examples are not executed.
+loads it. Rules that are inert without a project's own facts (the method that mints a session, the
+middleware a router guards with) go on a sub-entry point grouped by the seam they fence
+(`src/session.ts`, `src/trpc.ts`) and stay out of `RULE_FACTORIES`, so `createAllRules()` never
+registers a rule that checks nothing. These docs are counted by the parity guard but their examples are not executed.
 
 ## Changesets
 

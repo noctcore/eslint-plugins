@@ -76,6 +76,11 @@ security rules (also `ci`) are written for this catalog, for 19 factories in all
 | [`prisma-method-surface`](https://noctcore.github.io/eslint-plugins/rules/lint-meta-rules/prisma-method-surface/) | The Prisma reads and writes the rules police partition the generated client's &lt;Model&gt;Delegate method surface exactly, so a Prisma upgrade cannot add an unguarded method. | `createPrismaMethodSurfaceRule` | `@noctcore/lint-meta-rules/prisma` | `config` | yes |
 | [`tenant-model-registry-parity`](https://noctcore.github.io/eslint-plugins/rules/lint-meta-rules/tenant-model-registry-parity/) | Every tenant-bearing Prisma model is scoped by the runtime extension or exempt with a reason, and the tenant lint rules resolve with exactly that registry. | `createTenantModelRegistryParityRule` | `@noctcore/lint-meta-rules/prisma` | `config` | yes |
 | [`eslint-config-no-warn`](https://noctcore.github.io/eslint-plugins/rules/lint-meta-rules/eslint-config-no-warn/) | Every rule in the RESOLVED ESLint config is "error" or "off", never "warn", including severities a spread preset injects. | `createEslintConfigNoWarnRule` | `@noctcore/lint-meta-rules/resolved-config` | `config` | yes |
+| [`session-epoch-captured`](https://noctcore.github.io/eslint-plugins/rules/lint-meta-rules/session-epoch-captured/) | Every call into the sign-in seam must pass the session epoch captured before the credential was read, or a revocation landing during the credential check loses the race. | `createSessionEpochCapturedRule` | `@noctcore/lint-meta-rules/session` | `source-text` | yes |
+| [`session-kind-stamped`](https://noctcore.github.io/eslint-plugins/rules/lint-meta-rules/session-kind-stamped/) | Every call that mints a session must stamp the principal kind onto it, or sit in an allowlisted, provably single-kind flow; a session read without the kind falls back to a default and can silently promote one kind of account into another. | `createSessionKindStampedRule` | `@noctcore/lint-meta-rules/session` | `source-text` | yes |
+| [`session-landing-declared`](https://noctcore.github.io/eslint-plugins/rules/lint-meta-rules/session-landing-declared/) | Every file that opens a door into a session must declare where it leaves the caller, and a door whose landing demands a return shape (the one that carries the principal kind to the client) must have it. | `createSessionLandingDeclaredRule` | `@noctcore/lint-meta-rules/session` | `source-text` | yes |
+| [`session-mint-callers`](https://noctcore.github.io/eslint-plugins/rules/lint-meta-rules/session-mint-callers/) | The method that mints a session may only be called from allowlisted files; a new sign-in entry point must route through the gate in front of it so the gate cannot be bypassed. | `createSessionMintCallersRule` | `@noctcore/lint-meta-rules/session` | `source-text` | yes |
+| [`idempotency-key-parity`](https://noctcore.github.io/eslint-plugins/rules/lint-meta-rules/idempotency-key-parity/) | Procedures carrying the idempotency middleware must have a client caller that sends an idempotency key, or no client caller at all. | `createIdempotencyKeyParityRule` | `@noctcore/lint-meta-rules/trpc` | `source-text` | yes |
 <!-- end generated rules -->
 
 Every factory is callable with no arguments (all options default), so `createAllRules()` and
@@ -101,3 +106,16 @@ Whole-repo Prisma guardrails that keep `@noctcore/eslint-plugin-prisma`'s inputs
 the plugin's method sets, schema parser and registry reconciliation, so the lint rules and these
 checks cannot disagree. The registry parity check resolves an ESLint config (async, `runAsync`) and
 needs the optional peer `eslint`. Neither is in `RULE_FACTORIES`: both need the project's paths.
+
+### `@noctcore/lint-meta-rules/session`
+
+Fences around the one seam that turns an authenticated principal into a session. Each rule is inert
+until you name that seam: the method that mints, the gate in front of it, the files allowed to call it,
+the landings a sign-in can end in. None is in `RULE_FACTORIES`. They load nothing beyond the harness
+contract. Ported from a production NestJS app, where each one exists because its bug shipped once.
+
+### `@noctcore/lint-meta-rules/trpc`
+
+Cross-tree checks between tRPC routers and the clients that call them. The decorator shape defaults to
+`nestjs-trpc`'s; the rule is inert until you name the middleware and the two trees. Not in
+`RULE_FACTORIES`.
