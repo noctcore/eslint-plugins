@@ -39,6 +39,12 @@ it.skip('later', () => {});
 it.skip('later', () => {}); // https://github.com/org/repo/issues/1
 ```
 
+## What it does not flag
+
+- A test that is not skipped.
+- A skip with a `markers` match on its own line or within the `lookback` lines above it.
+- `.only`: [`no-focused-tests`](./no-focused-tests.md) bans it outright.
+
 ## Options
 
 | Option | Type | Default | Meaning |

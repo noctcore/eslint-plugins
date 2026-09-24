@@ -18,13 +18,21 @@ so an edge can never be half-wired.
 
 For each workspace `package.json`:
 
-- **(a) imported ⊆ declared** — every `<scope>/<pkg>` imported under the source dir (test files
-  excluded, self-imports ignored) must appear as a `"<scope>/<pkg>": "workspace:*"` dependency.
+- **(a) imported ⊆ declared** — every `<scope>/<pkg>` imported under the source dir must appear as a
+  `"<scope>/<pkg>": "workspace:*"` dependency.
 - **(b) references mirror deps** — the tsconfig `references` must reference exactly the declared
   workspace deps: a declared dep missing from references, or a referenced package that is not a
   declared dep, is a violation.
 
-## Factory
+## What it does not flag
+
+- A package importing itself by its own `<scope>/<dir>` name.
+- Imports in test files (`.test.ts`, `.test.tsx`) and files outside `srcDir`.
+- Imports without a `from` clause (`import()`, `require()`, a side-effect `import`): only
+  `from '<scope>/<pkg>'` is read.
+- Check (b) for a package with no `tsconfig.json`.
+
+## Options
 
 ```ts
 createWorkspaceGraphParityRule(options?: WorkspaceGraphParityOptions): IMetaRule

@@ -22,14 +22,6 @@ In a unit test file (a path ending in one of `testFileSuffixes`, and not contain
 - a call to an `httpClients` client or its request methods: `axios(...)`, `axios.get(...)`,
   `axios.post(...)`, and `put` / `patch` / `delete` / `head` / `options` / `request`.
 
-It does not flag:
-
-- a locally declared double (`const fetch = vi.fn()`); an imported `fetch` is still reported;
-- a global the file stubs (`vi.stubGlobal('fetch', ...)`, `jest.spyOn(globalThis, 'fetch')`,
-  `globalThis.fetch = vi.fn()`);
-- a client whose module the file mocks (`vi.mock('axios')`, `jest.mock('node-fetch')`);
-- a method that only shares a name (`repository.fetch(1)`, `store.get('k')`).
-
 ```ts bad filename=src/api/client.test.ts
 it('loads the profile', async () => {
   const res = await fetch('https://api.example.com/me');
@@ -53,6 +45,21 @@ it('loads the profile', async () => {
 });
 ```
 
+## What it does not flag
+
+- a locally declared double (`const fetch = vi.fn()`); an imported `fetch` is still reported;
+- a global the file stubs (`vi.stubGlobal('fetch', ...)`, `jest.spyOn(globalThis, 'fetch')`,
+  `globalThis.fetch = vi.fn()`);
+- a client whose module the file mocks (`vi.mock('axios')`, `jest.mock('node-fetch')`);
+- a method that only shares a name (`repository.fetch(1)`, `store.get('k')`);
+- files that are not unit tests, or whose path contains an `integrationMarkers` entry.
+
+### Limitations
+
+The rule sees calls in the test file only, not network calls made by the code under test. A request
+intercepted by a setup-file mock server (for example MSW) is still reported when the test file itself
+calls `fetch`; add that file's suffix to `integrationMarkers` or disable the rule for it.
+
 ## Options
 
 | Option | Type | Default | Meaning |
@@ -68,12 +75,6 @@ it('loads the profile', async () => {
   httpClients: ['axios', 'ky'],
 }]
 ```
-
-## Limitations
-
-The rule sees calls in the test file only, not network calls made by the code under test. A request
-intercepted by a setup-file mock server (for example MSW) is still reported when the test file itself
-calls `fetch`; add that file's suffix to `integrationMarkers` or disable the rule for it.
 
 ## When not to use it
 

@@ -53,7 +53,7 @@ async function withTimeoutKept<T>(work: Promise<T>, ms: number): Promise<T> {
 }
 ```
 
-## How to fix it
+### How to fix it
 
 Keep the handle and clear it once the race settles, whichever side won. A `finally` block, a
 `.finally(...)` chained on the race, or a `clearTimeout` after the awaited race all count:
@@ -94,7 +94,7 @@ async function load(url: string): Promise<Response> {
 }
 ```
 
-## What it leaves alone
+## What it does not flag
 
 The rule errs toward silence. It does not report:
 
@@ -106,10 +106,6 @@ The rule errs toward silence. It does not report:
   in a callback declared in that function (a `cleanup` helper passed to `.finally` later);
 - a handle held by an outer scope (a module-level `let timer`), which any function may clear;
 - a handle stored somewhere it cannot follow (`this.timer = ...`, `timers.push(setTimeout(...))`).
-
-## Options
-
-None.
 
 ## When not to use it
 

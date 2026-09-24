@@ -27,8 +27,13 @@ export { default } from './Card';         // ✓
 export * from './Card.types';             // ✗ (on its own — no default re-export)
 ```
 
-Non-component `index.ts` files — those whose folder is not PascalCase, or that have no
-`<Folder>.tsx` sibling on disk — are left untouched.
+## What it does not flag
+
+- Non-component `index.ts` files — those whose folder is not PascalCase, or that have no
+  `<Folder>.tsx` sibling on disk.
+- Files other than `index.ts`, such as `Card/Card.helpers.ts`.
+- A barrel that re-exports the default in either form, alongside any other re-exports.
+- Paths matched by `ignorePaths`.
 
 ## Options
 

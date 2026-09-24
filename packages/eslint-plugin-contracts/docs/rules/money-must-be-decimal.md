@@ -20,10 +20,6 @@ positions that carry real precision risk:
 - class properties — `class Invoice { total: number }`
 - annotated variable declarators — `const amount: number = …`
 
-Conservative on purpose. Untyped declarations and numeric-literal initializers (`let total = 0`) are
-**not** flagged — those are usually counters/accumulators. Interface and type-literal members
-(`{ amount: number }`) are **out of scope** so non-money type members do not regress.
-
 ```ts bad reports=2
 class Invoice { total: number; }
 const amount: number = 5;
@@ -34,6 +30,15 @@ class Invoice { total: Decimal; }
 const count: number = 3;          // not a money name
 interface Payment { amount: number; }   // type member, out of scope
 ```
+
+## What it does not flag
+
+Conservative on purpose. Untyped declarations and numeric-literal initializers (`let total = 0`) are
+**not** flagged — those are usually counters/accumulators. Interface and type-literal members
+(`{ amount: number }`) are **out of scope** so non-money type members do not regress.
+
+- Object-literal properties (`const x = { total: 5 }`).
+- Fields matching `minorUnitPatterns`, and every field in a file listed in `allowedFiles`.
 
 ## Options
 
@@ -51,7 +56,7 @@ interface Payment { amount: number; }   // type member, out of scope
 }]
 ```
 
-## Talking to a payment API
+### Talking to a payment API
 
 Stripe and most payment APIs deal in integer minor units: `amount` is a number of cents, and that
 is correct at that boundary. Without `minorUnitPatterns` this rule flags every one of those

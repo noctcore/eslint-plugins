@@ -1,18 +1,28 @@
 # @noctcore/eslint-plugin-rsc
 
+React Server Components and App Router correctness rules: the server-side control flow that
+compiles, type-checks and still silently does the wrong thing. Framework-neutral where the RSC model
+allows; a rule tied to one framework's API (Next.js `next/navigation`, for example) says so and only
+fires on that framework's imports.
+
 **Docs:** [noctcore.github.io/eslint-plugins/packages/rsc](https://noctcore.github.io/eslint-plugins/packages/rsc/)
 
-React Server Components and App Router correctness rules: the server-side control flow that
-compiles, type-checks and still silently does the wrong thing. Framework-neutral where the RSC
-model allows; a rule tied to one framework's API (Next.js `next/navigation`, for example) says so
-and only fires on that framework's imports. Flat-config only, ESLint 9+.
+Not a good fit for anything outside a React Server Components codebase, where it does nothing.
 
 ## Requirements
 
 - ESLint 9 or newer, flat config (`eslint.config.js`) only.
 - `configs.recommended` registers the plugin and sets rule severities, nothing else. It sets no
   `files` and no parser, so it applies to whatever files the rest of your config lints. To lint
-  TypeScript, add a `files` pattern and `@typescript-eslint/parser`:
+  TypeScript, add a `files` pattern and `@typescript-eslint/parser`, as in the quick start.
+
+## Install
+
+```sh
+bun add -D @noctcore/eslint-plugin-rsc @typescript-eslint/parser   # or npm i -D / pnpm add -D
+```
+
+## Quick start
 
 ```js
 // eslint.config.js
@@ -28,23 +38,6 @@ export default [
 ];
 ```
 
-## Install
-
-```sh
-bun add -D @noctcore/eslint-plugin-rsc   # or npm i -D / pnpm add -D
-```
-
-## Use
-
-```js
-// eslint.config.js
-import rsc from '@noctcore/eslint-plugin-rsc';
-
-export default [
-  rsc.configs.recommended,
-];
-```
-
 ## Rules
 
 <!-- begin generated rules -->
@@ -56,3 +49,8 @@ export default [
 | --- | --- | :-: | :-: | :-: | :-: | :-: |
 | [`no-navigation-throw-in-try`](https://noctcore.github.io/eslint-plugins/rules/rsc/no-navigation-throw-in-try/) | Disallow `redirect()`, `notFound()` and the other throwing `next/navigation` calls inside a `try` whose `catch` swallows the error instead of rethrowing it. | ✅ |  |  |  |  |
 <!-- end generated rules -->
+
+## Severity policy
+
+Every rule is `error` or `off`, never `warn`: a warning is a rule nobody obeys. See the
+[severity policy](https://noctcore.github.io/eslint-plugins/getting-started/#severity-policy).

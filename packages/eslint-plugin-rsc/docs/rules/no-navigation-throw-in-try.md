@@ -76,6 +76,13 @@ export default async function Page({ params }: { params: { id: string } }) {
 }
 ```
 
+### Prior art
+
+- react-doctor's `nextjs-no-redirect-in-try-catch`.
+- [vercel/next.js#55586](https://github.com/vercel/next.js/issues/55586), the issue that led to
+  `unstable_rethrow`.
+- `@next/eslint-plugin-next` has no equivalent rule.
+
 ## What it flags
 
 A call to `redirect`, `permanentRedirect`, `notFound`, `forbidden` or `unauthorized` that:
@@ -106,7 +113,10 @@ function guard(user: User | null) {
 A `catch` that rethrows passes the error on to the next `try` out, so an outer `catch` that
 swallows it is still reported.
 
-## What it leaves alone
+There is no autofix: which of moving the call and rethrowing is right depends on what the `try`
+was guarding.
+
+## What it does not flag
 
 - A call outside any `try`, or in a `try` / `finally` with no `catch`: the error propagates.
 - A call in the `catch` or the `finally` block: it throws out of the `try` statement.
@@ -127,16 +137,8 @@ export async function action() {
 }
 ```
 
-There is no autofix: which of moving the call and rethrowing is right depends on what the `try`
-was guarding.
+## When not to use it
 
-## Options
-
-None.
-
-## Prior art
-
-- react-doctor's `nextjs-no-redirect-in-try-catch`.
-- [vercel/next.js#55586](https://github.com/vercel/next.js/issues/55586), the issue that led to
-  `unstable_rethrow`.
-- `@next/eslint-plugin-next` has no equivalent rule.
+It only reports calls imported from `next/navigation`, so outside a Next.js App Router project it has
+nothing to do. Inside one, a `catch` that swallows a navigation is almost always a
+bug.

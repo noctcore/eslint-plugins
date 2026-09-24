@@ -24,16 +24,6 @@ try {
 ## What it flags
 
 A `throw new SomeError(...)` inside a `catch` block when **no** argument carries a `cause` property.
-Deliberately conservative:
-
-- Only constructors whose simple name ends in `Error` or `Exception` are treated as errors
-  (`Error`, `TypeError`, `ValidationError`, `HttpException`). Throwing `new Response(...)` for
-  control flow is not policed.
-- Fires only when the enclosing catch binds a plain identifier (`catch (err)`). A parameterless
-  `catch {}` or a destructured binding (`catch ({ message })`) has no single name to attach, so the
-  throw is left alone.
-- Any `cause` property (whatever its value), and any spread the rule cannot see through, counts as
-  "has a cause" and suppresses the report — a hand-written cause is never second-guessed.
 
 A `throw` nested in a closure declared inside the catch is still flagged: the binding is genuinely in
 scope there. Nested `try/catch` uses the nearest binding.
@@ -51,7 +41,7 @@ try { work(); } catch (err) { throw new Error('failed', { cause: err }); }
 try { work(); } catch (err) { throw err; }
 ```
 
-## Fix
+### Fix
 
 Autofix attaches `{ cause: <binding> }`:
 
@@ -62,9 +52,19 @@ Autofix attaches `{ cause: <binding> }`:
 A zero-argument `new SomeError()` is **reported but not autofixed** — inserting an options object as
 the first argument could clobber a positional message the rule cannot see.
 
-## Options
+## What it does not flag
 
-None.
+Deliberately conservative:
+
+- Only constructors whose simple name ends in `Error` or `Exception` are treated as errors
+  (`Error`, `TypeError`, `ValidationError`, `HttpException`). Throwing `new Response(...)` for
+  control flow is not policed.
+- Fires only when the enclosing catch binds a plain identifier (`catch (err)`). A parameterless
+  `catch {}` or a destructured binding (`catch ({ message })`) has no single name to attach, so the
+  throw is left alone.
+- Any `cause` property (whatever its value), and any spread the rule cannot see through, counts as
+  "has a cause" and suppresses the report — a hand-written cause is never second-guessed.
+- A bare re-throw of the caught error (`throw err`).
 
 ## When not to use it
 

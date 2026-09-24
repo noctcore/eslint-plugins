@@ -38,6 +38,12 @@ Moving the exit to a CLI entrypoint is the other fix:
 main().catch(() => process.exit(1));
 ```
 
+## What it does not flag
+
+- Files covered by `allowIn`: by default scripts, `bin` and `cli` directories, and config files.
+- An `exit` method on anything other than `process` (`queue.exit(0)`).
+- Setting `process.exitCode`, which lets the process finish its work before it ends.
+
 ## Options
 
 | Option | Type | Default | Meaning |

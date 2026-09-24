@@ -87,6 +87,13 @@ Three response shapes are tracked: `const res = await fetch(...)` then `res.json
 Aliases work (`const ok = res.ok; if (!ok) throw ...`). A bare `if (res.status)` or
 `typeof res.status === 'number'` is not a check: both are true for a 500.
 
+## What it does not flag
+
+Purely syntactic, no type information. A response assigned later (`let res; res = await fetch(...)`),
+passed to another function, or returned from a wrapper that is not in `fetchFunctions` is not tracked.
+A nested function that reuses the response's name is treated as the same binding. Clients whose
+`.json()` already throws on a bad status (ky, for example) do not belong in `fetchFunctions`.
+
 ## Options
 
 | Option | Type | Default | Meaning |
@@ -101,12 +108,10 @@ List every name you want tracked, including `fetch` itself:
 }]
 ```
 
-## Limits
+## When not to use it
 
-Purely syntactic, no type information. A response assigned later (`let res; res = await fetch(...)`),
-passed to another function, or returned from a wrapper that is not in `fetchFunctions` is not tracked.
-A nested function that reuses the response's name is treated as the same binding. Clients whose
-`.json()` already throws on a bad status (ky, for example) do not belong in `fetchFunctions`.
+Leave it off if your code never reads a raw `Response`, for example when every request goes through a
+client whose `.json()` already throws on a bad status.
 
 ## Credits
 

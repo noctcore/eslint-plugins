@@ -17,6 +17,13 @@ cheapest containment there is.
 
 Keep the top level read-only and grant each write on the job that needs it.
 
+### Prior art
+
+It mirrors zizmor's [`excessive-permissions`](https://docs.zizmor.sh/audits/#excessive-permissions)
+audit and the OpenSSF Scorecard
+[Token-Permissions](https://github.com/ossf/scorecard/blob/main/docs/checks.md#token-permissions)
+check.
+
 ## What it flags
 
 - A workflow with no top-level `permissions:`, naming each job that has no job-level
@@ -44,14 +51,18 @@ jobs:
       id-token: write
 ```
 
-## What it leaves alone
+## What it does not flag
 
 - A workflow with no top-level block when every job declares its own `permissions:`: the default
   token then reaches no job.
 - `permissions: {}`, and any scope at `read` or `none`.
 - Writes on a job, a `permissions:` input under a step's `with:`, and a commented-out line.
 
-## Factory
+Line-based text, not a YAML parse. It checks the top level only; a job that grants itself more than
+it uses is not judged. A reusable workflow (`on: workflow_call`) is held to the same bar, although
+its token can never exceed its caller's.
+
+## Options
 
 ```ts
 createGithubActionsLeastPrivilegePermissionsRule(options?: GithubActionsLeastPrivilegePermissionsOptions): IMetaRule
@@ -63,13 +74,7 @@ createGithubActionsLeastPrivilegePermissionsRule(options?: GithubActionsLeastPri
 | `allowTopLevelWrite` | `string[]` | `[]` | Scopes allowed at `write` in the top-level block, for a repo that accepts, say, `contents: write` on a single-job release workflow. |
 | `ciCritical` | `boolean` | `true` | Whether a violation fails CI. |
 
-## Limits
+## When not to use it
 
-Line-based text, not a YAML parse. It checks the top level only; a job that grants itself more than
-it uses is not judged. A reusable workflow (`on: workflow_call`) is held to the same bar, although
-its token can never exceed its caller's.
-
-Prior art: zizmor's [`excessive-permissions`](https://docs.zizmor.sh/audits/#excessive-permissions)
-audit and the OpenSSF Scorecard
-[Token-Permissions](https://github.com/ossf/scorecard/blob/main/docs/checks.md#token-permissions)
-check.
+If your repo has no GitHub Actions workflows there is nothing to check. If zizmor's
+`excessive-permissions` audit already gates CI, one of the two is enough.

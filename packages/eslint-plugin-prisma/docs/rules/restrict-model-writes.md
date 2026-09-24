@@ -7,18 +7,6 @@
 ⚙️ Opt-in: not in `recommended`; needs options (see Options) · 💭 Type information: not needed
 <!-- end generated rule header -->
 
-## What this rule does NOT do
-
-**It does not check state transitions.** This rule decides WHO may write a model and, with
-`fields`, WHICH COLUMNS are fenced. It knows nothing about which values are legal or which
-`from -> to` moves are allowed. A write from inside `allowedFiles` that moves a status from any
-value to any other passes, and so does a write outside them that sets no fenced column.
-
-Transition legality belongs in the owning service, typically as a compare-and-swap (`update({ where:
-{ id, status: 'ISSUED' }, data: { status: 'PAID' } })`, so a concurrent writer updates zero rows and
-loses). This rule's job is to make that service the only way in. If you need transitions enforced,
-enforce them there and test them there; do not read this rule as having done it.
-
 ## Why
 
 Some rows are only correct when one service writes them. It keeps a derived column in step, writes
@@ -45,8 +33,6 @@ reports
   once;
 - a nested write through a relation the guarded model declares to itself or to another guarded
   model (`invoice.update({ data: { supersedes: { update: ... } } })`).
-
-A write that touches only other columns is not reported.
 
 **Both kinds** report a nested write that reaches a guarded model from a write on some other model,
 whatever it carries. A nested write cannot compare-and-swap (its `where` is scoped to the parent and
@@ -75,7 +61,59 @@ await tx.payment.findMany({ where: { invoiceId } }); // reads are never fenced
 await this.invoiceLifecycle.markPaid(id); // the owner does it
 ```
 
+## What it does not flag
+
+Reads are never reported. Under a field-scoped fence, a write that touches only other columns is not
+reported. `connect`, `disconnect`, `set`, relation filters and `include` are not nested writes.
+
+**It does not check state transitions.** This rule decides WHO may write a model and, with
+`fields`, WHICH COLUMNS are fenced. It knows nothing about which values are legal or which
+`from -> to` moves are allowed. A write from inside `allowedFiles` that moves a status from any
+value to any other passes, and so does a write outside them that sets no fenced column.
+
+Transition legality belongs in the owning service, typically as a compare-and-swap (`update({ where:
+{ id, status: 'ISSUED' }, data: { status: 'PAID' } })`, so a concurrent writer updates zero rows and
+loses). This rule's job is to make that service the only way in. If you need transitions enforced,
+enforce them there and test them there; do not read this rule as having done it.
+
+Name and shape matching with no type information, keyed on `<anything>.<model>.<method>(`:
+
+- An aliased delegate (`const d = tx.invoice; d.update(...)`) is not caught. It is rare and reads as
+  deliberate evasion.
+- A nested write inside a variable payload on another model (`customer.update({ where, data })`) is
+  not caught: there is no object literal to walk, and reporting every opaque payload on every model
+  would bury the real findings. A direct write keys on the accessor, so `invoice.update(payload)`
+  is still caught.
+
 ## Options
+
+| Option | Default | Meaning |
+| --- | --- | --- |
+| `restrictions` | `[]` | The fences. Each is independent: the owner of one fence is outside every other. |
+| `restrictions[].models` | required | Prisma delegate accessors the fence guards (`invoice`, not `Invoice`). |
+| `restrictions[].allowedFiles` | required | Globs of the files that may write. Nothing is implicit: list the owner, its repository, their specs, and your seeds and migrations. Matched against the absolute and the workspace-root-relative path. |
+| `restrictions[].fields` | omitted | Scope the fence to these columns. Omitted, every write to the model is fenced. |
+| `restrictions[].relations` | `[]` | Relation keys added to the schema-derived ones. |
+| `restrictions[].owner` | `'the files allowed to write it'` | Who owns the writes, named in every message. |
+| `restrictions[].reason` | none | One sentence appended to every message. |
+| `schemaPath` | `'prisma/schema.prisma'` | Where the relation names are derived from: absolute, or relative to the workspace root. A `prismaSchemaFolder` directory works. |
+
+```js
+'noctcore-prisma/restrict-model-writes': ['error', {
+  restrictions: [
+    { models: ['payment'], allowedFiles: ['**/billing/payment.service.ts'], owner: 'PaymentService' },
+    {
+      models: ['invoice'],
+      fields: ['status'],
+      allowedFiles: ['**/billing/invoice-lifecycle.service.ts', '**/billing/invoice-lifecycle.service.spec.ts'],
+      owner: 'InvoiceLifecycleService',
+      reason: 'status moves by compare-and-swap',
+    },
+  ],
+}],
+```
+
+The full options type:
 
 ```ts prose reason="the options type, not a lint example"
 {
@@ -91,17 +129,6 @@ await this.invoiceLifecycle.markPaid(id); // the owner does it
 }
 ```
 
-| Option | Default | Meaning |
-| --- | --- | --- |
-| `restrictions` | `[]` | The fences. Each is independent: the owner of one fence is outside every other. |
-| `restrictions[].models` | required | Prisma delegate accessors the fence guards (`invoice`, not `Invoice`). |
-| `restrictions[].allowedFiles` | required | Globs of the files that may write. Nothing is implicit: list the owner, its repository, their specs, and your seeds and migrations. Matched against the absolute and the workspace-root-relative path. |
-| `restrictions[].fields` | omitted | Scope the fence to these columns. Omitted, every write to the model is fenced. |
-| `restrictions[].relations` | `[]` | Relation keys added to the schema-derived ones. |
-| `restrictions[].owner` | `'the files allowed to write it'` | Who owns the writes, named in every message. |
-| `restrictions[].reason` | none | One sentence appended to every message. |
-| `schemaPath` | `'prisma/schema.prisma'` | Where the relation names are derived from: absolute, or relative to the workspace root. A `prismaSchemaFolder` directory works. |
-
 Name owner files one by one rather than by directory. A directory glob's reach depends on what
 lands beside the owner later, so a fence written as `**/billing/**` silently admits every new file in
 the module.
@@ -111,14 +138,7 @@ If the schema cannot be read, nested detection falls back to the model name and 
 schema is where `schemaPath` says, so a moved schema turns CI red instead of quietly narrowing the
 fence.
 
-## Limits
+## When not to use it
 
-Name and shape matching with no type information, keyed on `<anything>.<model>.<method>(`:
-
-- An aliased delegate (`const d = tx.invoice; d.update(...)`) is not caught. It is rare and reads as
-  deliberate evasion.
-- A nested write inside a variable payload on another model (`customer.update({ where, data })`) is
-  not caught: there is no object literal to walk, and reporting every opaque payload on every model
-  would bury the real findings. A direct write keys on the accessor, so `invoice.update(payload)`
-  is still caught.
-- Transition legality, again: not checked, by design. See the top of this page.
+With no `restrictions` the rule reports nothing, so it only earns its place once a model has an
+owning service that keeps an invariant. If any file may legitimately write a model, do not fence it.

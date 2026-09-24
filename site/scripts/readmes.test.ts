@@ -59,7 +59,10 @@ describe('generated README tables and rule-doc headers', () => {
   test('the site page drops the doc header and keeps its own metadata line', () => {
     const pkg = inventory.find((entry) => entry.kind === 'eslint-plugin')!;
     const rule = pkg.rules[0]!;
-    const doc = applyRuleHeader(`# \`${rule.id}\`\n\n> Summary.\n\n## Why\n\nBecause.\n`, pkg, rule, 'doc.md');
+    const sections = ['Why', 'What it flags', 'What it does not flag', 'When not to use it'];
+    if (rule.hasOptions) sections.splice(3, 0, 'Options');
+    const body = sections.map((section) => `## ${section}\n\nText.\n`).join('\n');
+    const doc = applyRuleHeader(`# \`${rule.id}\`\n\n> Summary.\n\n${body}`, pkg, rule, 'doc.md');
     const page = renderRuleDoc(doc, `${pkg.dir}/docs/rules/${rule.name}.md`, pkg, rule);
     expect(page).not.toContain(HEADER_BEGIN);
     expect(page).not.toContain(HEADER_END);

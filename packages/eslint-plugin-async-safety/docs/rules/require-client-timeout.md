@@ -20,17 +20,23 @@ covers `fetch`; this rule covers the clients you name.
 The rule ships knowing **no** client. For each entry in `clients`, it reports a matching call (or
 `new`, with `construct: true`) whose options visibly carry none of the `requireAnyOf` keys.
 
+It reports a visible options object literal with none of the keys, or an argument list with nothing
+but string/template literals (a connection URL), including no arguments at all. Keys are matched at the
+top level of the options object only.
+
+## What it does not flag
+
 It follows the same precision contract as `require-fetch-timeout`: no type information, and silent
 whenever it cannot see the options.
 
 - A spread argument (`new Client(...args)`) or a `...spread` inside the options literal is opaque:
   skipped.
 - An options slot that is an identifier, call or member (`new Client(config)`) may already set a
-  timeout: skipped.
-- It reports a visible options object literal with none of the keys, or an argument list with nothing
-  but string/template literals (a connection URL), including no arguments at all.
-
-Keys are matched at the top level of the options object only.
+  timeout: skipped. A client built from an opaque config object is never reported.
+- It enforces that a listed key is **present**, not that its value is a sane timeout.
+  `requestHandler: new NodeHttpHandler({})` passes.
+- Matching is by callee text. An aliased import (`import { S3Client as S3 }`) or a destructured factory
+  (`const { createTransport } = nodemailer`) is not matched unless you list that name too.
 
 ## Options
 
@@ -43,7 +49,7 @@ Keys are matched at the top level of the options object only.
 
 With the default `clients: []` the rule is inert, which is why `recommended` can ship it at `error`.
 
-## Worked example
+### Worked example
 
 A NestJS API that talks to S3 and sends mail over SMTP:
 
@@ -86,10 +92,8 @@ this.transporter = nodemailer.createTransport({
 });
 ```
 
-## Limits
+## When not to use it
 
-- It enforces that a listed key is **present**, not that its value is a sane timeout.
-  `requestHandler: new NodeHttpHandler({})` passes.
-- Matching is by callee text. An aliased import (`import { S3Client as S3 }`) or a destructured factory
-  (`const { createTransport } = nodemailer`) is not matched unless you list that name too.
-- A client built from an opaque config object (`new S3Client(config)`) is never reported.
+The rule is inert until you list a client, so there is nothing to turn off. Leave a client out of
+`clients` when its timeout is set once in a shared factory the rule cannot see into (it only reads the
+options at the call site).

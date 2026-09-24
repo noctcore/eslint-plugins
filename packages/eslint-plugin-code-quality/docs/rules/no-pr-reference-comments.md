@@ -33,9 +33,13 @@ Comments containing:
 const channel = "#general"; // the string is not a comment
 ```
 
-## Options
+## What it does not flag
 
-None.
+- Strings and other code: only comments are read, so `"#general"` in a literal is fine.
+- A `#` followed by anything but digits (`#general`, `#fff`), or digits glued to a preceding word
+  (`step#2`): a bare reference needs whitespace, `(` or the start of the comment before the `#`.
+- Prose that points at a guide or document rather than a numbered issue
+  (`// See the expressjs proxies guide for the rationale.`).
 
 ## When not to use it
 

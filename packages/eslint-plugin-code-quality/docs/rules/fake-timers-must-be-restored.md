@@ -18,6 +18,38 @@ Every call to a `fakeTimerMethods` method (`useFakeTimers` by default, as `name(
 in a file with no call to a `restoreTimerMethods` method, unless the restore lives in a shared suite
 the file runs.
 
+```ts bad filename=src/session.test.ts
+beforeEach(() => {
+  vi.useFakeTimers();
+});
+
+it('expires the session', () => {
+  vi.advanceTimersByTime(60_000);
+  expect(session.isExpired()).toBe(true);
+});
+```
+
+```ts good filename=src/session.test.ts
+beforeEach(() => {
+  vi.useFakeTimers();
+});
+
+afterEach(() => {
+  vi.useRealTimers();
+});
+
+it('expires the session', () => {
+  vi.advanceTimersByTime(60_000);
+  expect(session.isExpired()).toBe(true);
+});
+```
+
+## What it does not flag
+
+- A file with no fake-timer call.
+- A file with a restore call anywhere in it: one `useRealTimers()` in any hook or test satisfies the
+  rule for every fake-timer call in the file.
+
 ### Shared suites
 
 A contract suite often owns the restore: the spec installs fake timers inside a helper it hands to
@@ -52,31 +84,11 @@ re-exported, never called, does not count.
 For a suite the rule cannot resolve (a path alias or a workspace package), name it in
 `sharedSuiteModules`.
 
-```ts bad filename=src/session.test.ts
-beforeEach(() => {
-  vi.useFakeTimers();
-});
+### Caveats
 
-it('expires the session', () => {
-  vi.advanceTimersByTime(60_000);
-  expect(session.isExpired()).toBe(true);
-});
-```
-
-```ts good filename=src/session.test.ts
-beforeEach(() => {
-  vi.useFakeTimers();
-});
-
-afterEach(() => {
-  vi.useRealTimers();
-});
-
-it('expires the session', () => {
-  vi.advanceTimersByTime(60_000);
-  expect(session.isExpired()).toBe(true);
-});
-```
+Reading an imported suite from disk means an edit to the suite alone does not invalidate
+`eslint --cache` for the spec. The rule caches each suite's source by modification time within one
+process.
 
 ## Options
 
@@ -94,12 +106,6 @@ it('expires the session', () => {
   sharedSuiteModules: ['@acme/testing/*-suite'],
 }]
 ```
-
-## Caveats
-
-Reading an imported suite from disk means an edit to the suite alone does not invalidate
-`eslint --cache` for the spec. The rule caches each suite's source by modification time within one
-process.
 
 ## When not to use it
 

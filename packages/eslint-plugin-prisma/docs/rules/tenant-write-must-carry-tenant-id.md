@@ -34,11 +34,20 @@ await this.prisma.unscoped.invoice.create({ data: { total, tenantId } });
 await this.prisma.client.invoice.create({ data: { total } }); // the extension fills tenantId
 ```
 
+## What it does not flag
+
+- A create through the scoped client: the extension fills the tenant column.
+- A create on a model not in `tenantModels`.
+
 The verifiability policy is deliberately the **inverse** of `tenant-scoped-tables-require-where`:
 only a statically provable absence is reported. Anything the rule cannot read is allowed, never
 flagged: an identifier as `data`, a spread inside `data` (it may supply the field), a `createMany`
 element that is not an object literal, a `.map(buildRow)` callback it cannot see into, or no
 argument at all.
+
+Name and shape matching with no type information, and it trusts spreads. A tenant column supplied
+through `...dto` is taken on faith; `no-cross-tenant-id-in-where` is the rule that looks at where a
+tenant id VALUE comes from.
 
 ## Options
 
@@ -49,8 +58,14 @@ argument at all.
 | `receiverPattern` | `string` (regex source) | `'prisma'` | A name matching this (case-insensitive) is a Prisma client, when resolving a local bound to the unscoped client. |
 | `unscopedProperty` | `string` | `'unscoped'` | The member that exposes the unscoped client. |
 
-## Limits
+```js
+'noctcore-prisma/tenant-write-must-carry-tenant-id': ['error', {
+  tenantModels: ['invoice', 'project'],
+  tenantFields: ['tenantId'],
+}],
+```
 
-Name and shape matching with no type information, and it trusts spreads. A tenant column supplied
-through `...dto` is taken on faith; `no-cross-tenant-id-in-where` is the rule that looks at where a
-tenant id VALUE comes from.
+## When not to use it
+
+If the app has no unscoped client, or tenant columns are set by the database (a default from the
+session, row-level security), every create is already covered and the rule adds nothing.

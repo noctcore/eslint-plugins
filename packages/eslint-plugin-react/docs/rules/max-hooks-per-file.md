@@ -15,10 +15,10 @@ exported `use*` hooks keeps each file focused and nudges you to split by concern
 ## What it flags
 
 In a file whose basename ends with a `fileSuffixes` entry (default `.hooks.ts`, `.queries.ts`,
-`.mutations.ts`), when the number of **exported** `use*` hooks exceeds `max` (default **4**). Only
-exported hook factories count — internal helper hooks are free. Hooks exported via a specifier list
-(`export { useA, useB }`) and under aliases (`export { useA as helperA }`) still count by their local
-factory name, so aliasing cannot bypass the limit.
+`.mutations.ts`), when the number of **exported** `use*` hooks exceeds `max` (default **4**).
+Hooks exported via a specifier list (`export { useA, useB }`) and under aliases
+(`export { useA as helperA }`) still count by their local factory name, so aliasing cannot bypass
+the limit.
 
 ```ts bad filename=src/board/Board.queries.ts
 // five exported hooks
@@ -41,6 +41,13 @@ export function useC() {}
 export function useD() {}
 export function useE() {}
 ```
+
+## What it does not flag
+
+- Internal (non-exported) helper hooks: only exported hook factories count.
+- A file with exactly `max` exported hooks.
+- Files outside `fileSuffixes`, however many hooks they export (`Board.utils.ts`, and
+  `Board.hooks.tsx`, which does not end with `.hooks.ts`).
 
 ## Options
 

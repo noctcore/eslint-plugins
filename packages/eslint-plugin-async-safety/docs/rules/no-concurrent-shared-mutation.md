@@ -36,6 +36,8 @@ const prices = await Promise.all(items.map((item) => priceOf(item)));
 const total = prices.reduce((a, b) => a + b, 0);
 ```
 
+## What it does not flag
+
 Deliberately conservative to distinguish real races from safe patterns:
 
 - `arr.push(…)`, `map.set(…)`, and distinct-index writes (`results[i] = …`) are **not** flagged — they are
@@ -43,10 +45,6 @@ Deliberately conservative to distinguish real races from safe patterns:
 - a plain overwrite (`x = await f()`, no self-reference) is **not** flagged — that is last-write-wins, not a read-modify-write;
 - a binding declared inside the callback is local per iteration, so it is never flagged;
 - the callback must be `async` and contain an `await` — a synchronous callback has no interleaving point.
-
-## Options
-
-None.
 
 ## When not to use it
 

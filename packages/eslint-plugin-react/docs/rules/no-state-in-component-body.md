@@ -25,10 +25,6 @@ Inside a component file (`.tsx` that is **not** a hook file), a call to any of:
 - store hooks matching `storeHookPattern` (default `use*Store`);
 - anything in `additionalHooks`.
 
-`useId`, `useTransition`, and `useDeferredValue` are render-safe and allowlisted. Files whose basename
-ends with a `hookFileSuffixes` entry (default `.hooks.ts`) are skipped — that is where the hooks
-belong.
-
 ```tsx bad filename=src/widget/Widget.tsx
 // state in the component body
 export default function Widget() {
@@ -46,6 +42,15 @@ export function useWidget() {
   return { open, setOpen };
 }
 ```
+
+## What it does not flag
+
+`useId`, `useTransition`, and `useDeferredValue` are render-safe and allowlisted. Files whose basename
+ends with a `hookFileSuffixes` entry (default `.hooks.ts`) are skipped — that is where the hooks
+belong.
+
+Stateful hooks in a plain `.ts` file (`use-thing.ts`) are not gated either: only `.tsx` component
+files are checked.
 
 ## Options
 

@@ -71,6 +71,13 @@ function total(cart: Cart) {
 }
 ```
 
+### How to fix
+
+Restore the missing code from version control (`git diff` shows what the edit removed), then delete
+the comment. If the code really was meant to go, delete the comment alone.
+
+## What it does not flag
+
 It is deliberately narrow: the comment has to be the placeholder and nothing else. An ellipsis in
 prose (`// wait... this is intentional`), commented-out spread syntax (`// return { ...rest }`),
 a bare `/* ... */`, a sentence that happens to say "the rest of the function assumes…", and a
@@ -92,15 +99,6 @@ const next = {
 
 // TODO: implementation goes here
 ```
-
-## How to fix
-
-Restore the missing code from version control (`git diff` shows what the edit removed), then delete
-the comment. If the code really was meant to go, delete the comment alone.
-
-## Options
-
-None.
 
 ## When not to use it
 

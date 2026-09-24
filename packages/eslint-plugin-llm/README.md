@@ -1,17 +1,28 @@
 # @noctcore/eslint-plugin-llm
 
+Rules for code that calls LLM SDKs (OpenAI, Anthropic, the Vercel AI SDK): model output is untrusted
+input, and these rules catch it reaching a sink before anything checked it. Syntactic, no type
+information.
+
 **Docs:** [noctcore.github.io/eslint-plugins/packages/llm](https://noctcore.github.io/eslint-plugins/packages/llm/)
 
-Rules for code that calls LLM SDKs (OpenAI, Anthropic, the Vercel AI SDK). Model output is
-untrusted input, and these rules catch it reaching a sink before anything checked it. Syntactic,
-no type information. Flat-config only, ESLint 9+.
+Not a good fit for code that calls models through its own wrapper everywhere, because the rules
+recognise the SDKs' own response shapes.
 
 ## Requirements
 
 - ESLint 9 or newer, flat config (`eslint.config.js`) only.
 - `configs.recommended` registers the plugin and sets rule severities, nothing else. It sets no
   `files` and no parser, so it applies to whatever files the rest of your config lints. To lint
-  TypeScript, add a `files` pattern and `@typescript-eslint/parser`:
+  TypeScript, add a `files` pattern and `@typescript-eslint/parser`, as in the quick start.
+
+## Install
+
+```sh
+bun add -D @noctcore/eslint-plugin-llm @typescript-eslint/parser   # or npm i -D / pnpm add -D
+```
+
+## Quick start
 
 ```js
 // eslint.config.js
@@ -27,23 +38,6 @@ export default [
 ];
 ```
 
-## Install
-
-```sh
-bun add -D @noctcore/eslint-plugin-llm   # or npm i -D / pnpm add -D
-```
-
-## Use
-
-```js
-// eslint.config.js
-import llm from '@noctcore/eslint-plugin-llm';
-
-export default [
-  llm.configs.recommended,
-];
-```
-
 ## Rules
 
 <!-- begin generated rules -->
@@ -55,3 +49,8 @@ export default [
 | --- | --- | :-: | :-: | :-: | :-: | :-: |
 | [`no-llm-output-to-sink`](https://noctcore.github.io/eslint-plugins/rules/llm/no-llm-output-to-sink/) | Text an LLM SDK call returned must not reach `eval`, a shell, raw SQL, HTML injection, a `fetch` origin or an `fs` path in the same function without being validated or sanitized first. | ✅ |  |  |  |  |
 <!-- end generated rules -->
+
+## Severity policy
+
+Every rule is `error` or `off`, never `warn`: a warning is a rule nobody obeys. See the
+[severity policy](https://noctcore.github.io/eslint-plugins/getting-started/#severity-policy).

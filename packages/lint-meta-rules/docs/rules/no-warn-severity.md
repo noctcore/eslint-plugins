@@ -18,7 +18,16 @@ Reads each configured flat-config file (skipping any that do not exist), strips 
 reports any line containing a `'warn'` / `"warn"` severity literal. The violation carries the
 1-indexed line number.
 
-## Factory
+## What it does not flag
+
+- A `'warn'` inside a `//` line comment.
+- The numeric severity `1`: only the quoted `'warn'` / `"warn"` literal is matched.
+- A `warn` a spread preset injects, since no file the project owns spells it. Use
+  [`eslint-config-no-warn`](./eslint-config-no-warn.md) for the resolved config.
+- Config files not listed in `configFiles` (the defaults are the root flat configs), and listed ones that
+  do not exist.
+
+## Options
 
 ```ts
 createNoWarnSeverityRule(options?: NoWarnSeverityOptions): IMetaRule

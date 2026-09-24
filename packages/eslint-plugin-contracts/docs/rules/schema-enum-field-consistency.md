@@ -54,6 +54,16 @@ export const ticketOutput = z.object({
 });
 ```
 
+## What it does not flag
+
+- `z.union([z.string(), z.null()])` and any `z.string()` chain with `.pipe()` or `.transform()`:
+  neither is a plain string.
+- A single `z.literal('X')`: a constant, not an enum.
+- An imported identifier, unless its name matches `enumIdentifierPattern` (see Options).
+- An enum in another file: the scope is one module.
+- Keys in `ignoreFields`, computed keys, and schemas built from a namespace not listed in
+  `zodIdentifiers`.
+
 ## Options
 
 | Option | Type | Default | Meaning |

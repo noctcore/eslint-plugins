@@ -29,9 +29,6 @@ The receiver counts as the unscoped client when its chain contains `.<unscopedPr
 (`this.prisma.unscoped.invoice`, `tx.unscoped.invoice`), or when its root is a local bound to the
 unscoped client (`const db = this.prisma.unscoped`, `const { unscoped } = this.prismaService`).
 
-`findUnique`, `findUniqueOrThrow`, `update`, `delete` and `upsert` are exempt: they take a unique
-selector, not a scope filter.
-
 **Hand-scoped models** (`handScopedModels`), on **every** receiver:
 
 - any read, update or delete (including the unique-selector ones: `notification.findUnique({ where:
@@ -54,6 +51,18 @@ await this.prisma.client.notification.findFirst({ where: { id, userId } });
 A hand-scope clause lifted into a `const` is reported: the rule reads syntax, not bindings, on
 purpose. The scope of a hand-scoped read is the one thing that must stay visible at the call site.
 
+## What it does not flag
+
+- A query on a `tenantModels` model through the scoped client: the extension scopes it.
+- `findUnique`, `findUniqueOrThrow`, `update`, `delete` and `upsert` on a `tenantModels` model are
+  exempt: they take a unique selector, not a scope filter. (Hand-scoped models get no such exemption.)
+- Any query in a file matched by `allowIn`.
+
+Name and shape matching with no type information. A `where` built by a function
+(`findMany({ where: buildWhere() })`) is reported for a tenant model, because the rule cannot see the
+tenant column in it; spell the tenant field inline. A client laundered through a function return
+(`getDb().invoice`) is not followed. Only row-level security is a complete backstop.
+
 ## Options
 
 | Option | Type | Default | Meaning |
@@ -72,9 +81,15 @@ Keep `tenantModels` in step with the extension's model map mechanically. `reconc
 (exported from this package) checks the extension's map against the schema; a consumer test that
 also compares the map to this option closes the loop.
 
-## Limits
+```js
+'noctcore-prisma/tenant-scoped-tables-require-where': ['error', {
+  tenantModels: ['invoice', 'project'],
+  handScopedModels: { notification: ['userId'], auditLog: ['tenantId'] },
+  allowIn: ['**/jobs/retention-sweep.ts'],
+}],
+```
 
-Name and shape matching with no type information. A `where` built by a function
-(`findMany({ where: buildWhere() })`) is reported for a tenant model, because the rule cannot see the
-tenant column in it; spell the tenant field inline. A client laundered through a function return
-(`getDb().invoice`) is not followed. Only row-level security is a complete backstop.
+## When not to use it
+
+If tenant isolation is enforced by row-level security, or the app has no unscoped client and no
+hand-scoped models, the rule has nothing to guard.

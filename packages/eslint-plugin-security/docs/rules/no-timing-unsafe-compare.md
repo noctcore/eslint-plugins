@@ -70,7 +70,7 @@ if (expected.length !== given.length || !timingSafeEqual(expected, given)) {
 }
 ```
 
-## What it leaves alone
+## What it does not flag
 
 - **`createHash(...)` digests.** An unkeyed hash is not a secret. ETags, cache keys, content
   addresses and integrity checks compare them constantly, and learning a stored SHA-256 byte by
@@ -93,7 +93,7 @@ export function isFresh(body: string, ifNoneMatch: string): boolean {
 }
 ```
 
-## What it does not check
+### Not checked: an unguarded `timingSafeEqual`
 
 `timingSafeEqual(a, b)` without a length guard throws a `RangeError` when the lengths differ. The
 rule does not report that. Equal lengths often hold by construction, when both sides are digests
@@ -103,16 +103,14 @@ code.
 
 ## Options
 
-```ts prose reason="the options type, not a lint example"
-type Options = {
-  /**
-   * Expressions (source text) that hold a secret the rule cannot derive on its own:
-   * `process.env.API_KEY`, `config.webhookSecret`. An entry ending in `()` matches
-   * any call to that callee, whatever its arguments: `getApiKey()`.
-   * Default: [].
-   */
-  secretSources?: string[];
-};
+| Option | Type | Default | Meaning |
+| --- | --- | --- | --- |
+| `secretSources` | `string[]` | `[]` | Expressions (source text) that hold a secret the rule cannot derive on its own: `process.env.API_KEY`, `config.webhookSecret`. An entry ending in `()` matches any call to that callee, whatever its arguments: `getApiKey()`. |
+
+```js
+'noctcore-security/no-timing-unsafe-compare': ['error', {
+  secretSources: ['process.env.ADMIN_API_KEY', 'config.webhookSecret', 'getApiKey()'],
+}]
 ```
 
 ```ts bad options={"secretSources":["process.env.ADMIN_API_KEY"]}

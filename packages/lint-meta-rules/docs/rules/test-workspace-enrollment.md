@@ -17,10 +17,17 @@ cannot silently escape CI.
 
 Reads the root manifest's `scriptName` command. For each candidate directory (from `packageGlobs`
 plus `extraDirs`, minus `excludeDirs`) that contains at least one file matching `testGlobSuffix`, if
-the directory string does not appear in the script command, it is flagged. A missing or invalid
-manifest is a no-op.
+the directory string does not appear in the script command, it is flagged.
 
-## Factory
+## What it does not flag
+
+- A candidate package with no file matching `testGlobSuffix`.
+- Directories in `excludeDirs` (tested by a different runner or script).
+- Anything when the root manifest is missing or is not valid JSON: the rule is a no-op.
+- A directory whose path appears anywhere in the script text: the check is a substring match, not a
+  parse of the command.
+
+## Options
 
 ```ts
 createTestWorkspaceEnrollmentRule(options?: TestWorkspaceEnrollmentOptions): IMetaRule

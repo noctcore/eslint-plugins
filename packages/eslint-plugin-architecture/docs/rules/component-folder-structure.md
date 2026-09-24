@@ -35,8 +35,13 @@ components/board/TaskCard/
   index.ts              ┘
 ```
 
-Files that are not entry files (`task-card.tsx`, `Group/Widget.tsx`), files outside the
-`componentRoot`, and files matched by `ignorePaths` are never checked.
+## What it does not flag
+
+- Files that are not entry files: `task-card.tsx` (not PascalCase) or `Group/Widget.tsx` (basename
+  differs from its folder).
+- Entry files outside the `componentRoot` segment, such as `routes/Widget/Widget.tsx`.
+- Files matched by `ignorePaths`; the default `**/ui/**` keeps the lighter shadcn-style layout.
+- A component folder whose siblings cover whatever `requiredSiblings` is set to, even a trimmed set.
 
 ## Options
 

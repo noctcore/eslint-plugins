@@ -37,6 +37,12 @@ interface LoginFormProps {
 }
 ```
 
+## What it does not flag
+
+- Members of interfaces and type aliases not named `*Props`.
+- A live `password` prop: it is not on the default denylist.
+- Names that match no `denyPropNames` pattern (`label`, `variant`).
+
 ## Options
 
 | Option | Type | Default | Meaning |

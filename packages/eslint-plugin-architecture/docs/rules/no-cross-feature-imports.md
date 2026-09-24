@@ -24,9 +24,7 @@ resolves to a **different** feature under the same root, on every source-carryin
 - `export … from '…'` and `export * from '…'` re-export laundering
 
 Both the alias form (`<alias>/<feature>/…`) and relative paths that climb into another feature
-(`../../projects/…`) are detected. Type-only imports are allowed by default (flip `allowTypeImports`
-to forbid them). Imports of the current feature, of a shared feature, or of non-feature modules are
-always fine.
+(`../../projects/…`) are detected.
 
 ```tsx good filename=src/components/board/Board/Board.tsx options={"featureRoot":"components","alias":"@/components","sharedFeatures":["ui"]}
 import { Button } from '@/components/ui/Button';         // shared feature
@@ -37,6 +35,14 @@ import { TaskCard } from '../TaskCard/TaskCard';         // same feature
 ```tsx bad filename=src/components/board/Board/Board.tsx options={"featureRoot":"components","alias":"@/components","sharedFeatures":["ui"]}
 import { ProjectCard } from '@/components/projects/ProjectCard'; // cross-feature
 ```
+
+## What it does not flag
+
+- Imports of the current feature, of a shared feature, or of non-feature modules (`@/lib/utils`, bare
+  packages like `zod`).
+- Type-only imports and re-exports, by default (flip `allowTypeImports` to forbid them).
+- Files outside any feature, such as `routes/projects.tsx`.
+- A dynamic `import(name)` whose source is not a string literal, since it cannot be resolved statically.
 
 ## Options
 

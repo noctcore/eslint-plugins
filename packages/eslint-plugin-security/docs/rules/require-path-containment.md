@@ -32,15 +32,7 @@ Deliberately **narrow** to stay high-precision without type information. It fire
 - the enclosing function contains no containment guard.
 
 A guard is any `path.normalize` / `path.relative` / `.startsWith(...)` call in the same function, or
-the escape-hatch comment convention (below). Because a sanitized value is normally bound to a local
-first (`const safe = clean(req.x)` → `path.join(base, safe)`), that shape is **not** a direct `req.*`
-argument and is never flagged.
-
-```ts good
-// sanitized into a local: not a direct req.* argument
-const safe = sanitize(req.params.file);
-return path.join(base, safe);
-```
+the escape-hatch comment convention (below).
 
 ### Escape hatch
 
@@ -54,7 +46,16 @@ function serve(req) {
 }
 ```
 
-## Not covered (by design)
+## What it does not flag
+
+Because a sanitized value is normally bound to a local first (`const safe = clean(req.x)` →
+`path.join(base, safe)`), that shape is **not** a direct `req.*` argument and is never flagged.
+
+```ts good
+// sanitized into a local: not a direct req.* argument
+const safe = sanitize(req.params.file);
+return path.join(base, safe);
+```
 
 Broader user-input sources — arbitrary handler parameters, decoded JWT/payload fields — are **out of
 scope**. Proving them user-shaped needs type or dataflow analysis this syntactic rule cannot do
@@ -63,11 +64,12 @@ soundly, and guessing would flood the codebase with false positives. Only the un
 
 ## Options
 
-```ts prose reason="the options type, not a lint example"
-type Options = {
-  /** Root object names treated as request-shaped input. Default: ['req', 'request']. */
-  requestObjects?: string[];
-};
+| Option | Type | Default | Meaning |
+| --- | --- | --- | --- |
+| `requestObjects` | `string[]` | `['req', 'request']` | Root object names treated as request-shaped input. |
+
+```js
+'noctcore-security/require-path-containment': ['error', { requestObjects: ['req', 'request', 'ctx'] }]
 ```
 
 ## When not to use it

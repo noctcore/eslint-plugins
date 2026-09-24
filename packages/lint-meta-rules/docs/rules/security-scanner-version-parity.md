@@ -24,8 +24,6 @@ With the defaults (gitleaks):
 - a hook `GITLEAKS_IMAGE="...gitleaks:vX.Y.Z"` tag that differs from CI,
 - a hook that never runs `gitleaks version`.
 
-Dormant when neither the workflows nor the hook mention the scanner.
-
 ```yaml
 # .github/workflows/security.yml
 env:
@@ -43,7 +41,15 @@ GITLEAKS_VERSION="8.29.0"
 gitleaks git .
 ```
 
-## Factory
+## What it does not flag
+
+- A repo where neither the workflows nor the hook mention the scanner: the rule is dormant.
+- Whether the hook's version comparison is correct: it checks only that the hook's text runs
+  `<scanner> version`.
+- Versions not written as `x.y.z`, and any hook other than `hookFile`. A repo with several hooks needs
+  one rule instance per hook.
+
+## Options
 
 ```ts
 createSecurityScannerVersionParityRule(options?: SecurityScannerVersionParityOptions): IMetaRule
@@ -58,8 +64,7 @@ createSecurityScannerVersionParityRule(options?: SecurityScannerVersionParityOpt
 | `workflowGlobs` | `string[]` | `['.github/workflows/*.yml', '.github/workflows/*.yaml']` | Workflow files to scan. |
 | `ciCritical` | `boolean` | `true` | Whether a violation fails CI. |
 
-## Limits
+## When not to use it
 
-It checks that the hook's text runs `<scanner> version`, not that the comparison is correct, and it
-reads only `x.y.z` versions. One hook file is checked; a repo with several hooks needs one rule
-instance per hook.
+If you run the secret scanner in only one place (CI or a local hook, not both), there is no second pin
+to keep in step.

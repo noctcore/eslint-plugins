@@ -18,6 +18,12 @@ JavaScript built from the substituted text.
 The fix is to pass the value through `env:` and read it as a variable. An environment variable is
 data; the shell never parses its contents as script.
 
+### Prior art
+
+It mirrors zizmor's [`template-injection`](https://docs.zizmor.sh/audits/#template-injection) audit
+and GitHub's
+[security hardening guide](https://docs.github.com/en/actions/security-for-github-actions/security-guides/security-hardening-for-github-actions#understanding-the-risk-of-script-injections).
+
 ## What it flags
 
 A `${{ }}` expression inside a `run:` value (inline, a `|` / `>` block, or a multi-line plain
@@ -57,7 +63,7 @@ carries the 1-indexed line.
     script: console.log(process.env.BODY)
 ```
 
-## What it leaves alone
+## What it does not flag
 
 - The same expression under `env:`, `with:` (other than a github-script `script:`), `if:`,
   `name:` or `defaults.run`. Those are not parsed as script.
@@ -69,7 +75,13 @@ carries the 1-indexed line.
   strips before GitHub sees the value.
 - Paths with a `node_modules`, `.git`, `dist`, `.turbo` or `coverage` segment.
 
-## Factory
+Line-based text, not a YAML parse. An expression split across lines, the bracket form
+(`github.event['issue']['title']`), `toJSON(github.event)` and a value laundered through `env.*`
+set from event text are not seen. An expression that only tests a tainted field
+(`${{ contains(github.event.issue.title, 'x') }}`) evaluates to a boolean but is still reported;
+move the test to `if:` or into the script.
+
+## Options
 
 ```ts
 createGithubActionsNoTemplateInjectionRule(options?: GithubActionsNoTemplateInjectionOptions): IMetaRule
@@ -84,14 +96,7 @@ createGithubActionsNoTemplateInjectionRule(options?: GithubActionsNoTemplateInje
 | `checkStepOutputs` | `boolean` | `false` | Treat `steps.*.outputs.*` as attacker-controlled. Turn it on when steps echo event text into outputs. |
 | `ciCritical` | `boolean` | `true` | Whether a violation fails CI. |
 
-## Limits
+## When not to use it
 
-Line-based text, not a YAML parse. An expression split across lines, the bracket form
-(`github.event['issue']['title']`), `toJSON(github.event)` and a value laundered through `env.*`
-set from event text are not seen. An expression that only tests a tainted field
-(`${{ contains(github.event.issue.title, 'x') }}`) evaluates to a boolean but is still reported;
-move the test to `if:` or into the script.
-
-Prior art: zizmor's [`template-injection`](https://docs.zizmor.sh/audits/#template-injection) audit
-and GitHub's
-[security hardening guide](https://docs.github.com/en/actions/security-for-github-actions/security-guides/security-hardening-for-github-actions#understanding-the-risk-of-script-injections).
+If your repo has no GitHub Actions workflows or composite actions there is nothing to check. If
+zizmor's `template-injection` audit already gates CI, one of the two is enough.

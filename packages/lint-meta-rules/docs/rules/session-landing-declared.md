@@ -19,8 +19,8 @@ With two shells behind one sign-in (staff and a customer portal, say), the clien
 account to the right one if the response that ends the sign-in says which kind it is. The first door
 (the password sign-in) usually does. A second door that finishes a sign-in from a different service (a
 second-factor challenge) can return the same union and still have its landing unwired, and nothing
-fails: the account signs in, lands in the wrong shell, and bounces off its guard. In the project this
-rule was extracted from, every portal account with 2FA enabled did exactly that.
+fails: the account signs in, lands in the wrong shell, and bounces off its guard. In one production
+codebase, every portal account with 2FA enabled did exactly that.
 
 Two sibling rules fence the same seam, [`session-mint-callers`](./session-mint-callers.md) (who may
 mint) and [`session-kind-stamped`](./session-kind-stamped.md) (the session carries the kind). Neither
@@ -38,7 +38,7 @@ can see this, because both are about the session and this is about the RESPONSE.
 3. **The declarations.** A door whose `landing` is not a key of `landings`, or whose `because` is empty.
 4. **Staleness.** A door whose file no longer exists, or that `sourceGlobs` do not reach.
 
-## What it leaves alone
+## What it does not flag
 
 - A file that only defines a door method (the leading dot is required).
 - A door whose landing maps to `null`: a re-issue that replaces the cookie of a caller already inside a
@@ -47,7 +47,7 @@ can see this, because both are about the session and this is about the RESPONSE.
 
 With no `doorCalls` the rule is inert.
 
-## Factory
+## Options
 
 ```ts
 createSessionLandingDeclaredRule(options?: SessionLandingDeclaredOptions): IMetaRule
@@ -65,7 +65,11 @@ createSessionLandingDeclaredRule(options?: SessionLandingDeclaredOptions): IMeta
 | `hint` | `string` | none | Appended to every message. |
 | `ciCritical` | `boolean` | `true` | Whether a violation fails CI. |
 
-## Worked example: Settly
+### Worked example: an app with two sign-in shells
+
+Staff and portal accounts share one sign-in and land in different shells. Sessions open through
+`establishSession` or the second-factor gate `beginOrEstablish`. The two doors either kind can reach
+must return `Promise<ILoginResult>`; the rest are staff-only or re-issues:
 
 ```ts
 const AUTH = 'apps/api/src/modules/auth';

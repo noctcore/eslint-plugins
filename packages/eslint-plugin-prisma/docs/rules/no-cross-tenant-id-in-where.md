@@ -34,6 +34,19 @@ await this.prisma.invoice.findMany({ where: { tenantId: getTenantId() } });
 The model accessor is the member before the method (`x.invoice.findMany`), or the bare receiver
 (`invoice.findMany`).
 
+## What it does not flag
+
+- A tenant id from server context: a call (`getTenantId()`) or a chain rooted outside
+  `untrustedRoots` (`ctx.tenantId`, `session.tenantId`, `store.scope.tenantId`).
+- A literal tenant id (`{ tenantId: 42 }`), or a `where` / `data` that does not set `tenantField`.
+- A method that is not a Prisma delegate method (`invoice.validate(...)`), or a model outside
+  `tenantModels` when you pass that list.
+
+Provenance is read from the value's own spelling, one member chain deep. A client id copied into a
+local first (`const t = input.tenantId; ... { tenantId: t }`), passed through a function, or read
+from a root not in `untrustedRoots` is not traced. Only the top level of `where` and `data` is
+inspected, not `AND` / `OR` arms or nested relation filters.
+
 ## Options
 
 | Option | Type | Default | Meaning |
@@ -42,9 +55,14 @@ The model accessor is the member before the method (`x.invoice.findMany`), or th
 | `tenantField` | `string` | `'tenantId'` | The field carrying the tenant id. |
 | `untrustedRoots` | `string[]` | `['input', 'dto', 'body', 'query', 'params', 'req']` | Root identifiers that hold client input. Replaces the default list. |
 
-## Limits
+```js
+'noctcore-prisma/no-cross-tenant-id-in-where': ['error', {
+  tenantModels: ['invoice', 'project'],
+  tenantField: 'tenantId',
+}],
+```
 
-Provenance is read from the value's own spelling, one member chain deep. A client id copied into a
-local first (`const t = input.tenantId; ... { tenantId: t }`), passed through a function, or read
-from a root not in `untrustedRoots` is not traced. Only the top level of `where` and `data` is
-inspected, not `AND` / `OR` arms or nested relation filters.
+## When not to use it
+
+If tenant isolation is enforced below the application (row-level security, or one database per
+tenant), a client-supplied id cannot cross the boundary and this rule only adds noise.

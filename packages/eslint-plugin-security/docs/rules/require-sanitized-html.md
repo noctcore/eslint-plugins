@@ -31,6 +31,29 @@ export function Comment({ comment }: { comment: { body: string } }) {
 and loses the check everywhere. `eslint-plugin-no-unsanitized` covers the DOM sinks but not React.
 This rule allows the sink and asks for proof that what reaches it is safe.
 
+### Why it is opt-in
+
+A real codebase has HTML it trusts that no syntactic rule can prove safe: a syntax highlighter's
+output, Markdown compiled at build time from files in the repo, a JSON-LD `<script>`. Staying quiet
+on those takes a per-project list, and a rule that needs one does not belong in a shared preset.
+Enable it and name your producers:
+
+```tsx bad options={"trustedSources":["highlighter.codeToHtml()"]}
+// `marked` renders Markdown; it does not sanitize it
+export function Post({ md }: { md: string }) {
+  return <article dangerouslySetInnerHTML={{ __html: marked(md) }} />;
+}
+```
+
+```tsx good options={"trustedSources":["highlighter.codeToHtml()"]}
+export function Code({ code }: { code: string }) {
+  return <pre dangerouslySetInnerHTML={{ __html: highlighter.codeToHtml(code, { lang: 'ts' }) }} />;
+}
+```
+
+A JSON-LD block is only safe when `<` is escaped, since a `</script>` inside the data ends the
+element. Put the escaping in a function and trust that function, not `JSON.stringify` itself.
+
 ## What it flags
 
 The sinks:
@@ -63,7 +86,11 @@ import DOMPurify from 'dompurify';
 list.innerHTML += `<li>${DOMPurify.sanitize(item.title)}</li>`;
 ```
 
-Static markup needs nothing:
+There is no autofix: which sanitizer, and with which configuration, is the author's call.
+
+## What it does not flag
+
+Static markup needs nothing: a literal, or a same-file `const` built only from literals.
 
 ```tsx good
 const ICON = '<svg viewBox="0 0 16 16"><path d="M0 0h16v16H0z"/></svg>';
@@ -76,49 +103,18 @@ export function Icon() {
 `textContent`, `innerText` and `insertAdjacentText` are not HTML sinks and are never reported;
 they are usually the better fix when the value was never meant to be markup.
 
-There is no autofix: which sanitizer, and with which configuration, is the author's call.
-
-## Why it is opt-in
-
-A real codebase has HTML it trusts that no syntactic rule can prove safe: a syntax highlighter's
-output, Markdown compiled at build time from files in the repo, a JSON-LD `<script>`. Staying quiet
-on those takes a per-project list, and a rule that needs one does not belong in a shared preset.
-Enable it and name your producers:
-
-```tsx bad options={"trustedSources":["highlighter.codeToHtml()"]}
-// `marked` renders Markdown; it does not sanitize it
-export function Post({ md }: { md: string }) {
-  return <article dangerouslySetInnerHTML={{ __html: marked(md) }} />;
-}
-```
-
-```tsx good options={"trustedSources":["highlighter.codeToHtml()"]}
-export function Code({ code }: { code: string }) {
-  return <pre dangerouslySetInnerHTML={{ __html: highlighter.codeToHtml(code, { lang: 'ts' }) }} />;
-}
-```
-
-A JSON-LD block is only safe when `<` is escaped, since a `</script>` inside the data ends the
-element. Put the escaping in a function and trust that function, not `JSON.stringify` itself.
-
 ## Options
 
-```ts prose reason="the options type, not a lint example"
-type Options = {
-  /**
-   * Functions (callee source text) whose result is sanitized HTML, with or without a
-   * trailing `()`. Replaces the default when set, so `[]` accepts no sanitizer at all.
-   * Default: ['DOMPurify.sanitize', 'sanitize', 'sanitizeHtml', 'xss', 'filterXSS'].
-   */
-  sanitizers?: string[];
-  /**
-   * Expressions (source text) that hold trusted HTML the rule cannot see into:
-   * `post.contentHtml`. An entry ending in `()` matches any call to that callee,
-   * whatever its arguments: `highlighter.codeToHtml()`, `renderMarkdown()`.
-   * Default: [].
-   */
-  trustedSources?: string[];
-};
+| Option | Type | Default | Meaning |
+| --- | --- | --- | --- |
+| `sanitizers` | `string[]` | `['DOMPurify.sanitize', 'sanitize', 'sanitizeHtml', 'xss', 'filterXSS']` | Functions (callee source text) whose result is sanitized HTML, with or without a trailing `()`. Replaces the default when set, so `[]` accepts no sanitizer at all. |
+| `trustedSources` | `string[]` | `[]` | Expressions (source text) that hold trusted HTML the rule cannot see into: `post.contentHtml`. An entry ending in `()` matches any call to that callee, whatever its arguments: `highlighter.codeToHtml()`, `renderMarkdown()`. |
+
+```js
+'noctcore-security/require-sanitized-html': ['error', {
+  sanitizers: ['DOMPurify.sanitize', 'purify.sanitize'],
+  trustedSources: ['highlighter.codeToHtml()', 'post.contentHtml'],
+}]
 ```
 
 The default sanitizers are DOMPurify (`DOMPurify.sanitize`, and `sanitize`, the named export of

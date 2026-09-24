@@ -7,7 +7,15 @@
 ✅ In `recommended` at `error` · ⚙️ Does nothing until configured: needs options (see Options) · 💭 Type information: not needed
 <!-- end generated rule header -->
 
-## What this rule does and does not prove
+## Why
+
+Audit rows outlive the request that wrote them, and usually outlive the user. A policy of "raw email
+stays in audit metadata while the user exists and is scrubbed when the user is purged" keeps the trail
+useful for who-did-what while the data does not outlive the person. The purge job can only scrub keys
+it knows about. This rule keeps that list complete as new audit writes are added: a new
+`metadata: { newEmail }` fails lint until someone decides whether `newEmail` goes in the registry.
+
+### What this rule does and does not prove
 
 Read this section before enabling the rule.
 
@@ -25,14 +33,6 @@ The rule is one half of a contract. The other half is a purge job that anonymize
 in the audit rows of a user it deletes, and a test of that job. Without that half, this rule is a
 list with no reader.
 
-## Why
-
-Audit rows outlive the request that wrote them, and usually outlive the user. A policy of "raw email
-stays in audit metadata while the user exists and is scrubbed when the user is purged" keeps the trail
-useful for who-did-what while the data does not outlive the person. The purge job can only scrub keys
-it knows about. This rule keeps that list complete as new audit writes are added: a new
-`metadata: { newEmail }` fails lint until someone decides whether `newEmail` goes in the registry.
-
 ## What it flags
 
 An audit write is a call whose callee text is an `auditCallees` entry, or ends with `.<entry>`
@@ -49,71 +49,6 @@ any depth, including nested objects, array elements and literal spreads, it repo
   literal, a spread of a non-literal (`...subject.fence`, `...(extra ?? {})`), or a computed key. A
   bag the rule cannot see is a bag it cannot vouch for. Turn this off with `reportOpaque: false` if
   you accept that gap.
-
-A spread the rule *can* read is not opaque: `...{ a }`, both branches of `...(ok ? { a } : {})`, the
-right side of `...(ok && { a })`, and `null` / `undefined`.
-
-### Name matching
-
-`piiFields` entries match like `no-sensitive-fields-in-logs`: a single-word entry (`email`) matches a
-camelCase or snake_case segment (`newEmail`, `previous_email`) but not a word that merely contains it;
-a multi-word entry (`firstName`) matches the compacted name (`contactFirstName`).
-
-Some PII-shaped names describe the data rather than hold it. A name whose first segment is in
-`nonPiiPrefixes` (`isEmailPublic`) or whose last segment is in `nonPiiSuffixes` (`emailSent`,
-`phoneVerified`, `addressId`) is not reported. A key whose value is a boolean, number or `null`
-literal is not reported either. A name equal to a `piiFields` entry (`nationalId`) is always PII,
-whatever its suffix.
-
-Bare `name` is not in the default list, because it would flag `fileName` and `templateName`. Add it
-if your audit payloads carry person names under that key.
-
-## Options
-
-| Option | Type | Default | Meaning |
-| --- | --- | --- | --- |
-| `auditCallees` | `string[]` | `[]` | Callee texts that are audit writes. Empty means the rule is inert. |
-| `payloadKeys` | `string[]` | `['metadata', 'before', 'after']` | Properties of the audit call's params that hold free-form payload. |
-| `piiFields` | `string[]` | `email`, `phone`, `mobile`, `address`, `firstName`, `lastName`, `fullName`, `displayName`, `surname`, `birthDate`, `dateOfBirth` | Name patterns that are PII-shaped. |
-| `registeredFields` | `string[]` | `[]` | Exact keys the purger scrubs. Declared PII. |
-| `nonPiiFields` | `string[]` | `[]` | Exact keys declared not to be personal data. |
-| `nonPiiPrefixes` | `string[]` | `is`, `has`, `was`, `should`, `can` | A first name segment that marks a flag. |
-| `nonPiiSuffixes` | `string[]` | `sent`, `verified`, `confirmed`, `enabled`, `disabled`, `changed`, `required`, `count`, `type`, `kind`, `status`, `id`, `ids` | A last name segment that marks a flag, count or reference. |
-| `reportOpaque` | `boolean` | `true` | Report payloads the rule cannot read. |
-
-## Wiring: one registry, not two
-
-The purge job needs the registry at run time and this rule needs it at lint time. Keep **one** copy,
-in code both can import, and pass it into the ESLint config. Never retype it into the config: two
-hand-kept copies of one list drift.
-
-```ts prose reason="the registry module the config imports, not a lint example"
-// packages/shared/src/audit/pii-registry.ts
-/** Audit payload keys holding personal data. The user purge anonymizes these. */
-export const AUDIT_PII_FIELDS = ['newEmail', 'email'] as const;
-```
-
-```js
-// eslint.config.mjs
-import { AUDIT_PII_FIELDS } from '@acme/shared/audit/pii-registry';
-
-export default [
-  {
-    rules: {
-      'noctcore-observability/audit-pii-declared': [
-        'error',
-        {
-          auditCallees: ['auditService.log', 'auditService.logOrThrow'],
-          registeredFields: [...AUDIT_PII_FIELDS],
-          nonPiiFields: ['emailTemplate'],
-        },
-      ],
-    },
-  },
-];
-```
-
-## Examples
 
 ```ts bad reports=4 options={"auditCallees":["auditService.log","auditService.logOrThrow"]}
 // raw email in the payload, and no declaration that the purger must scrub it
@@ -143,6 +78,71 @@ await this.auditService.log({ action, userId, metadata: { newEmail: normalizedEm
 ```ts good options={"auditCallees":["auditService.log","auditService.logOrThrow"]}
 // nothing PII-shaped; `emailSent` is a flag about the data
 await this.auditService.log({ action, metadata: { role, outcome, emailSent } });
+```
+
+### Name matching
+
+`piiFields` entries match like `no-sensitive-fields-in-logs`: a single-word entry (`email`) matches a
+camelCase or snake_case segment (`newEmail`, `previous_email`) but not a word that merely contains it;
+a multi-word entry (`firstName`) matches the compacted name (`contactFirstName`).
+
+## What it does not flag
+
+A spread the rule *can* read is not opaque: `...{ a }`, both branches of `...(ok ? { a } : {})`, the
+right side of `...(ok && { a })`, and `null` / `undefined`.
+
+Some PII-shaped names describe the data rather than hold it. A name whose first segment is in
+`nonPiiPrefixes` (`isEmailPublic`) or whose last segment is in `nonPiiSuffixes` (`emailSent`,
+`phoneVerified`, `addressId`) is not reported. A key whose value is a boolean, number or `null`
+literal is not reported either. A name equal to a `piiFields` entry (`nationalId`) is always PII,
+whatever its suffix.
+
+Bare `name` is not in the default list, because it would flag `fileName` and `templateName`. Add it
+if your audit payloads carry person names under that key.
+
+## Options
+
+| Option | Type | Default | Meaning |
+| --- | --- | --- | --- |
+| `auditCallees` | `string[]` | `[]` | Callee texts that are audit writes. Empty means the rule is inert. |
+| `payloadKeys` | `string[]` | `['metadata', 'before', 'after']` | Properties of the audit call's params that hold free-form payload. |
+| `piiFields` | `string[]` | `email`, `phone`, `mobile`, `address`, `firstName`, `lastName`, `fullName`, `displayName`, `surname`, `birthDate`, `dateOfBirth` | Name patterns that are PII-shaped. |
+| `registeredFields` | `string[]` | `[]` | Exact keys the purger scrubs. Declared PII. |
+| `nonPiiFields` | `string[]` | `[]` | Exact keys declared not to be personal data. |
+| `nonPiiPrefixes` | `string[]` | `is`, `has`, `was`, `should`, `can` | A first name segment that marks a flag. |
+| `nonPiiSuffixes` | `string[]` | `sent`, `verified`, `confirmed`, `enabled`, `disabled`, `changed`, `required`, `count`, `type`, `kind`, `status`, `id`, `ids` | A last name segment that marks a flag, count or reference. |
+| `reportOpaque` | `boolean` | `true` | Report payloads the rule cannot read. |
+
+### Wiring: one registry, not two
+
+The purge job needs the registry at run time and this rule needs it at lint time. Keep **one** copy,
+in code both can import, and pass it into the ESLint config. Never retype it into the config: two
+hand-kept copies of one list drift.
+
+```ts prose reason="the registry module the config imports, not a lint example"
+// packages/shared/src/audit/pii-registry.ts
+/** Audit payload keys holding personal data. The user purge anonymizes these. */
+export const AUDIT_PII_FIELDS = ['newEmail', 'email'] as const;
+```
+
+```js
+// eslint.config.mjs
+import { AUDIT_PII_FIELDS } from '@acme/shared/audit/pii-registry';
+
+export default [
+  {
+    rules: {
+      'noctcore-observability/audit-pii-declared': [
+        'error',
+        {
+          auditCallees: ['auditService.log', 'auditService.logOrThrow'],
+          registeredFields: [...AUDIT_PII_FIELDS],
+          nonPiiFields: ['emailTemplate'],
+        },
+      ],
+    },
+  },
+];
 ```
 
 ## When not to use it

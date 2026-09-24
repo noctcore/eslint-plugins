@@ -27,7 +27,7 @@ import b from '../../../../shared/log'; // climbs 4 levels
 import a from '../../../shared';        // exactly at the limit
 ```
 
-## Autofix
+### Autofix
 
 When `alias` maps a directory-anchor segment to an alias prefix, a too-deep import that resolves
 *through* that anchor is autofixed:
@@ -50,12 +50,25 @@ import x from '@/shared/log';
 With no matching alias anchor on the resolved path, the violation is **reported without a fix** —
 there is nothing safe to rewrite it to.
 
+## What it does not flag
+
+- A relative import at or under the limit, including `./local`.
+- Alias and bare-package specifiers (`@/shared`, `react`): they never climb.
+- Deeper climbs once `max` is raised to cover them.
+
 ## Options
 
 | Option | Type | Default | Meaning |
 | --- | --- | --- | --- |
 | `max` | `integer` | `3` | Maximum number of `..` parent hops a relative import may take. |
 | `alias` | `Record<string, string>` | `{}` | Map of directory-anchor segment → alias prefix used to autofix, e.g. `{ src: '@' }`. |
+
+```js
+'noctcore-architecture/max-import-depth': ['error', {
+  max: 3,
+  alias: { src: '@' },
+}]
+```
 
 ## When not to use it
 

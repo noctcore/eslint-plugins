@@ -41,6 +41,8 @@ logger.error('request failed', { code: err.code });
 Matched purely structurally (no type information). Both `logger.info(...)` and a logger held on a
 namespace or `this` (`this.logger.info(...)`, `app.log.warn(...)`) are recognised.
 
+## What it does not flag
+
 Only **direct** arguments are inspected. A template literal nested inside a context object is building
 a value, not the message, and is never flagged:
 
@@ -57,11 +59,12 @@ A template with **no** expressions carries no dynamic value and is ignored
 
 ## Options
 
-```ts prose reason="the options type, not a lint example"
-type Options = {
-  /** Logger object names to scan. Default: ['console', 'logger', 'log']. */
-  loggers?: string[];
-};
+| Option | Type | Default | Meaning |
+| --- | --- | --- | --- |
+| `loggers` | `string[]` | `['console', 'logger', 'log']` | Logger object names to scan. |
+
+```js
+'noctcore-observability/structured-log-arguments': ['error', { loggers: ['logger', 'log', 'pino'] }]
 ```
 
 ## When not to use it

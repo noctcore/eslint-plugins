@@ -19,10 +19,18 @@ and the **foreign set** (`vitestDirs`). For every `*.test.ts(x)` file:
 
 - **bun-side** — must import the bun runner (`bunRunnerImport`) and must NOT import the foreign runner
   (`foreignRunnerImport`);
-- **foreign-side** — must NOT import the bun runner. (A direct foreign-runner import is not required —
-  it may arrive transitively via shared test-utils.)
+- **foreign-side** — must NOT import the bun runner.
 
-## Factory
+## What it does not flag
+
+- A foreign-side test with no direct foreign-runner import: the runner may arrive transitively via
+  shared test-utils.
+- A bun-side test that imports `bunRunnerImport` and not the foreign runner.
+- Anything in a `vitestDirs` directory for a missing bun import (those dirs leave the bun set).
+- Files that are not `*.test.ts` / `*.test.tsx` (setup files, helpers), and `require()` or dynamic
+  imports: only a `from '<runner>'` import is read.
+
+## Options
 
 ```ts
 createTestRunnerSegregationRule(options?: TestRunnerSegregationOptions): IMetaRule

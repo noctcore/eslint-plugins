@@ -17,42 +17,7 @@ This is a custom AST rule rather than a `no-restricted-imports` pattern on purpo
 another restricted-imports block risks silently overriding an existing one. A distinct-named rule
 composes cleanly.
 
-## What it flags
-
-For each configured scope, an import/export/`import()` whose specifier is `@scope/<pkg>/<subpath>`
-(anything past the package barrel) is reported. The barrel itself (`@scope/<pkg>`) and specifiers in
-scopes you did **not** configure are left alone. The rule inspects the specifier string only — it
-never reads the file path, so it is layout-independent.
-
-```ts bad reports=2 options={"scopes":["@acme"]}
-// deep subpath into a package's internals
-import { thing } from '@acme/contracts/internal/thing';
-export { x } from '@acme/engine/src/sdk-adapter';
-```
-
-```ts good options={"scopes":["@acme"]}
-// the barrel is the public surface
-import { TaskSchema } from '@acme/contracts';
-```
-
-If a deep entry is genuinely intended, add an explicit `exports` subpath to the target package and
-import that public subpath — or list the subpath under `allowedSubpaths`.
-
-## Options
-
-| Option | Type | Default | Meaning |
-| --- | --- | --- | --- |
-| `scopes` | `string[]` | **(required)** | npm scopes whose packages must be reached through their barrel, e.g. `['@acme']`. |
-| `allowedSubpaths` | `string[]` | `[]` | Escape hatch: subpaths (the part after `@scope/pkg/`) permitted despite reaching past the barrel, e.g. `['package.json', 'jsx-runtime']`. Matched exactly. |
-
-`scopes` is **required** and has **no default**, so the rule fires nothing until you tell it which
-scopes to guard. With an empty `scopes` array the rule matches nothing.
-
-```js
-'noctcore-monorepo/no-deep-package-imports': ['error', { scopes: ['@acme'] }]
-```
-
-## In `recommended`
+### In `recommended`
 
 The `recommended` preset ships this rule as **`'off'`**. Because there is no universal default scope,
 enabling it in a shared preset would either do nothing (empty scopes) or fire against the wrong
@@ -69,6 +34,47 @@ export default [
     },
   },
 ];
+```
+
+## What it flags
+
+For each configured scope, an import/export/`import()` whose specifier is `@scope/<pkg>/<subpath>`
+(anything past the package barrel) is reported. The rule inspects the specifier string only — it
+never reads the file path, so it is layout-independent.
+
+```ts bad reports=2 options={"scopes":["@acme"]}
+// deep subpath into a package's internals
+import { thing } from '@acme/contracts/internal/thing';
+export { x } from '@acme/engine/src/sdk-adapter';
+```
+
+```ts good options={"scopes":["@acme"]}
+// the barrel is the public surface
+import { TaskSchema } from '@acme/contracts';
+```
+
+If a deep entry is genuinely intended, add an explicit `exports` subpath to the target package and
+import that public subpath — or list the subpath under `allowedSubpaths`.
+
+## What it does not flag
+
+- The barrel itself (`@scope/<pkg>`), including re-exports from it and a bare trailing slash
+  (`@acme/contracts/`).
+- Specifiers in scopes you did **not** configure (`zod/lib`, `@other/pkg/internal/thing`).
+- Subpaths listed in `allowedSubpaths`, and everything when `scopes` is empty.
+
+## Options
+
+| Option | Type | Default | Meaning |
+| --- | --- | --- | --- |
+| `scopes` | `string[]` | **(required)** | npm scopes whose packages must be reached through their barrel, e.g. `['@acme']`. |
+| `allowedSubpaths` | `string[]` | `[]` | Escape hatch: subpaths (the part after `@scope/pkg/`) permitted despite reaching past the barrel, e.g. `['package.json', 'jsx-runtime']`. Matched exactly. |
+
+`scopes` is **required** and has **no default**, so the rule fires nothing until you tell it which
+scopes to guard. With an empty `scopes` array the rule matches nothing.
+
+```js
+'noctcore-monorepo/no-deep-package-imports': ['error', { scopes: ['@acme'] }]
 ```
 
 ## When not to use it

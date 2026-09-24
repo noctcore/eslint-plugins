@@ -1,12 +1,14 @@
 # @noctcore/lint-meta-rules
 
-**Docs:** [noctcore.github.io/eslint-plugins/packages/lint-meta-rules](https://noctcore.github.io/eslint-plugins/packages/lint-meta-rules/)
-
 Whole-repo checks that ESLint's one-file-at-a-time model cannot make: every workspace is named by
 convention, every imported workspace package is a declared dependency, every GitHub Action is pinned
 to a commit SHA, no ESLint rule resolves to `warn`, no source file grows past a line cap, and more.
 This is not an ESLint plugin; the rules run under the
 [`@noctcore/harness`](https://www.npmjs.com/package/@noctcore/harness) `lint-meta` runner.
+
+**Docs:** [noctcore.github.io/eslint-plugins/packages/lint-meta-rules](https://noctcore.github.io/eslint-plugins/packages/lint-meta-rules/)
+
+Not a good fit if you are not running the harness.
 
 ## What it checks
 
@@ -21,7 +23,16 @@ This is not an ESLint plugin; the rules run under the
 
 Every check is listed in [Rules](#rules), with a page per rule.
 
-## How to run it
+## Install
+
+```sh
+bun add -D @noctcore/harness @noctcore/lint-meta-rules   # or npm i -D / pnpm add -D
+```
+
+The `/i18n`, `/resolved-config` and `/prisma` entry points also need the optional peer `eslint`, and
+`/i18n` needs `@typescript-eslint/parser` (see [Rules](#rules)).
+
+## Run with the harness
 
 Each rule implements the [`IMetaRule`](https://www.npmjs.com/package/@noctcore/harness) contract
 from `@noctcore/harness`: a pure function of an `IMetaCtx` returning `IViolation[]`. The harness
@@ -122,7 +133,7 @@ needs the optional peer `eslint`. Neither is in `RULE_FACTORIES`: both need the 
 Fences around the one seam that turns an authenticated principal into a session. Each rule is inert
 until you name that seam: the method that mints, the gate in front of it, the files allowed to call it,
 the landings a sign-in can end in. None is in `RULE_FACTORIES`. They load nothing beyond the harness
-contract. Ported from a production NestJS app, where each one exists because its bug shipped once.
+contract.
 
 ### `@noctcore/lint-meta-rules/trpc`
 

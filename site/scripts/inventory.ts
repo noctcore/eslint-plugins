@@ -63,6 +63,12 @@ export interface RuleEntry {
    * consumer passes options (a scope, a model registry, an action-client list).
    */
   readonly requiresOptions: boolean;
+  /**
+   * Whether the rule takes options: a non-empty `meta.schema` for an ESLint
+   * rule, always for a lint-meta factory. The rule doc has an `## Options`
+   * section exactly when this is true.
+   */
+  readonly hasOptions: boolean;
   /** `meta.deprecated`, in either the boolean or the object form. */
   readonly deprecated: boolean;
   /**
@@ -174,7 +180,15 @@ export interface RuleModuleLike {
     deprecated?: boolean | DeprecatedInfoLike;
     // The older list of replacement ids, still the only one ESLint 9.0 to 9.20 reports.
     replacedBy?: readonly string[];
+    schema?: unknown;
   };
+}
+
+/** A rule takes options unless its schema is missing or an empty array. */
+function takesOptions(rule: RuleModuleLike): boolean {
+  const schema = rule.meta?.schema;
+  if (schema === undefined || schema === false) return false;
+  return !Array.isArray(schema) || schema.length > 0;
 }
 
 /**
@@ -249,6 +263,7 @@ async function loadPlugin(short: string, from: InventorySource): Promise<Package
       hasSuggestions: Boolean(rule.meta?.hasSuggestions),
       typeInfo: detectTypeInfo(dir, name),
       requiresOptions: rule.meta?.docs?.requiresOptions === true,
+      hasOptions: takesOptions(rule),
       ...deprecationOf(rule, namespace),
       docsUrl: rule.meta?.docs?.url ?? null,
     };
@@ -275,6 +290,7 @@ function metaRuleEntry(rule: MetaRuleLike, factory: string, entry: string): Rule
     hasSuggestions: false,
     typeInfo: 'none',
     requiresOptions: false,
+    hasOptions: true,
     deprecated: false,
     replacedBy: [],
     deprecatedSince: null,

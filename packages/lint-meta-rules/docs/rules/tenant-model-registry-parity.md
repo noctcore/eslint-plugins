@@ -49,7 +49,17 @@ cannot be resolved.
 
 Async: it implements the harness's `runAsync` (`@noctcore/harness` 0.3.0 or newer).
 
-## Factory
+## What it does not flag
+
+- A schema model that carries only some of the `tenantFields` columns: a model must carry ALL of them
+  to be tenant-bearing.
+- A tenant-bearing model listed in `unscopedByDesign`, once it names its hand-scope columns in
+  `handScopedModels` or records why it cannot in `handScopePending`.
+- Hand-scope gaps when `requireHandScope` is `false`.
+- The resolved ESLint config when `eslint` is `false`; the hand-scope option when `handScopedRule` is
+  `null` or the registry has no hand-scoped models.
+
+## Options
 
 ```ts
 createTenantModelRegistryParityRule(options?: TenantModelRegistryParityOptions): IMetaRule
@@ -81,9 +91,9 @@ createTenantModelRegistryParityRule(options?: TenantModelRegistryParityOptions):
 
 Keys are Prisma delegate accessors (`invoice` for `model Invoice`).
 
-## Worked example: a multi-tenant monorepo
+### Worked example: a multi-tenant monorepo
 
-This project scopes on `tenantId`, splits its schema per domain, keeps the runtime map in its API's
+A project that scopes on `tenantId`, splits its schema per domain, keeps the runtime map in its API's
 tenant extension and the exemption maps in a registry module its ESLint config also reads:
 
 ```ts

@@ -28,7 +28,7 @@ The rule classifies by **AST shape**, never by filename or suffix:
 | `hook` | a function named like a hook (`^use[A-Z0-9]`) |
 | `schema` | a call on an identifier imported from `zod`, `yup` or `valibot` |
 
-## Examples
+## What it flags
 
 ```ts bad
 // a type and a runtime constant
@@ -56,6 +56,8 @@ export interface User {
 export type UserId = User['id'];
 ```
 
+## What it does not flag
+
 ### Private helpers do not count
 
 Only the **exported** surface defines a module (`ignorePrivateDeclarations`, default `true`). A
@@ -82,6 +84,12 @@ export function useActiveProjects() {
 
 A declaration exported further down by name (`export { DEFAULT_USER }`, `export default UserCard`)
 is surface all the same.
+
+### Not classified at all
+
+- Imports and re-exports (`export * from`, `export { x } from`, `export type { User }`).
+- Declarations nested inside a function body, and the overload signatures of one function.
+- A module that exports nothing: it has no surface to mix.
 
 ## Options
 

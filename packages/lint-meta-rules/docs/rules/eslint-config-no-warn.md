@@ -36,11 +36,17 @@ It **fails closed**:
   breaks for one file shape cannot pass on the shapes that still work;
 - a package whose config ignores every probe is a violation, since nothing was checked.
 
-A probe that is merely ignored is fine while another probe resolves.
-
 Async: it implements the harness's `runAsync` (`@noctcore/harness` 0.3.0 or newer).
 
-## Factory
+## What it does not flag
+
+- A probe that is merely ignored, while another probe resolves.
+- A preset `warn` that a later block overrides to `error` or `off`: only the resolved severity counts.
+- A directory matched by `packages` that holds none of `configFiles` (it inherits a config it does not
+  own).
+- Blocks scoped to a file shape no probe matches (`.vue`, `e2e/**`) until you add a probe for it.
+
+## Options
 
 ```ts
 createEslintConfigNoWarnRule(options?: EslintConfigNoWarnOptions): IMetaRule
@@ -54,7 +60,7 @@ createEslintConfigNoWarnRule(options?: EslintConfigNoWarnOptions): IMetaRule
 | `probes` | `string[]` | `src/__lint_meta_probe__.{ts,tsx,test.ts,test.tsx}` | Files, relative to each package, the config is resolved for. Add one per file shape your config scopes blocks to (`.js`, `.vue`, `e2e/**`). |
 | `ciCritical` | `boolean` | `true` | Whether a violation fails CI. |
 
-## Worked example: a pnpm monorepo
+### Worked example: a pnpm monorepo
 
 A layout where every app and package owns a config built from a shared `@repo/eslint-config`, and the
 root config only lints tooling:
@@ -67,9 +73,14 @@ Deleting the three `react-hooks/*` overrides from the shared React config (so th
 `recommended-latest` preset's `warn` shows through, with no `warn` literal anywhere) reports three
 rules in each of the three packages that spread it.
 
-## Notes
+### Notes
 
 - The rule resolves with the `eslint` that `@noctcore/lint-meta-rules` resolves, which is the
   consumer's own install when it is hoisted.
 - If a config imports a workspace package that must be built first, build it before lint-meta, or
   the rule reports that the config could not be resolved.
+
+## When not to use it
+
+If your repo has no flat ESLint config per package, or you cannot build the workspace packages a
+config imports before lint-meta runs, rely on [`no-warn-severity`](./no-warn-severity.md) alone.

@@ -42,8 +42,15 @@ const rows = await this.prisma.client.invoice.findMany();
 await prisma.unscoped.invoice.createMany({ data: fixtures });
 ```
 
+## What it does not flag
+
 The scoped client is never reported, and neither is a property named `unscoped` on a receiver that
-does not match `receiverPattern` (`this.cache.unscoped()`).
+does not match `receiverPattern` (`this.cache.unscoped()`). Files in `allowedFiles` may use both the
+unscoped client and the escape hatches.
+
+Name and shape matching with no type information. It catches the direct member, the destructure and
+the escape-hatch call, but not a client laundered through a function return (`getDb().invoice`).
+Only RLS is a complete backstop.
 
 ## Options
 
@@ -74,12 +81,6 @@ matches when a task runner lints one package at a time. Globs support `*`, `**`,
 
 Add specific paths, not a filename suffix: a `**/*.system.ts` opt-out lets any file rename itself
 past the guard.
-
-## Limits
-
-Name and shape matching with no type information. It catches the direct member, the destructure and
-the escape-hatch call, but not a client laundered through a function return (`getDb().invoice`).
-Only RLS is a complete backstop.
 
 ## When not to use it
 

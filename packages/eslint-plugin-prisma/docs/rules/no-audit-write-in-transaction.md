@@ -6,17 +6,6 @@
 ✅ In `recommended` at `error` · 💭 Type information: not needed
 <!-- end generated rule header -->
 
-## What this rule does NOT do
-
-**It does not check that mutations are audited.** A service method that writes and never calls the
-audit logger passes this rule. It only polices WHERE an audit write sits, never WHETHER one exists.
-
-It was moved from a consumer where it was named `mutating-service-must-audit`. That name promised
-the missing check, and the consumer's own docs and comments came to rely on it: one service comment
-records that the rule "stayed green" on a mutation with no audit row at all. It is renamed for what
-it does. If you need "every mutation is audited", that is a different rule, and this is not it: see
-[`mutation-entry-must-reach-audit`](./mutation-entry-must-reach-audit.md), and read its limits.
-
 ## Why
 
 An audit write inside a business transaction is rolled back with it. When the operation fails, the
@@ -44,8 +33,18 @@ await this.prisma.$transaction(async (tx) => {
 await this.auditService.log({ action: 'invoice.updated', targetId: id });
 ```
 
+## What it does not flag
+
+**It does not check that mutations are audited.** A service method that writes and never calls the
+audit logger passes this rule. It only polices WHERE an audit write sits, never WHETHER one exists.
+
 A `.log()` on a receiver that does not match (`this.logger.log`) is never reported. The array form
-`$transaction([...])` holds no callback and is not inspected.
+`$transaction([...])` holds no callback and is not inspected. An audit row written with
+`tx.auditLog.create(...)` is not an audit-logger call and is not reported either way.
+
+Name and shape matching with no type information. An audit logger reached through a differently
+named binding, or a transaction opened through a wrapper that does not spell `$transaction`, is not
+seen.
 
 ## Options
 
@@ -54,15 +53,23 @@ A `.log()` on a receiver that does not match (`this.logger.log`) is never report
 | `auditReceiverPattern` | `string` (regex source) | `'audit'` | An audit logger's name must match this (case-insensitive): `auditService`, `this.audit`, `auditLog`. |
 | `auditMethods` | `string[]` (1+) | `['log']` | Methods on the audit logger that write an audit row. |
 
+```js
+'noctcore-prisma/no-audit-write-in-transaction': ['error', {
+  auditReceiverPattern: 'audit',
+  auditMethods: ['log', 'logOrThrow'],
+}],
+```
+
 ## When not to use it
 
 If your audit trail is deliberately transactional (the audit row must exist if and only if the
 business write committed, and a failed attempt is not something you record), this rule's premise
-does not hold for you. Note that an audit row written with `tx.auditLog.create(...)` is not an
-audit-logger call and is not reported either way.
+does not hold for you.
 
-## Limits
+## Related
 
-Name and shape matching with no type information. An audit logger reached through a differently
-named binding, or a transaction opened through a wrapper that does not spell `$transaction`, is not
-seen.
+It was moved from a consumer where it was named `mutating-service-must-audit`. That name promised
+the missing check, and the consumer's own docs and comments came to rely on it: one service comment
+records that the rule "stayed green" on a mutation with no audit row at all. It is renamed for what
+it does. If you need "every mutation is audited", that is a different rule, and this is not it: see
+[`mutation-entry-must-reach-audit`](./mutation-entry-must-reach-audit.md), and read its limits.

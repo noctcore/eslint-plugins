@@ -27,7 +27,7 @@ session, so this rule fences the door by caller.
 A file matched by `sourceGlobs` that calls `.<mintCall>(` (whitespace before the paren allowed) and is
 not in `allowedCallers`.
 
-## What it leaves alone
+## What it does not flag
 
 - The method's definition (`async establishSession(`): the leading dot is required.
 - `.<mintCall>Something(`: only whitespace may sit between the name and the paren.
@@ -37,7 +37,7 @@ not in `allowedCallers`.
 
 With no `mintCall` the rule is inert.
 
-## Factory
+## Options
 
 ```ts
 createSessionMintCallersRule(options?: SessionMintCallersOptions): IMetaRule
@@ -55,7 +55,11 @@ createSessionMintCallersRule(options?: SessionMintCallersOptions): IMetaRule
 | `hint` | `string` | none | Appended to every message, e.g. a pointer to your auth docs. |
 | `ciCritical` | `boolean` | `true` | Whether a violation fails CI. |
 
-## Worked example: Settly
+### Worked example: an app with a gated session mint
+
+`establishSession` mints the session and `beginOrEstablish` is the second-factor gate every sign-in
+must pass through. Only the mint's home, the gate, signup and the two re-issue flows may call the mint
+directly:
 
 ```ts
 const AUTH = 'apps/api/src/modules/auth/services';

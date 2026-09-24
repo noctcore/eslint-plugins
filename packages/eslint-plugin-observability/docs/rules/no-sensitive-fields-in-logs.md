@@ -46,6 +46,8 @@ snake_case segment (`accessToken`, `access_token`) but **not** a longer word tha
 (`tokenize`, `tokenizer`). A multi-word denyName (`apiKey`) matches the compacted name
 (`myApiKey` → contains `apikey`).
 
+## What it does not flag
+
 String **literals** are never inspected — only names — so a message that mentions a sensitive word is
 fine:
 
@@ -54,16 +56,21 @@ fine:
 logger.info('password reset email sent');
 ```
 
+- A longer word that merely contains a denyName (`tokenizer`, `tokenize`): matching is by name
+  segment, as described above.
+- Sensitive names outside a logger call (`save({ password })`). Logger calls are `console`,
+  `logger` or `log` with `info`, `warn`, `error` or `debug`.
+
 ## Options
 
-```ts prose reason="the options type, not a lint example"
-type Options = {
-  /**
-   * Field names to treat as sensitive (case-insensitive, segment-aware).
-   * Default: ['password', 'token', 'secret', 'authorization', 'cookie', 'apiKey', 'ssn'].
-   */
-  denyNames?: string[];
-};
+| Option | Type | Default | Meaning |
+| --- | --- | --- | --- |
+| `denyNames` | `string[]` | `['password', 'token', 'secret', 'authorization', 'cookie', 'apiKey', 'ssn']` | Field names to treat as sensitive (case-insensitive, segment-aware). |
+
+```js
+'noctcore-observability/no-sensitive-fields-in-logs': ['error', {
+  denyNames: ['password', 'token', 'secret', 'authorization', 'cookie', 'apiKey', 'ssn', 'iban'],
+}]
 ```
 
 ## When not to use it

@@ -23,9 +23,6 @@ The rule matches on method names, not on a runner import, so it covers Jest, Vit
 - `soleWeakExpect`: a test (`it` / `test`, including `.concurrent`, `.each` and other modifiers)
   whose only assertion is a weak matcher.
 
-A test counts every `expect(...)` matcher plus any call matching `assertionCallees`, so a weak
-`expect` next to `assert.equal(...)`, `expectValidUser(...)` or supertest's `.expect(200)` is fine.
-
 ```ts bad filename=src/token.test.ts reports=3
 it('should be defined', () => {
   expect(service).toBeDefined();
@@ -58,6 +55,20 @@ it('clears the key', () => {
 });
 ```
 
+## What it does not flag
+
+- A weak matcher next to any other assertion. A test counts every `expect(...)` matcher plus any call
+  matching `assertionCallees`, so a weak `expect` next to `assert.equal(...)`, `expectValidUser(...)`
+  or supertest's `.expect(200)` is fine.
+- `toBeUndefined`, `toBeNull` and `not.toBeNull`, unless you add them to `weakMatchers` (see Options).
+
+### Limitations
+
+Assertions are counted syntactically inside the test callback. An assertion hidden in a helper whose
+name does not match `assertionCallees` is not seen. A sole `toBeTruthy()` on a Testing Library
+`getBy*` query is reported even though the query itself throws when the element is missing; assert
+with a matcher that states the intent instead.
+
 ## Options
 
 | Option | Type | Default | Meaning |
@@ -75,13 +86,6 @@ value, and `expect(container.querySelector('nav')).not.toBeNull()` is a real pre
   assertionCallees: ['^assert', '^expect\\w', '\\.expect$', '^verifySnapshot$'],
 }]
 ```
-
-## Limitations
-
-Assertions are counted syntactically inside the test callback. An assertion hidden in a helper whose
-name does not match `assertionCallees` is not seen. A sole `toBeTruthy()` on a Testing Library
-`getBy*` query is reported even though the query itself throws when the element is missing; assert
-with a matcher that states the intent instead.
 
 ## When not to use it
 

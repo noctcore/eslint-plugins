@@ -29,7 +29,16 @@ FROM deps AS build
 FROM scratch
 ```
 
-## Factory
+## What it does not flag
+
+- `FROM scratch` and `FROM <earlier stage>` (a name given by a previous `AS`).
+- `FROM ${BASE}` whose `ARG BASE=<default>` before the first `FROM` is digest-pinned.
+- Dockerfiles under any `skipDirs` segment (`node_modules`, `.git`, `dist`, `.turbo`, `coverage`) and
+  files the `dockerfileGlobs` do not match.
+- A `FROM` split with a line continuation (`\`): it is not read. Add a `Containerfile` glob if you use
+  Podman naming.
+
+## Options
 
 ```ts
 createDockerfileBaseImageDigestPinRule(options?: DockerfileBaseImageDigestPinOptions): IMetaRule
@@ -41,7 +50,7 @@ createDockerfileBaseImageDigestPinRule(options?: DockerfileBaseImageDigestPinOpt
 | `skipDirs` | `string[]` | `['node_modules', '.git', 'dist', '.turbo', 'coverage']` | A path with any of these segments is skipped. |
 | `ciCritical` | `boolean` | `true` | Whether a violation fails CI. |
 
-## Limits
+## When not to use it
 
-A `FROM` split with a line continuation (`\`) is not read. Add a `Containerfile` glob if you use
-Podman naming.
+If your images are built only for local development and you accept whatever a tag serves at build
+time, skip it.

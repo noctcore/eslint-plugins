@@ -18,14 +18,7 @@ The rule matches on method names, so it covers Jest, Vitest and Bun alike.
 ## What it flags
 
 `expect(...)`, or `obj.expect(...)` on an identifier (`t.expect`, `chai.expect`), whose path up to
-the enclosing test or suite callback crosses the conditional part of a branch. The test of an `if`
-and the left side of a logical expression run unconditionally and are not flagged.
-
-The search stops at the enclosing `it` / `test` / `describe` / `suite` callback, so a suite-level
-loop or `if` that generates tests does not flag the expects inside those tests.
-
-A test that calls `expect.assertions(n)` or `expect.hasAssertions()` is exempt: a skipped branch
-already fails it.
+the enclosing test or suite callback crosses the conditional part of a branch.
 
 ```ts bad filename=src/parse.test.ts reports=2
 it('rejects bad input', async () => {
@@ -61,6 +54,14 @@ describe('parse', () => {
   }
 });
 ```
+
+## What it does not flag
+
+- The test of an `if` and the left side of a logical expression: they run unconditionally.
+- Expects inside tests that a suite-level loop or `if` generates: the search stops at the enclosing
+  `it` / `test` / `describe` / `suite` callback.
+- A test that calls `expect.assertions(n)` or `expect.hasAssertions()`: a skipped branch already fails it.
+- Loop bodies, unless `checkLoops` is on.
 
 ## Options
 

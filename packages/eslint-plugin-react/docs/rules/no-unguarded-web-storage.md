@@ -17,6 +17,11 @@ The code compiles, the tests pass under jsdom, and the exception lands in a rend
 handler for a slice of real users. Wrapped in `try`, a storage failure degrades to a default. Bare,
 it is a blank screen.
 
+### Severity
+
+Ships as `error` in the `recommended` preset. Every report is a call that throws for a real class of
+users, and the guard that silences it is the fix, not a workaround.
+
 ## What it flags
 
 A call whose callee is a method of `localStorage` or `sessionStorage`, written bare or through
@@ -108,7 +113,15 @@ export function Boot() {
 }
 ```
 
-### What it does not flag
+### Suggestion
+
+There is no autofix, because wrapping a call changes control flow: what the code does when storage
+fails is a decision, not a mechanical edit. The rule offers a suggestion that wraps the reported
+statement in `try { ... } catch { ... }` when the statement is a plain expression or a `return`
+sitting directly in a block. A `const x = localStorage.getItem(...)` gets no suggestion, since a `try`
+around the declaration would scope `x` to it.
+
+## What it does not flag
 
 - A call inside a `try` block at any nesting depth, including a `try` in an outer function around
   an inline callback. That outer `try` does not run when the callback fires later, but the rule errs
@@ -136,14 +149,6 @@ export const APPEARANCE_BOOT_SCRIPT = [
 A `catch` or `finally` body is not covered by its own `try`, and a sibling `try` does not enclose
 the statement after it.
 
-## Suggestion
-
-There is no autofix, because wrapping a call changes control flow: what the code does when storage
-fails is a decision, not a mechanical edit. The rule offers a suggestion that wraps the reported
-statement in `try { ... } catch { ... }` when the statement is a plain expression or a `return`
-sitting directly in a block. A `const x = localStorage.getItem(...)` gets no suggestion, since a `try`
-around the declaration would scope `x` to it.
-
 ## Options
 
 | Option | Type | Default | Meaning |
@@ -158,11 +163,6 @@ replaces the list, so include the test globs again if you add to it.
   allowIn: ['**/*.test.*', '**/*.spec.*', '**/__tests__/**', '**/electron/**'],
 }]
 ```
-
-## Severity
-
-Ships as `error` in the `recommended` preset. Every report is a call that throws for a real class of
-users, and the guard that silences it is the fix, not a workaround.
 
 ## When not to use it
 

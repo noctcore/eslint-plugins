@@ -43,6 +43,13 @@ const cache = new Map();                // non-export code
 An import that carries bindings is allowed because it feeds a re-export; a specifier-less
 `import './x'` is a side effect and is flagged.
 
+## What it does not flag
+
+- Any file that is not an `index` barrel: a `helper.ts` full of logic is none of this rule's business.
+- Pure re-exports in every form shown in the `good` example, including an import whose bindings feed a
+  specifier-only `export { a }` and `export default Card` of a binding by name.
+- Barrels whose path matches an `allow` glob.
+
 ## Options
 
 | Option | Type | Default | Meaning |

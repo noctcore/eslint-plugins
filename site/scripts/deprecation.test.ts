@@ -22,6 +22,10 @@ import {
 import { applyRuleHeader, deprecationSentence, renderRulesBlock } from './readmes';
 import { renderRuleDoc } from './sync';
 
+// Loaded once at module scope, like the other site tests: importing every plugin
+// from source is slow under a parallel test run.
+const inventory = await loadInventory('src');
+
 const NAMESPACE = 'noctcore-fixture';
 
 /** An object-form deprecation, the shape CONTRIBUTING.md recommends. */
@@ -51,6 +55,7 @@ function fixtureRule(name: string, overrides: Partial<RuleEntry> = {}): RuleEntr
     hasSuggestions: false,
     typeInfo: 'none',
     requiresOptions: false,
+    hasOptions: false,
     deprecated: false,
     replacedBy: [],
     deprecatedSince: null,
@@ -76,7 +81,28 @@ function fixturePackage(rules: RuleEntry[]): PackageEntry {
 const oldRule = fixtureRule('old-rule', deprecationOf(objectForm, NAMESPACE));
 const newRule = fixtureRule('new-rule', { recommended: 'error' });
 const pkg = fixturePackage([newRule, oldRule]);
-const DOC = '# `noctcore-fixture/old-rule`\n\n> Summary.\n\n## Why\n\nBecause.\n';
+const DOC = [
+  '# `noctcore-fixture/old-rule`',
+  '',
+  '> Summary.',
+  '',
+  '## Why',
+  '',
+  'Because.',
+  '',
+  '## What it flags',
+  '',
+  'Something.',
+  '',
+  '## What it does not flag',
+  '',
+  'Anything else.',
+  '',
+  '## When not to use it',
+  '',
+  'Never.',
+  '',
+].join('\n');
 const oldDoc = applyRuleHeader(DOC, pkg, oldRule, 'old-rule.md');
 
 describe('reading meta.deprecated', () => {
@@ -173,8 +199,7 @@ describe('rendering a deprecated rule', () => {
 });
 
 describe('deprecation guards', () => {
-  test('the real inventory meets the contract', async () => {
-    const inventory = await loadInventory('src');
+  test('the real inventory meets the contract', () => {
     const docs = new Map(listRuleDocs().map((doc) => [`${doc.short}/${doc.rule}`, readFileSync(doc.path, 'utf8')]));
     expect(deprecationProblems(inventory, docs)).toEqual([]);
   });
