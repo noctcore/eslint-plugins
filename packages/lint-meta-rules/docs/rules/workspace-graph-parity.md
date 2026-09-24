@@ -37,8 +37,6 @@ createWorkspaceGraphParityRule(options?: WorkspaceGraphParityOptions): IMetaRule
 | `srcDir` | `string` | `'src'` | Source directory (per package) scanned for imports. |
 | `ciCritical` | `boolean` | `true` | Whether a violation fails CI. |
 
-De-projected from nightcore, which hardcoded the `@nightcore` scope and a `src` source directory.
-
 ## When not to use it
 
 If your project does not use the `workspace:*` protocol, or does not use TypeScript project

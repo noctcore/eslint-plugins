@@ -6,9 +6,6 @@
 ✅ In `recommended` at `error` · 💭 Type information: not needed
 <!-- end generated rule header -->
 
-Ported from [tsforge](https://github.com/boringstack-xyz/tsforge) (MIT). See
-[THIRD_PARTY_NOTICES.md](../../THIRD_PARTY_NOTICES.md).
-
 ## Why
 
 Some assertions pass for almost any implementation. `expect(typeof handler).toBe('function')` proves
@@ -89,3 +86,8 @@ with a matcher that states the intent instead.
 ## When not to use it
 
 In a smoke suite whose only purpose is to prove modules load.
+
+## Credits
+
+Based on a rule from [tsforge](https://github.com/boringstack-xyz/tsforge) (MIT). See
+[THIRD_PARTY_NOTICES.md](../../THIRD_PARTY_NOTICES.md).

@@ -44,9 +44,6 @@ createPackageShapeRule(options?: PackageShapeOptions): IMetaRule
 | `distFields` | `string[]` | `['main','module','types']` | `package.json` string fields that must point at built output. |
 | `ciCritical` | `boolean` | `true` | Whether a violation fails CI. |
 
-De-projected from nightcore, which hardcoded the `@nightcore` scope, the `packages/*` vs `apps/*`
-split, the `src/index.ts` barrel and the `dist/` marker.
-
 ## When not to use it
 
 If your packages are not scope-named after their folders, or libraries publish raw source (no build

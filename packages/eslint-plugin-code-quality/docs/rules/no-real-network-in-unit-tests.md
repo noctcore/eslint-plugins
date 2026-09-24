@@ -6,9 +6,6 @@
 ✅ In `recommended` at `error` · 💭 Type information: not needed
 <!-- end generated rule header -->
 
-Ported from [tsforge](https://github.com/boringstack-xyz/tsforge) (MIT). See
-[THIRD_PARTY_NOTICES.md](../../THIRD_PARTY_NOTICES.md).
-
 ## Why
 
 A unit test that calls `fetch` or `axios` for real depends on a server, a port, DNS and the network
@@ -82,3 +79,8 @@ calls `fetch`; add that file's suffix to `integrationMarkers` or disable the rul
 
 If your unit tests deliberately run against a local server started in-process, name those files with
 an integration marker instead of turning the rule off.
+
+## Credits
+
+Based on a rule from [tsforge](https://github.com/boringstack-xyz/tsforge) (MIT). See
+[THIRD_PARTY_NOTICES.md](../../THIRD_PARTY_NOTICES.md).

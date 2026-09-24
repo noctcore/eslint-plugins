@@ -1,32 +1,45 @@
 # @noctcore/lint-meta-rules
 
-Portable, parameterized **lint-meta** rules — whole-repo / cross-file invariants that ESLint's
-per-file AST model cannot reach (every `package.json` name matches a convention, every imported
-workspace package is a declared dependency, file-size ratchets, agent-doc presence, and more).
+**Docs:** [noctcore.github.io/eslint-plugins/packages/lint-meta-rules](https://noctcore.github.io/eslint-plugins/packages/lint-meta-rules/)
 
-Each rule implements the portable [`IMetaRule`](https://www.npmjs.com/package/@noctcore/harness)
-contract published by `@noctcore/harness`: a pure function of an `IMetaCtx` returning `IViolation[]`.
+Whole-repo checks that ESLint's one-file-at-a-time model cannot make: every workspace is named by
+convention, every imported workspace package is a declared dependency, every GitHub Action is pinned
+to a commit SHA, no ESLint rule resolves to `warn`, no source file grows past a line cap, and more.
+This is not an ESLint plugin; the rules run under the
+[`@noctcore/harness`](https://www.npmjs.com/package/@noctcore/harness) `lint-meta` runner.
 
-## How this package is consumed
+## What it checks
 
-This is a **versioned source catalog**, not a runtime dependency you `require()` from a consumer's
-registry. The `@noctcore/harness` `lint-meta` subcommand runs a *bounded eval* that executes only one
-local `.nightcore/lint-meta/registry.js` and never resolves arbitrary imports — a deliberate security
-boundary, since that file runs inside a foreign CI. So the intended integration point is nightcore's
-harness **export pipeline**: it reads a rule's source here, inlines/transforms it, and emits flat
-JavaScript directly into a consumer's `.nightcore/lint-meta/`. No consumer registry imports this
-package at runtime.
+- **config**: workspace package names and build fields, the workspace dependency graph against
+  imports and tsconfig references, ESLint severities.
+- **source-text**: layering between packages, a file-size ratchet, agent-doc presence, colocated
+  tests, one home per helper, no cloned component folders, UI primitive shape.
+- **testing**: every tested package is enrolled in the aggregate test script, and test runners are
+  not mixed within a package.
+- **ci**: GitHub Actions pinned by SHA and to named runners, no template injection, least-privilege
+  permissions, container images pinned by digest, and the secret scanner pinned to one version.
 
-Publishing to npm is for versioning and discoverability; it is not a "`npm install` this and
-`require()` it" pitch.
+Every check is listed in [Rules](#rules), with a page per rule.
 
-## Why factories
+## How to run it
 
-`IMetaRule.run(ctx)` takes no config, so every rule that hardcoded a nightcore-specific anchor (a
-`@nightcore` scope, an `apps/web/src` root, a rank table) is exported as a **factory** —
-`createXRule(options): IMetaRule` — with those anchors lifted to typed options carrying sensible
-defaults. A programmatic caller (or the export pipeline) constructs each rule with the consumer's own
-options:
+Each rule implements the [`IMetaRule`](https://www.npmjs.com/package/@noctcore/harness) contract
+from `@noctcore/harness`: a pure function of an `IMetaCtx` returning `IViolation[]`. The harness
+`lint-meta` subcommand runs them.
+
+You do not `require()` this package from your repo. The harness executes only one local file,
+`.nightcore/lint-meta/registry.js`, and never resolves arbitrary imports, because that file runs
+inside CI. Its **export pipeline** reads a rule's source from this package, inlines it and writes
+plain JavaScript into your repo's `.nightcore/lint-meta/`. The package is on npm for versioning and
+discoverability.
+
+### Every rule is a factory
+
+`IMetaRule.run(ctx)` takes no config, so each rule is exported as a **factory**,
+`createXRule(options): IMetaRule`. Anything project-specific (a workspace scope, a source root, a
+rank table) is a typed option with a default. Some defaults, such as the `@nightcore` scope and the
+400-line cap, are only starting points: set your own. A programmatic caller (or the export pipeline)
+constructs each rule with your options:
 
 ```ts
 import { createPackageShapeRule, createFileSizeRatchetRule } from '@noctcore/lint-meta-rules';
@@ -42,11 +55,8 @@ over the whole catalog.
 
 ## Rules
 
-13 nightcore lint-meta rules are ported as 12 factories — nightcore's `web-file-size-ratchet` and
-`engine-file-size-ratchet` were byte-identical logic and collapse into a single
-`createFileSizeRatchetRule` (instantiated once per capped area). Five CI-hygiene rules (category
-`ci`) are ported from a production NestJS + Vite monorepo, one factory each, and two GitHub Actions
-security rules (also `ci`) are written for this catalog, for 19 factories in all.
+The main entry exports 19 factories. `createFileSizeRatchetRule` covers any number of capped areas:
+create one instance per area, each with its own `id`.
 
 <!-- begin generated rules -->
 <!-- Generated by `bun run docs:readmes` from each rule's meta. Do not edit by hand. -->

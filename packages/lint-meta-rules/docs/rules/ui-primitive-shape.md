@@ -36,9 +36,6 @@ createUiPrimitiveShapeRule(options?: UiPrimitiveShapeOptions): IMetaRule
 | `extension` | `string` | `'.tsx'` | Extension of primitive and proof files. |
 | `ciCritical` | `boolean` | `true` | Whether a violation fails CI. |
 
-De-projected from nightcore, which hardcoded `apps/web/src/components/ui`, the `test`/`stories` roles,
-and the `.tsx` extension.
-
 ## When not to use it
 
 If you do not maintain a flat-vs-folder primitive convention or do not colocate stories/tests, skip

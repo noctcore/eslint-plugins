@@ -45,8 +45,8 @@ import that public subpath — or list the subpath under `allowedSubpaths`.
 | `scopes` | `string[]` | **(required)** | npm scopes whose packages must be reached through their barrel, e.g. `['@acme']`. |
 | `allowedSubpaths` | `string[]` | `[]` | Escape hatch: subpaths (the part after `@scope/pkg/`) permitted despite reaching past the barrel, e.g. `['package.json', 'jsx-runtime']`. Matched exactly. |
 
-`scopes` is **required** and has **no default** — the rule ships de-projected, so it fires nothing
-until you tell it which scopes to guard. With an empty `scopes` array the rule matches nothing.
+`scopes` is **required** and has **no default**, so the rule fires nothing until you tell it which
+scopes to guard. With an empty `scopes` array the rule matches nothing.
 
 ```js
 'noctcore-monorepo/no-deep-package-imports': ['error', { scopes: ['@acme'] }]

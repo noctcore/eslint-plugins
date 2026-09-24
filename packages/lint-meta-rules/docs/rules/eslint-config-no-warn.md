@@ -56,8 +56,8 @@ createEslintConfigNoWarnRule(options?: EslintConfigNoWarnOptions): IMetaRule
 
 ## Worked example: a pnpm monorepo
 
-Settly-style layout, where every app and package owns a config built from a shared
-`@repo/eslint-config`, and the root config only lints tooling:
+A layout where every app and package owns a config built from a shared `@repo/eslint-config`, and the
+root config only lints tooling:
 
 ```ts
 createEslintConfigNoWarnRule({ packages: ['apps/*', 'packages/*'] });

@@ -6,9 +6,6 @@
 ✅ In `recommended` at `error` · 💭 Type information: not needed
 <!-- end generated rule header -->
 
-Ported from [tsforge](https://github.com/boringstack-xyz/tsforge) (MIT). See
-[THIRD_PARTY_NOTICES.md](../../THIRD_PARTY_NOTICES.md).
-
 ## Why
 
 `jest.useFakeTimers()` / `vi.useFakeTimers()` replace the global clock. Without a matching
@@ -108,3 +105,8 @@ process.
 
 If your runner restores timers globally (for example a setup file with a global `afterEach` that
 calls `useRealTimers()`).
+
+## Credits
+
+Based on a rule from [tsforge](https://github.com/boringstack-xyz/tsforge) (MIT). See
+[THIRD_PARTY_NOTICES.md](../../THIRD_PARTY_NOTICES.md).

@@ -6,9 +6,6 @@
 ✅ In `recommended` at `error` · 💭 Type information: not needed
 <!-- end generated rule header -->
 
-Ported from [tsforge](https://github.com/boringstack-xyz/tsforge) (MIT). See
-[THIRD_PARTY_NOTICES.md](../../THIRD_PARTY_NOTICES.md).
-
 ## Why
 
 An assertion inside an `if`, a `switch` case, a ternary, a `&&` / `||` / `??` or a `catch` only runs
@@ -71,8 +68,8 @@ describe('parse', () => {
 | --- | --- | --- | --- |
 | `checkLoops` | `boolean` | `false` | Also treat a `for` / `for...in` / `for...of` / `while` / `do...while` body as conditional, since a loop over an empty collection asserts nothing. |
 
-`checkLoops` is off by default, unlike the tsforge original. On a real 650-file suite, loops made up
-164 of 173 reports, almost all table-driven loops over literal arrays and constant maps.
+`checkLoops` is off by default because loops are mostly noise: on a real 650-file suite, loops made
+up 164 of 173 reports, almost all table-driven loops over literal arrays and constant maps.
 
 ```js
 'noctcore-code-quality/no-conditional-expect': ['error', { checkLoops: true }]
@@ -82,3 +79,8 @@ describe('parse', () => {
 
 If your suites rely on type-narrowing guards such as `if (result.success) expect(result.data)...`
 after an unconditional `expect(result.success).toBe(true)`, and you do not want to rewrite them.
+
+## Credits
+
+Based on a rule from [tsforge](https://github.com/boringstack-xyz/tsforge) (MIT). See
+[THIRD_PARTY_NOTICES.md](../../THIRD_PARTY_NOTICES.md).

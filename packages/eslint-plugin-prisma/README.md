@@ -1,9 +1,32 @@
 # @noctcore/eslint-plugin-prisma
 
+**Docs:** [noctcore.github.io/eslint-plugins/packages/prisma](https://noctcore.github.io/eslint-plugins/packages/prisma/)
+
 Prisma tenancy, data-integrity and transaction guardrails: fence the escape hatches around a
 tenant-scoping client extension, keep tenant and soft-delete filters on the queries that need them,
 fence single-writer models to their owners, and keep multi-write code transactional. Flat-config
 only, ESLint 9+.
+
+## Requirements
+
+- ESLint 9 or newer, flat config (`eslint.config.js`) only.
+- `configs.recommended` registers the plugin and sets rule severities, nothing else. It sets no
+  `files` and no parser, so it applies to whatever files the rest of your config lints. To lint
+  TypeScript, add a `files` pattern and `@typescript-eslint/parser`:
+
+```js
+// eslint.config.js
+import tsParser from '@typescript-eslint/parser';
+import prisma from '@noctcore/eslint-plugin-prisma';
+
+export default [
+  {
+    ...prisma.configs.recommended,
+    files: ['**/*.{ts,tsx}'],
+    languageOptions: { parser: tsParser },
+  },
+];
+```
 
 ## Install
 

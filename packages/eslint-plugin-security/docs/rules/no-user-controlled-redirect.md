@@ -7,11 +7,6 @@
 ✅ In `recommended` at `error` · 💭 Type information: not needed
 <!-- end generated rule header -->
 
-Ported from [tsforge](https://github.com/boringstack-xyz/tsforge) (MIT). The port adds configurable
-redirect callees with a URL argument index, so Express `res.redirect(302, url)` is recognised, and
-checks for a fixed origin (shared with
-[`no-user-controlled-fetch-url`](./no-user-controlled-fetch-url.md)) instead of demanding a literal.
-
 ## Why
 
 ```ts bad reports=2
@@ -136,3 +131,7 @@ that callee, whatever its arguments. For Next.js middleware, `trustedOrigins: ['
 
 If your redirects are all to external identity providers built from discovery documents, the rule
 will flag each one; list the builder in `trustedOrigins` rather than turning the rule off.
+
+## Credits
+
+Based on a rule from [tsforge](https://github.com/boringstack-xyz/tsforge) (MIT).

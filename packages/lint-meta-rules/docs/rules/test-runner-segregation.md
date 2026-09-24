@@ -37,8 +37,6 @@ createTestRunnerSegregationRule(options?: TestRunnerSegregationOptions): IMetaRu
 | `foreignRunnerImport` | `string` | `'vitest'` | The foreign runner import specifier. |
 | `ciCritical` | `boolean` | `true` | Whether a violation fails CI. |
 
-De-projected from nightcore, which hardcoded `bun:test` vs `vitest` and the two dir sets.
-
 ## When not to use it
 
 If your repo uses a single test runner everywhere, this rule has nothing to segregate.

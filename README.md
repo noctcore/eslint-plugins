@@ -15,6 +15,9 @@ What each plugin is for, when it is a bad fit, and every rule with its options a
 
 ## Packages
 
+Eleven ESLint plugins, plus `@noctcore/lint-meta-rules` for whole-repo checks and
+`@noctcore/eslint-utils`, the shared building block they are made with.
+
 | Package | What it enforces |
 | --- | --- |
 | [`@noctcore/eslint-plugin-react`](./packages/eslint-plugin-react) | React architecture + correctness (prop-drilling, state colocation, memoized context, effect safety) |
@@ -27,6 +30,7 @@ What each plugin is for, when it is a bad fit, and every rule with its options a
 | [`@noctcore/eslint-plugin-security`](./packages/eslint-plugin-security) | Injection / path-traversal precision |
 | [`@noctcore/eslint-plugin-rsc`](./packages/eslint-plugin-rsc) | React Server Components / App Router correctness (navigation errors that must not be swallowed) |
 | [`@noctcore/eslint-plugin-llm`](./packages/eslint-plugin-llm) | LLM output treated as untrusted input before it reaches a sink |
+| [`@noctcore/eslint-plugin-prisma`](./packages/eslint-plugin-prisma) | Prisma tenancy, soft-delete and transaction guardrails (tenant-scope escape hatches, single-writer models, multi-write transactions) |
 | [`@noctcore/eslint-utils`](./packages/eslint-utils) | Shared rule-creator + AST helpers (internal building block) |
 | [`@noctcore/lint-meta-rules`](./packages/lint-meta-rules) | Whole-repo structure-lock rules for [`@noctcore/harness`](https://www.npmjs.com/package/@noctcore/harness) |
 

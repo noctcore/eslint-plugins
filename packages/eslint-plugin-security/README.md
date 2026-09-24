@@ -1,7 +1,30 @@
 # @noctcore/eslint-plugin-security
 
+**Docs:** [noctcore.github.io/eslint-plugins/packages/security](https://noctcore.github.io/eslint-plugins/packages/security/)
+
 Injection, path-traversal, SSRF, open-redirect, XSS and timing-attack precision rules. High-precision syntactic sinks only; precision is the
 point. Flat-config only, ESLint 9+.
+
+## Requirements
+
+- ESLint 9 or newer, flat config (`eslint.config.js`) only.
+- `configs.recommended` registers the plugin and sets rule severities, nothing else. It sets no
+  `files` and no parser, so it applies to whatever files the rest of your config lints. To lint
+  TypeScript, add a `files` pattern and `@typescript-eslint/parser`:
+
+```js
+// eslint.config.js
+import tsParser from '@typescript-eslint/parser';
+import security from '@noctcore/eslint-plugin-security';
+
+export default [
+  {
+    ...security.configs.recommended,
+    files: ['**/*.{ts,tsx}'],
+    languageOptions: { parser: tsParser },
+  },
+];
+```
 
 ## Install
 

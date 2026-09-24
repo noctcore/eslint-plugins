@@ -1,8 +1,30 @@
 # @noctcore/eslint-plugin-code-quality
 
+**Docs:** [noctcore.github.io/eslint-plugins/packages/code-quality](https://noctcore.github.io/eslint-plugins/packages/code-quality/)
+
 Portable code-quality, comment-hygiene, and test-discipline rules. Flat-config only, ESLint 9+.
-Every rule is de-projected — it keys off code and generic file-path globs, never a specific
-repo layout.
+Every rule keys off code and generic file-path globs, never a specific repo layout.
+
+## Requirements
+
+- ESLint 9 or newer, flat config (`eslint.config.js`) only.
+- `configs.recommended` registers the plugin and sets rule severities, nothing else. It sets no
+  `files` and no parser, so it applies to whatever files the rest of your config lints. To lint
+  TypeScript, add a `files` pattern and `@typescript-eslint/parser`:
+
+```js
+// eslint.config.js
+import tsParser from '@typescript-eslint/parser';
+import codeQuality from '@noctcore/eslint-plugin-code-quality';
+
+export default [
+  {
+    ...codeQuality.configs.recommended,
+    files: ['**/*.{ts,tsx}'],
+    languageOptions: { parser: tsParser },
+  },
+];
+```
 
 ## Install
 
