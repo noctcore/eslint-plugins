@@ -252,6 +252,18 @@ h1#_top,
   border-color: transparent;
 }
 
+.pill-deprecated {
+  color: var(--sl-color-orange-high);
+  background: var(--sl-color-orange-low);
+  border-color: transparent;
+}
+
+.deprecated-note {
+  display: block;
+  margin-top: 0.25rem;
+  font-size: var(--sl-text-xs);
+}
+
 /* The all-rules index shows the full id (`noctcore-react/...`), which is
    wider than a bare name: the first column gets more of the row. */
 .sl-markdown-content .rule-table-all td:first-child {
