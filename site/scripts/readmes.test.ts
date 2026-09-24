@@ -16,6 +16,7 @@ import {
   applyRuleHeader,
   applyRulesBlock,
   generate,
+  renderRulesBlock,
   stripRuleHeader,
 } from './readmes';
 import { renderRuleDoc } from './sync';
@@ -53,7 +54,20 @@ describe('generated README tables and rule-doc headers', () => {
           return readme.slice(readme.indexOf(RULES_BEGIN)).split('\n').find((line) => line.startsWith('| Rule'));
         }),
     );
-    expect([...headers]).toEqual(['| Rule | Description | ✅ | ⚙️ | 🔧 | 💡 | 💭 |']);
+    expect([...headers]).toEqual(['| Rule | Description | Preset | ⚙️ | 🔧 | 💡 | 💭 |']);
+  });
+
+  test('every plugin rule row is marked either on in recommended or opt-in', () => {
+    for (const pkg of inventory.filter((entry) => entry.kind === 'eslint-plugin')) {
+      const rows = renderRulesBlock(pkg)
+        .split('\n')
+        .filter((line) => line.startsWith('| ') && !line.startsWith('| Rule') && !line.startsWith('| ---'));
+      expect(rows).toHaveLength(pkg.rules.length);
+      for (const [i, rule] of pkg.rules.entries()) {
+        const preset = rows[i]!.split(' | ')[2];
+        expect(preset).toBe(rule.recommended === 'error' ? '✅' : '🔘');
+      }
+    }
   });
 
   test('the site page drops the doc header and keeps its own metadata line', () => {

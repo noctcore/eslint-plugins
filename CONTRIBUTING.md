@@ -71,8 +71,9 @@ A rule's `meta` is what the docs site, the README table and the rule-doc header 
 `docs.description` becomes the table row, `fixable` and `hasSuggestions` become the icons. Set
 `docs.requiresOptions: true` on a rule that does nothing useful until the consumer passes options
 (it reports nothing, or everything, without a per-project fact such as a scope, a model registry or
-an action-client list); the table and header mark it ⚙️. `meta.deprecated` renders as ❌ (see
-[Deprecating a rule](#deprecating-a-rule)). Whether a rule needs type information is not
+an action-client list); the table and header mark it ⚙️. A rule the preset leaves off is marked
+🔘 opt-in there, so a description does not need to say "opt-in" itself. `meta.deprecated` renders
+as ❌ (see [Deprecating a rule](#deprecating-a-rule)). Whether a rule needs type information is not
 declared anywhere; the site detects it from the source (`getParserServices(context)` means
 required). Only one rule in the family needs types today, so think hard before adding a second.
 
@@ -83,9 +84,10 @@ and each package's `recommended` preset:
 
 - the rules table in every package `README.md`, between `<!-- begin generated rules -->` and
   `<!-- end generated rules -->`, with one legend and one column set for every plugin
-  (✅ in `recommended` at `error` · ⚙️ needs options · 🔧 `--fix` · 💡 suggestions · 💭 needs type
-  info · ❌ deprecated). `lint-meta-rules` gets a table of rule id, factory, entry point and
-  category instead;
+  (✅ on in `recommended` at `error` · 🔘 opt-in, not on in `recommended` · ⚙️ needs options ·
+  🔧 `--fix` · 💡 suggestions · 💭 needs type info · ❌ deprecated). Every rule is exactly one of
+  ✅ or 🔘 in the Preset column, so a rule left out of the preset never looks like a blank row.
+  `lint-meta-rules` gets a table of rule id, factory, entry point and category instead;
 - a one-line status header in every `docs/rules/<rule>.md`, right after the title and blockquote
   summary, between `<!-- begin generated rule header -->` and `<!-- end generated rule header -->`.
   The site page drops it and shows its own metadata line.

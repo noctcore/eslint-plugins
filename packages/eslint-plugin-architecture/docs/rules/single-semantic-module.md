@@ -5,7 +5,7 @@
 > for your codebase, then enable it.
 
 <!-- begin generated rule header -->
-Opt-in: `off` in `recommended` · 💭 Type information: not needed
+🔘 Opt-in: `off` in `recommended` · 💭 Type information: not needed
 <!-- end generated rule header -->
 
 ## Why

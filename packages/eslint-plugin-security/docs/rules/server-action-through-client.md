@@ -1,9 +1,9 @@
 # `noctcore-security/server-action-through-client`
 
-> In a `'use server'` module, every exported action must be built from a configured action client, and no raw `export async function` may appear. Opt-in: needs `actionClients`.
+> In a `'use server'` module, every exported action must be built from a configured action client, and no raw `export async function` may appear.
 
 <!-- begin generated rule header -->
-⚙️ Opt-in: not in `recommended`; needs options (see Options) · 💭 Type information: not needed
+🔘 Opt-in: not in `recommended` · ⚙️ Needs options (see Options) · 💭 Type information: not needed
 <!-- end generated rule header -->
 
 ## Why

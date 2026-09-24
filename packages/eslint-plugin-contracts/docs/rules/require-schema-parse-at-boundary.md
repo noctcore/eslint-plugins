@@ -3,7 +3,7 @@
 > Parse external boundary data at runtime — don't assert its shape with `as T`.
 
 <!-- begin generated rule header -->
-Opt-in: `off` in `recommended` · 💭 Type information: not needed
+🔘 Opt-in: `off` in `recommended` · 💭 Type information: not needed
 <!-- end generated rule header -->
 
 ## Why

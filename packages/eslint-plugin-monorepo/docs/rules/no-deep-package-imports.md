@@ -3,7 +3,7 @@
 > Workspace packages must be consumed through their package barrel only — never via a deep subpath into package internals.
 
 <!-- begin generated rule header -->
-⚙️ Opt-in: `off` in `recommended`; needs options (see Options) · 💭 Type information: not needed
+🔘 Opt-in: `off` in `recommended` · ⚙️ Needs options (see Options) · 💭 Type information: not needed
 <!-- end generated rule header -->
 
 ## Why

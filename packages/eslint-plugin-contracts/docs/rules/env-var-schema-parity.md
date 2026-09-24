@@ -3,7 +3,7 @@
 > Every `process.env.FOO` / `import.meta.env.FOO` key must be declared in a schema file.
 
 <!-- begin generated rule header -->
-⚙️ Opt-in: `off` in `recommended`; needs options (see Options) · 💭 Type information: not needed
+🔘 Opt-in: `off` in `recommended` · ⚙️ Needs options (see Options) · 💭 Type information: not needed
 <!-- end generated rule header -->
 
 ## Why

@@ -84,7 +84,7 @@ export const colocatedTestRequiredRule = createRule<RuleOptions, MessageIds>({
     type: 'problem',
     docs: {
       description:
-        'A source file matching an `include` glob must have a colocated `*.test.*` / `*.spec.*` sibling on disk. Off until `include` is configured.',
+        'A source file matching an `include` glob must have a colocated `*.test.*` / `*.spec.*` sibling on disk.',
       requiresOptions: true,
     },
     schema: [optionSchema],

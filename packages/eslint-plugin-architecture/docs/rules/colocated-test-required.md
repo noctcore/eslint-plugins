@@ -1,9 +1,9 @@
 # `noctcore-architecture/colocated-test-required`
 
-> A source file matching an `include` glob must have a colocated `*.test.*` / `*.spec.*` sibling on disk. Off until `include` is configured.
+> A source file matching an `include` glob must have a colocated `*.test.*` / `*.spec.*` sibling on disk.
 
 <!-- begin generated rule header -->
-⚙️ Opt-in: `off` in `recommended`; needs options (see Options) · 💭 Type information: not needed
+🔘 Opt-in: `off` in `recommended` · ⚙️ Needs options (see Options) · 💭 Type information: not needed
 <!-- end generated rule header -->
 
 ## Why

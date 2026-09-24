@@ -3,7 +3,7 @@
 > Every static translation key must exist in the catalog of the namespace in scope.
 
 <!-- begin generated rule header -->
-⚙️ Opt-in: `off` in `recommended`; needs options (see Options) · 💭 Type information: used when available
+🔘 Opt-in: `off` in `recommended` · ⚙️ Needs options (see Options) · 💭 Type information: used when available
 <!-- end generated rule header -->
 
 ## Why

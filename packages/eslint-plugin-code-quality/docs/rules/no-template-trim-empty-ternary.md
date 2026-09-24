@@ -3,7 +3,7 @@
 > Extract the inline `` `…`.trim() === '' ? fallback : `…`.trim() `` pattern to a named util. **Niche — not in `recommended`.**
 
 <!-- begin generated rule header -->
-Opt-in: not in `recommended` · 💭 Type information: not needed
+🔘 Opt-in: not in `recommended` · 💭 Type information: not needed
 <!-- end generated rule header -->
 
 ## Why

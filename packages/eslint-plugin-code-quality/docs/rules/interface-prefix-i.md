@@ -3,7 +3,7 @@
 > Interface names must be `I` + an uppercase letter (`IUserProfile`). **Opinionated — not in `recommended`.**
 
 <!-- begin generated rule header -->
-Opt-in: not in `recommended` · 💭 Type information: not needed
+🔘 Opt-in: not in `recommended` · 💭 Type information: not needed
 <!-- end generated rule header -->
 
 ## Why
