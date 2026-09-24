@@ -53,7 +53,7 @@
     "url": "git+https://github.com/noctcore/eslint-plugins.git",
     "directory": "packages/lint-meta-rules"
   },
-  "homepage": "https://github.com/noctcore/eslint-plugins/tree/main/packages/lint-meta-rules",
+  "homepage": "https://noctcore.github.io/eslint-plugins/packages/lint-meta-rules/",
   "bugs": "https://github.com/noctcore/eslint-plugins/issues",
   "scripts": {
     "build": "tsup src/index.ts src/i18n.ts src/prisma.ts src/resolved-config.ts --format esm,cjs --dts --clean",

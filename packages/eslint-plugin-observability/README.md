@@ -1,7 +1,30 @@
 # @noctcore/eslint-plugin-observability
 
+**Docs:** [noctcore.github.io/eslint-plugins/packages/observability](https://noctcore.github.io/eslint-plugins/packages/observability/)
+
 Structured-logging discipline rules — context objects over interpolated messages, no sensitive fields
 in logs, no error-detail loss. Flat-config only, ESLint 9+.
+
+## Requirements
+
+- ESLint 9 or newer, flat config (`eslint.config.js`) only.
+- `configs.recommended` registers the plugin and sets rule severities, nothing else. It sets no
+  `files` and no parser, so it applies to whatever files the rest of your config lints. To lint
+  TypeScript, add a `files` pattern and `@typescript-eslint/parser`:
+
+```js
+// eslint.config.js
+import tsParser from '@typescript-eslint/parser';
+import observability from '@noctcore/eslint-plugin-observability';
+
+export default [
+  {
+    ...observability.configs.recommended,
+    files: ['**/*.{ts,tsx}'],
+    languageOptions: { parser: tsParser },
+  },
+];
+```
 
 ## Install
 

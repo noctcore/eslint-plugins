@@ -1,7 +1,30 @@
 # @noctcore/eslint-plugin-async-safety
 
+**Docs:** [noctcore.github.io/eslint-plugins/packages/async-safety](https://noctcore.github.io/eslint-plugins/packages/async-safety/)
+
 Async-correctness rules TypeScript can't catch: unbounded `fetch`, dropped `AbortSignal`s, and
 shared-state / concurrency races. Flat-config only, ESLint 9+.
+
+## Requirements
+
+- ESLint 9 or newer, flat config (`eslint.config.js`) only.
+- `configs.recommended` registers the plugin and sets rule severities, nothing else. It sets no
+  `files` and no parser, so it applies to whatever files the rest of your config lints. To lint
+  TypeScript, add a `files` pattern and `@typescript-eslint/parser`:
+
+```js
+// eslint.config.js
+import tsParser from '@typescript-eslint/parser';
+import asyncSafety from '@noctcore/eslint-plugin-async-safety';
+
+export default [
+  {
+    ...asyncSafety.configs.recommended,
+    files: ['**/*.{ts,tsx}'],
+    languageOptions: { parser: tsParser },
+  },
+];
+```
 
 ## Install
 
