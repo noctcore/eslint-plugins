@@ -1,10 +1,1 @@
-import { defineConfig } from 'vitest/config';
-
-export default defineConfig({
-  test: {
-    include: ['tests/**/*.test.ts'],
-    environment: 'node',
-    globals: false,
-    restoreMocks: true,
-  },
-});
+export { default } from '@noctcore/eslint-test-utils/vitest';

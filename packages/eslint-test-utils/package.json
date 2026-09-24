@@ -7,7 +7,8 @@
   "type": "module",
   "exports": {
     ".": "./src/index.ts",
-    "./eslint9": "./eslint9.mjs"
+    "./eslint9": "./eslint9.mjs",
+    "./vitest": "./vitest.shared.mjs"
   },
   "scripts": {
     "build": "echo \"(no build)\"",
