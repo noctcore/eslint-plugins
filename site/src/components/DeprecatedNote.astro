@@ -1,0 +1,39 @@
+---
+/**
+ * The mark a deprecated rule gets in a rule table: a pill, and the rules to
+ * use instead when its `meta` names any. Renders nothing for a live rule.
+ */
+import { href, replacementsOf, type CatalogRule } from '../lib/catalog';
+
+interface Props {
+  rule: CatalogRule;
+}
+
+const { rule } = Astro.props;
+const replacements = rule.deprecated ? replacementsOf(rule) : [];
+---
+
+{
+  rule.deprecated && (
+    <span class="deprecated-note">
+      <span class="pill pill-deprecated">❌ deprecated</span>
+      {replacements.length > 0 && (
+        <>
+          {' '}use{' '}
+          {replacements.map(({ id, route }, i) => (
+            <>
+              {i > 0 && ' or '}
+              {route ? (
+                <a href={href(route)}>
+                  <code>{id}</code>
+                </a>
+              ) : (
+                <code>{id}</code>
+              )}
+            </>
+          ))}
+        </>
+      )}
+    </span>
+  )
+}

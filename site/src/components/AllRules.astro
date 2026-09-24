@@ -6,6 +6,7 @@
  * has been asked. Nothing here is typed by hand: the counts, the ids and the
  * descriptions all come from the plugins' exported metadata.
  */
+import DeprecatedNote from './DeprecatedNote.astro';
 import { codeSpans, href, packages, presetLabel } from '../lib/catalog';
 
 const rows = packages.flatMap((pkg) => pkg.rules.map((rule) => ({ pkg, rule })));
@@ -57,6 +58,7 @@ const ruleId = (pkg: (typeof packages)[number], rule: (typeof rows)[number]['rul
               <a href={href(rule.route)}>
                 <code>{ruleId(pkg, rule)}</code>
               </a>
+              <DeprecatedNote rule={rule} />
             </td>
             <td>{codeSpans(rule.description).map(({ part, code }) => (code ? <code>{part}</code> : part))}</td>
             <td>
@@ -79,7 +81,8 @@ const ruleId = (pkg: (typeof packages)[number], rule: (typeof rows)[number]['rul
 <p class="rule-table-legend">
   <strong>Preset</strong>: severity in the package's <code>configs.recommended</code>; <em>off</em> means the
   preset registers the rule switched off, <em>not listed</em> means it leaves the rule out, <em>harness</em>
-  means the rule is a lint-meta rule with no ESLint preset. <strong>Fix</strong>: 🔧 fixable with
+  means the rule is a lint-meta rule with no ESLint preset. <strong>❌ deprecated</strong>: the rule still
+  works but is in no preset and will be removed; move to the rule named after it. <strong>Fix</strong>: 🔧 fixable with
   <code>--fix</code>, 💡 offers editor suggestions. <strong>Types</strong>: whether the rule needs a
   type-checked program (<code>parserOptions.projectService</code>), or uses one when present.
 </p>

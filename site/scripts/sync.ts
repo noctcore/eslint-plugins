@@ -32,7 +32,7 @@ import {
   type PackageEntry,
   type RuleEntry,
 } from './inventory';
-import { stripRuleHeader } from './readmes';
+import { deprecationSentence, stripRuleHeader } from './readmes';
 
 const SITE_DIR = resolve(dirname(fileURLToPath(import.meta.url)), '..');
 const RULES_OUT = join(SITE_DIR, 'src', 'content', 'docs', 'rules');
@@ -164,6 +164,18 @@ function factsLine(pkg: PackageEntry, rule: RuleEntry): string {
   ].join(' · ');
 }
 
+/** A replacement rule's page, relative to a rule page at rules/<short>/<rule>/. */
+function siteRelativeLink(id: string): string {
+  const match = /^noctcore-([^/]+)\/(.+)$/.exec(id);
+  return match ? `[\`${id}\`](../../${match[1]}/${match[2]}/)` : `\`${id}\``;
+}
+
+/** Starlight's caution aside, so a deprecated rule says so before anything else on its page. */
+function deprecationBanner(rule: RuleEntry): string[] {
+  if (!rule.deprecated) return [];
+  return ['', ':::caution[Deprecated]', deprecationSentence(rule, siteRelativeLink), ':::'];
+}
+
 /**
  * Render one rule doc as a Starlight page. Throws on a doc out of shape. The
  * doc's generated status header is dropped: the page states the same facts in
@@ -189,7 +201,7 @@ export function renderRuleDoc(source: string, docPath: string, pkg: PackageEntry
       .join(' '),
   );
 
-  const body: string[] = [...quote, '', factsLine(pkg, rule)];
+  const body: string[] = [...quote, ...deprecationBanner(rule), '', factsLine(pkg, rule)];
   let inFence = false;
   for (const line of lines.slice(i)) {
     const fence = FENCE.exec(line);
@@ -231,6 +243,7 @@ export function renderRuleDoc(source: string, docPath: string, pkg: PackageEntry
     `description: ${JSON.stringify(summary)}`,
     'sidebar:',
     `  label: ${JSON.stringify(rule.name)}`,
+    ...(rule.deprecated ? ['  badge:', '    text: Deprecated', '    variant: caution'] : []),
     `editUrl: ${JSON.stringify(`${REPO_URL}/edit/main/${repoPath}`)}`,
     '---',
     '',

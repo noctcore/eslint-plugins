@@ -71,8 +71,8 @@ A rule's `meta` is what the docs site, the README table and the rule-doc header 
 `docs.description` becomes the table row, `fixable` and `hasSuggestions` become the icons. Set
 `docs.requiresOptions: true` on a rule that does nothing useful until the consumer passes options
 (it reports nothing, or everything, without a per-project fact such as a scope, a model registry or
-an action-client list); the table and header mark it ⚙️. `meta.deprecated` and `meta.replacedBy`
-are read too and render as ❌. Whether a rule needs type information is not
+an action-client list); the table and header mark it ⚙️. `meta.deprecated` renders as ❌ (see
+[Deprecating a rule](#deprecating-a-rule)). Whether a rule needs type information is not
 declared anywhere; the site detects it from the source (`getParserServices(context)` means
 required). Only one rule in the family needs types today, so think hard before adding a second.
 
@@ -172,6 +172,56 @@ There is no third option. If your rule only feels safe at `warn`, it is not prec
 The [severity policy](https://noctcore.github.io/eslint-plugins/getting-started/#severity-policy)
 and the [adoption guide](https://noctcore.github.io/eslint-plugins/adopting/) on the site say the
 same thing to consumers.
+
+### Deprecating a rule
+
+A rule is deprecated, not deleted, when it is renamed, merged into another rule or no longer worth
+keeping. Consumers who enabled it by name keep a working config until the next major, and ESLint
+lists it under "deprecated rules" in their output. To deprecate one:
+
+1. **Set `meta.deprecated` to ESLint's `DeprecatedInfo` object**, and mirror the replacements in
+   the older `meta.replacedBy` list:
+
+   ```ts
+   meta: {
+     deprecated: {
+       message: 'Merged into `no-shell-interpolation`, which also covers `execFile`.',
+       deprecatedSince: '0.9.0', // the version this change is released in
+       availableUntil: '1.0.0', // the next major; null to keep it frozen indefinitely
+       replacedBy: [{ rule: { name: 'no-shell-interpolation' } }],
+     },
+     // ESLint 9.0 to 9.20 only report replacements from this list.
+     replacedBy: ['no-shell-interpolation'],
+     // ...type, docs, messages and schema unchanged
+   },
+   ```
+
+   The object form is what ESLint 9.21+ and 10 read, and `@typescript-eslint/utils` types it, so
+   `createRule` accepts it on both ESLint versions the tests run against. A replacement with no
+   `plugin` is a rule in the same plugin; for a rule in another noctcore plugin add
+   `plugin: { name: '@noctcore/eslint-plugin-<short>' }`. `replacedBy: []` says there is no
+   replacement. The site reads both forms, but always write the object: the plain
+   `deprecated: true` form carries no version or message, so the docs can only say "Deprecated".
+2. **Keep the rule exported, tested and documented.** Do not change what it reports.
+3. **Take it out of `recommended`**, and add it to `OMITTED_FROM_PRESETS` in that package's
+   `tests/configs/recommended.test.ts` (create the list if the package has none). A deprecated
+   rule is in no preset, not even at `off`.
+4. **Run `bun run docs:readmes`.** The README row gets ❌ and "Replaced by ...", and the rule doc's
+   generated header gets `❌ Deprecated since <version>: <message>. Use <replacement> instead.`
+   The site page shows the same sentence in a caution banner, the sidebar and the rule tables mark
+   it, and `rules.json` and `llms.txt` carry `deprecated` and `replacedBy`.
+5. **Add a `minor` changeset** that names the replacement and says what a consumer has to change:
+   nothing breaks, but a config that enables the old rule should move to the new one before
+   `availableUntil`.
+
+`site/scripts/deprecation.test.ts` fails if a deprecated rule is in a `recommended` preset, if a
+`replacedBy` id is not a rule in this repo (or is itself deprecated), or if the rule's doc lacks
+the generated deprecation header.
+
+**Removing it** is a breaking change: a config that names a missing rule stops ESLint with an
+error. Remove a deprecated rule only in the release its `availableUntil` names, and never before
+it has shipped deprecated in at least one minor. Removing it also means deleting its doc,
+lowering `EXPECTED_RULE_COUNT` and a changeset that says so loudly.
 
 ### What makes a rule acceptable here
 

@@ -10,6 +10,7 @@
  * per rule doc and that every `url` resolves to an emitted page.
  */
 import { packages, type CatalogPackage, type CatalogRule } from './catalog';
+import { deprecatedRulesSection } from './deprecations';
 
 export const RULES_INDEX_SCHEMA_VERSION = 1;
 
@@ -45,6 +46,12 @@ export interface RulesIndexRule {
   readonly hasSuggestions: boolean;
   /** Whether the rule needs a type-checked program. */
   readonly typeInfo: 'required' | 'optional' | 'none';
+  /** Whether the rule is deprecated. A deprecated rule still works but is never in a preset. */
+  readonly deprecated: boolean;
+  /** Ids of the rules that replace a deprecated one; empty when there is none, or it is not deprecated. */
+  readonly replacedBy: readonly string[];
+  /** The package version that deprecated the rule, when its `meta` says. */
+  readonly deprecatedSince: string | null;
   /** lint-meta only. */
   readonly category?: string;
   readonly ciCritical?: boolean;
@@ -95,6 +102,10 @@ function ruleEntry(pkg: CatalogPackage, rule: CatalogRule): RulesIndexRule {
     fixable: rule.fixable,
     hasSuggestions: rule.hasSuggestions,
     typeInfo: rule.typeInfo as RulesIndexRule['typeInfo'],
+    deprecated: rule.deprecated,
+    // The catalog is JSON, so with no deprecated rule these infer as `never[]` and `null`.
+    replacedBy: rule.replacedBy as readonly string[],
+    deprecatedSince: rule.deprecatedSince as string | null,
   };
   if (pkg.kind !== 'lint-meta') return entry;
   const meta = rule as CatalogRule & { category?: string; ciCritical?: boolean; factory?: string; entry?: string };
@@ -131,8 +142,9 @@ export function buildLlmsTxt(index: RulesIndex): string {
     '## Rules',
     '',
     `- [All rules](${index.rulesPage}): one row per rule with the id, what it reports, preset severity and whether it needs type information`,
-    `- [rules.json](${absoluteUrl('rules.json')}): the same index as JSON, one entry per rule with its docs URL, package, preset severity, fixability and type-information needs`,
+    `- [rules.json](${absoluteUrl('rules.json')}): the same index as JSON, one entry per rule with its docs URL, package, preset severity, fixability, type-information needs and deprecation (\`deprecated\`, \`replacedBy\`)`,
     '',
+    ...deprecatedRulesSection(index.rules),
     '## Guides',
     '',
     `- [Getting started](${absoluteUrl('getting-started/')}): install a plugin, enable its preset, configure the rules that need to know your project`,
