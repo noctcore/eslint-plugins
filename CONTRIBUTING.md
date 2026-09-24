@@ -100,6 +100,43 @@ Do not edit the `VERSION` constant in `src/index.ts`. It is rewritten from `pack
 `bun run sync:versions` during a release, and `packages/eslint-test-utils/tests/plugin-meta.test.ts`
 fails if the two disagree.
 
+### README and rule-doc templates
+
+Every package README and every rule doc has the same sections in the same order, so a reader finds
+the same thing in the same place on every page. `site/scripts/structure.ts` holds both templates.
+`structure.test.ts` checks every README and doc under `bun run test`, and `sync.ts` checks each doc
+again while it renders the site. A section that is missing, out of order or not in the template
+fails both, with a message naming the section. Anything specific to one package or rule goes in a
+`###` under the template section it belongs to.
+
+An ESLint plugin's README, after the `# @noctcore/eslint-plugin-<x>` title, one or two sentences on
+the defect class it catches, the **Docs:** link and a "Not a good fit for..." line:
+
+| Section | What goes in it |
+| --- | --- |
+| `## Requirements` | ESLint 9+, flat config only, and that `recommended` sets no `files` or parser |
+| `## Install` | The one-line install |
+| `## Quick start` | One flat config: `files`, `@typescript-eslint/parser` and the spread `recommended` |
+| `## Opt-in rules` | One config block that turns on every rule that is off, left out of `recommended` or ⚙️, with realistic options. Required exactly when the package has such a rule |
+| `## Rules` | The generated table (see above), then any short note about it |
+| `## Severity policy` | One line and the link to the site |
+| `## Credits` | Optional: the licence credit for ported rules, verbatim |
+
+`lint-meta-rules` is not an ESLint plugin, so its README has `## What it checks`, `## Install`,
+`## Run with the harness` and `## Rules`.
+
+A rule doc, after the title, the blockquote summary and the generated header:
+
+| Section | What goes in it |
+| --- | --- |
+| `## Why` | The defect and what it costs, usually with a first `bad` and `good` pair |
+| `## What it flags` | Every shape it reports, with examples; autofix and suggestion notes go here as `###` |
+| `## What it does not flag` | The legitimate code that looks similar and stays silent, and the known blind spots. Not `Limits`, `Limitations` or `Blind spots` |
+| `## Options` | The options table, then a snippet that enables the rule with them. Present exactly when the rule takes options (a non-empty `meta.schema`; always for a lint-meta factory) |
+| `## When not to use it` | Who should leave it off |
+| `## Related` | Optional: sibling rules and how they differ |
+| `## Credits` | Optional: the licence credit for a ported rule, verbatim, last |
+
 ### The doc is executable
 
 `docs/rules/<rule>.md` opens with a level-one heading of the full rule id in backticks and a
