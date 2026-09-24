@@ -15,6 +15,13 @@ export function baseName(pathLike: string): string {
   return parts[parts.length - 1] ?? pathLike;
 }
 
+/** `path` without trailing slashes. A loop, not `/\/+$/`, which backtracks quadratically on long slash runs. */
+export function stripTrailingSlashes(path: string): string {
+  let end = path.length;
+  while (end > 0 && path[end - 1] === '/') end -= 1;
+  return path.slice(0, end);
+}
+
 /** Escape a string so it can be embedded literally inside a `RegExp`. */
 export function escapeRegExp(value: string): string {
   return value.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');

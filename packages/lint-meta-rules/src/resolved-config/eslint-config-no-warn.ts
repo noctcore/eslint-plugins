@@ -1,5 +1,6 @@
 import type { IMetaCtx, IMetaRule, IViolation } from '@noctcore/harness';
 
+import { stripTrailingSlashes } from '../rules/shared';
 import { resolveRules, severityOf } from './resolve';
 
 /**
@@ -54,7 +55,7 @@ function findConfigDirs(
 ): { dir: string; configFile: string }[] {
   const byDir = new Map<string, string>();
   for (const pattern of packages) {
-    const base = pattern.replace(/\/+$/u, '');
+    const base = stripTrailingSlashes(pattern);
     for (const name of configFiles) {
       // The harness glob drops a bare `.`, so the root is checked literally.
       const matches =

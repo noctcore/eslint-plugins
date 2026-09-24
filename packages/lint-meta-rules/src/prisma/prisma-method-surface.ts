@@ -45,11 +45,29 @@ export interface DelegateSurface {
   readonly methods: readonly string[];
 }
 
-/** Blank block and line comments, keeping line breaks so line structure survives. */
+/**
+ * Blank block and line comments, keeping line breaks so line structure survives.
+ * Both are found with `indexOf`, not regexes, so input like an unclosed `/*` or
+ * a long run of `//` costs one pass instead of a rescan from every match start.
+ */
 function blankComments(source: string): string {
-  return source
-    .replace(/\/\*[\s\S]*?\*\//gu, (comment) => comment.replace(/[^\n]/gu, ' '))
-    .replace(/(^|[^:])\/\/.*$/gmu, '$1');
+  let out = '';
+  let from = 0;
+  for (let open = source.indexOf('/*'); open !== -1; open = source.indexOf('/*', from)) {
+    const close = source.indexOf('*/', open + 2);
+    if (close === -1) break;
+    out += source.slice(from, open) + source.slice(open, close + 2).replace(/[^\n]/gu, ' ');
+    from = close + 2;
+  }
+  return (out + source.slice(from)).split('\n').map(stripLineComment).join('\n');
+}
+
+/** `line` cut at its first `//` that is not part of a `://` URL, keeping a trailing `\r`. */
+function stripLineComment(line: string): string {
+  for (let at = line.indexOf('//'); at !== -1; at = line.indexOf('//', at + 1)) {
+    if (at === 0 || line[at - 1] !== ':') return line.slice(0, at) + (line.endsWith('\r') ? '\r' : '');
+  }
+  return line;
 }
 
 /**

@@ -15,6 +15,7 @@ import {
   RULES_BEGIN,
   applyRuleHeader,
   applyRulesBlock,
+  cell,
   generate,
   renderRulesBlock,
   stripRuleHeader,
@@ -81,5 +82,17 @@ describe('generated README tables and rule-doc headers', () => {
     expect(page).not.toContain(HEADER_BEGIN);
     expect(page).not.toContain(HEADER_END);
     expect(page).toContain('**Recommended preset:**');
+  });
+});
+
+describe('cell', () => {
+  test('escapes pipes, and doubles backslashes only when they precede one', () => {
+    expect(cell('a | b')).toBe('a \\| b');
+    expect(cell('a \\| b')).toBe('a \\\\\\| b');
+    expect(cell('`x\\y` \\n')).toBe('`x\\y` \\n');
+  });
+
+  test('keeps code spans verbatim and escapes angle brackets outside them', () => {
+    expect(cell('use `<T>` not <T>')).toBe('use `<T>` not &lt;T&gt;');
   });
 });

@@ -1,6 +1,6 @@
 import type { IMetaRule, IViolation } from '@noctcore/harness';
 
-import { baseName } from './shared';
+import { baseName, dirOf, escapeRegExp } from './shared';
 
 /**
  * Options for {@link createUiPrimitiveShapeRule}.
@@ -45,7 +45,7 @@ export function createUiPrimitiveShapeRule(options: UiPrimitiveShapeOptions = {}
       const violations: IViolation[] = [];
       // Folder primitives: require each proof sibling.
       for (const barrel of ctx.glob(`${uiRoot}/*/${barrelFile}`)) {
-        const dir = barrel.replace(new RegExp(`/${barrelFile}$`), '');
+        const dir = dirOf(barrel, barrelFile);
         const name = baseName(dir);
         for (const role of roles) {
           const rel = `${dir}/${name}.${role}${extension}`;
@@ -60,7 +60,7 @@ export function createUiPrimitiveShapeRule(options: UiPrimitiveShapeOptions = {}
       }
       // Flat primitives: must not carry sibling proof files at the root.
       for (const flat of ctx.glob(`${uiRoot}/[A-Z]*${extension}`)) {
-        const name = baseName(flat).replace(new RegExp(`${extension.replace(/\./g, '\\.')}$`), '');
+        const name = baseName(flat).replace(new RegExp(`${escapeRegExp(extension)}$`), '');
         for (const role of roles) {
           const sibling = `${uiRoot}/${name}.${role}${extension}`;
           if (ctx.exists(sibling)) {

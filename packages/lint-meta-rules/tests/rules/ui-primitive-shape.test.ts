@@ -63,4 +63,20 @@ describe('ui-primitive-shape', () => {
     });
     expect(custom.run(ctx)).toHaveLength(0);
   });
+
+  test('treats extension and barrelFile as literals, not regex source', () => {
+    const custom = createUiPrimitiveShapeRule({ extension: '.c++', barrelFile: 'mod+.ts' });
+    const ctx = createFakeCtx({
+      files: {
+        [`${UI}/Button.c++`]: 'x',
+        [`${UI}/Button.test.c++`]: 'x',
+        [`${UI}/Dialog/mod+.ts`]: 'export {}',
+        [`${UI}/Dialog/Dialog.test.c++`]: 'x',
+        [`${UI}/Dialog/Dialog.stories.c++`]: 'x',
+      },
+    });
+    expect(custom.run(ctx).map((x) => x.message)).toEqual([
+      expect.stringContaining("ui flat primitive 'Button.c++' has a sibling Button.test.c++"),
+    ]);
+  });
 });
