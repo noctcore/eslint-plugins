@@ -4,7 +4,7 @@
  *
  * `require-path-containment` is a high-false-positive, opt-in heuristic and is
  * intentionally omitted. It is exported and documented, so a consumer can enable
- * it explicitly (as `warn` or `error`), but it is not on by default.
+ * it explicitly at `error`, but it is not on by default.
  *
  * `server-action-through-client` is omitted for a different reason: it needs
  * `actionClients`, the names of the project's action-client builders, and there
