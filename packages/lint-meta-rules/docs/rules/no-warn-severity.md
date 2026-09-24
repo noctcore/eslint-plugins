@@ -25,8 +25,6 @@ createNoWarnSeverityRule(options?: NoWarnSeverityOptions): IMetaRule
 | `configFiles` | `string[]` | `['eslint.config.js', 'eslint.config.mjs', 'eslint.config.cjs']` | Flat-config files to scan; each is read only if present. |
 | `ciCritical` | `boolean` | `true` | Whether a violation fails CI. |
 
-De-projected from nightcore, which hardcoded `eslint.config.mjs`.
-
 ## When not to use it
 
 If your project deliberately uses `warn` as an in-editor nudge that is not meant to gate CI, this rule

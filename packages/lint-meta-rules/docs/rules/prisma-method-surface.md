@@ -50,9 +50,9 @@ createPrismaMethodSurfaceRule(options?: PrismaMethodSurfaceOptions): IMetaRule
 With the defaults, the rule checks the exact lists `@noctcore/eslint-plugin-prisma`'s rules read.
 If your own rules read their own lists, pass those.
 
-## Worked example: Settly
+## Worked example: a monorepo with a database package
 
-Settly's schema generates into `packages/database/generated/prisma` with the `prisma-client`
+A schema that generates into `packages/database/generated/prisma` with the `prisma-client`
 generator:
 
 ```ts

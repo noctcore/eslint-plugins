@@ -5,7 +5,7 @@
 ## Why
 
 A pure helper with no test is a silent liability — the kind of code that drifts because nothing pins
-its behavior. Requiring a colocated test for a chosen class of files (nightcore's `.utils.ts` sidecars)
+its behavior. Requiring a colocated test for a chosen class of files (`.utils.ts` helper files, say)
 makes "did you test this?" a mechanical check rather than a review-time hope.
 
 ## What it flags
@@ -25,9 +25,6 @@ createTestSiblingEnforcementRule(options?: TestSiblingEnforcementOptions): IMeta
 | `include` | `string[]` | `['apps/web/src/**/*.utils.ts']` | Source files that must ship a colocated test. |
 | `testExtensions` | `string[]` | `['.test.ts', '.test.tsx']` | Accepted colocated-test extensions (replace the source extension). |
 | `ciCritical` | `boolean` | `true` | Whether a violation fails CI. |
-
-De-projected from nightcore, which hardcoded `apps/web/src/**/*.utils.ts` and the `.utils.test.ts(x)`
-sibling shape.
 
 ## When not to use it
 

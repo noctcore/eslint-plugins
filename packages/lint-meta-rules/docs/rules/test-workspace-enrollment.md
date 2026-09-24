@@ -32,9 +32,6 @@ createTestWorkspaceEnrollmentRule(options?: TestWorkspaceEnrollmentOptions): IMe
 | `testGlobSuffix` | `string` | `'**/*.test.ts'` | Glob suffix (per dir) that detects the presence of tests. |
 | `ciCritical` | `boolean` | `true` | Whether a violation fails CI. |
 
-De-projected from nightcore, which hardcoded the `test:node` script, a `packages/*` + `apps/sidecar`
-dir list, and a vitest exclusion set.
-
 ## When not to use it
 
 If your test runner discovers packages automatically (no hardcoded path list), this rule is

@@ -2,10 +2,9 @@
 
 > Source files stay at or under a line cap, with a one-way, self-tightening baseline ratchet.
 
-This single factory subsumes **both** of nightcore's file-size rules — `web-file-size-ratchet`
-(apps/web/src, `.ts`+`.tsx`) and `engine-file-size-ratchet` (packages/engine/src, `.ts`) — which were
-byte-identical logic differing only in scanned roots, extensions and exclusions. Create one instance
-per capped area, each with its own `id` (the `id` names both the rule and its committed baseline file).
+One factory covers every capped area: create one instance per area (an app's `src`, a package's
+`src`), each with its own roots, extensions, exclusions and `id`. The `id` names both the rule and its
+committed baseline file.
 
 ## Why
 
@@ -46,7 +45,7 @@ createFileSizeRatchetRule(options?: FileSizeRatchetOptions): IMetaRule
 | `baselineDir` | `string` | `.nightcore/lint-meta/baselines` | Where committed baselines live (from `@noctcore/harness`). |
 | `ciCritical` | `boolean` | `true` | Whether a violation fails CI. |
 
-### Example: the two nightcore instances
+### Example: two capped areas
 
 ```ts
 createFileSizeRatchetRule({
@@ -63,8 +62,6 @@ createFileSizeRatchetRule({
   extensions: ['.ts'],
 });
 ```
-
-De-projected from nightcore, which hardcoded the roots, extensions, exclusions and the `400` cap.
 
 ## When not to use it
 
