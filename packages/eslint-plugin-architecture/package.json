@@ -37,7 +37,7 @@
     "url": "git+https://github.com/noctcore/eslint-plugins.git",
     "directory": "packages/eslint-plugin-architecture"
   },
-  "homepage": "https://github.com/noctcore/eslint-plugins/tree/main/packages/eslint-plugin-architecture",
+  "homepage": "https://noctcore.github.io/eslint-plugins/packages/architecture/",
   "bugs": "https://github.com/noctcore/eslint-plugins/issues",
   "scripts": {
     "build": "tsup src/index.ts --format esm,cjs --dts --clean",

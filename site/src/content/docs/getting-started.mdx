@@ -3,7 +3,7 @@ title: Getting started
 description: Install a noctcore plugin, enable its preset, and configure the rules that need to know your project.
 ---
 
-All ten ESLint plugins share one shape. Requirements: **ESLint 9 or newer**, **flat config**
+All eleven ESLint plugins share one shape. Requirements: **ESLint 9 or newer**, **flat config only**
 (`eslint.config.js`), Node 22 or newer. TypeScript sources are parsed with `@typescript-eslint/parser`,
 which you almost certainly have already.
 
@@ -30,6 +30,29 @@ export default [
   asyncSafety.configs.recommended,
 ];
 ```
+
+### The preset sets no `files` and no parser
+
+`configs.recommended` registers the plugin and sets rule severities, nothing else. It has no `files`
+pattern, so it applies to whatever files the rest of your config lints, and no parser, so on its own
+ESLint cannot read TypeScript. For `.ts` and `.tsx` files, give the preset both:
+
+```js
+// eslint.config.js
+import tsParser from '@typescript-eslint/parser';
+import react from '@noctcore/eslint-plugin-react';
+
+export default [
+  {
+    ...react.configs.recommended,
+    files: ['**/*.{ts,tsx}'],
+    languageOptions: { parser: tsParser },
+  },
+];
+```
+
+If your config already sets the parser for those files (through `typescript-eslint`'s configs, for
+example), spreading the preset alongside it is enough.
 
 ## 3. Turn on the rules that need your project's knowledge
 

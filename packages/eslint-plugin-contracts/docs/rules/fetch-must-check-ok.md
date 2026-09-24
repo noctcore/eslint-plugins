@@ -2,8 +2,6 @@
 
 > A fetch response must be checked with `.ok` or a status comparison before `.json()` parses its body.
 
-Ported from tsforge's `typescript-core/fetch-must-check-ok` (MIT).
-
 ## Why
 
 `fetch` rejects only on a network failure. A 4xx or 5xx resolves normally, and `.json()` then parses
@@ -105,3 +103,8 @@ Purely syntactic, no type information. A response assigned later (`let res; res 
 passed to another function, or returned from a wrapper that is not in `fetchFunctions` is not tracked.
 A nested function that reuses the response's name is treated as the same binding. Clients whose
 `.json()` already throws on a bad status (ky, for example) do not belong in `fetchFunctions`.
+
+## Credits
+
+Based on the `typescript-core/fetch-must-check-ok` rule from
+[tsforge](https://github.com/boringstack-xyz/tsforge) (MIT).

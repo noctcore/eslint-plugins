@@ -17,12 +17,11 @@ path that works instead:
 3. Re-enable each one where it already passes, scoped by directory with a flat-config `files` block.
 4. Grow the scope until it covers everything, then delete the block. That is the exit.
 
-The worked example is `noctcore-architecture/filename-matches-export`. Settly, a monorepo that
-consumes these plugins, measured it at **417 hits** (web 340, ui 32, api 22, email 19, desktop 3,
-database 1) on 2026-09-22, and `noctcore-contracts/zod-schema-naming` at **206** (shared 202, api
-2, desktop 2). Both numbers come from the adoption ledger in Settly's
-`packages/eslint-config/tests/preset-adoption.test.js`, which records every preset rule the repo
-has not adopted yet, with a count and a reason. A rule with 417 hits is an honest example of a rule
+The worked example is `noctcore-architecture/filename-matches-export`. A production monorepo that
+consumes these plugins measured it at **417 hits** (web 340, ui 32, api 22, email 19, desktop 3,
+database 1), and `noctcore-contracts/zod-schema-naming` at **206** (shared 202, api 2, desktop 2).
+Both numbers come from that repo's adoption ledger, a test that records every preset rule the repo
+has not adopted yet, with a count and a reason (see [Holding the line](#holding-the-line)). A rule with 417 hits is an honest example of a rule
 that floods. It is also a rule whose fix is a rename, so it is the kind you adopt one directory at a
 time rather than in one sitting.
 
@@ -74,7 +73,7 @@ Either prints something like:
     11 noctcore-contracts/require-error-cause
 ```
 
-(Those are Settly's counts from the ledger above, for the two presets in the snippet.)
+(Those are the counts from the ledger above, for the two presets in the snippet.)
 
 ESLint exits 1 when there are errors, so the pipe still runs; it is the counts you are after. To
 see which files one rule hits, which tells you the directories to scope by later:
@@ -217,5 +216,5 @@ Two things keep the deferred list honest over time:
   fails a repo whose ESLint config sets any rule to `warn`, so the shortcut this page argues against
   cannot creep back in.
 - A test that reads your exported config and fails when a preset turns on a rule the repo neither
-  wires at `error` nor lists as deferred with a reason. Settly's ledger is one; it is a few dozen
-  lines of vitest and it is what produced the counts on this page.
+  wires at `error` nor lists as deferred with a reason. The ledger behind the counts on this page
+  is one; it is a few dozen lines of vitest.

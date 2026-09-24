@@ -35,8 +35,7 @@ createLayerRankRule(options?: LayerRankOptions): IMetaRule
 | `sourceGlobs` | `string[]` | packages + apps `src/**` `.ts`/`.tsx` | Source files to scan. |
 | `ciCritical` | `boolean` | `true` | Whether a violation fails CI. |
 
-De-projected from nightcore, which hardcoded a fixed rank table and the `@nightcore` scope. `ranks`
-defaults to `{}` so the rule is inert until a consumer supplies its own layering.
+`ranks` defaults to `{}`, so the rule is inert until you supply your own layering.
 
 ## When not to use it
 

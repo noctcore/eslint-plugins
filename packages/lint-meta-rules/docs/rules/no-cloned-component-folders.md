@@ -31,9 +31,6 @@ createNoClonedComponentFoldersRule(options?: NoClonedComponentFoldersOptions): I
 | `sharedDest` | `string` | `'components/ui'` | Where a shared surface should be hoisted (used in the message). |
 | `ciCritical` | `boolean` | `true` | Whether a violation fails CI. |
 
-De-projected from nightcore, which hardcoded `apps/web/src/components`, the `ui`/`app` excluded
-features, and a fixed `ALLOWED_CLONES` set.
-
 ## When not to use it
 
 If your components are not organized as `<feature>/<Component>/` folders under one root, or you

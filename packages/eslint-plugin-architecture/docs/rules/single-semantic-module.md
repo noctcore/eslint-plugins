@@ -4,10 +4,6 @@
 > hooks, schemas or enums. **Ships `off` in `recommended`**: choose the files and the allowed mixes
 > for your codebase, then enable it.
 
-Ported from
-[`@boring-stack-pkg/eslint-plugin-module-boundaries`](https://github.com/boringstack-xyz/eslint-plugins/tree/main/eslint-plugin-module-boundaries)
-0.2.0 (MIT). Upstream peers ESLint `8.57.0 || ^9.0.0`; this port runs on ESLint 9 and 10.
-
 ## Why
 
 A file that exports a component, the hook it uses, the constant that configures it and the type of its
@@ -182,3 +178,9 @@ file was flagged:
 Barrels and generated files. Re-exports (`export * from`, `export { x } from`) are never classified, so
 a pure barrel passes anyway, but generated clients routinely mix every category; scope the rule away
 from them with `files` / `ignores`.
+
+## Credits
+
+Based on
+[`@boring-stack-pkg/eslint-plugin-module-boundaries`](https://github.com/boringstack-xyz/eslint-plugins/tree/main/eslint-plugin-module-boundaries)
+(MIT).

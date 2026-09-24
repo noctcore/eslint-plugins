@@ -32,9 +32,6 @@ createAgentsDocPresenceRule(options?: AgentsDocPresenceOptions): IMetaRule
 | `optOut` | `string[]` | `[]` | Package directories exempt from the requirement. |
 | `ciCritical` | `boolean` | `true` | Whether a violation fails CI. |
 
-De-projected from nightcore, which hardcoded `AGENTS.md`, the root/apps/packages layout and a fixed
-leaf opt-out set.
-
 ## When not to use it
 
 If your repo does not adopt an agent-contract doc convention, skip it.

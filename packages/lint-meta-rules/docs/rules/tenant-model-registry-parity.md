@@ -77,10 +77,10 @@ createTenantModelRegistryParityRule(options?: TenantModelRegistryParityOptions):
 
 Keys are Prisma delegate accessors (`invoice` for `model Invoice`).
 
-## Worked example: Settly
+## Worked example: a multi-tenant monorepo
 
-Settly scopes on `tenantId`, splits its schema per domain, keeps the runtime map in its API's tenant
-extension and the exemption maps in a registry module its ESLint config also reads:
+This project scopes on `tenantId`, splits its schema per domain, keeps the runtime map in its API's
+tenant extension and the exemption maps in a registry module its ESLint config also reads:
 
 ```ts
 import { createTenantModelRegistryParityRule } from '@noctcore/lint-meta-rules/prisma';

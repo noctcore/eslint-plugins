@@ -27,8 +27,6 @@ createCanonicalHelpersSingleHomeRule(options?: CanonicalHelpersSingleHomeOptions
 | `excludeContains` | `string[]` | `['/lib/']` | Drop any matched path containing one of these fragments. |
 | `ciCritical` | `boolean` | `true` | Whether a violation fails CI. |
 
-De-projected from nightcore, which hardcoded `apps/web/src/**/*.utils.ts` and a `/lib/` exclusion.
-
 ## When not to use it
 
 If your project intentionally re-exports the same symbol from several modules (barrels, façades), scope

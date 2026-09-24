@@ -69,5 +69,5 @@ type Options = {
 ## When not to use it
 
 This is a **high-false-positive family**, which is why it is omitted from the `recommended` preset.
-Enable it explicitly (as `warn` first) once you have confirmed your codebase's `req.*`-into-`path`
-call sites are worth auditing.
+Enable it explicitly at `error` once you have confirmed your codebase's `req.*`-into-`path` call
+sites are worth auditing; scope it with `files` to the directories you are ready to fix.
