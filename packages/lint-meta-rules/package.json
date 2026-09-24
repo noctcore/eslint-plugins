@@ -1,6 +1,6 @@
 {
   "name": "@noctcore/lint-meta-rules",
-  "version": "0.6.1",
+  "version": "0.6.2",
   "description": "Portable, parameterized lint-meta rules — whole-repo / cross-file invariants ESLint cannot reach — for the @noctcore/harness lint-meta runner.",
   "license": "MIT",
   "type": "module",
