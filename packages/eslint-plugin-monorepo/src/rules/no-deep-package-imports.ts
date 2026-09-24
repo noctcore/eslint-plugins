@@ -99,6 +99,7 @@ export const noDeepPackageImportsRule = createRule<RuleOptions, MessageIds>({
     docs: {
       description:
         'Workspace packages in the configured `scopes` must be consumed through their package barrel only — never via a deep subpath into package internals.',
+      requiresOptions: true,
     },
     schema: [optionSchema],
     messages: {

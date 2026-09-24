@@ -3,6 +3,16 @@ import { ESLintUtils } from '@typescript-eslint/utils';
 /** The docs site: project Pages for github.com/noctcore/eslint-plugins. */
 const DOCS = 'https://noctcore.github.io/eslint-plugins';
 
+/** The `meta.docs` fields a `@noctcore` rule may set beyond ESLint's own. */
+export interface NoctcoreRuleDocs {
+  /**
+   * The rule does nothing useful until the consumer passes options: it reports
+   * nothing, or everything, without a per-project fact such as a scope or a
+   * list of models. The generated README table and rule-doc header mark it ⚙️.
+   */
+  readonly requiresOptions?: boolean;
+}
+
 /**
  * Build a typed `RuleCreator` for a `@noctcore` plugin package.
  *
@@ -18,4 +28,4 @@ const DOCS = 'https://noctcore.github.io/eslint-plugins';
  * ```
  */
 export const makeCreateRule = (domain: string) =>
-  ESLintUtils.RuleCreator((ruleName) => `${DOCS}/rules/${domain}/${ruleName}/`);
+  ESLintUtils.RuleCreator<NoctcoreRuleDocs>((ruleName) => `${DOCS}/rules/${domain}/${ruleName}/`);

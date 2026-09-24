@@ -166,6 +166,7 @@ export const serverActionThroughClientRule = createRule<RuleOptions, MessageIds>
     docs: {
       description:
         "In a `'use server'` module every exported action must be built from a configured action client; a raw exported function bypasses input validation, error shaping and middleware. Opt-in: needs `actionClients`.",
+      requiresOptions: true,
     },
     schema: [optionSchema],
     messages: {

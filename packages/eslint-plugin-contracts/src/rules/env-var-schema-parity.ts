@@ -109,6 +109,7 @@ export const envVarSchemaParityRule = createRule<RuleOptions, MessageIds>({
     docs: {
       description:
         'Require every `process.env.FOO` / `import.meta.env.FOO` key to be declared in a schema file (`.env.example` or a zod-env module), so config access and config declaration cannot drift apart.',
+      requiresOptions: true,
     },
     schema: [optionSchema],
     messages: {

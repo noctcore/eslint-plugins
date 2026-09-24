@@ -300,6 +300,7 @@ export const noUnexportedSubpathImportRule = createRule<RuleOptions, MessageIds>
     docs: {
       description:
         "Importing a `@scope/pkg/<subpath>` that the target workspace package's `exports` map does not expose. Reads the target `package.json` from disk.",
+      requiresOptions: true,
     },
     schema: [optionSchema],
     messages: {

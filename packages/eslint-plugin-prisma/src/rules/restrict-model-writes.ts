@@ -172,6 +172,7 @@ export const restrictModelWritesRule = createRule<RuleOptions, MessageIds>({
     docs: {
       description:
         'Restrict Prisma writes to configured models (or to configured columns of them) to the files that own those writes, including nested relation writes. It fences who writes; it does not validate which values or state transitions are legal.',
+      requiresOptions: true,
     },
     schema: [optionSchema],
     messages: {

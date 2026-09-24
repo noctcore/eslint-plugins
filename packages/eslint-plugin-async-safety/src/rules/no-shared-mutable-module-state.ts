@@ -225,6 +225,7 @@ export const noSharedMutableModuleStateRule = createRule<RuleOptions, MessageIds
     docs: {
       description:
         'A module-scoped mutable binding written inside an exported async/handler function is shared across concurrent requests. Opt in per file via `include`.',
+      requiresOptions: true,
     },
     schema: [optionSchema],
     messages: {

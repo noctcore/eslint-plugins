@@ -359,6 +359,7 @@ export const softDeletableTablesRequireDeletedAtRule = createRule<RuleOptions, M
     docs: {
       description:
         'Require a filtered read or bulk write on a soft-deletable Prisma model to exclude soft-deleted rows in its `where`. Soft delete is convention only, with no Prisma extension injecting the filter, so a query that omits it reads and mutates deleted rows.',
+      requiresOptions: true,
     },
     schema: [optionSchema],
     messages: {

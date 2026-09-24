@@ -142,6 +142,7 @@ export const translationKeyExistsRule = createRule<RuleOptions, MessageIds>({
     docs: {
       description:
         'Require every static i18next / react-i18next translation key (`t(...)`, `i18n.t(...)`, `<Trans i18nKey>`) to exist in the catalog of the namespace in scope.',
+      requiresOptions: true,
     },
     schema: [optionSchema],
     messages: {
