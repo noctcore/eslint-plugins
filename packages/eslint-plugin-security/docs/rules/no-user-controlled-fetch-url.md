@@ -3,9 +3,6 @@
 > An HTTP request whose **origin** is not fixed at authoring time is a server-side request forgery
 > (SSRF) sink. Enabled in `recommended`.
 
-Ported from [tsforge](https://github.com/boringstack-xyz/tsforge) (MIT), with configurable callees,
-in-file `const` resolution and a trusted-origin vocabulary added.
-
 ## Why
 
 SSRF is control of the **host**, not the path. `fetch(`/api/todos/${id}`)` can only ever reach the
@@ -130,3 +127,7 @@ trusted path closes the authority.
 In code where every outbound URL is deliberately runtime (a proxy, a webhook dispatcher, a crawler),
 this rule is the wrong tool: validate against an allowlist at the call site and turn the rule off for
 that directory.
+
+## Credits
+
+Based on a rule from [tsforge](https://github.com/boringstack-xyz/tsforge) (MIT).
