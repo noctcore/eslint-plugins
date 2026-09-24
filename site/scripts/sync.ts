@@ -33,6 +33,7 @@ import {
   type RuleEntry,
 } from './inventory';
 import { stripRuleHeader } from './readmes';
+import { checkRuleDocSections } from './structure';
 
 const SITE_DIR = resolve(dirname(fileURLToPath(import.meta.url)), '..');
 const RULES_OUT = join(SITE_DIR, 'src', 'content', 'docs', 'rules');
@@ -222,6 +223,7 @@ export function renderRuleDoc(source: string, docPath: string, pkg: PackageEntry
     );
   }
   if (inFence) throw new Error(`${docPath}: unterminated code fence`);
+  checkRuleDocSections(source, docPath, rule);
 
   const repoPath = relative(REPO_ROOT, docPath);
   const frontmatter = [
