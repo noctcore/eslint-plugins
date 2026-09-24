@@ -1,11 +1,8 @@
-import { defineConfig } from 'vitest/config';
+import shared from '@noctcore/eslint-test-utils/vitest';
+import { defineConfig, mergeConfig } from 'vitest/config';
 
-export default defineConfig({
+export default mergeConfig(shared, defineConfig({
   test: {
-    include: ['tests/**/*.test.ts'],
-    environment: 'node',
-    globals: false,
-    restoreMocks: true,
     /*
      * `translation-key-exists` is the only rule here tested with type
      * information, and `@typescript-eslint/rule-tester` has to build a real
@@ -20,4 +17,4 @@ export default defineConfig({
      */
     testTimeout: 30_000,
   },
-});
+}));
