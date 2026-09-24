@@ -3,9 +3,9 @@
  *
  * Rules are read from what each package actually EXPORTS, not from a directory
  * listing: the exported surface is what a consumer gets,
- * and 4 of the lint-meta rules live outside `src/rules/` behind their own entry
- * points (`/i18n`, `/prisma`, `/resolved-config`). A listing of
- * `packages/*\/src/rules/*.ts` finds 96 and is blind to those 4.
+ * and 9 of the lint-meta rules live outside `src/rules/` behind their own entry
+ * points (`/i18n`, `/prisma`, `/resolved-config`, `/session`, `/trpc`). A listing of
+ * `packages/*\/src/rules/*.ts` finds 104 and is blind to those 9.
  *
  * Docs are read from `packages/*\/docs/rules/*.md`, the files that ship in each
  * tarball and that the site renders.
@@ -43,7 +43,7 @@ export const PLUGIN_SHORT_NAMES = [
 export const LINT_META = 'lint-meta-rules';
 
 /** lint-meta-rules entry points other than the main catalog. */
-const LINT_META_SUBPATHS = ['i18n', 'prisma', 'resolved-config'] as const;
+const LINT_META_SUBPATHS = ['i18n', 'prisma', 'resolved-config', 'session', 'trpc'] as const;
 
 export type TypeInfo = 'required' | 'optional' | 'none';
 
