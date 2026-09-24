@@ -1,5 +1,11 @@
 # @noctcore/lint-meta-rules
 
+## 0.6.2
+
+### Patch Changes
+
+- [#49](https://github.com/noctcore/eslint-plugins/pull/49) [`91a8a6e`](https://github.com/noctcore/eslint-plugins/commit/91a8a6e9f1108f6459307c92058540cf38285691) Thanks [@Shironex](https://github.com/Shironex)! - `ui-primitive-shape` now treats its `extension` and `barrelFile` options as literal text instead of regex source, so an extension like `.c++` no longer throws and `index.ts` no longer matches `indexxts`. `prisma-method-surface`, `tenant-model-registry-parity` and `eslint-config-no-warn` strip comments and trailing slashes in linear time, so a generated client with an unclosed `/*` can no longer stall the scan.
+
 ## 0.6.1
 
 ### Patch Changes
