@@ -47,8 +47,8 @@ export interface DelegateSurface {
 
 /**
  * Blank block and line comments, keeping line breaks so line structure survives.
- * Block comments are found with `indexOf`, not a lazy regex, so an unclosed
- * `/*` costs one pass instead of a rescan from every later `/*`.
+ * Both are found with `indexOf`, not regexes, so input like an unclosed `/*` or
+ * a long run of `//` costs one pass instead of a rescan from every match start.
  */
 function blankComments(source: string): string {
   let out = '';
@@ -59,7 +59,15 @@ function blankComments(source: string): string {
     out += source.slice(from, open) + source.slice(open, close + 2).replace(/[^\n]/gu, ' ');
     from = close + 2;
   }
-  return (out + source.slice(from)).replace(/(^|[^:])\/\/.*$/gmu, '$1');
+  return (out + source.slice(from)).split('\n').map(stripLineComment).join('\n');
+}
+
+/** `line` cut at its first `//` that is not part of a `://` URL, keeping a trailing `\r`. */
+function stripLineComment(line: string): string {
+  for (let at = line.indexOf('//'); at !== -1; at = line.indexOf('//', at + 1)) {
+    if (at === 0 || line[at - 1] !== ':') return line.slice(0, at) + (line.endsWith('\r') ? '\r' : '');
+  }
+  return line;
 }
 
 /**

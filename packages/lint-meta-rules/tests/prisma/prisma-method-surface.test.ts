@@ -61,10 +61,22 @@ describe('parseDelegateSurfaces', () => {
     expect(parseDelegateSurfaces(source).map((s) => s.model)).toEqual(['Invoice']);
   });
 
-  test('stays linear on many unclosed block comments', () => {
+  test('stays linear on many unclosed block comments or line-comment markers', () => {
     const start = performance.now();
     expect(parseDelegateSurfaces(`/*${'a/*'.repeat(200_000)}`)).toEqual([]);
+    expect(parseDelegateSurfaces(`//${'9//'.repeat(200_000)}`)).toEqual([]);
     expect(performance.now() - start).toBeLessThan(1000);
+  });
+
+  test('keeps a `://` URL but drops a line comment after it', () => {
+    const member = `  findMany<T>(args?: T): Promise<unknown>`;
+    const source = [
+      `export interface UserDelegate {`,
+      `  // hidden<T>(args: T): Promise<unknown>`,
+      `${member} // see https://example.com // hidden<T>()`,
+      `}`,
+    ].join('\r\n');
+    expect(parseDelegateSurfaces(source).map((s) => s.methods)).toEqual([['findMany']]);
   });
 });
 
