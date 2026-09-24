@@ -1,6 +1,6 @@
 {
   "name": "@noctcore/eslint-plugin-react",
-  "version": "0.4.1",
+  "version": "0.4.2",
   "description": "React architecture and correctness ESLint rules: prop drilling, state colocation, memoized context, effect safety and guarded web storage.",
   "license": "MIT",
   "type": "module",

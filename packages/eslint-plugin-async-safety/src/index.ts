@@ -3,7 +3,7 @@ import { rules } from './rules';
 
 /** Flat-config namespace: rule ids are keyed `noctcore-async-safety/<rule>`. */
 const NAMESPACE = 'noctcore-async-safety';
-const VERSION = '0.4.1';
+const VERSION = '0.4.2';
 
 const plugin = {
   meta: { name: '@noctcore/eslint-plugin-async-safety', version: VERSION },

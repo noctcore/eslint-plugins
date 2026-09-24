@@ -1,6 +1,6 @@
 {
   "name": "@noctcore/eslint-plugin-code-quality",
-  "version": "0.3.1",
+  "version": "0.3.2",
   "description": "Portable code-quality, comment-hygiene and test-discipline ESLint rules: guard clauses, deterministic time, no stray process.exit, and tests that cannot pass vacuously.",
   "license": "MIT",
   "type": "module",

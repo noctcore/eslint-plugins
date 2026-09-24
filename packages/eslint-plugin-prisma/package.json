@@ -1,6 +1,6 @@
 {
   "name": "@noctcore/eslint-plugin-prisma",
-  "version": "0.5.1",
+  "version": "0.5.2",
   "description": "Prisma tenancy, data-integrity and transaction guardrails: unscoped-client and raw-SQL fences, client-supplied tenant ids and request bodies, tenant and soft-delete filters, single-writer models, multi-write transactions and audit placement.",
   "license": "MIT",
   "type": "module",

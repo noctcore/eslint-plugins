@@ -1,5 +1,13 @@
 # @noctcore/eslint-plugin-architecture
 
+## 0.3.4
+
+### Patch Changes
+
+- [#46](https://github.com/noctcore/eslint-plugins/pull/46) [`59c6c1f`](https://github.com/noctcore/eslint-plugins/commit/59c6c1f900670e9c015429cb6b54787fc6a06719) Thanks [@Shironex](https://github.com/Shironex)! - Documentation only, no rule behaviour change. The README rules table now marks every rule as either ✅ on in `recommended` or 🔘 opt-in (off or left out of the preset), in a Preset column, so a rule you have to enable yourself no longer shows up as a blank row. Opt-in rule docs say the same in their status line. Package descriptions on npm now list what each plugin actually covers, and the monorepo quick start says plainly that `recommended` enables nothing until you give the rules your workspace scope.
+
+- [#46](https://github.com/noctcore/eslint-plugins/pull/46) [`fc9a372`](https://github.com/noctcore/eslint-plugins/commit/fc9a37226fb85f285b5211545708e833a9d962ae) Thanks [@Shironex](https://github.com/Shironex)! - Documentation only, no rule behaviour change. The `meta.docs.description` of `require-path-containment`, `server-action-through-client` (security) and `colocated-test-required` (architecture) no longer ends with an "opt-in" note: the rules table and rule page now show that with 🔘. The rules are still left out of `recommended`, so a project that spreads the preset as-is sees no change.
+
 ## 0.3.3
 
 ### Patch Changes
