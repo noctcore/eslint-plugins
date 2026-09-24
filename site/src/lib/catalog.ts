@@ -43,3 +43,14 @@ export function codeSpans(text: string): { part: string; code: boolean }[] {
 export function presetLabel(severity: string | null): 'error' | 'off' | 'not listed' {
   return severity === 'error' ? 'error' : severity === 'off' ? 'off' : 'not listed';
 }
+
+/**
+ * The rules that replace a deprecated one, each with its route when it is in
+ * the catalog. The catalog is JSON, so with no deprecated rule `replacedBy`
+ * infers as `never[]`; the cast is the real shape.
+ */
+export function replacementsOf(rule: CatalogRule): { id: string; route: string | null }[] {
+  const routes = new Map<string, string>();
+  for (const pkg of packages) for (const candidate of pkg.rules) routes.set(candidate.id, candidate.route);
+  return (rule.replacedBy as readonly string[]).map((id) => ({ id, route: routes.get(id) ?? null }));
+}

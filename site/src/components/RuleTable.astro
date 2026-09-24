@@ -3,6 +3,7 @@
  * A package's rule table, generated from the plugin's exported `rules` and each
  * rule's `meta` via the catalog. Nothing in it is typed by hand.
  */
+import DeprecatedNote from './DeprecatedNote.astro';
 import { codeSpans, getPackage, href, presetLabel } from '../lib/catalog';
 
 interface Props {
@@ -45,6 +46,7 @@ const typeLabel = { required: 'required', optional: 'optional', none: '' } as co
                 <a href={href(rule.route)}>
                   <code>{rule.name}</code>
                 </a>
+                <DeprecatedNote rule={rule} />
               </td>
               <td>{codeSpans(rule.description).map(({ part, code }) => (code ? <code>{part}</code> : part))}</td>
               <td>

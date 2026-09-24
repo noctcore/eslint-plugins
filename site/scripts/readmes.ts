@@ -55,17 +55,40 @@ function linkOf(pkg: PackageEntry, rule: RuleEntry): string {
   return rule.docsUrl ?? ruleUrl(pkg.short, rule.name);
 }
 
-function replacedByText(rule: RuleEntry): string {
-  return rule.replacedBy.map((id) => `\`${id}\``).join(', ');
+/** A replacement rule id as a markdown link to its site page, or a code span when it is not ours. */
+export type ReplacementLink = (id: string) => string;
+
+/** Link a `noctcore-<short>/<rule>` id to its page on the site. */
+export const siteReplacementLink: ReplacementLink = (id) => {
+  const match = /^noctcore-([^/]+)\/(.+)$/.exec(id);
+  return match ? `[\`${id}\`](${ruleUrl(match[1]!, match[2]!)})` : `\`${id}\``;
+};
+
+function joinLinks(rule: RuleEntry, link: ReplacementLink): string {
+  const links = rule.replacedBy.map(link);
+  return links.length > 1 ? `${links.slice(0, -1).join(', ')} or ${links.at(-1)}` : (links[0] ?? '');
+}
+
+/**
+ * The one sentence every surface uses for a deprecated rule:
+ * `❌ Deprecated since 1.2.0: <message>. Use <replacement> instead.` The version,
+ * message and replacement each drop out when `meta` does not give them.
+ */
+export function deprecationSentence(rule: RuleEntry, link: ReplacementLink = siteReplacementLink): string {
+  const since = rule.deprecatedSince ? ` since ${rule.deprecatedSince}` : '';
+  const message = rule.deprecationMessage ? `: ${rule.deprecationMessage.replace(/\.$/, '')}` : '';
+  const use = rule.replacedBy.length > 0 ? ` Use ${joinLinks(rule, link)} instead.` : '';
+  return `❌ Deprecated${since}${message}.${use}`;
 }
 
 function pluginTable(pkg: PackageEntry): string[] {
   const rows = pkg.rules.map((rule) => {
     const name = `${rule.deprecated ? '❌ ' : ''}[\`${rule.name}\`](${linkOf(pkg, rule)})`;
-    const replaced = rule.deprecated && rule.replacedBy.length > 0 ? ` Replaced by ${replacedByText(rule)}.` : '';
+    const replaced =
+      rule.deprecated && rule.replacedBy.length > 0 ? ` Replaced by ${joinLinks(rule, siteReplacementLink)}.` : '';
     return [
       name,
-      cell(rule.description + replaced),
+      cell(rule.description) + replaced,
       rule.recommended === 'error' ? '✅' : '',
       rule.requiresOptions ? '⚙️' : '',
       rule.fixable ? '🔧' : '',
@@ -122,7 +145,10 @@ export function applyRulesBlock(readme: string, pkg: PackageEntry, path: string)
   return readme.slice(0, start) + renderRulesBlock(pkg) + readme.slice(end + RULES_END.length);
 }
 
-/** The status line of a rule doc, without its markers. */
+/**
+ * The status line of a rule doc, without its markers. A deprecated rule gets
+ * its deprecation sentence as a paragraph of its own above that line.
+ */
 export function renderRuleHeader(pkg: PackageEntry, rule: RuleEntry): string {
   if (pkg.kind === 'lint-meta') {
     return [
@@ -133,9 +159,6 @@ export function renderRuleHeader(pkg: PackageEntry, rule: RuleEntry): string {
     ].join(' · ');
   }
   const parts: string[] = [];
-  if (rule.deprecated) {
-    parts.push(rule.replacedBy.length > 0 ? `❌ Deprecated: replaced by ${replacedByText(rule)}` : '❌ Deprecated');
-  }
   if (rule.recommended === 'error') {
     parts.push('✅ In `recommended` at `error`');
     if (rule.requiresOptions) parts.push('⚙️ Does nothing until configured: needs options (see Options)');
@@ -147,7 +170,8 @@ export function renderRuleHeader(pkg: PackageEntry, rule: RuleEntry): string {
   if (rule.hasSuggestions) parts.push('💡 Offers editor suggestions');
   const typeInfo = { required: 'required', optional: 'used when available', none: 'not needed' };
   parts.push(`💭 Type information: ${typeInfo[rule.typeInfo]}`);
-  return parts.join(' · ');
+  const status = parts.join(' · ');
+  return rule.deprecated ? `${deprecationSentence(rule)}\n\n${status}` : status;
 }
 
 /** Remove a generated header block, and the blank line after it, from a rule doc. */

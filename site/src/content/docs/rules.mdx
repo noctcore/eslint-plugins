@@ -50,4 +50,7 @@ Each entry in `rules`:
 | `fixable`        | Whether the rule has an autofix.                                                              |
 | `hasSuggestions` | Whether the rule offers suggestions.                                                          |
 | `typeInfo`       | `required`, `optional` or `none`: whether the rule needs a type-checked program.              |
+| `deprecated`     | Whether the rule is deprecated. A deprecated rule still works, but no preset enables it.      |
+| `replacedBy`     | Ids of the rules to use instead of a deprecated one; empty when there is none.               |
+| `deprecatedSince` | The package version that deprecated the rule, or `null`.                                    |
 | `category`, `ciCritical`, `factory`, `entry` | lint-meta rules only: the harness category, whether a violation fails CI by default, the factory export and the entry point that exposes it. |

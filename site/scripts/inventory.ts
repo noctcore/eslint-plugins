@@ -69,9 +69,17 @@ export interface RuleEntry {
    * section exactly when this is true.
    */
   readonly hasOptions: boolean;
-  /** `meta.deprecated`, and the rule ids in `meta.replacedBy` when it names any. */
+  /** `meta.deprecated`, in either the boolean or the object form. */
   readonly deprecated: boolean;
+  /**
+   * Fully qualified ids of the replacement rules, from `meta.deprecated.replacedBy`
+   * and the older `meta.replacedBy`, deduplicated.
+   */
   readonly replacedBy: readonly string[];
+  /** `meta.deprecated.deprecatedSince`: the package version that deprecated the rule. */
+  readonly deprecatedSince: string | null;
+  /** `meta.deprecated.message`: why, or how to move off it. */
+  readonly deprecationMessage: string | null;
   /** `meta.docs.url` as baked into the built rule; null for lint-meta rules. */
   readonly docsUrl: string | null;
   /** lint-meta only: rule category and whether a violation fails CI by default. */
@@ -154,13 +162,23 @@ function detectTypeInfo(dir: string, rule: string): TypeInfo {
   return 'none';
 }
 
-interface RuleModuleLike {
+/** ESLint's `DeprecatedInfo` (ESLint 9.21+ and 10), as far as the docs read it. */
+export interface DeprecatedInfoLike {
+  message?: string;
+  url?: string;
+  deprecatedSince?: string;
+  availableUntil?: string | null;
+  replacedBy?: readonly { plugin?: { name?: string; url?: string }; rule?: { name?: string; url?: string } }[];
+}
+
+export interface RuleModuleLike {
   meta?: {
     docs?: { description?: string; url?: string; requiresOptions?: boolean };
     fixable?: string;
     hasSuggestions?: boolean;
     // ESLint 9.21+ takes an object here; the boolean form is the older one.
-    deprecated?: boolean | { replacedBy?: readonly { rule?: { name?: string } }[] };
+    deprecated?: boolean | DeprecatedInfoLike;
+    // The older list of replacement ids, still the only one ESLint 9.0 to 9.20 reports.
     replacedBy?: readonly string[];
     schema?: unknown;
   };
@@ -173,14 +191,43 @@ function takesOptions(rule: RuleModuleLike): boolean {
   return !Array.isArray(schema) || schema.length > 0;
 }
 
-/** Replacement rule ids, from either the old `meta.replacedBy` or the object `meta.deprecated`. */
-function replacementsOf(rule: RuleModuleLike): string[] {
+/**
+ * Qualify a replacement rule name. A bare name is a rule in the same plugin,
+ * which is what ESLint means when `plugin` is omitted; `@noctcore/eslint-plugin-<x>`
+ * or `noctcore-<x>` as the plugin name means `noctcore-<x>/<name>`.
+ */
+function qualify(name: string, namespace: string, plugin?: string): string {
+  if (name.includes('/')) return name;
+  if (!plugin) return `${namespace}/${name}`;
+  const short = /^(?:@noctcore\/eslint-plugin-|noctcore-)(.+)$/.exec(plugin)?.[1];
+  return short ? `noctcore-${short}/${name}` : `${plugin}/${name}`;
+}
+
+export interface Deprecation {
+  readonly deprecated: boolean;
+  readonly replacedBy: readonly string[];
+  readonly deprecatedSince: string | null;
+  readonly deprecationMessage: string | null;
+}
+
+/**
+ * A rule's deprecation, read from either shape ESLint accepts: the object
+ * `meta.deprecated` (`DeprecatedInfo`) and the older `meta.deprecated: true`
+ * plus `meta.replacedBy: string[]`. Replacement ids come back fully qualified.
+ */
+export function deprecationOf(rule: RuleModuleLike, namespace: string): Deprecation {
   const deprecated = rule.meta?.deprecated;
-  const fromObject =
-    typeof deprecated === 'object'
-      ? (deprecated.replacedBy ?? []).flatMap((info) => (info.rule?.name ? [info.rule.name] : []))
-      : [];
-  return [...(rule.meta?.replacedBy ?? []), ...fromObject];
+  const info = typeof deprecated === 'object' ? deprecated : null;
+  const fromObject = (info?.replacedBy ?? []).flatMap((entry) =>
+    entry.rule?.name ? [qualify(entry.rule.name, namespace, entry.plugin?.name)] : [],
+  );
+  const fromList = (rule.meta?.replacedBy ?? []).map((name) => qualify(name, namespace));
+  return {
+    deprecated: Boolean(deprecated),
+    replacedBy: [...new Set([...fromObject, ...fromList])],
+    deprecatedSince: info?.deprecatedSince ?? null,
+    deprecationMessage: info?.message?.trim() || null,
+  };
 }
 
 interface MetaRuleLike {
@@ -217,8 +264,7 @@ async function loadPlugin(short: string, from: InventorySource): Promise<Package
       typeInfo: detectTypeInfo(dir, name),
       requiresOptions: rule.meta?.docs?.requiresOptions === true,
       hasOptions: takesOptions(rule),
-      deprecated: Boolean(rule.meta?.deprecated),
-      replacedBy: replacementsOf(rule),
+      ...deprecationOf(rule, namespace),
       docsUrl: rule.meta?.docs?.url ?? null,
     };
   });
@@ -247,6 +293,8 @@ function metaRuleEntry(rule: MetaRuleLike, factory: string, entry: string): Rule
     hasOptions: true,
     deprecated: false,
     replacedBy: [],
+    deprecatedSince: null,
+    deprecationMessage: null,
     docsUrl: null,
     category: rule.category,
     ciCritical: rule.ciCritical,
