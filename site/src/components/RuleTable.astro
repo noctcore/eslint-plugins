@@ -82,7 +82,8 @@ const typeLabel = { required: 'required', optional: 'optional', none: '' } as co
   isPlugin && (
     <p class="rule-table-legend">
       <strong>Preset</strong>: severity in <code>configs.recommended</code>; <em>off</em> means the preset
-      registers the rule switched off, <em>not listed</em> means it leaves the rule out. <strong>Fix</strong>:
+      registers the rule switched off, <em>not listed</em> means it leaves the rule out; both are opt-in, so you
+      turn the rule on yourself. <strong>Fix</strong>:
       whether the rule ships an autofix or an editor suggestion. <strong>Types</strong>: whether the rule needs a
       type-checked program (<code>parserOptions.projectService</code>).
     </p>

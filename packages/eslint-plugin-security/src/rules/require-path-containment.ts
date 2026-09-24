@@ -143,7 +143,7 @@ export const requirePathContainmentRule = createRule<RuleOptions, MessageIds>({
     type: 'problem',
     docs: {
       description:
-        'Request-shaped input (`req.*`) passed directly into `path.join` / `path.resolve` without a containment guard is a path-traversal sink. Opt-in — enable explicitly.',
+        'Request-shaped input (`req.*`) passed directly into `path.join` / `path.resolve` without a containment guard is a path-traversal sink.',
     },
     schema: [optionSchema],
     messages: {

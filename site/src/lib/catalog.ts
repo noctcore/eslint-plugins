@@ -32,6 +32,11 @@ export function enabledInPreset(pkg: CatalogPackage): number {
   return pkg.rules.filter((rule) => rule.recommended === 'error').length;
 }
 
+/** `1 rule`, `2 rules`: a count with its noun, singular when the count is one. */
+export function plural(count: number, noun: string): string {
+  return `${count} ${noun}${count === 1 ? '' : 's'}`;
+}
+
 /**
  * Rule descriptions use Markdown code spans. Split on the backtick: odd
  * segments are code. Shared by every table that renders a description.

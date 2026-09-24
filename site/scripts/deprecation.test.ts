@@ -157,12 +157,12 @@ describe('rendering a deprecated rule', () => {
       .find((line) => line.includes('old-rule'));
     expect(row).toBe(
       `| ❌ [\`old-rule\`](${ruleUrl('fixture', 'old-rule')}) | Fixture rule \`old-rule\`. Replaced by ` +
-        `[\`noctcore-fixture/new-rule\`](${ruleUrl('fixture', 'new-rule')}). |  |  |  |  |  |`,
+        `[\`noctcore-fixture/new-rule\`](${ruleUrl('fixture', 'new-rule')}). | 🔘 |  |  |  |  |`,
     );
   });
 
   test('the doc header leads with the sentence', () => {
-    expect(oldDoc).toContain(`<!-- begin generated rule header -->\n${sentence}\n\nOpt-in: not in \`recommended\``);
+    expect(oldDoc).toContain(`<!-- begin generated rule header -->\n${sentence}\n\n🔘 Opt-in: not in \`recommended\``);
     expect(applyRuleHeader(oldDoc, pkg, oldRule, 'old-rule.md')).toBe(oldDoc);
   });
 

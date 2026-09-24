@@ -7,7 +7,7 @@
  * descriptions all come from the plugins' exported metadata.
  */
 import DeprecatedNote from './DeprecatedNote.astro';
-import { codeSpans, href, packages, presetLabel } from '../lib/catalog';
+import { codeSpans, href, packages, plural, presetLabel } from '../lib/catalog';
 
 const rows = packages.flatMap((pkg) => pkg.rules.map((rule) => ({ pkg, rule })));
 const total = rows.length;
@@ -31,7 +31,7 @@ const ruleId = (pkg: (typeof packages)[number], rule: (typeof rows)[number]['rul
   {registeredOff} ship registered but <code>off</code>, and {optIn} are left out of every preset and enabled one
   by one. The {lintMetaCount} lint-meta rules run under{' '}
   <a href={href('packages/lint-meta-rules/')}><code>@noctcore/harness</code></a>, not ESLint.{' '}
-  {typed.length} rules read type information:{' '}
+  {plural(typed.length, 'rule')} {typed.length === 1 ? 'reads' : 'read'} type information:{' '}
   {typed.map(({ rule }, i) => (
     <>
       <code>{rule.id}</code> ({typeLabel[rule.typeInfo as keyof typeof typeLabel]}){i < typed.length - 1 ? ', ' : '.'}
@@ -80,7 +80,8 @@ const ruleId = (pkg: (typeof packages)[number], rule: (typeof rows)[number]['rul
 </div>
 <p class="rule-table-legend">
   <strong>Preset</strong>: severity in the package's <code>configs.recommended</code>; <em>off</em> means the
-  preset registers the rule switched off, <em>not listed</em> means it leaves the rule out, <em>harness</em>
+  preset registers the rule switched off, <em>not listed</em> means it leaves the rule out; both are opt-in, so
+  you turn the rule on yourself. <em>harness</em>
   means the rule is a lint-meta rule with no ESLint preset. <strong>❌ deprecated</strong>: the rule still
   works but is in no preset and will be removed; move to the rule named after it. <strong>Fix</strong>: 🔧 fixable with
   <code>--fix</code>, 💡 offers editor suggestions. <strong>Types</strong>: whether the rule needs a

@@ -7,6 +7,49 @@ All eleven ESLint plugins share one shape. Requirements: **ESLint 9 or newer**, 
 (`eslint.config.js`), Node 22 or newer. TypeScript sources are parsed with `@typescript-eslint/parser`,
 which you almost certainly have already.
 
+## Where to start
+
+Start with the three plugins that fit almost any TypeScript codebase, then add the ones for the
+stack you use:
+
+| Add | When |
+| --- | --- |
+| [`code-quality`](/eslint-plugins/packages/code-quality/), [`async-safety`](/eslint-plugins/packages/async-safety/), [`contracts`](/eslint-plugins/packages/contracts/) | Always: the starter set |
+| [`security`](/eslint-plugins/packages/security/) | You run server code (shell, HTTP, redirects, HTML rendering) |
+| [`react`](/eslint-plugins/packages/react/) | You write React components |
+| [`rsc`](/eslint-plugins/packages/rsc/) | You use the Next.js App Router / React Server Components |
+| [`prisma`](/eslint-plugins/packages/prisma/) | You use Prisma (several rules need your tenant models) |
+| [`llm`](/eslint-plugins/packages/llm/) | You call an LLM SDK |
+| [`observability`](/eslint-plugins/packages/observability/) | You log through a structured logger |
+| [`architecture`](/eslint-plugins/packages/architecture/), [`monorepo`](/eslint-plugins/packages/monorepo/) | You want folder and package boundaries enforced (`monorepo` needs your scope) |
+
+Each preset is its own config entry with the same `files` and parser. They do not merge, and the
+plugin namespaces (`noctcore-<plugin>`) never collide:
+
+```js
+// eslint.config.js
+import tsParser from '@typescript-eslint/parser';
+import asyncSafety from '@noctcore/eslint-plugin-async-safety';
+import codeQuality from '@noctcore/eslint-plugin-code-quality';
+import contracts from '@noctcore/eslint-plugin-contracts';
+import react from '@noctcore/eslint-plugin-react';
+import security from '@noctcore/eslint-plugin-security';
+
+const typescript = { files: ['**/*.{ts,tsx}'], languageOptions: { parser: tsParser } };
+
+export default [
+  // The starter set.
+  { ...codeQuality.configs.recommended, ...typescript },
+  { ...asyncSafety.configs.recommended, ...typescript },
+  { ...contracts.configs.recommended, ...typescript },
+  // Add the ones for your stack.
+  { ...security.configs.recommended, ...typescript },
+  { ...react.configs.recommended, ...typescript },
+];
+```
+
+The steps below take one plugin at a time and explain each piece.
+
 ## 1. Install the plugin you need
 
 ```sh

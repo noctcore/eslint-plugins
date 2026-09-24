@@ -3,7 +3,7 @@
 > HTML reaching `dangerouslySetInnerHTML`, `innerHTML`, `outerHTML` or `insertAdjacentHTML` must be static markup or pass through a sanitizer. Opt-in.
 
 <!-- begin generated rule header -->
-Opt-in: not in `recommended` · 💭 Type information: not needed
+🔘 Opt-in: not in `recommended` · 💭 Type information: not needed
 <!-- end generated rule header -->
 
 ## Why

@@ -4,7 +4,7 @@
 > **Requires type information.**
 
 <!-- begin generated rule header -->
-Opt-in: not in `recommended` · 💭 Type information: required
+🔘 Opt-in: not in `recommended` · 💭 Type information: required
 <!-- end generated rule header -->
 
 ## Why

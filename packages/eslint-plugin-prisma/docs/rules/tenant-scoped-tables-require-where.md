@@ -4,7 +4,7 @@
 > and a query on a hand-scoped model must filter by one of its scope columns on any client.
 
 <!-- begin generated rule header -->
-⚙️ Opt-in: not in `recommended`; needs options (see Options) · 💭 Type information: not needed
+🔘 Opt-in: not in `recommended` · ⚙️ Needs options (see Options) · 💭 Type information: not needed
 <!-- end generated rule header -->
 
 ## Why

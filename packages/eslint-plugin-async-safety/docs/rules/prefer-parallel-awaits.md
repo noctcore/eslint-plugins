@@ -3,7 +3,7 @@
 > Consecutive independent awaits run sequentially — they could run concurrently with `Promise.all`. 💡
 
 <!-- begin generated rule header -->
-Opt-in: `off` in `recommended` · 💡 Offers editor suggestions · 💭 Type information: not needed
+🔘 Opt-in: `off` in `recommended` · 💡 Offers editor suggestions · 💭 Type information: not needed
 <!-- end generated rule header -->
 
 ## Why

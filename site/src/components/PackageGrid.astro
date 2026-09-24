@@ -4,7 +4,11 @@
  * counts. All of it comes from the catalog, so a new rule shows up here without
  * anyone editing the landing page.
  */
-import { enabledInPreset, href, packages } from '../lib/catalog';
+import { enabledInPreset, href, packages, plural } from '../lib/catalog';
+
+/** A preset that turns nothing on says so, so a 0 does not read as a mistake. */
+const presetSummary = (enabled: number) =>
+  enabled === 0 ? ' · 0 on in recommended, all opt-in' : ` · ${enabled} on in recommended`;
 ---
 
 <ul class="package-grid">
@@ -15,9 +19,9 @@ import { enabledInPreset, href, packages } from '../lib/catalog';
           <span class="package-card-name">{pkg.npmName}</span>
           <span class="package-card-desc">{pkg.description}</span>
           <span class="package-card-meta">
-            {pkg.rules.length} rules
+            {plural(pkg.rules.length, 'rule')}
             {pkg.kind === 'eslint-plugin'
-              ? ` · ${enabledInPreset(pkg)} on in recommended`
+              ? presetSummary(enabledInPreset(pkg))
               : ' · harness lint-meta catalog'}
             {` · v${pkg.version}`}
           </span>

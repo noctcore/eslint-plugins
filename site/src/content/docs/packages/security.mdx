@@ -1,6 +1,6 @@
 ---
 title: "@noctcore/eslint-plugin-security"
-description: "Injection, path traversal, SSRF and open redirect, high-precision syntactic sinks only."
+description: "Injection, path traversal, SSRF, open redirect, unsanitized HTML and timing-unsafe comparison: high-precision syntactic sinks only."
 sidebar:
   label: security
   order: 8
@@ -9,15 +9,15 @@ sidebar:
 import QuickStart from '../../../components/QuickStart.astro';
 import RuleTable from '../../../components/RuleTable.astro';
 
-Injection, path traversal, SSRF and open redirect, high-precision syntactic sinks only.
+Injection, path traversal, SSRF, open redirect, unsanitized HTML and timing-unsafe comparison: high-precision syntactic sinks only.
 
 ## What it solves
 
-A small set of sinks where a user-controlled string becomes a vulnerability: a shell command built by interpolation, a fetch URL whose host comes from a request, a redirect to an arbitrary origin, a path joined from `req.params`.
+A small set of sinks where a user-controlled string becomes a vulnerability: a shell command built by interpolation, a fetch URL whose host comes from a request, a redirect to an arbitrary origin, a path joined from `req.params`, HTML handed to `dangerouslySetInnerHTML` unsanitized, an HMAC signature compared with `===`, a `'use server'` action exported without its action client.
 
 ## What it will yell at you about
 
-It will yell at you **rarely, and on purpose**: precision is the point. Each rule matches a narrow syntactic shape and stays silent when it cannot prove the value is dynamic, so it will miss taint that flows through a helper. Treat it as a tripwire, not a security audit, and keep a real SAST tool. `require-path-containment` is exported but left out of the preset because it has a high false-positive rate. **It is a bad fit** if you want broad taint tracking; this plugin trades recall for reports you can trust.
+It will yell at you **rarely, and on purpose**: precision is the point. Each rule matches a narrow syntactic shape and stays silent when it cannot prove the value is dynamic, so it will miss taint that flows through a helper. Treat it as a tripwire, not a security audit, and keep a real SAST tool. Three rules are exported but left out of the preset: `require-path-containment` because it has a high false-positive rate, `require-sanitized-html` because a real codebase has trusted HTML only you can list, and `server-action-through-client` because it needs your action-client names. **It is a bad fit** if you want broad taint tracking; this plugin trades recall for reports you can trust.
 
 ## Install and configure
 

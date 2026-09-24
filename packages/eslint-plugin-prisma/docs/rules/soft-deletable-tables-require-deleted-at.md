@@ -4,7 +4,7 @@
 > `where`.
 
 <!-- begin generated rule header -->
-⚙️ Opt-in: not in `recommended`; needs options (see Options) · 💭 Type information: not needed
+🔘 Opt-in: not in `recommended` · ⚙️ Needs options (see Options) · 💭 Type information: not needed
 <!-- end generated rule header -->
 
 ## Why

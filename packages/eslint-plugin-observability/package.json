@@ -1,7 +1,7 @@
 {
   "name": "@noctcore/eslint-plugin-observability",
   "version": "0.3.3",
-  "description": "Structured-logging discipline ESLint rules — context objects over interpolated messages, no sensitive fields in logs, no error-detail loss.",
+  "description": "Structured-logging ESLint rules: context objects over interpolated messages, no sensitive fields in logs, no lost error detail, and declared PII in audit payloads.",
   "license": "MIT",
   "type": "module",
   "main": "./dist/index.cjs",
