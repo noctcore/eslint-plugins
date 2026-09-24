@@ -61,16 +61,40 @@ Take `packages/eslint-plugin-security` as the model; all ten ESLint plugins have
 | The preset | `src/configs/recommended.ts` | `'noctcore-<short>/<rule>': 'error'`, or leave it out on purpose (see the severity policy) |
 | Tests | `tests/rules/<rule>.test.ts` | `ruleTester.run(...)` with `ruleTester` from `@noctcore/eslint-test-utils`, run by Vitest |
 | The doc | `docs/rules/<rule>.md` | Executed by the test suite. Read the next section before writing it |
-| The README table | `README.md` in the package | Hand-maintained; add a row. Only the prisma package has a test that checks it |
+| The README table | `README.md` in the package | Generated from the rule's `meta`: run `bun run docs:readmes` (see below) |
 
 `<short>` is the part of the package name after `eslint-plugin-`: `security`, `react`, and so on.
 The plugin registers itself under the namespace `noctcore-<short>`, so a consumer writes
 `noctcore-security/no-shell-interpolation`.
 
-A rule's `meta` is what the docs site reads: `docs.description` becomes the table row,
-`fixable` and `hasSuggestions` become the icons. Whether a rule needs type information is not
+A rule's `meta` is what the docs site, the README table and the rule-doc header read:
+`docs.description` becomes the table row, `fixable` and `hasSuggestions` become the icons. Set
+`docs.requiresOptions: true` on a rule that does nothing useful until the consumer passes options
+(it reports nothing, or everything, without a per-project fact such as a scope, a model registry or
+an action-client list); the table and header mark it ⚙️. `meta.deprecated` and `meta.replacedBy`
+are read too and render as ❌. Whether a rule needs type information is not
 declared anywhere; the site detects it from the source (`getParserServices(context)` means
 required). Only one rule in the family needs types today, so think hard before adding a second.
+
+### Generated README tables and doc headers
+
+`bun run docs:readmes` (`site/scripts/readmes.ts`) writes two things from the rules' source `meta`
+and each package's `recommended` preset:
+
+- the rules table in every package `README.md`, between `<!-- begin generated rules -->` and
+  `<!-- end generated rules -->`, with one legend and one column set for every plugin
+  (✅ in `recommended` at `error` · ⚙️ needs options · 🔧 `--fix` · 💡 suggestions · 💭 needs type
+  info · ❌ deprecated). `lint-meta-rules` gets a table of rule id, factory, entry point and
+  category instead;
+- a one-line status header in every `docs/rules/<rule>.md`, right after the title and blockquote
+  summary, between `<!-- begin generated rule header -->` and `<!-- end generated rule header -->`.
+  The site page drops it and shows its own metadata line.
+
+Never edit between the markers by hand. Run the command after adding a rule, changing a
+description, or moving a rule in or out of the preset, and commit what it writes. Running it twice
+changes nothing. `site/scripts/readmes.test.ts`, part of `bun run test`, regenerates both in memory
+and fails with "Run `bun run docs:readmes`" when a file on disk differs. A new package README needs
+the marker pair once, where its table goes.
 
 Do not edit the `VERSION` constant in `src/index.ts`. It is rewritten from `package.json` by
 `bun run sync:versions` during a release, and `packages/eslint-test-utils/tests/plugin-meta.test.ts`
@@ -79,7 +103,8 @@ fails if the two disagree.
 ### The doc is executable
 
 `docs/rules/<rule>.md` opens with a level-one heading of the full rule id in backticks and a
-one-line blockquote summary; the site turns those into the page title and description. What makes
+one-line blockquote summary; the site turns those into the page title and description. The
+generated status header follows them (see above). What makes
 these docs unusual is that the code examples run. `packages/eslint-test-utils/tests/docs/plugins.test.ts`
 imports every plugin from source, reads every doc, lints every labelled example with only that rule
 enabled, and fails when an example disagrees with its label. It runs as part of `bun run test`,
