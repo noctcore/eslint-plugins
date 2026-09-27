@@ -90,7 +90,9 @@ and each package's `recommended` preset:
   `lint-meta-rules` gets a table of rule id, factory, entry point and category instead;
 - a one-line status header in every `docs/rules/<rule>.md`, right after the title and blockquote
   summary, between `<!-- begin generated rule header -->` and `<!-- end generated rule header -->`.
-  The site page drops it and shows its own metadata line.
+  The site page drops it and shows the same facts as its own facts strip, built by `factsStrip` in
+  `site/scripts/sync.ts` (an ESLint rule: package, preset, autofix, suggestions, options, type
+  information; a lint-meta rule: its package, factory, entry point and category).
 
 Never edit between the markers by hand. Run the command after adding a rule, changing a
 description, or moving a rule in or out of the preset, and commit what it writes. Running it twice

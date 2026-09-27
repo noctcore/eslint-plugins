@@ -1,0 +1,39 @@
+/* The ESLint plugins site's own rules, loaded last in customCss after the
+   noctcore theme (noctcore/base.css, components.css, presets/nocturne.css).
+   Only what the theme does not cover lives here. */
+
+/* On a phone the header has room for the mark, the search and menu buttons
+   and a short title: the product name alone, without the wordmark. */
+@media (max-width: 29.99rem) {
+  .site-title {
+    gap: 0.5rem;
+    font-size: 0.9375rem;
+  }
+
+  .site-title :is(.nc-wordmark, .nc-sep) {
+    display: none;
+  }
+}
+
+.hero .tagline {
+  max-width: 38rem;
+}
+
+.hero .sl-link-button.primary:hover,
+.hero .sl-link-button.primary:focus-visible {
+  color: var(--nc-night);
+  filter: brightness(1.08);
+}
+
+/* The options tables in the rule docs are plain Markdown tables, which
+   Starlight scrolls sideways at phone width. Their last column ("Meaning")
+   gets a floor so it does not wrap one word per line. */
+@media (max-width: 40rem) {
+  .sl-markdown-content table:not(.rule-table) td:last-child {
+    min-width: 16rem;
+  }
+}
+
+.site-footer-note {
+  margin-top: 1.5rem;
+}

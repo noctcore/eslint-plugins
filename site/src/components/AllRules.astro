@@ -7,7 +7,8 @@
  * descriptions all come from the plugins' exported metadata.
  */
 import DeprecatedNote from './DeprecatedNote.astro';
-import { codeSpans, href, packages, plural, presetLabel } from '../lib/catalog';
+import RuleBadges from './RuleBadges.astro';
+import { codeSpans, href, packages, plural } from '../lib/catalog';
 
 const rows = packages.flatMap((pkg) => pkg.rules.map((rule) => ({ pkg, rule })));
 const total = rows.length;
@@ -20,10 +21,29 @@ const optIn = pluginRules.filter(({ rule }) => rule.recommended === null).length
 const lintMetaCount = rows.length - pluginRules.length;
 const typed = rows.filter(({ rule }) => rule.typeInfo !== 'none');
 const typeLabel = { required: 'required', optional: 'optional', none: '' } as const;
-/** `react` for a plugin, `lint-meta-rules` for the catalog: the id a reader searches for. */
-const ruleId = (pkg: (typeof packages)[number], rule: (typeof rows)[number]['rule']) =>
-  pkg.kind === 'eslint-plugin' ? rule.id : `${pkg.short}/${rule.name}`;
+const stats = [
+  ['Rules', total],
+  ['On in recommended', onInPreset],
+  ['Opt-in', registeredOff + optIn],
+  ['lint-meta', lintMetaCount],
+  ['Autofix', rows.filter(({ rule }) => rule.fixable).length],
+  ['Suggestions', rows.filter(({ rule }) => rule.hasSuggestions).length],
+] as const;
+/** `noctcore-react/` for a plugin, `lint-meta-rules/` for the catalog: with the name, the id a reader searches for. */
+const namespaceOf = (pkg: (typeof packages)[number]) =>
+  pkg.kind === 'eslint-plugin' ? `${pkg.namespace}/` : `${pkg.short}/`;
 ---
+
+<dl class="nc-stats">
+  {
+    stats.map(([label, count]) => (
+      <div>
+        <dt>{label}</dt>
+        <dd>{count}</dd>
+      </div>
+    ))
+  }
+</dl>
 
 <p>
   {total} rules across {plugins.length} ESLint plugins and {lintMeta.length} lint-meta catalog. Of the{' '}
@@ -52,38 +72,53 @@ const ruleId = (pkg: (typeof packages)[number], rule: (typeof rows)[number]['rul
     </thead>
     <tbody>
       {
-        rows.map(({ pkg, rule }) => (
-          <tr>
-            <td>
-              <a href={href(rule.route)}>
-                <code>{ruleId(pkg, rule)}</code>
-              </a>
-              <DeprecatedNote rule={rule} />
-            </td>
-            <td>{codeSpans(rule.description).map(({ part, code }) => (code ? <code>{part}</code> : part))}</td>
-            <td>
-              {pkg.kind === 'eslint-plugin' ? (
-                <span class:list={['pill', `pill-${presetLabel(rule.recommended).replace(' ', '-')}`]}>
-                  {presetLabel(rule.recommended)}
+        packages.map((pkg) => (
+          <>
+            <tr class="nc-group">
+              <th colspan="5" scope="colgroup">
+                {pkg.short}
+                <span class="nc-group-count">
+                  {plural(pkg.rules.length, 'rule')} · v{pkg.version}
                 </span>
-              ) : (
-                <span class="pill pill-harness">harness</span>
-              )}
-            </td>
-            <td>{[rule.fixable && '🔧', rule.hasSuggestions && '💡'].filter(Boolean).join(' ')}</td>
-            <td>{typeLabel[rule.typeInfo as keyof typeof typeLabel]}</td>
-          </tr>
+              </th>
+            </tr>
+            {pkg.rules.map((rule) => (
+              <tr>
+                <td data-label="Rule">
+                  <a href={href(rule.route)}>
+                    <code><span class="nc-id-ns">{namespaceOf(pkg)}</span>{rule.name}</code>
+                  </a>
+                  <DeprecatedNote rule={rule} />
+                </td>
+                <td data-label="What it reports">
+                  {codeSpans(rule.description).map(({ part, code }) => (code ? <code>{part}</code> : part))}
+                </td>
+                <td data-label="Preset">
+                  {pkg.kind === 'eslint-plugin' ? (
+                    <RuleBadges rule={rule} column="preset" />
+                  ) : (
+                    <span class="pill pill-harness">harness</span>
+                  )}
+                </td>
+                <td data-label="Fix"><RuleBadges rule={rule} column="fix" /></td>
+                <td data-label="Types"><RuleBadges rule={rule} column="types" /></td>
+              </tr>
+            ))}
+          </>
         ))
       }
     </tbody>
   </table>
 </div>
 <p class="rule-table-legend">
-  <strong>Preset</strong>: severity in the package's <code>configs.recommended</code>; <em>off</em> means the
-  preset registers the rule switched off, <em>not listed</em> means it leaves the rule out; both are opt-in, so
-  you turn the rule on yourself. <em>harness</em>
-  means the rule is a lint-meta rule with no ESLint preset. <strong>❌ deprecated</strong>: the rule still
-  works but is in no preset and will be removed; move to the rule named after it. <strong>Fix</strong>: 🔧 fixable with
-  <code>--fix</code>, 💡 offers editor suggestions. <strong>Types</strong>: whether the rule needs a
-  type-checked program (<code>parserOptions.projectService</code>), or uses one when present.
+  <strong>Preset</strong>: the rule's severity in its package's <code>configs.recommended</code>.{' '}
+  <span class="pill pill-error">error</span> is on. <span class="pill pill-off">off</span> (registered, switched off)
+  and <span class="pill pill-not-listed">not listed</span> (left out) are both <span class="nc-optin">opt-in</span>:
+  you turn the rule on yourself. <span class="nc-badge nc-badge--options">needs options</span> means it does nothing
+  until you configure it. <span class="pill pill-harness">harness</span> marks a lint-meta rule, which has no ESLint
+  preset. <span class="pill pill-deprecated">deprecated</span> marks a rule that still works but is in no preset and
+  will be removed; move to the rule named after it. <strong>Fix</strong>:
+  <span class="nc-badge nc-badge--fix">autofix</span> with <code>--fix</code>,
+  <span class="nc-badge nc-badge--suggest">suggestion</span> in your editor. <strong>Types</strong>: whether the
+  rule needs a type-checked program (<code>parserOptions.projectService</code>), or uses one when present.
 </p>

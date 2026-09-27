@@ -145,24 +145,77 @@ function plainText(markdown: string): string {
     .trim();
 }
 
-function factsLine(pkg: PackageEntry, rule: RuleEntry): string {
+function escapeHtml(text: string): string {
+  return text.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
+}
+
+/** One cell of the facts strip. `quiet` marks a negative value, so it reads quieter. */
+function fact(label: string, value: string, quiet = false): string {
+  return `  <div><dt>${label}</dt><dd${quiet ? ' class="is-no"' : ''}>${value}</dd></div>`;
+}
+
+const badge = (kind: string, text: string) => `<span class="nc-badge nc-badge--${kind}">${text}</span>`;
+const yesNo = (label: string, yes: boolean) => fact(label, yes ? 'Yes' : 'No', !yes);
+
+function presetFact(rule: RuleEntry): string {
+  if (rule.recommended === 'error') return badge('on', 'error');
+  const state = rule.recommended === 'off' ? badge('off', 'off') : badge('out', 'not listed');
+  // A deprecated rule is in no preset on purpose; it is not one to turn on.
+  return rule.deprecated ? state : `${state}<span class="nc-optin">opt-in</span>`;
+}
+
+/**
+ * The facts strip under a rule's title and summary: the same cells in the same
+ * place on every rule page, with a badge where a value is a state and plain
+ * text for a yes or no. Markup and classes are the noctcore theme's
+ * (`.nc-facts` in src/styles/noctcore/components.css).
+ */
+export function factsStrip(pkg: PackageEntry, rule: RuleEntry): string {
+  const packageLink =
+    `<a href="${SITE_BASE}/packages/${pkg.short}/"><code>${pkg.short}</code></a><wbr>` +
+    `<span class="nc-facts-note">v${pkg.version}</span>`;
+  let cells: string[];
   if (pkg.kind === 'lint-meta') {
     // A reader who lands here from search has no other route to what runs a
     // lint-meta rule: not ESLint, the harness. The package page explains it.
-    return [
-      `**Runs under:** [\`@noctcore/harness\` lint-meta](${SITE_BASE}/packages/${pkg.short}/), not ESLint`,
-      `**Factory:** \`${rule.factory}\` from \`${rule.entry}\``,
-      `**Category:** \`${rule.category}\``,
-      `**Fails CI by default:** ${rule.ciCritical ? 'yes' : 'no'}`,
-    ].join(' · ');
+    cells = [
+      fact('Package', packageLink),
+      fact('Runs under', `<code>@noctcore/harness</code> lint-meta, not ESLint`),
+      fact('Factory', `<code>${escapeHtml(rule.factory ?? '')}</code>`),
+      fact('Entry point', `<code>${escapeHtml(rule.entry ?? '')}</code>`),
+      fact('Category', `<code>${escapeHtml(rule.category ?? '')}</code>`),
+      yesNo('Fails CI by default', rule.ciCritical === true),
+    ];
+  } else {
+    const options = rule.requiresOptions
+      ? fact('Options', badge('options', 'Required'))
+      : fact('Options', rule.hasOptions ? 'Optional' : 'None', !rule.hasOptions);
+    const typeInfo =
+      rule.typeInfo === 'none'
+        ? fact('Type information', 'Not needed', true)
+        : fact('Type information', badge('types', rule.typeInfo));
+    cells = [
+      fact('Package', packageLink),
+      fact('Recommended preset', presetFact(rule)),
+      yesNo('Autofix', rule.fixable),
+      yesNo('Suggestions', rule.hasSuggestions),
+      options,
+      typeInfo,
+    ];
   }
-  const typeInfo = { required: 'required', optional: 'used when available', none: 'not needed' };
-  return [
-    `**Recommended preset:** ${rule.recommended ? `\`${rule.recommended}\`` : 'not included'}`,
-    `**Autofix:** ${rule.fixable ? 'yes' : 'no'}`,
-    `**Suggestions:** ${rule.hasSuggestions ? 'yes' : 'no'}`,
-    `**Type information:** ${typeInfo[rule.typeInfo]}`,
-  ].join(' · ');
+  if (rule.deprecated) cells.push(fact('Status', badge('deprecated', 'deprecated')));
+  return ['<dl class="nc-facts">', ...cells, '</dl>'].join('\n');
+}
+
+/**
+ * The doc's `> summary` blockquote as the page's lead paragraph. The summary is
+ * Markdown (code spans, bold), so it stays Markdown inside the wrapper and the
+ * site's own renderer turns it into HTML; the blank lines around it are what
+ * make that happen inside an HTML block.
+ */
+function lead(quote: readonly string[]): string[] {
+  const text = quote.map((line) => line.replace(/^>\s?/, ''));
+  return ['<div class="nc-lead">', '', ...text, '', '</div>'];
 }
 
 /** A replacement rule's page, relative to a rule page at rules/<short>/<rule>/. */
@@ -180,7 +233,7 @@ function deprecationBanner(rule: RuleEntry): string[] {
 /**
  * Render one rule doc as a Starlight page. Throws on a doc out of shape. The
  * doc's generated status header is dropped: the page states the same facts in
- * its own metadata line, and showing both would say everything twice.
+ * its own facts strip, and showing both would say everything twice.
  */
 export function renderRuleDoc(source: string, docPath: string, pkg: PackageEntry, rule: RuleEntry): string {
   const lines = stripRuleHeader(source.replace(/\r\n/g, '\n')).split('\n');
@@ -202,7 +255,7 @@ export function renderRuleDoc(source: string, docPath: string, pkg: PackageEntry
       .join(' '),
   );
 
-  const body: string[] = [...quote, ...deprecationBanner(rule), '', factsLine(pkg, rule)];
+  const body: string[] = [...lead(quote), ...deprecationBanner(rule), '', factsStrip(pkg, rule)];
   let inFence = false;
   for (const line of lines.slice(i)) {
     const fence = FENCE.exec(line);

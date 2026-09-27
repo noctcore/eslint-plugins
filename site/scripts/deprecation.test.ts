@@ -173,6 +173,8 @@ describe('rendering a deprecated rule', () => {
         'client. Use [`noctcore-fixture/new-rule`](../../fixture/new-rule/) instead.\n:::',
     );
     expect(page).toContain('  badge:\n    text: Deprecated\n    variant: caution');
+    expect(page).toContain('<div><dt>Status</dt><dd><span class="nc-badge nc-badge--deprecated">deprecated</span></dd></div>');
+    expect(page).not.toContain('nc-optin');
     expect(page).not.toContain('<!-- begin generated rule header -->');
   });
 
@@ -181,6 +183,7 @@ describe('rendering a deprecated rule', () => {
     const page = renderRuleDoc(doc, '/repo/packages/eslint-plugin-fixture/docs/rules/new-rule.md', pkg, newRule);
     expect(page).not.toContain(':::caution');
     expect(page).not.toContain('badge:');
+    expect(page).not.toContain('<dt>Status</dt>');
   });
 
   test('llms.txt lists deprecated rules with their replacement, and nothing when there are none', () => {

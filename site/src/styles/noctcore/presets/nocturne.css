@@ -1,0 +1,169 @@
+/* noctcore docs preset: Nocturne
+   The current night-sky theme, refined: brand-tuned signal colours and the crescent rule under every page title. Its sans body keeps the 113-rule index and the code-heavy rule pages easy to scan.
+   Type: Space Grotesk for headings, system UI for text, JetBrains Mono for code.
+   Needs: @fontsource-variable/space-grotesk, @fontsource-variable/jetbrains-mono.
+   Dark is the default, as in Starlight: :root holds the dark values and
+   :root[data-theme='light'] overrides them. Load after base.css and
+   components.css. Contrast: every text pair passes WCAG AA, see contrast.md. */
+@import '@fontsource-variable/space-grotesk';
+@import '@fontsource-variable/jetbrains-mono';
+
+:root,
+::backdrop {
+  /* Type, shape and labels */
+  --nc-font-display: 'Space Grotesk Variable', 'Space Grotesk', ui-sans-serif, system-ui, sans-serif;
+  --nc-font-body: ui-sans-serif, system-ui, -apple-system, 'Segoe UI', sans-serif;
+  --nc-font-mono: 'JetBrains Mono Variable', 'JetBrains Mono', ui-monospace, 'SFMono-Regular', Menlo, monospace;
+  --nc-label-font: var(--nc-font-body);
+  --nc-label-case: none;
+  --nc-label-tracking: 0;
+  --nc-label-size: 0.8125rem;
+  --nc-label-weight: 600;
+  --nc-radius: 0.5rem;
+  --nc-measure: 50rem;
+
+  /* Surfaces */
+  --nc-bg: #0b1020;
+  --nc-surface: #10172b;
+  --nc-raised: #141c33;
+  --nc-line: #26324f;
+  --nc-line-soft: #1a2340;
+
+  /* Ink */
+  --nc-ink: #eef2fb;
+  --nc-ink-2: #dde3f1;
+  --nc-text: #b7c0d8;
+  --nc-muted: #939fbf;
+  --nc-faint: #5b6a90;
+
+  /* Accent */
+  --nc-link: #5fd6e5;
+  --nc-on-link: #0b1020;
+  --nc-accent: #8b7cff;
+  --nc-accent-soft: #1b2450;
+  --nc-accent-strong: #5fd6e5;
+
+  /* Signals: Starlight asides and badges, the ESLint verdict frames and rule badges */
+  --nc-note-bg: #0f2536;
+  --nc-note-edge: #4dd0e1;
+  --nc-note-ink: #9fe8f1;
+  --nc-tip-bg: #1d1a45;
+  --nc-tip-edge: #8b7cff;
+  --nc-tip-ink: #cbc4ff;
+  --nc-caution-bg: #2e230f;
+  --nc-caution-edge: #f0b545;
+  --nc-caution-ink: #ffd89a;
+  --nc-danger-bg: #35141c;
+  --nc-danger-edge: #ff7b72;
+  --nc-danger-ink: #ffbdb8;
+  --nc-success-bg: #0f2b22;
+  --nc-success-edge: #56d68f;
+  --nc-success-ink: #a9efc6;
+
+  /* Components: cards and package cards */
+  --nc-card-bg: #10172b;
+  --nc-card-border: #26324f;
+
+  /* Code: frames read these; the Expressive Code theme carries the syn-* values */
+  --nc-code-inline: #1c2644;
+  --nc-code-bg: #0e1528;
+  --nc-code-ink: #d6ddef;
+  --nc-syn-keyword: #b3a8ff;
+  --nc-syn-string: #7fe0ea;
+  --nc-syn-number: #ffc98a;
+  --nc-syn-function: #9fe8f1;
+  --nc-syn-property: #dde3f1;
+  --nc-syn-comment: #8792b3;
+  --nc-syn-punct: #939fbf;
+
+  /* Motif: the window-frame backdrop */
+  --nc-motif: linear-gradient(135deg, #0f766e, #1e1b4b);
+}
+
+:root[data-theme='light'],
+[data-theme='light'] ::backdrop {
+  /* Surfaces */
+  --nc-bg: #ffffff;
+  --nc-surface: #f5f7fc;
+  --nc-raised: #f5f7fc;
+  --nc-line: #c9d1e3;
+  --nc-line-soft: #e9edf7;
+
+  /* Ink */
+  --nc-ink: #0b1020;
+  --nc-ink-2: #232c44;
+  --nc-text: #3a4560;
+  --nc-muted: #56627f;
+  --nc-faint: #7b86a4;
+
+  /* Accent */
+  --nc-link: #5a4ad6;
+  --nc-on-link: #ffffff;
+  --nc-accent: #5a4ad6;
+  --nc-accent-soft: #ebe9ff;
+  --nc-accent-strong: #2a2470;
+
+  /* Signals: Starlight asides and badges, the ESLint verdict frames and rule badges */
+  --nc-note-bg: #e3f6f9;
+  --nc-note-edge: #0e8a9a;
+  --nc-note-ink: #0b5563;
+  --nc-tip-bg: #eeebff;
+  --nc-tip-edge: #6f5ef0;
+  --nc-tip-ink: #3b2fa0;
+  --nc-caution-bg: #fcf1dc;
+  --nc-caution-edge: #c98512;
+  --nc-caution-ink: #7a4a06;
+  --nc-danger-bg: #fde8e6;
+  --nc-danger-edge: #d8453b;
+  --nc-danger-ink: #8f1f18;
+  --nc-success-bg: #e2f5ea;
+  --nc-success-edge: #1f9d5a;
+  --nc-success-ink: #135c35;
+
+  /* Components: cards and package cards */
+  --nc-card-bg: #f5f7fc;
+  --nc-card-border: #c9d1e3;
+
+  /* Code: frames read these; the Expressive Code theme carries the syn-* values */
+  --nc-code-inline: #eceff8;
+  --nc-code-bg: #f5f7fc;
+  --nc-code-ink: #232c44;
+  --nc-syn-keyword: #5a3fd0;
+  --nc-syn-string: #0b6f7e;
+  --nc-syn-number: #9a4f00;
+  --nc-syn-function: #0b5563;
+  --nc-syn-property: #232c44;
+  --nc-syn-comment: #5f6b88;
+  --nc-syn-punct: #56627f;
+
+  /* Motif: the window-frame backdrop */
+  --nc-motif: linear-gradient(135deg, #0f766e, #1e1b4b);
+}
+
+/* Structure */
+:root:not([data-theme='light']) body {
+  background-image:
+    radial-gradient(70rem 30rem at 20% -8rem, rgba(139, 124, 255, 0.16), transparent 65%),
+    radial-gradient(50rem 24rem at 90% -10rem, rgba(77, 208, 225, 0.1), transparent 65%);
+  background-repeat: no-repeat;
+}
+
+h1#_top:not(.hero h1)::after {
+  content: '';
+  display: block;
+  width: 3rem;
+  height: 0.1875rem;
+  margin-top: 0.875rem;
+  border-radius: 999px;
+  background: var(--nc-gradient);
+}
+
+.page > .header {
+  border-bottom: 1px solid var(--sl-color-hairline-light);
+}
+
+.sl-link-card:hover,
+.sl-link-card:focus-within {
+  border-color: var(--sl-color-accent);
+  background: var(--sl-color-gray-6);
+}

@@ -1,9 +1,11 @@
 import { defineEcConfig } from '@astrojs/starlight/expressive-code';
 
+import { noctcoreCodeConfig } from './src/styles/noctcore/expressive-code.mjs';
+
 /**
  * The rule docs mark every example ` ```ts bad ` or ` ```ts good `, and
  * scripts/sync.ts carries that through as `verdict=bad|good` fence meta. This
- * plugin turns it into a class on the rendered block so theme.css can give the
+ * plugin turns it into a class on the rendered block so components.css can give the
  * two a different frame, label colour and marker. Rendered identically, a reader
  * cannot tell which snippet is the one not to write.
  */
@@ -24,5 +26,6 @@ function pluginVerdict() {
 }
 
 export default defineEcConfig({
+  ...noctcoreCodeConfig('nocturne'),
   plugins: [pluginVerdict()],
 });
