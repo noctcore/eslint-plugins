@@ -1,14 +1,37 @@
 ---
 /**
- * Landing-page index of every package: name, npm description, rule and preset
- * counts. All of it comes from the catalog, so a new rule shows up here without
- * anyone editing the landing page.
+ * Landing-page index of every package: short name, version, npm name and
+ * description, and how its rules split across the recommended preset. All of it
+ * comes from the catalog, so a new rule shows up here without anyone editing the
+ * landing page. The split bar is decoration; the meta line says the same in words.
  */
 import { enabledInPreset, href, packages, plural } from '../lib/catalog';
 
-/** A preset that turns nothing on says so, so a 0 does not read as a mistake. */
-const presetSummary = (enabled: number) =>
-  enabled === 0 ? ' · 0 on in recommended, all opt-in' : ` · ${enabled} on in recommended`;
+type Pkg = (typeof packages)[number];
+
+/** How a plugin's rules split: on in recommended, registered off, left out. */
+function split(pkg: Pkg) {
+  const on = enabledInPreset(pkg);
+  const off = pkg.rules.filter((rule) => rule.recommended === 'off').length;
+  return { on, off, out: pkg.rules.length - on - off };
+}
+
+function meta(pkg: Pkg): string {
+  const rules = plural(pkg.rules.length, 'rule');
+  if (pkg.kind !== 'eslint-plugin') return `${rules} · harness lint-meta catalog`;
+  const { on, off, out } = split(pkg);
+  return [rules, `${on} on`, off > 0 && `${off} off`, out > 0 && `${out} not listed`].filter(Boolean).join(' · ');
+}
+
+function segments(pkg: Pkg): { kind: string; count: number }[] {
+  if (pkg.kind !== 'eslint-plugin') return [{ kind: 'harness', count: 1 }];
+  const { on, off, out } = split(pkg);
+  return [
+    { kind: 'on', count: on },
+    { kind: 'off', count: off },
+    { kind: 'out', count: out },
+  ].filter(({ count }) => count > 0);
+}
 ---
 
 <ul class="package-grid">
@@ -16,15 +39,18 @@ const presetSummary = (enabled: number) =>
     packages.map((pkg) => (
       <li class="package-card">
         <a href={href(`packages/${pkg.short}/`)}>
+          <span class="package-card-head">
+            <span class="package-card-short">{pkg.short}</span>
+            <span class="package-card-version">v{pkg.version}</span>
+          </span>
           <span class="package-card-name">{pkg.npmName}</span>
           <span class="package-card-desc">{pkg.description}</span>
-          <span class="package-card-meta">
-            {plural(pkg.rules.length, 'rule')}
-            {pkg.kind === 'eslint-plugin'
-              ? presetSummary(enabledInPreset(pkg))
-              : ' · harness lint-meta catalog'}
-            {` · v${pkg.version}`}
+          <span class="nc-split" aria-hidden="true">
+            {segments(pkg).map(({ kind, count }) => (
+              <i class={kind} style={`flex-grow: ${count}`} />
+            ))}
           </span>
+          <span class="package-card-meta">{meta(pkg)}</span>
         </a>
       </li>
     ))
