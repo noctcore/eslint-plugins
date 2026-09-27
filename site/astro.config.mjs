@@ -29,6 +29,8 @@ export default defineConfig({
         './src/styles/site.css',
       ],
       components: {
+        SiteTitle: './src/components/SiteTitle.astro',
+        PageTitle: './src/components/PageTitle.astro',
         Footer: './src/components/Footer.astro',
       },
       social: [

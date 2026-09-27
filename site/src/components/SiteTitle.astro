@@ -1,0 +1,37 @@
+---
+/**
+ * The site title as the noctcore wordmark over its crescent rule, then the
+ * product name. Replacing Starlight's SiteTitle drops its scoped styles, so the
+ * layout it had (logo height, gap, no wrapping) is restored below.
+ */
+import mark from '../assets/mark.svg';
+
+const { siteTitleHref } = Astro.locals.starlightRoute;
+---
+
+<a href={siteTitleHref} class="site-title sl-flex" translate="no">
+  <img src={mark.src} width="32" height="32" alt="" />
+  <span class="nc-wordmark">noctcore</span>
+  <span class="nc-sep" aria-hidden="true">/</span>
+  <span class="nc-product">ESLint plugins</span>
+</a>
+
+<style>
+  @layer starlight.core {
+    .site-title {
+      align-items: center;
+      gap: 0.6rem;
+      font-size: var(--sl-text-base);
+      text-decoration: none;
+      white-space: nowrap;
+      min-width: 0;
+    }
+
+    img {
+      height: calc(var(--sl-nav-height) - 2 * var(--sl-nav-pad-y));
+      width: auto;
+      max-width: 100%;
+      object-fit: contain;
+    }
+  }
+</style>
