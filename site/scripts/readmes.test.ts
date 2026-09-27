@@ -71,7 +71,7 @@ describe('generated README tables and rule-doc headers', () => {
     }
   });
 
-  test('the site page drops the doc header and keeps its own metadata line', () => {
+  test('the site page drops the doc header and keeps its own facts strip', () => {
     const pkg = inventory.find((entry) => entry.kind === 'eslint-plugin')!;
     const rule = pkg.rules[0]!;
     const sections = ['Why', 'What it flags', 'What it does not flag', 'When not to use it'];
@@ -81,7 +81,8 @@ describe('generated README tables and rule-doc headers', () => {
     const page = renderRuleDoc(doc, `${pkg.dir}/docs/rules/${rule.name}.md`, pkg, rule);
     expect(page).not.toContain(HEADER_BEGIN);
     expect(page).not.toContain(HEADER_END);
-    expect(page).toContain('**Recommended preset:**');
+    expect(page).toContain('<dl class="nc-facts">');
+    expect(page).toContain('<dt>Recommended preset</dt>');
   });
 });
 
