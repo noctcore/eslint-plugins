@@ -9,7 +9,7 @@ exactly what is needed to act.
 
 ## Setup and the commands that matter
 
-Requirements: [Bun](https://bun.sh) 1.3.14 (`packageManager` in the root `package.json`) and
+Requirements: [Bun](https://bun.sh) 1.4.2 (`packageManager` in the root `package.json`) and
 Node 22 or newer (`engines`; the docs site needs 22.12 or newer).
 
 ```sh
