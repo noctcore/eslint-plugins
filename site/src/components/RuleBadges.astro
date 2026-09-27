@@ -1,0 +1,45 @@
+---
+/**
+ * The badges a rule row shows in one table column: the preset state (with the
+ * opt-in and needs-options markers), the fix kinds, or the type information.
+ * Shared by the all-rules index and each package's table, so the two cannot
+ * mark the same rule differently. Text badges, never emoji: a screen reader
+ * and find-in-page both get words.
+ */
+import { presetLabel, type CatalogRule } from '../lib/catalog';
+
+interface Props {
+  rule: CatalogRule;
+  column: 'preset' | 'fix' | 'types';
+}
+
+const { rule, column } = Astro.props;
+const preset = presetLabel(rule.recommended);
+// A deprecated rule is in no preset on purpose; it is not one to turn on.
+const optIn = preset !== 'error' && !rule.deprecated;
+---
+
+{
+  column === 'preset' && (
+    <>
+      <span class:list={['pill', `pill-${preset.replace(' ', '-')}`]}>{preset}</span>
+      {optIn && <span class="nc-optin">opt-in</span>}
+      {rule.requiresOptions && (
+        <>
+          {' '}
+          <span class="nc-badge nc-badge--options">needs options</span>
+        </>
+      )}
+    </>
+  )
+}
+{
+  column === 'fix' && (
+    <>
+      {rule.fixable && <span class="nc-badge nc-badge--fix">autofix</span>}
+      {rule.fixable && rule.hasSuggestions && ' '}
+      {rule.hasSuggestions && <span class="nc-badge nc-badge--suggest">suggestion</span>}
+    </>
+  )
+}
+{column === 'types' && rule.typeInfo !== 'none' && <span class="nc-badge nc-badge--types">{rule.typeInfo}</span>}

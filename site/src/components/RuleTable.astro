@@ -4,7 +4,8 @@
  * rule's `meta` via the catalog. Nothing in it is typed by hand.
  */
 import DeprecatedNote from './DeprecatedNote.astro';
-import { codeSpans, getPackage, href, presetLabel } from '../lib/catalog';
+import RuleBadges from './RuleBadges.astro';
+import { codeSpans, getPackage, href } from '../lib/catalog';
 
 interface Props {
   pkg: string;
@@ -12,7 +13,6 @@ interface Props {
 
 const pkg = getPackage(Astro.props.pkg);
 const isPlugin = pkg.kind === 'eslint-plugin';
-const typeLabel = { required: 'required', optional: 'optional', none: '' } as const;
 ---
 
 <div class="rule-table-wrap">
@@ -42,33 +42,33 @@ const typeLabel = { required: 'required', optional: 'optional', none: '' } as co
         pkg.rules.map((rule) =>
           isPlugin ? (
             <tr>
-              <td>
+              <td data-label="Rule">
                 <a href={href(rule.route)}>
                   <code>{rule.name}</code>
                 </a>
                 <DeprecatedNote rule={rule} />
               </td>
-              <td>{codeSpans(rule.description).map(({ part, code }) => (code ? <code>{part}</code> : part))}</td>
-              <td>
-                <span class:list={['pill', `pill-${presetLabel(rule.recommended).replace(' ', '-')}`]}>
-                  {presetLabel(rule.recommended)}
-                </span>
+              <td data-label="What it reports">
+                {codeSpans(rule.description).map(({ part, code }) => (code ? <code>{part}</code> : part))}
               </td>
-              <td>{rule.fixable ? 'autofix' : rule.hasSuggestions ? 'suggestion' : ''}</td>
-              <td>{typeLabel[rule.typeInfo as keyof typeof typeLabel]}</td>
+              <td data-label="Preset"><RuleBadges rule={rule} column="preset" /></td>
+              <td data-label="Fix"><RuleBadges rule={rule} column="fix" /></td>
+              <td data-label="Types"><RuleBadges rule={rule} column="types" /></td>
             </tr>
           ) : (
             <tr>
-              <td>
+              <td data-label="Rule">
                 <a href={href(rule.route)}>
                   <code>{rule.name}</code>
                 </a>
               </td>
-              <td>{codeSpans(rule.description).map(({ part, code }) => (code ? <code>{part}</code> : part))}</td>
-              <td>
+              <td data-label="What it enforces">
+                {codeSpans(rule.description).map(({ part, code }) => (code ? <code>{part}</code> : part))}
+              </td>
+              <td data-label="Category">
                 <code>{rule.category}</code>
               </td>
-              <td>
+              <td data-label="Entry point">
                 <code>{rule.entry}</code>
               </td>
             </tr>
@@ -81,11 +81,13 @@ const typeLabel = { required: 'required', optional: 'optional', none: '' } as co
 {
   isPlugin && (
     <p class="rule-table-legend">
-      <strong>Preset</strong>: severity in <code>configs.recommended</code>; <em>off</em> means the preset
-      registers the rule switched off, <em>not listed</em> means it leaves the rule out; both are opt-in, so you
-      turn the rule on yourself. <strong>Fix</strong>:
-      whether the rule ships an autofix or an editor suggestion. <strong>Types</strong>: whether the rule needs a
-      type-checked program (<code>parserOptions.projectService</code>).
+      <strong>Preset</strong>: severity in <code>configs.recommended</code>.{' '}
+      <span class="pill pill-off">off</span> means the preset registers the rule switched off,{' '}
+      <span class="pill pill-not-listed">not listed</span> means it leaves the rule out; both are{' '}
+      <span class="nc-optin">opt-in</span>, so you turn the rule on yourself.{' '}
+      <span class="nc-badge nc-badge--options">needs options</span> means it does nothing until you configure it.{' '}
+      <strong>Fix</strong>: whether the rule ships an autofix or an editor suggestion. <strong>Types</strong>: whether
+      the rule needs a type-checked program (<code>parserOptions.projectService</code>), or uses one when present.
     </p>
   )
 }
