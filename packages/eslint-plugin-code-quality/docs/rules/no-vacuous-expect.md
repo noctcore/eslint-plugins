@@ -64,8 +64,12 @@ whose only assertion is that the root, its first child or its HTML exists passes
 renders at all: the wrong component, an empty wrapper, an error boundary's fallback. It is the
 "renders without crashing" test with an assertion added to look real.
 
-The subject is a name in `renderRoots` (`container`, `view.container`, `render(...).container`), or
-its `firstChild`, `firstElementChild`, `lastChild`, `innerHTML`, `outerHTML` or `textContent`. The
+The subject is a render root, or its `firstChild`, `firstElementChild`, `lastChild`, `innerHTML`,
+`outerHTML` or `textContent`. A render root is a name in `renderRoots` that comes from a call:
+destructured from one (`const { container } = render(...)`, also after `await`), read off one
+(`render(...).container`, `view.container` where `view` is bound to a call, or
+`const container = render(...).container`), or returned by a `render*` function
+(`const container = renderIntoDocument(...)`). The
 matcher is a presence check: `toBeInTheDocument`, `toBeTruthy`, `toBeDefined`, `toBeVisible`,
 `not.toBeNull`, `not.toBeUndefined`, `not.toBeFalsy`, `not.toBeEmptyDOMElement`, or `not.toBe('')`
 (also `not.toEqual('')` / `not.toStrictEqual('')`).
@@ -100,6 +104,13 @@ it('renders the card', () => {
   matching `assertionCallees`, so a weak `expect` next to `assert.equal(...)`, `expectValidUser(...)`
   or supertest's `.expect(200)` is fine.
 - `toBeUndefined`, `toBeNull` and `not.toBeNull`, unless you add them to `weakMatchers` (see Options).
+- A `container` or `baseElement` that is not bound from a call: a parameter, an object property
+  (`ship.container`), or a binding initialised from something other than a `render*` call
+  (`const container = await docker.inspect(id)`). A binding assigned later
+  (`let container; beforeEach(() => ({ container } = render(...)))`) is not followed either.
+  The reverse also holds: a `container` destructured from a call that is not a render
+  (`const { container } = await docker.inspect(id)`) is treated as a render root; set `renderRoots`
+  for such a suite.
 - A render root checked for real content (`expect(container.textContent).toBe('Hello')`), a query
   on the root (`container.querySelector('nav')`), or a presence check next to another assertion.
 

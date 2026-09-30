@@ -61,6 +61,12 @@ ruleTester.run('no-vacuous-expect', noVacuousExpectRule, {
     },
     // A screen query is not the render root.
     { code: "it('shows', () => { render(<Hello />); expect(screen.getByText('Hello')).toBeInTheDocument(); });", filename: 'src/Hello.test.tsx' },
+    // A `container` that is not a render result is not a render root.
+    {
+      code: "it('inspects', async () => { const container = await docker.inspect(id); expect(container).not.toBeNull(); });",
+    },
+    { code: "it('ships', () => { expect(ship.container).toBeVisible(); });" },
+    { code: "it('packs', ({ container }) => { expect(container).not.toBeEmptyDOMElement(); });" },
     // renderRoots: [] turns the render-root check off.
     {
       code: "it('renders', () => { const { container } = render(<Harness />); expect(container).not.toBeEmptyDOMElement(); });",
@@ -151,6 +157,22 @@ ruleTester.run('no-vacuous-expect', noVacuousExpectRule, {
       code: "it('renders', () => { expect(render(<Card />).container.firstChild).toBeTruthy(); });",
       filename: 'src/Card.test.tsx',
       errors: [{ messageId: 'soleRenderRootExpect', data: { matcher: 'toBeTruthy' } }],
+    },
+    // Render results through await, a member of the result, and a render* helper.
+    {
+      code: "it('renders', async () => { const { container } = await renderAsync(<Card />); expect(container).toBeInTheDocument(); });",
+      filename: 'src/Card.test.tsx',
+      errors: [{ messageId: 'soleRenderRootExpect' }],
+    },
+    {
+      code: "it('renders', () => { const container = render(<Card />).container; expect(container.innerHTML).not.toEqual(''); });",
+      filename: 'src/Card.test.tsx',
+      errors: [{ messageId: 'soleRenderRootExpect' }],
+    },
+    {
+      code: "it('renders', () => { const container = renderIntoDocument(<Card />); expect(container).not.toBeEmptyDOMElement(); });",
+      filename: 'src/Card.test.tsx',
+      errors: [{ messageId: 'soleRenderRootExpect' }],
     },
     // A custom root name.
     {
