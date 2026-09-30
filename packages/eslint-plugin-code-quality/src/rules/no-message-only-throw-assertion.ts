@@ -37,7 +37,12 @@ const DEFAULT_ALLOW_MESSAGE_ONLY = false;
 const DEFAULT_TRUST_ERROR_INSTANCES = true;
 const DEFAULT_ASSERTION_HELPERS: readonly string[] = [];
 
-/** Matchers on a `.rejects` chain that pin the rejection beyond its message. */
+/**
+ * Matchers on a `.rejects` chain that can pin the rejection beyond its
+ * message. Each is checked against its argument in `rejectsPinsClass`: Jest's
+ * `equals()` compares two errors by message only, and `{ message }` alone is
+ * a message check whatever the matcher.
+ */
 const REJECTS_PINNING_MATCHERS = new Set([
   'toBeInstanceOf',
   'toMatchObject',
@@ -45,6 +50,8 @@ const REJECTS_PINNING_MATCHERS = new Set([
   'toStrictEqual',
   'toHaveProperty',
 ]);
+
+const MESSAGE_KEY = 'message';
 
 const TEST_RUNNERS = new Set(['it', 'test']);
 
@@ -205,12 +212,57 @@ function isRegExpConstruction(node: TSESTree.Node): boolean {
   );
 }
 
-/** True for an argument that checks only the message: a string, a template or a regex. */
+/** True for an object literal with no key but `message`: `{ message: 'm' }`, or `{}`. */
+function isMessageOnlyObject(node: TSESTree.Node | undefined): boolean {
+  return (
+    node?.type === AST_NODE_TYPES.ObjectExpression &&
+    node.properties.every(
+      (property) =>
+        property.type === AST_NODE_TYPES.Property &&
+        !property.computed &&
+        ((property.key.type === AST_NODE_TYPES.Identifier && property.key.name === MESSAGE_KEY) ||
+          (property.key.type === AST_NODE_TYPES.Literal && property.key.value === MESSAGE_KEY)),
+    )
+  );
+}
+
+/** True for `expect.objectContaining({ message: ... })`: an asymmetric message check. */
+function isMessageOnlyMatcher(node: TSESTree.Node): boolean {
+  return (
+    node.type === AST_NODE_TYPES.CallExpression &&
+    node.callee.type === AST_NODE_TYPES.MemberExpression &&
+    !node.callee.computed &&
+    node.callee.object.type === AST_NODE_TYPES.Identifier &&
+    node.callee.object.name === 'expect' &&
+    node.callee.property.type === AST_NODE_TYPES.Identifier &&
+    node.callee.property.name === 'objectContaining' &&
+    isMessageOnlyObject(node.arguments[0])
+  );
+}
+
+/** True for a `toHaveProperty` path that names only the message: `'message'`, `['message']`. */
+function isMessagePath(node: TSESTree.Node | undefined): boolean {
+  if (node?.type === AST_NODE_TYPES.Literal) {
+    return node.value === MESSAGE_KEY;
+  }
+  return (
+    node?.type === AST_NODE_TYPES.ArrayExpression &&
+    node.elements.length === 1 &&
+    node.elements[0]?.type === AST_NODE_TYPES.Literal &&
+    node.elements[0].value === MESSAGE_KEY
+  );
+}
+
+/** True for an argument that checks only the message: a string, a template, a regex or `{ message }`. */
 function isMessageArgument(node: TSESTree.Node): boolean {
   if (node.type === AST_NODE_TYPES.Literal) {
     return typeof node.value === 'string' || 'regex' in node;
   }
-  return node.type === AST_NODE_TYPES.TemplateLiteral || isRegExpConstruction(node);
+  return (
+    node.type === AST_NODE_TYPES.TemplateLiteral ||
+    isRegExpConstruction(node) ||
+    isMessageOnlyMatcher(node)
+  );
 }
 
 export const noMessageOnlyThrowAssertionRule = createRule<RuleOptions, MessageIds>({
@@ -298,6 +350,23 @@ export const noMessageOnlyThrowAssertionRule = createRule<RuleOptions, MessageId
       }
     }
 
+    /** True when `.rejects.<matcher>(argument)` pins more than the message. */
+    function rejectsPinsClass(matcher: string, argument: TSESTree.Node | undefined): boolean {
+      const comparesInstance =
+        argument?.type === AST_NODE_TYPES.NewExpression && !trustErrorInstances;
+      switch (matcher) {
+        case 'toEqual':
+        case 'toStrictEqual':
+          return !comparesInstance;
+        case 'toMatchObject':
+          return !comparesInstance && !isMessageOnlyObject(argument);
+        case 'toHaveProperty':
+          return !isMessagePath(argument);
+        default:
+          return true;
+      }
+    }
+
     /** Classify a throw matcher's argument: null when it pins the class. */
     function classify(argument: TSESTree.Node | undefined): MessageIds | null {
       if (argument === undefined) {
@@ -343,7 +412,11 @@ export const noMessageOnlyThrowAssertionRule = createRule<RuleOptions, MessageId
             const block = enclosingBlock(node);
             frame.findings.push({ node, messageId, matcher: chain.matcher, subject, block });
           }
-        } else if (chain.rejects && REJECTS_PINNING_MATCHERS.has(chain.matcher)) {
+        } else if (
+          chain.rejects &&
+          REJECTS_PINNING_MATCHERS.has(chain.matcher) &&
+          rejectsPinsClass(chain.matcher, node.arguments[0])
+        ) {
           pin(frame, subject, node);
         }
       },

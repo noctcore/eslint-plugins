@@ -49,6 +49,32 @@ ruleTester.run('no-message-only-throw-assertion', noMessageOnlyThrowAssertionRul
         });
       `,
     },
+    // Rejects matchers that check more than the message pin the class.
+    { code: `
+        it('refuses', async () => {
+          await expect(load(id)).rejects.toMatchObject({ name: 'ForbiddenError', message: 'No access' });
+          await expect(load(id)).rejects.toThrow('No access');
+        });
+      ` },
+    { code: `
+        it('refuses', async () => {
+          await expect(load(id)).rejects.toHaveProperty('code', 'E_FORBIDDEN');
+          await expect(load(id)).rejects.toThrow('No access');
+        });
+      ` },
+    { code: `
+        it('refuses', async () => {
+          await expect(load(id)).rejects.toMatchObject(expect.any(ForbiddenError));
+          await expect(load(id)).rejects.toThrow('No access');
+        });
+      ` },
+    // Under Vitest semantics (the default) an error instance compares its name too.
+    { code: `
+        it('refuses', async () => {
+          await expect(load(id)).rejects.toEqual(new ForbiddenError('No access'));
+          await expect(load(id)).rejects.toThrow('No access');
+        });
+      ` },
     // A configured helper that pins the class, called on the same subject.
     {
       code: `
@@ -173,6 +199,70 @@ ruleTester.run('no-message-only-throw-assertion', noMessageOnlyThrowAssertionRul
         });
       `,
       errors: [{ messageId: 'messageOnlyThrow', line: 6 }],
+    },
+    // Under Jest semantics toEqual / toStrictEqual compare two errors by message only.
+    {
+      code: `
+        it('refuses', async () => {
+          await expect(load(id)).rejects.toEqual(new ForbiddenError('No access'));
+          await expect(load(id)).rejects.toThrow('No access');
+        });
+      `,
+      options: [{ trustErrorInstances: false }],
+      errors: [{ messageId: 'messageOnlyThrow', line: 4 }],
+    },
+    {
+      code: `
+        it('refuses', async () => {
+          await expect(load(id)).rejects.toStrictEqual(new ForbiddenError('No access'));
+          await expect(load(id)).rejects.toThrow('No access');
+        });
+      `,
+      options: [{ trustErrorInstances: false }],
+      errors: [{ messageId: 'messageOnlyThrow', line: 4 }],
+    },
+    {
+      code: `
+        it('refuses', async () => {
+          await expect(load(id)).rejects.toMatchObject(new ForbiddenError('No access'));
+          await expect(load(id)).rejects.toThrow('No access');
+        });
+      `,
+      options: [{ trustErrorInstances: false }],
+      errors: [{ messageId: 'messageOnlyThrow', line: 4 }],
+    },
+    // A message-only object or property is not a class pin.
+    {
+      code: `
+        it('refuses', async () => {
+          await expect(load(id)).rejects.toMatchObject({ message: 'No access' });
+          await expect(load(id)).rejects.toThrow('No access');
+        });
+      `,
+      errors: [{ messageId: 'messageOnlyThrow', line: 4 }],
+    },
+    {
+      code: `
+        it('refuses', async () => {
+          await expect(load(id)).rejects.toHaveProperty('message', 'No access');
+          await expect(load(id)).rejects.toThrow('No access');
+        });
+      `,
+      errors: [{ messageId: 'messageOnlyThrow', line: 4 }],
+    },
+    {
+      code: `
+        it('refuses', async () => {
+          await expect(load(id)).rejects.toHaveProperty(['message'], 'No access');
+          await expect(load(id)).rejects.toThrow('No access');
+        });
+      `,
+      errors: [{ messageId: 'messageOnlyThrow', line: 4 }],
+    },
+    // An asymmetric matcher on the message alone is a message check.
+    {
+      code: "it('refuses', () => { expect(() => run()).toThrow(expect.objectContaining({ message: 'No access' })); });",
+      errors: [{ messageId: 'messageOnlyThrow' }],
     },
     // An unconfigured helper does not pin.
     {

@@ -44,8 +44,8 @@ A `toThrow` / `toThrowError` matcher on an `expect(...)` chain, sync or after `.
 negated and whose argument:
 
 - `bareThrow`: is missing: `toThrow()`, `.rejects.toThrowError()`;
-- `messageOnlyThrow`: checks only the message: a string, a template literal, a regex literal or a
-  `RegExp` built with `new RegExp(...)`.
+- `messageOnlyThrow`: checks only the message: a string, a template literal, a regex literal, a
+  `RegExp` built with `new RegExp(...)`, or `expect.objectContaining({ message: ... })`.
 
 It reports inside and outside test callbacks, so a shared helper that asserts `.rejects.toThrow()`
 is reported where it is written.
@@ -84,8 +84,15 @@ export async function expectRefusal(promise: Promise<unknown>) {
 
 A message-only assertion is accepted when the same test also pins the class of the same subject (the
 same source text inside `expect(...)`) with a class-pinning throw matcher, a `.rejects` matcher that
-checks the value (`toBeInstanceOf`, `toMatchObject`, `toEqual`, `toStrictEqual`, `toHaveProperty`),
-or a configured `assertionHelpers` call whose first argument is that subject. Some refusals differ
+checks more than the message, or a configured `assertionHelpers` call whose first argument is that
+subject. The `.rejects` matchers that count:
+
+- `toBeInstanceOf(X)`;
+- `toMatchObject(...)`, unless its argument is an object with no key but `message` (`{ message: 'm' }`
+  pins nothing else), or an error instance while `trustErrorInstances` is off;
+- `toHaveProperty(path, ...)`, unless the path is `'message'` or `['message']`;
+- `toEqual(...)` / `toStrictEqual(...)`, unless the argument is an error instance while
+  `trustErrorInstances` is off: Jest's `equals()` compares two errors by their message alone. Some refusals differ
 only in wording, and there the sentence is the assertion; the class next to it keeps it honest.
 
 The pin must run whenever the message check runs: it has to sit in the same block as the message
@@ -134,7 +141,7 @@ it('refuses', async () => {
 | --- | --- | --- | --- |
 | `throwMatchers` | `string[]` | `["toThrow", "toThrowError"]` | Matchers that assert a throw or a rejection. |
 | `allowMessageOnly` | `boolean` | `false` | Report only the argless form. For adopting the rule in two steps. |
-| `trustErrorInstances` | `boolean` | `true` | Count an error instance argument as pinning the class. Set `false` under Jest, whose `toThrow(new X('m'))` compares only the message. |
+| `trustErrorInstances` | `boolean` | `true` | Count an error instance argument as pinning the class. Set `false` under Jest, whose `toThrow(new X('m'))` and `.rejects.toEqual(new X('m'))` compare only the message. |
 | `assertionHelpers` | `string[]` (regex sources) | `[]` | Helpers that pin the error class, such as `expectRejectsDomainError(promise, {...})`. A call on the same subject in the same test accepts a message-only assertion. Matched against `name` or `obj.name`. |
 
 ```js
@@ -157,6 +164,22 @@ it('refuses a guest', () => {
 it('refuses a guest', () => {
   expect(() => guard.check(guest)).toThrow(ForbiddenError);
   expect(() => guard.check(guest)).toThrow('No access');
+});
+```
+
+The same goes for a `.rejects` equality check used as the pin:
+
+```ts bad filename=src/auth/guard.spec.ts options={"trustErrorInstances":false}
+it('refuses a guest', async () => {
+  await expect(guard.load(guest)).rejects.toEqual(new ForbiddenError('No access'));
+  await expect(guard.load(guest)).rejects.toThrow('No access');
+});
+```
+
+```ts good filename=src/auth/guard.spec.ts options={"trustErrorInstances":false}
+it('refuses a guest', async () => {
+  await expect(guard.load(guest)).rejects.toMatchObject({ name: 'ForbiddenError', code: 'E_FORBIDDEN' });
+  await expect(guard.load(guest)).rejects.toThrow('No access');
 });
 ```
 
