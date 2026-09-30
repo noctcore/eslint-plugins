@@ -38,6 +38,17 @@ ruleTester.run('no-message-only-throw-assertion', noMessageOnlyThrowAssertionRul
         });
       `,
     },
+    // A class pinned in an enclosing block covers a message check in a nested one.
+    {
+      code: `
+        it('refuses every role', async () => {
+          await expect(service.find(id)).rejects.toThrow(NotFoundError);
+          for (const role of roles) {
+            await expect(service.find(id)).rejects.toThrow('Employee not found.');
+          }
+        });
+      `,
+    },
     // A configured helper that pins the class, called on the same subject.
     {
       code: `
@@ -126,6 +137,42 @@ ruleTester.run('no-message-only-throw-assertion', noMessageOnlyThrowAssertionRul
         it('words', async () => { await expect(service.find(id)).rejects.toThrow('Employee not found.'); });
       `,
       errors: [{ messageId: 'messageOnlyThrow', line: 3 }],
+    },
+    // A pinned class never excuses a bare throw: the second call is another scenario.
+    {
+      code: `
+        it('refuses deleted records', async () => {
+          await expect(svc.get(id)).rejects.toThrow(NotFound);
+          repo.find.mockResolvedValue({ deleted: true });
+          await expect(svc.get(id)).rejects.toThrow();
+        });
+      `,
+      errors: [{ messageId: 'bareThrow', line: 5 }],
+    },
+    // A pin in one branch does not cover a message check in the other.
+    {
+      code: `
+        it('refuses', async () => {
+          if (strict) {
+            await expect(service.find(id)).rejects.toThrow(NotFoundError);
+          } else {
+            await expect(service.find(id)).rejects.toThrow('Employee not found.');
+          }
+        });
+      `,
+      errors: [{ messageId: 'messageOnlyThrow', line: 6 }],
+    },
+    // A pin nested deeper than the message check may not run.
+    {
+      code: `
+        it('refuses', async () => {
+          if (strict) {
+            await expect(service.find(id)).rejects.toThrow(NotFoundError);
+          }
+          await expect(service.find(id)).rejects.toThrow('Employee not found.');
+        });
+      `,
+      errors: [{ messageId: 'messageOnlyThrow', line: 6 }],
     },
     // An unconfigured helper does not pin.
     {

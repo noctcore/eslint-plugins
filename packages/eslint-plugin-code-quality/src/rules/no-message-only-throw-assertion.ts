@@ -83,13 +83,42 @@ interface Finding {
   readonly messageId: MessageIds;
   readonly matcher: string;
   readonly subject: string;
+  /** The block the assertion runs in. */
+  readonly block: TSESTree.Node;
 }
 
 interface TestFrame {
   readonly node: FunctionNode | null;
   readonly findings: Finding[];
-  /** Source text of every subject whose error class is pinned in this test. */
-  readonly pinned: Set<string>;
+  /** Source text of every subject whose error class is pinned in this test, to the blocks that pin it. */
+  readonly pinned: Map<string, TSESTree.Node[]>;
+}
+
+/** The nearest enclosing block: a block statement, a function (expression body) or the program. */
+function enclosingBlock(node: TSESTree.Node): TSESTree.Node {
+  let current: TSESTree.Node = node;
+  // `parent` is null on the Program node at runtime, whatever the types say.
+  while (current.parent) {
+    current = current.parent;
+    if (
+      current.type === AST_NODE_TYPES.BlockStatement ||
+      current.type === AST_NODE_TYPES.ArrowFunctionExpression ||
+      current.type === AST_NODE_TYPES.FunctionExpression
+    ) {
+      return current;
+    }
+  }
+  return current;
+}
+
+/** True when `ancestor` is `node` or contains it. */
+function isSelfOrAncestor(ancestor: TSESTree.Node, node: TSESTree.Node): boolean {
+  for (let current: TSESTree.Node | undefined = node; current; current = current.parent) {
+    if (current === ancestor) {
+      return true;
+    }
+  }
+  return false;
 }
 
 /** Decompose `expect(x).rejects.not.toThrow(y)` into its parts, or null. */
@@ -215,16 +244,36 @@ export const noMessageOnlyThrowAssertionRule = createRule<RuleOptions, MessageId
     const assertionHelpers = (options.assertionHelpers ?? DEFAULT_ASSERTION_HELPERS).map(
       (source) => new RegExp(source, 'u'),
     );
-    const stack: TestFrame[] = [{ node: null, findings: [], pinned: new Set() }];
+    const stack: TestFrame[] = [{ node: null, findings: [], pinned: new Map() }];
 
     function textOf(node: TSESTree.Node | undefined): string | null {
       return node === undefined ? null : context.sourceCode.getText(node);
     }
 
-    /** Report what the frame holds, minus subjects the same test pins elsewhere. */
+    /**
+     * True when the frame pins `finding`'s subject in the finding's block or an
+     * enclosing one, so the pin runs whenever the message check does. A bare
+     * throw is never excused: a later call on the same subject is often a
+     * different scenario, and any error satisfies it.
+     */
+    function isPaired(frame: TestFrame, finding: Finding): boolean {
+      if (finding.messageId === 'bareThrow') {
+        return false;
+      }
+      const blocks = frame.pinned.get(finding.subject) ?? [];
+      return blocks.some((block) => isSelfOrAncestor(block, finding.block));
+    }
+
+    function pin(frame: TestFrame, subject: string, node: TSESTree.Node): void {
+      const blocks = frame.pinned.get(subject) ?? [];
+      blocks.push(enclosingBlock(node));
+      frame.pinned.set(subject, blocks);
+    }
+
+    /** Report what the frame holds, minus message checks the same test pairs with a class pin. */
     function flush(frame: TestFrame): void {
       for (const finding of frame.findings) {
-        if (frame.pinned.has(finding.subject)) {
+        if (isPaired(frame, finding)) {
           continue;
         }
         context.report({
@@ -237,7 +286,7 @@ export const noMessageOnlyThrowAssertionRule = createRule<RuleOptions, MessageId
 
     function enter(node: FunctionNode): void {
       if (isTestCallback(node)) {
-        stack.push({ node, findings: [], pinned: new Set() });
+        stack.push({ node, findings: [], pinned: new Map() });
       }
     }
 
@@ -278,7 +327,7 @@ export const noMessageOnlyThrowAssertionRule = createRule<RuleOptions, MessageId
           const path = calleePath(node.callee);
           const subject = textOf(node.arguments[0]);
           if (path !== null && subject !== null && assertionHelpers.some((re) => re.test(path))) {
-            frame.pinned.add(subject);
+            pin(frame, subject, node);
           }
           return;
         }
@@ -289,12 +338,13 @@ export const noMessageOnlyThrowAssertionRule = createRule<RuleOptions, MessageId
         if (throwMatchers.has(chain.matcher)) {
           const messageId = classify(node.arguments[0]);
           if (messageId === null) {
-            frame.pinned.add(subject);
+            pin(frame, subject, node);
           } else {
-            frame.findings.push({ node, messageId, matcher: chain.matcher, subject });
+            const block = enclosingBlock(node);
+            frame.findings.push({ node, messageId, matcher: chain.matcher, subject, block });
           }
         } else if (chain.rejects && REJECTS_PINNING_MATCHERS.has(chain.matcher)) {
-          frame.pinned.add(subject);
+          pin(frame, subject, node);
         }
       },
       'Program:exit'(): void {

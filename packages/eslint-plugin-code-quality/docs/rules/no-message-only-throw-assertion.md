@@ -88,6 +88,34 @@ checks the value (`toBeInstanceOf`, `toMatchObject`, `toEqual`, `toStrictEqual`,
 or a configured `assertionHelpers` call whose first argument is that subject. Some refusals differ
 only in wording, and there the sentence is the assertion; the class next to it keeps it honest.
 
+The pin must run whenever the message check runs: it has to sit in the same block as the message
+check or in a block that encloses it. A class pinned in one branch of an `if` does not excuse a
+message check in the other branch, or one after the `if`. A bare `toThrow()` is never excused by a
+pin: a later call on the same subject is usually a different scenario, and any error satisfies it.
+
+```ts bad filename=src/employees/employee.service.test.ts reports=2
+it('refuses', async () => {
+  if (strict) {
+    await expect(service.find('e-other')).rejects.toThrow(NotFoundError);
+  } else {
+    await expect(service.find('e-other')).rejects.toThrow('Employee not found.');
+  }
+  repository.find.mockResolvedValue({ deleted: true });
+  await expect(service.find('e-other')).rejects.toThrow();
+});
+```
+
+```ts good filename=src/employees/employee.service.test.ts
+it('refuses', async () => {
+  await expect(service.find('e-other')).rejects.toThrow(NotFoundError);
+  if (!strict) {
+    await expect(service.find('e-other')).rejects.toThrow('Employee not found.');
+  }
+  repository.find.mockResolvedValue({ deleted: true });
+  await expect(service.find('e-other')).rejects.toThrow(GoneError);
+});
+```
+
 ## What it does not flag
 
 - A class argument (`toThrow(NotFoundError)`, `toThrow(errors.Forbidden)`), an asymmetric matcher
