@@ -32,7 +32,15 @@ export interface NoMessageOnlyThrowAssertionOptions {
 type RuleOptions = [NoMessageOnlyThrowAssertionOptions];
 type MessageIds = 'bareThrow' | 'messageOnlyThrow';
 
-const DEFAULT_THROW_MATCHERS: readonly string[] = ['toThrow', 'toThrowError'];
+const DEFAULT_THROW_MATCHERS: readonly string[] = [
+  'toThrow',
+  'toThrowError',
+  'toThrowErrorMatchingSnapshot',
+  'toThrowErrorMatchingInlineSnapshot',
+];
+
+/** A throw matcher that snapshots the error records only its message, whatever its argument. */
+const SNAPSHOT_THROW_MATCHER = /MatchingSnapshot$|MatchingInlineSnapshot$/u;
 const DEFAULT_ALLOW_MESSAGE_ONLY = false;
 const DEFAULT_TRUST_ERROR_INSTANCES = true;
 const DEFAULT_ASSERTION_HELPERS: readonly string[] = [];
@@ -367,8 +375,11 @@ export const noMessageOnlyThrowAssertionRule = createRule<RuleOptions, MessageId
       }
     }
 
-    /** Classify a throw matcher's argument: null when it pins the class. */
-    function classify(argument: TSESTree.Node | undefined): MessageIds | null {
+    /** Classify a throw matcher call by its argument: null when it pins the class. */
+    function classify(matcher: string, argument: TSESTree.Node | undefined): MessageIds | null {
+      if (SNAPSHOT_THROW_MATCHER.test(matcher)) {
+        return allowMessageOnly ? null : 'messageOnlyThrow';
+      }
       if (argument === undefined) {
         return 'bareThrow';
       }
@@ -405,7 +416,7 @@ export const noMessageOnlyThrowAssertionRule = createRule<RuleOptions, MessageId
           return;
         }
         if (throwMatchers.has(chain.matcher)) {
-          const messageId = classify(node.arguments[0]);
+          const messageId = classify(chain.matcher, node.arguments[0]);
           if (messageId === null) {
             pin(frame, subject, node);
           } else {

@@ -45,7 +45,9 @@ negated and whose argument:
 
 - `bareThrow`: is missing: `toThrow()`, `.rejects.toThrowError()`;
 - `messageOnlyThrow`: checks only the message: a string, a template literal, a regex literal, a
-  `RegExp` built with `new RegExp(...)`, or `expect.objectContaining({ message: ... })`.
+  `RegExp` built with `new RegExp(...)`, or `expect.objectContaining({ message: ... })`. A
+  snapshot of the error (`toThrowErrorMatchingSnapshot()`, `toThrowErrorMatchingInlineSnapshot()`)
+  records only its message, so it is a message check too, whatever its argument.
 
 It reports inside and outside test callbacks, so a shared helper that asserts `.rejects.toThrow()`
 is reported where it is written.
@@ -139,7 +141,7 @@ it('refuses', async () => {
 
 | Option | Type | Default | Meaning |
 | --- | --- | --- | --- |
-| `throwMatchers` | `string[]` | `["toThrow", "toThrowError"]` | Matchers that assert a throw or a rejection. |
+| `throwMatchers` | `string[]` | `["toThrow", "toThrowError", "toThrowErrorMatchingSnapshot", "toThrowErrorMatchingInlineSnapshot"]` | Matchers that assert a throw or a rejection. A name ending in `MatchingSnapshot` or `MatchingInlineSnapshot` is always a message check. |
 | `allowMessageOnly` | `boolean` | `false` | Report only the argless form. For adopting the rule in two steps. |
 | `trustErrorInstances` | `boolean` | `true` | Count an error instance argument as pinning the class. Set `false` under Jest, whose `toThrow(new X('m'))` and `.rejects.toEqual(new X('m'))` compare only the message. |
 | `assertionHelpers` | `string[]` (regex sources) | `[]` | Helpers that pin the error class, such as `expectRejectsDomainError(promise, {...})`. A call on the same subject in the same test accepts a message-only assertion. Matched against `name` or `obj.name`. |

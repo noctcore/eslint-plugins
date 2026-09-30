@@ -75,6 +75,15 @@ ruleTester.run('no-message-only-throw-assertion', noMessageOnlyThrowAssertionRul
           await expect(load(id)).rejects.toThrow('No access');
         });
       ` },
+    // A message snapshot next to a class pin on the same subject.
+    {
+      code: `
+        it('refuses', () => {
+          expect(() => guard.check(guest)).toThrow(ForbiddenError);
+          expect(() => guard.check(guest)).toThrowErrorMatchingInlineSnapshot(\`"No access"\`);
+        });
+      `,
+    },
     // A configured helper that pins the class, called on the same subject.
     {
       code: `
@@ -263,6 +272,15 @@ ruleTester.run('no-message-only-throw-assertion', noMessageOnlyThrowAssertionRul
     {
       code: "it('refuses', () => { expect(() => run()).toThrow(expect.objectContaining({ message: 'No access' })); });",
       errors: [{ messageId: 'messageOnlyThrow' }],
+    },
+    // A snapshot of the error records its message only.
+    {
+      code: "it('refuses', () => { expect(() => guard.check(guest)).toThrowErrorMatchingInlineSnapshot(`No access`); });",
+      errors: [{ messageId: 'messageOnlyThrow', data: { matcher: 'toThrowErrorMatchingInlineSnapshot' } }],
+    },
+    {
+      code: "it('refuses', async () => { await expect(load(id)).rejects.toThrowErrorMatchingSnapshot(); });",
+      errors: [{ messageId: 'messageOnlyThrow', data: { matcher: 'toThrowErrorMatchingSnapshot' } }],
     },
     // An unconfigured helper does not pin.
     {
