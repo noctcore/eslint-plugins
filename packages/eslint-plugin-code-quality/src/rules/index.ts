@@ -9,6 +9,7 @@ import { noMessageOnlyThrowAssertionRule } from './no-message-only-throw-asserti
 import { noNarrationCommentsRule } from './no-narration-comments';
 import { noPrReferenceCommentsRule } from './no-pr-reference-comments';
 import { noProcessExitRule } from './no-process-exit';
+import { noRealClockInUnitTestsRule } from './no-real-clock-in-unit-tests';
 import { noRealNetworkInUnitTestsRule } from './no-real-network-in-unit-tests';
 import { noSleepInUnitTestsRule } from './no-sleep-in-unit-tests';
 import { noSwallowedAssertionRule } from './no-swallowed-assertion';
@@ -39,4 +40,5 @@ export const rules = {
   // Available but omitted from `recommended` (they need per-project facts).
   'no-message-only-throw-assertion': noMessageOnlyThrowAssertionRule,
   'no-sleep-in-unit-tests': noSleepInUnitTestsRule,
+  'no-real-clock-in-unit-tests': noRealClockInUnitTestsRule,
 };

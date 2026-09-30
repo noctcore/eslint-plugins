@@ -14,6 +14,7 @@ const OMITTED_FROM_PRESETS = [
   'no-template-trim-empty-ternary',
   'no-message-only-throw-assertion',
   'no-sleep-in-unit-tests',
+  'no-real-clock-in-unit-tests',
 ];
 
 describe('presets', () => {

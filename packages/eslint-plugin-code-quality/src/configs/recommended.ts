@@ -14,6 +14,8 @@
  *   project's own class-pinning assertion helpers are configured by name.
  * - `no-sleep-in-unit-tests`: which test files are unit tests, not suites that
  *   drive real processes or databases, is a naming convention.
+ * - `no-real-clock-in-unit-tests`: the same naming convention, plus the clock
+ *   module the project mocks, which is its own.
  */
 export const recommended = {
   'noctcore-code-quality/prefer-early-return': 'error',
