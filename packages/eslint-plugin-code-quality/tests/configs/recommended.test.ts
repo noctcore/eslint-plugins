@@ -12,6 +12,7 @@ function severityOf(entry: unknown): unknown {
 const OMITTED_FROM_PRESETS = [
   'interface-prefix-i',
   'no-template-trim-empty-ternary',
+  'no-message-only-throw-assertion',
 ];
 
 describe('presets', () => {

@@ -5,6 +5,7 @@ import { noConditionalExpectRule } from './no-conditional-expect';
 import { noElidedCodeCommentsRule } from './no-elided-code-comments';
 import { noFocusedTestsRule } from './no-focused-tests';
 import { noHistoricalCommentsRule } from './no-historical-comments';
+import { noMessageOnlyThrowAssertionRule } from './no-message-only-throw-assertion';
 import { noNarrationCommentsRule } from './no-narration-comments';
 import { noPrReferenceCommentsRule } from './no-pr-reference-comments';
 import { noProcessExitRule } from './no-process-exit';
@@ -34,4 +35,6 @@ export const rules = {
   // Available but omitted from `recommended` (opinionated / niche).
   'interface-prefix-i': interfacePrefixIRule,
   'no-template-trim-empty-ternary': noTemplateTrimEmptyTernaryRule,
+  // Available but omitted from `recommended` (they need per-project facts).
+  'no-message-only-throw-assertion': noMessageOnlyThrowAssertionRule,
 };

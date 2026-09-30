@@ -6,6 +6,12 @@
  * convention) and `no-template-trim-empty-ternary` (a very specific inline
  * shape) — are intentionally omitted. They are exported and documented, so a
  * consumer can enable them explicitly, but they are not on by default.
+ *
+ * The test-discipline rules below are omitted because each needs a
+ * per-project fact before it is precise at `error`:
+ * - `no-message-only-throw-assertion`: whether an error instance pins its class
+ *   depends on the runner (Vitest compares it, Jest only its message), and a
+ *   project's own class-pinning assertion helpers are configured by name.
  */
 export const recommended = {
   'noctcore-code-quality/prefer-early-return': 'error',
