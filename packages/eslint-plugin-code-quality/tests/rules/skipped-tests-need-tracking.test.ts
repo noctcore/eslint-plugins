@@ -23,6 +23,42 @@ ruleTester.run('skipped-tests-need-tracking', skippedTestsNeedTrackingRule, {
       code: "it.skip('later', () => {}); // ISSUE-42",
       options: [{ markers: ['ISSUE-\\d+'] }],
     },
+    // node:test: a platform guard is not debt.
+    { code: "describe('sandbox:inspect --refresh exit codes', { skip: process.platform === 'win32' }, () => {});" },
+    { code: "it('blocks with decision:block', { skip: !ready }, () => {});" },
+    { code: "test('needs docker', { skip }, () => {});" },
+    { code: "test('runs', { skip: false, todo: '' }, () => {});" },
+    {
+      code: `
+        it('waits for the rest of the group', async (t) => {
+          if (!posix) {
+            t.skip('POSIX process groups; taskkill /t /f ends a Windows tree at once');
+            return;
+          }
+          await run();
+        });
+      `,
+    },
+    {
+      code: `
+        for (const signal of ['SIGINT', 'SIGTERM']) {
+          it(\`dies of \${signal}\`, async (t) => {
+            if (process.platform === 'win32' && signal !== 'SIGINT') {
+              t.skip('Windows delivers no catchable SIGTERM');
+              return;
+            }
+          });
+        }
+      `,
+    },
+    // node:test: an unconditional skip with a tracking marker.
+    { code: "test('later', { skip: 'https://github.com/noctcore/eslint-plugins/issues/1' }, () => {});" },
+    { code: "// TODO(@alice): flaky on the runner\ntest('later', { todo: true }, () => {});" },
+    { code: "test('later', async (t) => {\n  // https://example.com/issue/9\n  t.skip();\n});" },
+    // An options object passed to something that is not a runner (a report fixture).
+    { code: "const report = pass(FILE_A, 'later', 0, { skip: true });" },
+    // `skip` on a non-context receiver (a query builder) is not a test skip.
+    { code: "it('pages', (t) => { const q = query.skip(10); assert.equal(q.offset, 10); });" },
   ],
   invalid: [
     {
@@ -47,6 +83,37 @@ ruleTester.run('skipped-tests-need-tracking', skippedTestsNeedTrackingRule, {
     {
       code: "it.skip('later', () => {}); // https://example.com/issue/9",
       options: [{ markers: ['ISSUE-\\d+'] }],
+      errors: [{ messageId: 'needsTracking', line: 1 }],
+    },
+    // node:test options: unconditional skip and todo.
+    {
+      code: "test('later', { skip: true }, () => {});",
+      errors: [{ messageId: 'needsTracking', line: 1, data: { label: '{ skip }' } }],
+    },
+    {
+      code: "describe('someday', { todo: 'write it' }, () => {});",
+      errors: [{ messageId: 'needsTracking', line: 1, data: { label: '{ todo }' } }],
+    },
+    {
+      code: "test({ 'skip': `not yet` }, () => {});",
+      errors: [{ messageId: 'needsTracking', line: 1 }],
+    },
+    // A subtest through the context.
+    {
+      code: "test('outer', async (t) => {\n  await t.test('inner', { skip: true }, () => {});\n});",
+      errors: [{ messageId: 'needsTracking', line: 2 }],
+    },
+    // node:test context: an unconditional t.skip() / t.todo().
+    {
+      code: "test('later', (t) => {\n  t.skip('not ready');\n  run();\n});",
+      errors: [{ messageId: 'needsTracking', line: 2, data: { label: 't.skip(' } }],
+    },
+    {
+      code: "it('later', function (ctx) { ctx.todo(); });",
+      errors: [{ messageId: 'needsTracking', line: 1, data: { label: 'ctx.todo(' } }],
+    },
+    {
+      code: "test('later', (t) => t.skip());",
       errors: [{ messageId: 'needsTracking', line: 1 }],
     },
   ],
