@@ -77,14 +77,19 @@ so is a date built from now and then mutated (`d.setDate(d.getDate() + 1)`): wri
 The rule reads the whole file. Any one of these, anywhere in it, turns the rule off for that file:
 
 - a call to a `fakeClockMethods` method (`vi.useFakeTimers()`, `jest.setSystemTime(...)`);
-- a spy that replaces `Date.now` or the global `Date` (`jest.spyOn(Date, 'now')`,
-  `vi.spyOn(globalThis, 'Date')`, `vi.replaceProperty(...)`), or an assignment to `Date.now`;
+- a spy or stub that replaces `Date.now` or the global `Date` (`jest.spyOn(Date, 'now')`,
+  `vi.spyOn(globalThis, 'Date')`, `jest.replaceProperty(global, 'Date', ...)`,
+  `vi.stubGlobal('Date', ...)`), or an assignment to `Date.now`;
 - a module mock (`jest.mock`, `vi.mock`, `doMock`, `unstable_mockModule`) of a module matching
   `clockModules`.
 
 ## What it does not flag
 
 - `new Date(value)` with an argument, and `Date.parse(...)`.
+- A clock faked through a library call the rule does not know, such as `MockDate.set(...)`: the rule
+  reports that file. Add the method to `fakeClockMethods` only if its name is specific enough (a
+  method name matches on any receiver, so `set` would also match `map.set`), or mock the module
+  that reads the clock and list it in `clockModules`.
 - `performance.now()`: it measures a duration, not a date. A test that asserts on elapsed time has a
   different problem (a timing assertion) that this rule does not judge.
 - Files that are not unit tests, or whose path contains an `integrationMarkers` entry.

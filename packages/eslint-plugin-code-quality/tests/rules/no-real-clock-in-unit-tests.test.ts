@@ -30,6 +30,9 @@ ruleTester.run('no-real-clock-in-unit-tests', noRealClockInUnitTestsRule, {
     { code: "jest.spyOn(Date, 'now').mockReturnValue(1_000); const t = Date.now();", filename: SPEC },
     { code: "vi.spyOn(globalThis, 'Date'); const d = new Date();", filename: SPEC },
     { code: 'Date.now = () => 0; const t = Date.now();', filename: SPEC },
+    // A stubbed or replaced global Date fakes the clock.
+    { code: "vi.stubGlobal('Date', FakeDate); const d = new Date();", filename: SPEC },
+    { code: "jest.replaceProperty(global, 'Date', FakeDate); const d = new Date();", filename: SPEC },
     // Settly shape: the file mocks the project's clock module.
     {
       code: `
@@ -80,6 +83,12 @@ ruleTester.run('no-real-clock-in-unit-tests', noRealClockInUnitTestsRule, {
     // A mocked module that is not a configured clock module does not count.
     {
       code: "jest.mock('../../../common/clock'); const at = new Date();",
+      filename: SPEC,
+      errors: [{ messageId: 'realClockInUnitTest' }],
+    },
+    // Stubbing another global does not fake the clock.
+    {
+      code: "vi.stubGlobal('fetch', vi.fn()); const at = new Date();",
       filename: SPEC,
       errors: [{ messageId: 'realClockInUnitTest' }],
     },

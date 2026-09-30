@@ -186,7 +186,7 @@ export const noRealClockInUnitTestsRule = createRule<RuleOptions, MessageIds>({
     const findings: { node: TSESTree.Node; call: string }[] = [];
     let faked = false;
 
-    /** True when `node` fakes the clock: fake timers, a `Date` spy, or a mocked clock module. */
+    /** True when `node` fakes the clock: fake timers, a `Date` spy or stub, or a mocked clock module. */
     function fakesClock(node: TSESTree.CallExpression): boolean {
       const method = calledMethodName(node);
       if (method === null) {
@@ -194,6 +194,9 @@ export const noRealClockInUnitTestsRule = createRule<RuleOptions, MessageIds>({
       }
       if (fakeClockMethods.has(method)) {
         return true;
+      }
+      if (method === 'stubGlobal') {
+        return stringArgument(node, 0) === 'Date';
       }
       if (method === 'spyOn' || method === 'replaceProperty') {
         const target = node.arguments[0];
