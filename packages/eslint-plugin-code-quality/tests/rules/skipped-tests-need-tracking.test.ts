@@ -28,6 +28,10 @@ ruleTester.run('skipped-tests-need-tracking', skippedTestsNeedTrackingRule, {
     { code: "it('blocks with decision:block', { skip: !ready }, () => {});" },
     { code: "test('needs docker', { skip }, () => {});" },
     { code: "test('runs', { skip: false, todo: '' }, () => {});" },
+    { code: "test('runs', { skip: 0, todo: null }, () => {});" },
+    {
+      code: "test('guarded', async (t) => {\n  if (!posix) {\n    await t.skip('POSIX only');\n    return;\n  }\n});",
+    },
     {
       code: `
         it('waits for the rest of the group', async (t) => {
@@ -115,6 +119,15 @@ ruleTester.run('skipped-tests-need-tracking', skippedTestsNeedTrackingRule, {
     {
       code: "test('later', (t) => t.skip());",
       errors: [{ messageId: 'needsTracking', line: 1 }],
+    },
+    // An awaited context skip, and any truthy literal option value.
+    {
+      code: "test('later', async (t) => {\n  await t.skip('not ready');\n});",
+      errors: [{ messageId: 'needsTracking', line: 2, data: { label: 't.skip(' } }],
+    },
+    {
+      code: "test('later', { skip: 1 }, () => {});",
+      errors: [{ messageId: 'needsTracking', line: 1, data: { label: '{ skip }' } }],
     },
   ],
 });

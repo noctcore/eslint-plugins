@@ -46,9 +46,9 @@ from a platform guard. These forms are read from the syntax, and only an uncondi
 reported, from the line of the option or the call:
 
 - a `skip` or `todo` option on `test` / `it` / `describe` / `suite` (and a `t.test` subtest) whose
-  value is `true` or a non-empty string: `{ skip: true }`, `{ todo: 'write it' }`;
-- `t.skip()` / `t.todo()` as a statement of the test callback's own body, where `t` is the
-  callback's context parameter.
+  value is a truthy literal: `{ skip: true }`, `{ skip: 1 }`, `{ todo: 'write it' }`;
+- `t.skip()` / `t.todo()` (or `await t.skip()`) as a statement of the test callback's own body,
+  where `t` is the callback's context parameter.
 
 ```ts bad filename=scripts/release.test.ts reports=2
 test('publishes the tarball', { skip: 'broken on the new registry' }, async () => {});

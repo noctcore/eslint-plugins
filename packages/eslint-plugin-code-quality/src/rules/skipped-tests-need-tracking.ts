@@ -104,10 +104,13 @@ function propertyKey(property: TSESTree.Property): string | null {
     : null;
 }
 
-/** True when an option value always skips: `true`, a non-empty string. A computed value is a guard. */
+/**
+ * True when an option value always skips: any truthy literal (`true`, `1`, a
+ * non-empty string). A computed value is a guard.
+ */
 function isUnconditionalSkip(value: TSESTree.Node): boolean {
   if (value.type === AST_NODE_TYPES.Literal) {
-    return value.value === true || (typeof value.value === 'string' && value.value !== '');
+    return 'regex' in value || Boolean(value.value);
   }
   return (
     value.type === AST_NODE_TYPES.TemplateLiteral &&
@@ -122,7 +125,8 @@ function isUnconditionalSkip(value: TSESTree.Node): boolean {
  * `if`, a loop or a helper is conditional.
  */
 function unconditionalContextName(node: TSESTree.CallExpression): string | null {
-  const statement = node.parent;
+  // `await t.skip()` is the same statement as `t.skip()`.
+  const statement = node.parent.type === AST_NODE_TYPES.AwaitExpression ? node.parent.parent : node.parent;
   const body = statement.type === AST_NODE_TYPES.ExpressionStatement ? statement.parent : statement;
   const fn = body?.type === AST_NODE_TYPES.BlockStatement ? body.parent : body;
   if (
