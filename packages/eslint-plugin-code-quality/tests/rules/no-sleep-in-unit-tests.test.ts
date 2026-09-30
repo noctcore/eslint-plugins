@@ -47,6 +47,11 @@ ruleTester.run('no-sleep-in-unit-tests', noSleepInUnitTestsRule, {
       code: 'const deadline = new Promise((resolve) => { const t = setTimeout(resolve, waitMs); cancel = () => clearTimeout(t); });',
       filename: TEST_FILE,
     },
+    // clearInterval and a global receiver count as clearing too.
+    {
+      code: "let t; const d = new Promise((resolve) => { t = setTimeout(resolve, 50); }); afterEach(() => globalThis.clearInterval(t));",
+      filename: TEST_FILE,
+    },
     // Yielding to the event loop without a delay.
     {
       code: "it('ticks', async () => { await new Promise((resolve) => setImmediate(resolve)); });",
@@ -126,6 +131,23 @@ ruleTester.run('no-sleep-in-unit-tests', noSleepInUnitTestsRule, {
     {
       code: "const held = runner.hold(new Promise((resolve) => setTimeout(() => resolve('late'), 100)));",
       filename: 'tools/verify/interruptible.test.ts',
+      errors: [{ messageId: 'sleepInUnitTest' }],
+    },
+    // A kept handle that is never cleared is still a sleep.
+    {
+      code: "it('x', async () => { await new Promise((resolve) => { const t = setTimeout(resolve, 100); }); });",
+      filename: TEST_FILE,
+      errors: [{ messageId: 'sleepInUnitTest', data: { delay: '100' } }],
+    },
+    {
+      code: "it('x', async () => { let t; await new Promise((resolve) => { t = setTimeout(resolve, 100); }); });",
+      filename: TEST_FILE,
+      errors: [{ messageId: 'sleepInUnitTest' }],
+    },
+    // Clearing a different handle does not count.
+    {
+      code: "it('x', async () => { let t; let other; await new Promise((resolve) => { t = setTimeout(resolve, 100); }); clearTimeout(other); });",
+      filename: TEST_FILE,
       errors: [{ messageId: 'sleepInUnitTest' }],
     },
     // A block body.

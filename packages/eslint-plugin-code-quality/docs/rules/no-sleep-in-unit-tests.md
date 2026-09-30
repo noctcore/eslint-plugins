@@ -35,7 +35,7 @@ In a unit test file (a path ending in one of `testFileSuffixes`, and not contain
 
 - a `new Promise` whose executor calls `setTimeout` (or `globalThis.setTimeout`) with a callback
   that resolves it: `setTimeout(resolve, n)` or `setTimeout(() => resolve(value), n)`, in an
-  expression or a block body, including a shared `sleep` helper written that way;
+  expression or a block body, including a `sleep` helper written that way in the same file;
 - `setTimeout` imported from `timers/promises` or `node:timers/promises`, by name, renamed or
   through a namespace import (`timers.setTimeout(n)`);
 - a function made with `promisify(setTimeout)` or `util.promisify(setTimeout)`, where it is called.
@@ -71,9 +71,10 @@ it('stops the child', async () => {
   macrotask, the idiomatic flush inside `act(...)`.
 - A timer whose callback only rejects: `new Promise((_, reject) => setTimeout(() => reject(err), ms))`
   is a timeout guard for a race, not a sleep.
-- A timer whose handle is kept (`timer = setTimeout(...)`, `const t = setTimeout(...)`): that is a
-  deadline raced against real work and cancelled with `clearTimeout`, not a sleep. It costs
-  wall-clock time only when the work is late.
+- A timer whose handle is kept (`timer = setTimeout(...)`, `const t = setTimeout(...)`) and passed to
+  `clearTimeout` or `clearInterval` somewhere in the file: that is a deadline raced against real work,
+  not a sleep, and costs wall-clock time only when the work is late. A kept handle that is never
+  cleared is still reported.
 - `setImmediate`, `process.nextTick` and `queueMicrotask` inside a promise.
 - A `setTimeout` that is not a promise executor's resolve, such as a timer the code under test
   schedules.
@@ -81,6 +82,9 @@ it('stops the child', async () => {
   `jest.useFakeTimers()`, in a `beforeEach` or a test). Under fake timers the wait is virtual and the
   test drives it with `advanceTimersByTimeAsync`, so it costs no wall-clock time.
 - Files that are not unit tests, or whose path contains an `integrationMarkers` entry.
+- A sleep helper imported from another module (`import { sleep } from './test-utils'`): the rule
+  reads one file at a time, so it reports the helper where it is defined, if that file is a unit
+  test, and not the calls to it.
 
 ```ts good filename=src/hooks/use-route-announcer.test.tsx
 const settle = () => act(() => new Promise<void>((resolve) => setTimeout(resolve, 0)));

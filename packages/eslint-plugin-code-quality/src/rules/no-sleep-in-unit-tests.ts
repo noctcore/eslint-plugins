@@ -58,6 +58,7 @@ const TIMERS_PROMISES_MODULES = new Set(['timers/promises', 'node:timers/promise
 /** Exports of `timers/promises` that wait for a delay given as the first argument. */
 const TIMERS_PROMISES_SLEEPS = new Set(['setTimeout']);
 const TIMER_RECEIVERS = new Set(['globalThis', 'window', 'self', 'global']);
+const CLEAR_TIMERS = new Set(['clearTimeout', 'clearInterval']);
 
 const stringList: JSONSchema4 = {
   type: 'array',
@@ -169,16 +170,32 @@ function resolvesPromise(
 }
 
 /**
- * True when the timer's handle is kept (`timer = setTimeout(...)`,
- * `const t = setTimeout(...)`): the caller means to cancel it, so it is a
- * deadline raced against real work, not a sleep.
+ * The node the timer's handle is kept in (`timer = setTimeout(...)`,
+ * `const t = setTimeout(...)`), or null. A kept handle that the file later
+ * passes to `clearTimeout` is a deadline raced against real work, not a sleep.
  */
-function keepsHandle(node: TSESTree.CallExpression): boolean {
+function handleTarget(node: TSESTree.CallExpression): TSESTree.Node | null {
   const parent = node.parent;
-  return (
-    (parent.type === AST_NODE_TYPES.AssignmentExpression && parent.right === node) ||
-    (parent.type === AST_NODE_TYPES.VariableDeclarator && parent.init === node)
-  );
+  if (parent.type === AST_NODE_TYPES.AssignmentExpression && parent.right === node) {
+    return parent.left;
+  }
+  if (parent.type === AST_NODE_TYPES.VariableDeclarator && parent.init === node) {
+    return parent.id;
+  }
+  return null;
+}
+
+/** True for `clearTimeout` / `clearInterval`, also on a global receiver. */
+function isClearTimer(callee: TSESTree.Node): boolean {
+  const name =
+    callee.type === AST_NODE_TYPES.Identifier
+      ? callee.name
+      : callee.type === AST_NODE_TYPES.MemberExpression &&
+          callee.object.type === AST_NODE_TYPES.Identifier &&
+          TIMER_RECEIVERS.has(callee.object.name)
+        ? staticPropertyName(callee)
+        : null;
+  return name !== null && CLEAR_TIMERS.has(name);
 }
 
 /** True for an omitted delay or a literal `0`. */
@@ -242,15 +259,23 @@ export const noSleepInUnitTestsRule = createRule<RuleOptions, MessageIds>({
     const sleepFunctions = new Set<string>();
     /** Namespace imports of `timers/promises`: `timers.setTimeout(ms)`. */
     const timerNamespaces = new Set<string>();
-    const findings: { node: TSESTree.Node; delay: string }[] = [];
+    /** Each sleep found, with the source text of the handle it is kept in, if any. */
+    const findings: { node: TSESTree.Node; delay: string; handle: string | null }[] = [];
+    /** Source text of every handle passed to `clearTimeout` / `clearInterval` in the file. */
+    const clearedHandles = new Set<string>();
     let fakesTimers = false;
 
-    function report(node: TSESTree.Node, delay: TSESTree.Node | undefined): void {
+    function record(
+      node: TSESTree.Node,
+      delay: TSESTree.Node | undefined,
+      handle: TSESTree.Node | null = null,
+    ): void {
       if (allowZeroDelay && isZeroDelay(delay)) {
         return;
       }
       const text = delay === undefined ? '0' : context.sourceCode.getText(delay);
-      findings.push({ node, delay: text });
+      const handleText = handle === null ? null : context.sourceCode.getText(handle);
+      findings.push({ node, delay: text, handle: handleText });
     }
 
     return {
@@ -285,7 +310,7 @@ export const noSleepInUnitTestsRule = createRule<RuleOptions, MessageIds>({
           return;
         }
         if (callee.type === AST_NODE_TYPES.Identifier && sleepFunctions.has(callee.name)) {
-          report(node, node.arguments[0]);
+          record(node, node.arguments[0]);
           return;
         }
         if (
@@ -295,24 +320,34 @@ export const noSleepInUnitTestsRule = createRule<RuleOptions, MessageIds>({
         ) {
           const method = staticPropertyName(callee);
           if (method !== null && TIMERS_PROMISES_SLEEPS.has(method)) {
-            report(node, node.arguments[0]);
+            record(node, node.arguments[0]);
           }
           return;
         }
-        if (!isGlobalSetTimeout(callee) || keepsHandle(node)) {
+        if (isClearTimer(callee)) {
+          const handle = node.arguments[0];
+          if (handle !== undefined) {
+            clearedHandles.add(context.sourceCode.getText(handle));
+          }
+          return;
+        }
+        if (!isGlobalSetTimeout(callee)) {
           return;
         }
         const resolveName = promiseResolveName(enclosingFunction(node));
         const keys = context.sourceCode.visitorKeys;
         if (resolveName !== null && resolvesPromise(node.arguments[0], resolveName, keys)) {
-          report(node, node.arguments[1]);
+          record(node, node.arguments[1], handleTarget(node));
         }
       },
       'Program:exit'(): void {
         if (fakesTimers) {
           return;
         }
-        for (const { node, delay } of findings) {
+        for (const { node, delay, handle } of findings) {
+          if (handle !== null && clearedHandles.has(handle)) {
+            continue;
+          }
           context.report({ node, messageId: 'sleepInUnitTest', data: { delay } });
         }
       },
