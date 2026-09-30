@@ -31,7 +31,8 @@ const config: jest.Mocked<Pick<ConfigService, 'get'>> = {
 
 ## What it flags
 
-An object literal cast `as unknown as T` (or `as any as T`) that contains a mock-function call
+An object literal cast `as unknown as T` (or `as any as T`, `as never as T`, and the angle-bracket
+forms `<T><unknown>{ ... }` and `<T>({ ... } as unknown)`) that contains a mock-function call
 (`jest.fn()` / `vi.fn()` by default) anywhere inside it: as a property, nested in another object,
 at the start of a chain (`jest.fn().mockResolvedValue(...)`) or inside a function property.
 

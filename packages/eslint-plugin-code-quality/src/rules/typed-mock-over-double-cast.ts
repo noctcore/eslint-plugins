@@ -73,9 +73,20 @@ function typeName(node: TSESTree.TypeNode): string | null {
   return parts.join('.');
 }
 
-/** True for `as unknown` and `as any`, the casts that switch the checker off. */
+/** True for `unknown`, `any` and `never`, the cast targets that switch the checker off. */
 function isEscapeType(node: TSESTree.TypeNode): boolean {
-  return node.type === AST_NODE_TYPES.TSUnknownKeyword || node.type === AST_NODE_TYPES.TSAnyKeyword;
+  return (
+    node.type === AST_NODE_TYPES.TSUnknownKeyword ||
+    node.type === AST_NODE_TYPES.TSAnyKeyword ||
+    node.type === AST_NODE_TYPES.TSNeverKeyword
+  );
+}
+
+type Cast = TSESTree.TSAsExpression | TSESTree.TSTypeAssertion;
+
+/** True for a cast written either way: `x as T` or `<T>x`. */
+function isCast(node: TSESTree.Node): node is Cast {
+  return node.type === AST_NODE_TYPES.TSAsExpression || node.type === AST_NODE_TYPES.TSTypeAssertion;
 }
 
 export const typedMockOverDoubleCastRule = createRule<RuleOptions, MessageIds>({
@@ -111,28 +122,32 @@ export const typedMockOverDoubleCastRule = createRule<RuleOptions, MessageIds>({
       return path !== null && mockFactories.has(path);
     }
 
+    /** Report an object of mocks cast through `unknown` / `any` / `never` to a real type. */
+    function checkCast(node: Cast): void {
+      const inner = node.expression;
+      if (
+        isEscapeType(node.typeAnnotation) ||
+        !isCast(inner) ||
+        !isEscapeType(inner.typeAnnotation) ||
+        inner.expression.type !== AST_NODE_TYPES.ObjectExpression
+      ) {
+        return;
+      }
+      if (!walkSome(inner.expression, keys, isMockCall)) {
+        return;
+      }
+      const text = context.sourceCode.getText(node.typeAnnotation);
+      const name = typeName(node.typeAnnotation);
+      const candidates = name === null ? [text] : [name, text];
+      if (candidates.some((candidate) => matchesAny(candidate, allowTargets))) {
+        return;
+      }
+      context.report({ node, messageId: 'doubleCastMock', data: { target: text } });
+    }
+
     return {
-      TSAsExpression(node: TSESTree.TSAsExpression): void {
-        const inner = node.expression;
-        if (
-          isEscapeType(node.typeAnnotation) ||
-          inner.type !== AST_NODE_TYPES.TSAsExpression ||
-          !isEscapeType(inner.typeAnnotation) ||
-          inner.expression.type !== AST_NODE_TYPES.ObjectExpression
-        ) {
-          return;
-        }
-        if (!walkSome(inner.expression, keys, isMockCall)) {
-          return;
-        }
-        const text = context.sourceCode.getText(node.typeAnnotation);
-        const name = typeName(node.typeAnnotation);
-        const candidates = name === null ? [text] : [name, text];
-        if (candidates.some((candidate) => matchesAny(candidate, allowTargets))) {
-          return;
-        }
-        context.report({ node, messageId: 'doubleCastMock', data: { target: text } });
-      },
+      TSAsExpression: checkCast,
+      TSTypeAssertion: checkCast,
     };
   },
 });

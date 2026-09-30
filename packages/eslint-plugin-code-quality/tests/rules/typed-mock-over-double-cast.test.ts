@@ -14,6 +14,8 @@ ruleTester.run('typed-mock-over-double-cast', typedMockOverDoubleCastRule, {
     {
       code: 'new EteczkaRetentionService(prisma, eteczkaService as unknown as ConstructorParameters<typeof EteczkaRetentionService>[1]);',
     },
+    // A single angle-bracket cast still lets the checker compare the types.
+    { code: 'const svc = <jest.Mocked<Pick<MailService, "run">>>{ run: jest.fn() };', filename: 'src/mail.service.spec.ts' },
     // A single cast to unknown is not a double cast.
     { code: 'const raw = { get: jest.fn() } as unknown;' },
     // Allowed targets, by type name and by source text.
@@ -64,6 +66,21 @@ ruleTester.run('typed-mock-over-double-cast', typedMockOverDoubleCastRule, {
     // A mock inside a getter function body still counts.
     {
       code: 'const host = { switchToHttp: () => ({ getResponse: () => ({ status: jest.fn() }) }) } as unknown as ArgumentsHost;',
+      errors: [{ messageId: 'doubleCastMock' }],
+    },
+    // Through `as never` and the angle-bracket assertion (not valid in .tsx).
+    {
+      code: 'const svc = { run: jest.fn() } as never as MailService;',
+      errors: [{ messageId: 'doubleCastMock', data: { target: 'MailService' } }],
+    },
+    {
+      code: 'const svc = <MailService><unknown>{ run: jest.fn() };',
+      filename: 'src/mail.service.spec.ts',
+      errors: [{ messageId: 'doubleCastMock', data: { target: 'MailService' } }],
+    },
+    {
+      code: 'const svc = <MailService>({ run: vi.fn() } as unknown);',
+      filename: 'src/mail.service.spec.ts',
       errors: [{ messageId: 'doubleCastMock' }],
     },
     // A custom factory list.
