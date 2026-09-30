@@ -16,6 +16,8 @@
  *   drive real processes or databases, is a naming convention.
  * - `no-real-clock-in-unit-tests`: the same naming convention, plus the clock
  *   module the project mocks, which is its own.
+ * - `typed-mock-over-double-cast`: some targets are too wide to `Pick` from
+ *   (an ORM client, a framework request), and only the project can list them.
  */
 export const recommended = {
   'noctcore-code-quality/prefer-early-return': 'error',

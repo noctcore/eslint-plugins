@@ -76,6 +76,9 @@ export default [
       'noctcore-code-quality/no-real-clock-in-unit-tests': ['error', {
         clockModules: ['**/common/clock'],
       }],
+      'noctcore-code-quality/typed-mock-over-double-cast': ['error', {
+        allowTargets: ['PrismaService'],
+      }],
     },
   },
 ];
@@ -109,6 +112,7 @@ export default [
 | [`no-vacuous-expect`](https://noctcore.github.io/eslint-plugins/rules/code-quality/no-vacuous-expect/) | Disallow vacuous expects (`typeof` checks, literal tautologies, a sole `toBeDefined`/`toBeTruthy`): a test must assert behaviour that a real regression would break. | ✅ |  |  |  |  |
 | [`prefer-early-return`](https://noctcore.github.io/eslint-plugins/rules/code-quality/prefer-early-return/) | Prefer guard clauses (early return) over wrapping the whole function body in a multi-statement `if` without an `else`. | ✅ |  |  |  |  |
 | [`skipped-tests-need-tracking`](https://noctcore.github.io/eslint-plugins/rules/code-quality/skipped-tests-need-tracking/) | Skipped tests (`.skip` / `.fixme` / `xit` / `xdescribe`) must carry a tracking marker (an issue URL or `TODO(@owner)`) on or above the line, so the debt has an owner instead of rotting silently. | ✅ |  |  |  |  |
+| [`typed-mock-over-double-cast`](https://noctcore.github.io/eslint-plugins/rules/code-quality/typed-mock-over-double-cast/) | Disallow an object literal of `jest.fn()` / `vi.fn()` mocks cast `as unknown as T`: the double cast switches type checking off, so a mock of a renamed or removed method keeps passing. | 🔘 |  |  |  |  |
 <!-- end generated rules -->
 
 ## Severity policy

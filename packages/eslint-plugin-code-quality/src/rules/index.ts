@@ -17,6 +17,7 @@ import { noTemplateTrimEmptyTernaryRule } from './no-template-trim-empty-ternary
 import { preferEarlyReturnRule } from './prefer-early-return';
 import { noVacuousExpectRule } from './no-vacuous-expect';
 import { skippedTestsNeedTrackingRule } from './skipped-tests-need-tracking';
+import { typedMockOverDoubleCastRule } from './typed-mock-over-double-cast';
 
 /** Every rule this plugin exposes, keyed by its (unprefixed) rule id. */
 export const rules = {
@@ -41,4 +42,5 @@ export const rules = {
   'no-message-only-throw-assertion': noMessageOnlyThrowAssertionRule,
   'no-sleep-in-unit-tests': noSleepInUnitTestsRule,
   'no-real-clock-in-unit-tests': noRealClockInUnitTestsRule,
+  'typed-mock-over-double-cast': typedMockOverDoubleCastRule,
 };
