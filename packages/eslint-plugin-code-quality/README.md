@@ -70,6 +70,9 @@ export default [
       'noctcore-code-quality/no-message-only-throw-assertion': ['error', {
         assertionHelpers: ['^expectRejectsDomainError$'],
       }],
+      'noctcore-code-quality/no-sleep-in-unit-tests': ['error', {
+        integrationMarkers: ['.integration.', '/e2e/'],
+      }],
     },
   },
 ];
@@ -96,6 +99,7 @@ export default [
 | [`no-pr-reference-comments`](https://noctcore.github.io/eslint-plugins/rules/code-quality/no-pr-reference-comments/) | Disallow PR/issue references in comments. They belong in commit messages and PR descriptions, where they do not rot when the repo moves, the issue tracker migrates, or the numbering changes. | ✅ |  |  |  |  |
 | [`no-process-exit`](https://noctcore.github.io/eslint-plugins/rules/code-quality/no-process-exit/) | Disallow `process.exit()` outside bootstrap/shutdown paths and standalone CLIs. Application and service code must throw or reject so the lifecycle can shut down gracefully. | ✅ |  |  |  |  |
 | [`no-real-network-in-unit-tests`](https://noctcore.github.io/eslint-plugins/rules/code-quality/no-real-network-in-unit-tests/) | Unit tests must not perform real network I/O: mock the HTTP client, or move the test to an integration suite. | ✅ |  |  |  |  |
+| [`no-sleep-in-unit-tests`](https://noctcore.github.io/eslint-plugins/rules/code-quality/no-sleep-in-unit-tests/) | Unit tests must not sleep on the real clock (`new Promise((r) => setTimeout(r, n))`, `timers/promises`): fake the timers or wait for the condition. | 🔘 |  |  |  |  |
 | [`no-swallowed-assertion`](https://noctcore.github.io/eslint-plugins/rules/code-quality/no-swallowed-assertion/) | Disallow assertions inside a `try` whose `catch` neither rethrows nor asserts, and `.catch()` handlers that swallow an `expect(...).rejects`/`.resolves` failure: the assertion fails, the error is dropped, and the test passes. | ✅ |  |  |  |  |
 | [`no-template-trim-empty-ternary`](https://noctcore.github.io/eslint-plugins/rules/code-quality/no-template-trim-empty-ternary/) | Disallow inline `<template>.trim() === '' ? fallback : <template>.trim()` patterns. Extract to a named utility so the expression is built once and is unit-testable in one place. | 🔘 |  |  |  |  |
 | [`no-vacuous-expect`](https://noctcore.github.io/eslint-plugins/rules/code-quality/no-vacuous-expect/) | Disallow vacuous expects (`typeof` checks, literal tautologies, a sole `toBeDefined`/`toBeTruthy`): a test must assert behaviour that a real regression would break. | ✅ |  |  |  |  |

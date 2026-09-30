@@ -13,6 +13,7 @@ const OMITTED_FROM_PRESETS = [
   'interface-prefix-i',
   'no-template-trim-empty-ternary',
   'no-message-only-throw-assertion',
+  'no-sleep-in-unit-tests',
 ];
 
 describe('presets', () => {

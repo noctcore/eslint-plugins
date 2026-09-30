@@ -12,6 +12,8 @@
  * - `no-message-only-throw-assertion`: whether an error instance pins its class
  *   depends on the runner (Vitest compares it, Jest only its message), and a
  *   project's own class-pinning assertion helpers are configured by name.
+ * - `no-sleep-in-unit-tests`: which test files are unit tests, not suites that
+ *   drive real processes or databases, is a naming convention.
  */
 export const recommended = {
   'noctcore-code-quality/prefer-early-return': 'error',

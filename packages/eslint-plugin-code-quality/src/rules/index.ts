@@ -10,6 +10,7 @@ import { noNarrationCommentsRule } from './no-narration-comments';
 import { noPrReferenceCommentsRule } from './no-pr-reference-comments';
 import { noProcessExitRule } from './no-process-exit';
 import { noRealNetworkInUnitTestsRule } from './no-real-network-in-unit-tests';
+import { noSleepInUnitTestsRule } from './no-sleep-in-unit-tests';
 import { noSwallowedAssertionRule } from './no-swallowed-assertion';
 import { noTemplateTrimEmptyTernaryRule } from './no-template-trim-empty-ternary';
 import { preferEarlyReturnRule } from './prefer-early-return';
@@ -37,4 +38,5 @@ export const rules = {
   'no-template-trim-empty-ternary': noTemplateTrimEmptyTernaryRule,
   // Available but omitted from `recommended` (they need per-project facts).
   'no-message-only-throw-assertion': noMessageOnlyThrowAssertionRule,
+  'no-sleep-in-unit-tests': noSleepInUnitTestsRule,
 };
