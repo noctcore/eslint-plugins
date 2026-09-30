@@ -39,6 +39,34 @@ ruleTester.run('no-vacuous-expect', noVacuousExpectRule, {
       code: "it('truthy', () => { expect(isReady()).toBeTruthy(); });",
       options: [{ weakMatchers: ['toBeDefined'] }],
     },
+    // A render root assertion on real content pins behaviour.
+    {
+      code: "it('greets', () => { const { container } = render(<Hello />); expect(container.textContent).toBe('Hello'); });",
+      filename: 'src/Hello.test.tsx',
+    },
+    {
+      code: "it('renders', () => { const { container } = render(<Nav />); expect(container.querySelector('nav')).toBeInTheDocument(); });",
+      filename: 'src/Nav.test.tsx',
+    },
+    // A presence check next to a real assertion.
+    {
+      code: `
+        it('renders the field', () => {
+          const { container } = render(<Harness />);
+          expect(container).not.toBeEmptyDOMElement();
+          expect(screen.getByRole('textbox', { name: 'Captcha' })).toBeVisible();
+        });
+      `,
+      filename: 'src/TurnstileField.test.tsx',
+    },
+    // A screen query is not the render root.
+    { code: "it('shows', () => { render(<Hello />); expect(screen.getByText('Hello')).toBeInTheDocument(); });", filename: 'src/Hello.test.tsx' },
+    // renderRoots: [] turns the render-root check off.
+    {
+      code: "it('renders', () => { const { container } = render(<Harness />); expect(container).not.toBeEmptyDOMElement(); });",
+      filename: 'src/TurnstileField.test.tsx',
+      options: [{ renderRoots: [] }],
+    },
   ],
   invalid: [
     {
@@ -89,6 +117,47 @@ ruleTester.run('no-vacuous-expect', noVacuousExpectRule, {
       code: "it('x', () => { expect(x).toBeDefined(); assert.ok(x.id); });",
       options: [{ assertionCallees: [] }],
       errors: [{ messageId: 'soleWeakExpect' }],
+    },
+    // Settly shape: a smoke-only render test.
+    {
+      code: `
+        describe('TurnstileField', () => {
+          it('renders without crashing', () => {
+            const { container } = render(<Harness />);
+            expect(container).not.toBeEmptyDOMElement();
+          });
+        });
+      `,
+      filename: 'src/TurnstileField.test.tsx',
+      errors: [{ messageId: 'soleRenderRootExpect', data: { matcher: 'not.toBeEmptyDOMElement' } }],
+    },
+    {
+      code: "it('renders', () => { const { container } = render(<Card />); expect(container.firstChild).toBeInTheDocument(); });",
+      filename: 'src/Card.test.tsx',
+      errors: [{ messageId: 'soleRenderRootExpect', data: { matcher: 'toBeInTheDocument' } }],
+    },
+    {
+      code: "it('renders', () => { const { container } = render(<Card />); expect(container.innerHTML).not.toBe(''); });",
+      filename: 'src/Card.test.tsx',
+      errors: [{ messageId: 'soleRenderRootExpect', data: { matcher: 'not.toBe' } }],
+    },
+    {
+      code: "it('renders', () => { const view = render(<Card />); expect(view.baseElement).toBeInTheDocument(); });",
+      filename: 'src/Card.test.tsx',
+      errors: [{ messageId: 'soleRenderRootExpect' }],
+    },
+    // A weak matcher on the root reports as a render-root smoke, once.
+    {
+      code: "it('renders', () => { expect(render(<Card />).container.firstChild).toBeTruthy(); });",
+      filename: 'src/Card.test.tsx',
+      errors: [{ messageId: 'soleRenderRootExpect', data: { matcher: 'toBeTruthy' } }],
+    },
+    // A custom root name.
+    {
+      code: "it('mounts', () => { const { root } = mount(Card); expect(root).toBeInTheDocument(); });",
+      filename: 'src/Card.test.ts',
+      options: [{ renderRoots: ['root'] }],
+      errors: [{ messageId: 'soleRenderRootExpect' }],
     },
   ],
 });
