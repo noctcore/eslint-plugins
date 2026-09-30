@@ -66,6 +66,7 @@ ruleTester.run('no-vacuous-expect', noVacuousExpectRule, {
       code: "it('inspects', async () => { const container = await docker.inspect(id); expect(container).not.toBeNull(); });",
     },
     { code: "it('ships', () => { expect(ship.container).toBeVisible(); });" },
+    { code: "it('loads', () => { const { container } = fixtures; expect(container).not.toBeEmptyDOMElement(); });" },
     { code: "it('packs', ({ container }) => { expect(container).not.toBeEmptyDOMElement(); });" },
     // renderRoots: [] turns the render-root check off.
     {
