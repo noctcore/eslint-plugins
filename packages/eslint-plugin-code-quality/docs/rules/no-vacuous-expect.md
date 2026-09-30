@@ -22,6 +22,8 @@ The rule matches on method names, not on a runner import, so it covers Jest, Vit
 - `tautologyExpect`: `expect(<literal>).toBe(<same literal>)`, also with `toEqual` / `toStrictEqual`.
 - `soleWeakExpect`: a test (`it` / `test`, including `.concurrent`, `.each` and other modifiers)
   whose only assertion is a weak matcher.
+- `soleRenderRootExpect`: a test whose only assertion is that the render root is present (see
+  below).
 
 ```ts bad filename=src/token.test.ts reports=3
 it('should be defined', () => {
@@ -55,12 +57,62 @@ it('clears the key', () => {
 });
 ```
 
+### A render root that is only present
+
+A DOM render (Testing Library's `render`) always returns a `container` and a `baseElement`. A test
+whose only assertion is that the root, its first child or its HTML exists passes for anything that
+renders at all: the wrong component, an empty wrapper, an error boundary's fallback. It is the
+"renders without crashing" test with an assertion added to look real.
+
+The subject is a render root, or its `firstChild`, `firstElementChild`, `lastChild`, `innerHTML`,
+`outerHTML` or `textContent`. A render root is a name in `renderRoots` that comes from a call:
+destructured from one (`const { container } = render(...)`, also after `await`), read off one
+(`render(...).container`, `view.container` where `view` is bound to a call, or
+`const container = render(...).container`), or returned by a `render*` function
+(`const container = renderIntoDocument(...)`). The
+matcher is a presence check: `toBeInTheDocument`, `toBeTruthy`, `toBeDefined`, `toBeVisible`,
+`not.toBeNull`, `not.toBeUndefined`, `not.toBeFalsy`, `not.toBeEmptyDOMElement`, or `not.toBe('')`
+(also `not.toEqual('')` / `not.toStrictEqual('')`).
+
+```tsx bad filename=src/TurnstileField.test.tsx reports=2
+it('renders without crashing', () => {
+  const { container } = render(<TurnstileField form={form} />);
+  expect(container).not.toBeEmptyDOMElement();
+});
+
+it('renders the card', () => {
+  const { container } = render(<Card title="Q3" />);
+  expect(container.firstChild).toBeInTheDocument();
+});
+```
+
+```tsx good filename=src/TurnstileField.test.tsx
+it('renders the captcha widget', () => {
+  render(<TurnstileField form={form} />);
+  expect(screen.getByTitle('Captcha challenge')).toBeVisible();
+});
+
+it('renders the card', () => {
+  render(<Card title="Q3" />);
+  expect(screen.getByRole('heading', { name: 'Q3' })).toBeInTheDocument();
+});
+```
+
 ## What it does not flag
 
 - A weak matcher next to any other assertion. A test counts every `expect(...)` matcher plus any call
   matching `assertionCallees`, so a weak `expect` next to `assert.equal(...)`, `expectValidUser(...)`
   or supertest's `.expect(200)` is fine.
 - `toBeUndefined`, `toBeNull` and `not.toBeNull`, unless you add them to `weakMatchers` (see Options).
+- A `container` or `baseElement` that is not bound from a call: a parameter, an object property
+  (`ship.container`), or a binding initialised from something other than a `render*` call
+  (`const container = await docker.inspect(id)`). A binding assigned later
+  (`let container; beforeEach(() => ({ container } = render(...)))`) is not followed either.
+  The reverse also holds: a `container` destructured from a call that is not a render
+  (`const { container } = await docker.inspect(id)`) is treated as a render root; set `renderRoots`
+  for such a suite.
+- A render root checked for real content (`expect(container.textContent).toBe('Hello')`), a query
+  on the root (`container.querySelector('nav')`), or a presence check next to another assertion.
 
 ### Limitations
 
@@ -75,6 +127,7 @@ with a matcher that states the intent instead.
 | --- | --- | --- | --- |
 | `weakMatchers` | `string[]` | `["toBeDefined", "toBeTruthy", "toBeFalsy", "not.toBeUndefined"]` | Matchers that cannot carry a test alone. Prefix `not.` for the negated form. |
 | `assertionCallees` | `string[]` (regex sources) | `["^assert", "^expect\\w", "\\.expect$"]` | Calls that also count as an assertion. Matched against `name`, `obj.name` (member on an identifier) or `.name` (any other member). |
+| `renderRoots` | `string[]` | `["container", "baseElement"]` | Names of the render root, as a binding or a member (`view.container`). A sole presence check on one is reported. `[]` turns that check off. |
 
 `toBeUndefined`, `toBeNull` and `not.toBeNull` are not weak by default: each pins one specific
 value, and `expect(container.querySelector('nav')).not.toBeNull()` is a real presence check.
@@ -84,6 +137,8 @@ value, and `expect(container.querySelector('nav')).not.toBeNull()` is a real pre
 'noctcore-code-quality/no-vacuous-expect': ['error', {
   weakMatchers: ['toBeDefined', 'toBeTruthy', 'toBeFalsy', 'toBeUndefined'],
   assertionCallees: ['^assert', '^expect\\w', '\\.expect$', '^verifySnapshot$'],
+  // A custom mount helper returns its root as `root`.
+  renderRoots: ['container', 'baseElement', 'root'],
 }]
 ```
 

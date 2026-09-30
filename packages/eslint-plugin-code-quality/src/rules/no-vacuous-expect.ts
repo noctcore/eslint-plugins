@@ -25,10 +25,17 @@ export interface NoVacuousExpectOptions {
    * `.name` for any other member call.
    */
   readonly assertionCallees?: readonly string[];
+  /**
+   * Names of the render root a DOM test render returns (`container`,
+   * `baseElement`, also as `view.container`). A test whose only assertion is
+   * that the root, its first child or its HTML is present is reported. An
+   * empty list turns the check off.
+   */
+  readonly renderRoots?: readonly string[];
 }
 
 type RuleOptions = [NoVacuousExpectOptions];
-type MessageIds = 'typeofExpect' | 'tautologyExpect' | 'soleWeakExpect';
+type MessageIds = 'typeofExpect' | 'tautologyExpect' | 'soleWeakExpect' | 'soleRenderRootExpect';
 
 const DEFAULT_WEAK_MATCHERS: readonly string[] = [
   'toBeDefined',
@@ -38,6 +45,33 @@ const DEFAULT_WEAK_MATCHERS: readonly string[] = [
 ];
 
 const DEFAULT_ASSERTION_CALLEES: readonly string[] = ['^assert', '^expect\\w', '\\.expect$'];
+
+const DEFAULT_RENDER_ROOTS: readonly string[] = ['container', 'baseElement'];
+
+/** Members of a render root that only say something rendered: `container.firstChild`. */
+const RENDER_ROOT_MEMBERS = new Set([
+  'firstChild',
+  'firstElementChild',
+  'lastChild',
+  'innerHTML',
+  'outerHTML',
+  'textContent',
+]);
+
+/** Matchers that, on a render root, only prove the render produced something. */
+const RENDER_ROOT_PRESENCE_MATCHERS = new Set([
+  'toBeInTheDocument',
+  'toBeTruthy',
+  'toBeDefined',
+  'toBeVisible',
+  'not.toBeNull',
+  'not.toBeUndefined',
+  'not.toBeFalsy',
+  'not.toBeEmptyDOMElement',
+]);
+
+/** Negated equality matchers that are presence checks when compared with `''`. */
+const EMPTY_STRING_PRESENCE_MATCHERS = new Set(['not.toBe', 'not.toEqual', 'not.toStrictEqual']);
 
 const TYPEOF_RESULTS = new Set([
   'undefined',
@@ -64,6 +98,7 @@ const optionSchema: JSONSchema4 = {
       items: { type: 'string', minLength: 1 },
       uniqueItems: true,
     },
+    renderRoots: { type: 'array', items: { type: 'string', minLength: 1 }, uniqueItems: true },
   },
 };
 
@@ -72,7 +107,7 @@ type TestCallback = TSESTree.ArrowFunctionExpression | TSESTree.FunctionExpressi
 interface TestFrame {
   readonly node: TestCallback;
   assertions: number;
-  weak: { node: TSESTree.CallExpression; matcher: string } | null;
+  weak: { node: TSESTree.CallExpression; matcher: string; messageId: MessageIds } | null;
 }
 
 interface MatcherCall {
@@ -117,6 +152,47 @@ function matcherCall(node: TSESTree.CallExpression): MatcherCall | null {
   }
   const name = callee.property.name;
   return { root: current, matcher: negated ? `not.${name}` : name };
+}
+
+function memberName(node: TSESTree.MemberExpression): string | null {
+  return !node.computed && node.property.type === AST_NODE_TYPES.Identifier
+    ? node.property.name
+    : null;
+}
+
+/** `x` for `await x`, else the node itself. */
+function unwrapAwait(node: TSESTree.Node | null | undefined): TSESTree.Node | null {
+  if (node === null || node === undefined) {
+    return null;
+  }
+  return node.type === AST_NODE_TYPES.AwaitExpression ? node.argument : node;
+}
+
+/** True for a call to a `render*` function: `render(...)`, `renderIntoDocument(...)`, `rtl.render(...)`. */
+function isRenderCall(node: TSESTree.Node | null): boolean {
+  if (node?.type !== AST_NODE_TYPES.CallExpression) {
+    return false;
+  }
+  const callee = node.callee;
+  const name =
+    callee.type === AST_NODE_TYPES.Identifier
+      ? callee.name
+      : callee.type === AST_NODE_TYPES.MemberExpression
+        ? memberName(callee)
+        : null;
+  return name !== null && name.startsWith('render');
+}
+
+/** True when `matcher(expected)` only proves the subject is present or non-empty. */
+function isPresenceMatcher(matcher: string, expected: TSESTree.Node | undefined): boolean {
+  if (RENDER_ROOT_PRESENCE_MATCHERS.has(matcher)) {
+    return true;
+  }
+  return (
+    EMPTY_STRING_PRESENCE_MATCHERS.has(matcher) &&
+    expected?.type === AST_NODE_TYPES.Literal &&
+    expected.value === ''
+  );
 }
 
 /** `name`, `obj.name` or `.name` for a callee, used to match `assertionCallees`. */
@@ -192,7 +268,7 @@ export const noVacuousExpectRule = createRule<RuleOptions, MessageIds>({
     type: 'problem',
     docs: {
       description:
-        'Disallow vacuous expects (`typeof` checks, literal tautologies, a sole `toBeDefined`/`toBeTruthy`): a test must assert behaviour that a real regression would break.',
+        'Disallow vacuous expects (`typeof` checks, literal tautologies, a sole `toBeDefined`/`toBeTruthy`, a sole presence check on the render root): a test must assert behaviour that a real regression would break.',
     },
     schema: [optionSchema],
     messages: {
@@ -202,12 +278,15 @@ export const noVacuousExpectRule = createRule<RuleOptions, MessageIds>({
         'This expect compares a literal with itself and can never fail. Assert something a real regression would break.',
       soleWeakExpect:
         'A sole `{{matcher}}` does not pin behaviour. Assert on the value or the outcome, or delete the test.',
+      soleRenderRootExpect:
+        'The only assertion is that the render root is present (`{{matcher}}`), which passes for anything that renders, an error fallback included. Assert on what the user sees: a role, a label or a text.',
     },
   },
   defaultOptions: [
     {
       weakMatchers: [...DEFAULT_WEAK_MATCHERS],
       assertionCallees: [...DEFAULT_ASSERTION_CALLEES],
+      renderRoots: [...DEFAULT_RENDER_ROOTS],
     },
   ],
   create(context, [options]) {
@@ -215,7 +294,74 @@ export const noVacuousExpectRule = createRule<RuleOptions, MessageIds>({
     const assertionCallees = (options.assertionCallees ?? DEFAULT_ASSERTION_CALLEES).map(
       (source) => new RegExp(source, 'u'),
     );
+    const renderRoots = new Set(options.renderRoots ?? DEFAULT_RENDER_ROOTS);
     const stack: TestFrame[] = [];
+
+    /** The declarator that binds `identifier`, when it is a `const` / `let` / `var` binding. */
+    function declaratorOf(identifier: TSESTree.Identifier): TSESTree.VariableDeclarator | null {
+      let scope: ReturnType<typeof context.sourceCode.getScope> | null =
+        context.sourceCode.getScope(identifier);
+      while (scope !== null) {
+        const variable = scope.set.get(identifier.name);
+        if (variable !== undefined) {
+          const node = variable.defs[0]?.node;
+          return node?.type === AST_NODE_TYPES.VariableDeclarator ? node : null;
+        }
+        scope = scope.upper;
+      }
+      return null;
+    }
+
+    /** True for a value that is a render result: a call, or a binding initialised from one. */
+    function isRenderResult(node: TSESTree.Node): boolean {
+      if (unwrapAwait(node)?.type === AST_NODE_TYPES.CallExpression) {
+        return true;
+      }
+      if (node.type !== AST_NODE_TYPES.Identifier) {
+        return false;
+      }
+      const init = unwrapAwait(declaratorOf(node)?.init);
+      return init?.type === AST_NODE_TYPES.CallExpression;
+    }
+
+    /**
+     * True for a render root that comes from a render: `const { container } = render(...)`,
+     * `const container = render(...).container`, `const container = renderIntoDocument(...)`,
+     * `view.container` where `view = render(...)`, or `render(...).container`.
+     */
+    function isRenderRoot(node: TSESTree.Node): boolean {
+      if (node.type === AST_NODE_TYPES.MemberExpression) {
+        const name = memberName(node);
+        return name !== null && renderRoots.has(name) && isRenderResult(node.object);
+      }
+      if (node.type !== AST_NODE_TYPES.Identifier || !renderRoots.has(node.name)) {
+        return false;
+      }
+      const declarator = declaratorOf(node);
+      const init = unwrapAwait(declarator?.init);
+      if (declarator === null || init === null) {
+        return false;
+      }
+      if (declarator.id.type === AST_NODE_TYPES.ObjectPattern) {
+        return init.type === AST_NODE_TYPES.CallExpression;
+      }
+      return isRenderCall(init) || (init.type === AST_NODE_TYPES.MemberExpression && isRenderRoot(init));
+    }
+
+    /** True for an expect subject that is the render root or a presence-only member of it. */
+    function isRenderRootSubject(node: TSESTree.Node | undefined): boolean {
+      if (node === undefined) {
+        return false;
+      }
+      if (isRenderRoot(node)) {
+        return true;
+      }
+      if (node.type !== AST_NODE_TYPES.MemberExpression) {
+        return false;
+      }
+      const name = memberName(node);
+      return name !== null && RENDER_ROOT_MEMBERS.has(name) && isRenderRoot(node.object);
+    }
 
     function enter(node: TestCallback): void {
       if (isTestCallback(node)) {
@@ -232,7 +378,7 @@ export const noVacuousExpectRule = createRule<RuleOptions, MessageIds>({
       if (frame.assertions === 1 && frame.weak !== null) {
         context.report({
           node: frame.weak.node,
-          messageId: 'soleWeakExpect',
+          messageId: frame.weak.messageId,
           data: { matcher: frame.weak.matcher },
         });
       }
@@ -256,8 +402,13 @@ export const noVacuousExpectRule = createRule<RuleOptions, MessageIds>({
 
         if (frame !== undefined) {
           frame.assertions += 1;
-          if (weakMatchers.has(call.matcher)) {
-            frame.weak = { node, matcher: call.matcher };
+          if (
+            isRenderRootSubject(call.root.arguments[0]) &&
+            isPresenceMatcher(call.matcher, node.arguments[0])
+          ) {
+            frame.weak = { node, matcher: call.matcher, messageId: 'soleRenderRootExpect' };
+          } else if (weakMatchers.has(call.matcher)) {
+            frame.weak = { node, matcher: call.matcher, messageId: 'soleWeakExpect' };
           }
         }
 

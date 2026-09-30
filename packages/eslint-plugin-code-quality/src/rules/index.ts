@@ -5,15 +5,19 @@ import { noConditionalExpectRule } from './no-conditional-expect';
 import { noElidedCodeCommentsRule } from './no-elided-code-comments';
 import { noFocusedTestsRule } from './no-focused-tests';
 import { noHistoricalCommentsRule } from './no-historical-comments';
+import { noMessageOnlyThrowAssertionRule } from './no-message-only-throw-assertion';
 import { noNarrationCommentsRule } from './no-narration-comments';
 import { noPrReferenceCommentsRule } from './no-pr-reference-comments';
 import { noProcessExitRule } from './no-process-exit';
+import { noRealClockInUnitTestsRule } from './no-real-clock-in-unit-tests';
 import { noRealNetworkInUnitTestsRule } from './no-real-network-in-unit-tests';
+import { noSleepInUnitTestsRule } from './no-sleep-in-unit-tests';
 import { noSwallowedAssertionRule } from './no-swallowed-assertion';
 import { noTemplateTrimEmptyTernaryRule } from './no-template-trim-empty-ternary';
 import { preferEarlyReturnRule } from './prefer-early-return';
 import { noVacuousExpectRule } from './no-vacuous-expect';
 import { skippedTestsNeedTrackingRule } from './skipped-tests-need-tracking';
+import { typedMockOverDoubleCastRule } from './typed-mock-over-double-cast';
 
 /** Every rule this plugin exposes, keyed by its (unprefixed) rule id. */
 export const rules = {
@@ -34,4 +38,9 @@ export const rules = {
   // Available but omitted from `recommended` (opinionated / niche).
   'interface-prefix-i': interfacePrefixIRule,
   'no-template-trim-empty-ternary': noTemplateTrimEmptyTernaryRule,
+  // Available but omitted from `recommended` (they need per-project facts).
+  'no-message-only-throw-assertion': noMessageOnlyThrowAssertionRule,
+  'no-sleep-in-unit-tests': noSleepInUnitTestsRule,
+  'no-real-clock-in-unit-tests': noRealClockInUnitTestsRule,
+  'typed-mock-over-double-cast': typedMockOverDoubleCastRule,
 };

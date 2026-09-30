@@ -39,11 +39,55 @@ it.skip('later', () => {});
 it.skip('later', () => {}); // https://github.com/org/repo/issues/1
 ```
 
+### `node:test` skips
+
+`node:test` skips through the test's options or its context, which a line scan cannot tell apart
+from a platform guard. These forms are read from the syntax, and only an unconditional skip is
+reported, from the line of the option or the call:
+
+- a `skip` or `todo` option on `test` / `it` / `describe` / `suite` (and a `t.test` subtest) whose
+  value is a truthy literal: `{ skip: true }`, `{ skip: 1 }`, `{ todo: 'write it' }`;
+- `t.skip()` / `t.todo()` (or `await t.skip()`) as a statement of the test callback's own body,
+  where `t` is the callback's context parameter.
+
+```ts bad filename=scripts/release.test.ts reports=2
+test('publishes the tarball', { skip: 'broken on the new registry' }, async () => {});
+
+test('signs the release', (t) => {
+  t.todo('needs the new key');
+});
+```
+
+```ts good filename=scripts/release.test.ts
+// TODO(@alice): the new registry rejects the tarball
+test('publishes the tarball', { skip: 'broken on the new registry' }, async () => {});
+
+test('signs the release', (t) => {
+  t.todo('needs the new key, https://github.com/org/repo/issues/12');
+});
+```
+
 ## What it does not flag
 
 - A test that is not skipped.
 - A skip with a `markers` match on its own line or within the `lookback` lines above it.
 - `.only`: [`no-focused-tests`](./no-focused-tests.md) bans it outright.
+- A conditional `node:test` skip: an option whose value is computed
+  (`{ skip: process.platform === 'win32' }`, `{ skip: !ready }`, shorthand `{ skip }`), or a
+  `t.skip(...)` inside an `if`, a loop or a helper. Those are platform or environment guards.
+- A `skip` / `todo` key in an object passed to anything that is not a test runner, and a `skip`
+  method on a receiver that is not the test's context (`query.skip(10)`).
+
+```ts good filename=scripts/release.test.ts
+test('uses POSIX signals', { skip: process.platform === 'win32' }, () => {});
+
+test('kills the process group', (t) => {
+  if (process.platform === 'win32') {
+    t.skip('taskkill ends a Windows tree at once');
+    return;
+  }
+});
+```
 
 ## Options
 

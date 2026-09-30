@@ -27,3 +27,40 @@ export function isStaticMemberAccess(
   }
   return node.property.type === AST_NODE_TYPES.Identifier && node.property.name === propertyName;
 }
+
+/** Child keys per node type, from the parser (`context.sourceCode.visitorKeys`). */
+export type VisitorKeys = Readonly<Record<string, readonly string[] | undefined>>;
+
+function isNode(value: unknown): value is TSESTree.Node {
+  return typeof value === 'object' && value !== null && 'type' in value;
+}
+
+/**
+ * True when any node in the subtree satisfies `predicate`. Walks the parser's
+ * visitor keys, so `parent` back-links are never followed.
+ */
+export function walkSome(
+  root: TSESTree.Node,
+  keys: VisitorKeys,
+  predicate: (node: TSESTree.Node) => boolean,
+): boolean {
+  const stack: TSESTree.Node[] = [root];
+  for (let node = stack.pop(); node !== undefined; node = stack.pop()) {
+    if (predicate(node)) {
+      return true;
+    }
+    for (const key of keys[node.type] ?? []) {
+      const value: unknown = Reflect.get(node, key);
+      if (Array.isArray(value)) {
+        for (const child of value) {
+          if (isNode(child)) {
+            stack.push(child);
+          }
+        }
+      } else if (isNode(value)) {
+        stack.push(value);
+      }
+    }
+  }
+  return false;
+}
