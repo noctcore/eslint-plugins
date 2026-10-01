@@ -59,16 +59,17 @@ const RENDER_ROOT_MEMBERS = new Set([
   'textContent',
 ]);
 
+/** Presence matchers that exist only for DOM nodes, so their subject is one whatever returned it. */
+const DOM_ONLY_MATCHERS = new Set(['toBeInTheDocument', 'toBeVisible', 'not.toBeEmptyDOMElement']);
+
 /** Matchers that, on a render root, only prove the render produced something. */
 const RENDER_ROOT_PRESENCE_MATCHERS = new Set([
-  'toBeInTheDocument',
+  ...DOM_ONLY_MATCHERS,
   'toBeTruthy',
   'toBeDefined',
-  'toBeVisible',
   'not.toBeNull',
   'not.toBeUndefined',
   'not.toBeFalsy',
-  'not.toBeEmptyDOMElement',
 ]);
 
 /** Negated equality matchers that are presence checks when compared with `''`. */
@@ -117,6 +118,12 @@ interface MatcherCall {
   /** Matcher name, prefixed with `not.` when the chain negates it. */
   readonly matcher: string;
 }
+
+/**
+ * What a render root comes from: a `render*` call, which proves it is a DOM node, or some other
+ * call (`setup()`, `docker.inspect(id)`), which does not.
+ */
+type RootOrigin = 'render' | 'call';
 
 function isExpectCall(node: TSESTree.Node): node is TSESTree.CallExpression {
   return (
@@ -182,6 +189,14 @@ function isRenderCall(node: TSESTree.Node | null): boolean {
         ? memberName(callee)
         : null;
   return name !== null && name.startsWith('render');
+}
+
+/** The origin a call gives its result, or null when `node` is not a call. */
+function callOrigin(node: TSESTree.Node | null): RootOrigin | null {
+  if (node?.type !== AST_NODE_TYPES.CallExpression) {
+    return null;
+  }
+  return isRenderCall(node) ? 'render' : 'call';
 }
 
 /** True when `matcher(expected)` only proves the subject is present or non-empty. */
@@ -296,55 +311,63 @@ export const noVacuousExpectRule = createRule<RuleOptions, MessageIds>({
       return null;
     }
 
-    /** True for a value that is a render result: a call, or a binding initialised from one. */
-    function isRenderResult(node: TSESTree.Node): boolean {
-      if (unwrapAwait(node)?.type === AST_NODE_TYPES.CallExpression) {
-        return true;
+    /** The origin of a call result: a call, or a binding initialised from one. Else null. */
+    function resultOrigin(node: TSESTree.Node): RootOrigin | null {
+      const direct = callOrigin(unwrapAwait(node));
+      if (direct !== null || node.type !== AST_NODE_TYPES.Identifier) {
+        return direct;
       }
-      if (node.type !== AST_NODE_TYPES.Identifier) {
-        return false;
-      }
-      const init = unwrapAwait(declaratorOf(node)?.init);
-      return init?.type === AST_NODE_TYPES.CallExpression;
+      return callOrigin(unwrapAwait(declaratorOf(node)?.init));
     }
 
     /**
-     * True for a render root that comes from a render: `const { container } = render(...)`,
+     * The origin of a render root that comes from a call: `const { container } = render(...)`,
      * `const container = render(...).container`, `const container = renderIntoDocument(...)`,
-     * `view.container` where `view = render(...)`, or `render(...).container`.
+     * `view.container` where `view = render(...)`, or `render(...).container`. Null for a name
+     * that is not a render root or does not come from a call. A root bound whole
+     * (`const container = call()`) must come from a `render*` call: only a destructure or a
+     * member read says the call returned an object with a root on it.
      */
-    function isRenderRoot(node: TSESTree.Node): boolean {
+    function rootOrigin(node: TSESTree.Node): RootOrigin | null {
       if (node.type === AST_NODE_TYPES.MemberExpression) {
         const name = memberName(node);
-        return name !== null && renderRoots.has(name) && isRenderResult(node.object);
+        return name !== null && renderRoots.has(name) ? resultOrigin(node.object) : null;
       }
       if (node.type !== AST_NODE_TYPES.Identifier || !renderRoots.has(node.name)) {
-        return false;
+        return null;
       }
       const declarator = declaratorOf(node);
       const init = unwrapAwait(declarator?.init);
       if (declarator === null || init === null) {
-        return false;
+        return null;
       }
       if (declarator.id.type === AST_NODE_TYPES.ObjectPattern) {
-        return init.type === AST_NODE_TYPES.CallExpression;
+        return callOrigin(init);
       }
-      return isRenderCall(init) || (init.type === AST_NODE_TYPES.MemberExpression && isRenderRoot(init));
+      if (isRenderCall(init)) {
+        return 'render';
+      }
+      return init.type === AST_NODE_TYPES.MemberExpression ? rootOrigin(init) : null;
     }
 
-    /** True for an expect subject that is the render root or a presence-only member of it. */
-    function isRenderRootSubject(node: TSESTree.Node | undefined): boolean {
+    /**
+     * True for an expect subject that is the render root or a presence-only member of it. A
+     * root from a call that is not a `render*` function counts only when the assertion is
+     * DOM-specific: the subject reads a DOM member off it, or `matcher` exists only for DOM nodes.
+     */
+    function isRenderRootSubject(node: TSESTree.Node | undefined, matcher: string): boolean {
       if (node === undefined) {
         return false;
       }
-      if (isRenderRoot(node)) {
-        return true;
+      const origin = rootOrigin(node);
+      if (origin !== null) {
+        return origin === 'render' || DOM_ONLY_MATCHERS.has(matcher);
       }
       if (node.type !== AST_NODE_TYPES.MemberExpression) {
         return false;
       }
       const name = memberName(node);
-      return name !== null && RENDER_ROOT_MEMBERS.has(name) && isRenderRoot(node.object);
+      return name !== null && RENDER_ROOT_MEMBERS.has(name) && rootOrigin(node.object) !== null;
     }
 
     function enter(node: TestCallback): void {
@@ -387,7 +410,7 @@ export const noVacuousExpectRule = createRule<RuleOptions, MessageIds>({
         if (frame !== undefined) {
           frame.assertions += 1;
           if (
-            isRenderRootSubject(call.root.arguments[0]) &&
+            isRenderRootSubject(call.root.arguments[0], call.matcher) &&
             isPresenceMatcher(call.matcher, node.arguments[0])
           ) {
             frame.weak = { node, matcher: call.matcher, messageId: 'soleRenderRootExpect' };

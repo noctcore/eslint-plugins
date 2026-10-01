@@ -74,7 +74,17 @@ matcher is a presence check: `toBeInTheDocument`, `toBeTruthy`, `toBeDefined`, `
 `not.toBeNull`, `not.toBeUndefined`, `not.toBeFalsy`, `not.toBeEmptyDOMElement`, or `not.toBe('')`
 (also `not.toEqual('')` / `not.toStrictEqual('')`).
 
-```tsx bad filename=src/TurnstileField.test.tsx reports=2
+What the call proves decides which of those presence checks count:
+
+- A `render*` call (`render(...)`, `renderWithProviders(...)`, `rtl.render(...)`, also after
+  `await`) proves the root is a DOM node, so every presence check on it counts,
+  `expect(container).not.toBeNull()` included.
+- Any other call (`setup()`, `mount(Card)`) could return anything, so its root counts only when
+  the assertion itself is DOM-specific: the subject reads one of the members above off the root
+  (`container.firstChild`), or the matcher exists only for DOM nodes (`toBeInTheDocument`,
+  `toBeVisible`, `not.toBeEmptyDOMElement`).
+
+```tsx bad filename=src/TurnstileField.test.tsx reports=3
 it('renders without crashing', () => {
   const { container } = render(<TurnstileField form={form} />);
   expect(container).not.toBeEmptyDOMElement();
@@ -83,6 +93,11 @@ it('renders without crashing', () => {
 it('renders the card', () => {
   const { container } = render(<Card title="Q3" />);
   expect(container.firstChild).toBeInTheDocument();
+});
+
+it('mounts the form', () => {
+  const { container } = setup();
+  expect(container.firstChild).not.toBeNull();
 });
 ```
 
@@ -96,6 +111,11 @@ it('renders the card', () => {
   render(<Card title="Q3" />);
   expect(screen.getByRole('heading', { name: 'Q3' })).toBeInTheDocument();
 });
+
+it('mounts the form', () => {
+  setup();
+  expect(screen.getByRole('form', { name: 'Sign in' })).toBeVisible();
+});
 ```
 
 ## What it does not flag
@@ -108,9 +128,12 @@ it('renders the card', () => {
   (`ship.container`), or a binding initialised from something other than a `render*` call
   (`const container = await docker.inspect(id)`). A binding assigned later
   (`let container; beforeEach(() => ({ container } = render(...)))`) is not followed either.
-  The reverse also holds: a `container` destructured from a call that is not a render
-  (`const { container } = await docker.inspect(id)`) is treated as a render root; set `renderRoots`
-  for such a suite.
+- A root from a call that is not a `render*` function, checked with a matcher that says nothing
+  about the DOM: `const { container } = await docker.inspect(id); expect(container).not.toBeNull()`
+  is accepted, since nothing shows that `container` is a DOM node. A weak matcher there
+  (`toBeTruthy`, `toBeDefined`) is still reported, as `soleWeakExpect`. The same goes for a render
+  helper whose name does not start with `render`: `const { container } = setup();
+  expect(container).not.toBeNull()` is not reported.
 - A render root checked for real content (`expect(container.textContent).toBe('Hello')`), a query
   on the root (`container.querySelector('nav')`), or a presence check next to another assertion.
 

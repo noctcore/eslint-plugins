@@ -68,6 +68,21 @@ ruleTester.run('no-vacuous-expect', noVacuousExpectRule, {
     { code: "it('ships', () => { expect(ship.container).toBeVisible(); });" },
     { code: "it('loads', () => { const { container } = fixtures; expect(container).not.toBeEmptyDOMElement(); });" },
     { code: "it('packs', ({ container }) => { expect(container).not.toBeEmptyDOMElement(); });" },
+    // A root from a call that is not a `render*` function, checked with a generic matcher, is
+    // not known to be a DOM node.
+    {
+      code: "it('inspects', async () => { const { container } = await docker.inspect(id); expect(container).not.toBeNull(); });",
+    },
+    {
+      code: "it('inspects', async () => { const info = await docker.inspect(id); expect(info.container).not.toBeNull(); });",
+    },
+    {
+      code: "it('inspects', async () => { expect((await docker.inspect(id)).container).not.toBeFalsy(); });",
+    },
+    {
+      code: "it('mounts', () => { const { container } = setup(); expect(container).not.toBeNull(); });",
+      filename: 'src/Card.test.tsx',
+    },
     // renderRoots: [] turns the render-root check off.
     {
       code: "it('renders', () => { const { container } = render(<Harness />); expect(container).not.toBeEmptyDOMElement(); });",
@@ -174,6 +189,34 @@ ruleTester.run('no-vacuous-expect', noVacuousExpectRule, {
       code: "it('renders', () => { const container = renderIntoDocument(<Card />); expect(container).not.toBeEmptyDOMElement(); });",
       filename: 'src/Card.test.tsx',
       errors: [{ messageId: 'soleRenderRootExpect' }],
+    },
+    // A `render*` call proves the root, so a generic presence matcher on it is a smoke test.
+    {
+      code: "it('renders', () => { const { container } = render(<Card />); expect(container).not.toBeNull(); });",
+      filename: 'src/Card.test.tsx',
+      errors: [{ messageId: 'soleRenderRootExpect', data: { matcher: 'not.toBeNull' } }],
+    },
+    // A root from any other call counts when the assertion itself is DOM-specific: a DOM-only
+    // matcher, or a DOM member read off the root.
+    {
+      code: "it('mounts', () => { const { container } = setup(); expect(container).toBeInTheDocument(); });",
+      filename: 'src/Card.test.tsx',
+      errors: [{ messageId: 'soleRenderRootExpect', data: { matcher: 'toBeInTheDocument' } }],
+    },
+    {
+      code: "it('mounts', () => { const { container } = setup(); expect(container.firstChild).not.toBeNull(); });",
+      filename: 'src/Card.test.tsx',
+      errors: [{ messageId: 'soleRenderRootExpect', data: { matcher: 'not.toBeNull' } }],
+    },
+    {
+      code: "it('mounts', () => { const view = setup(); expect(view.container).toBeVisible(); });",
+      filename: 'src/Card.test.tsx',
+      errors: [{ messageId: 'soleRenderRootExpect', data: { matcher: 'toBeVisible' } }],
+    },
+    // Without that evidence a weak matcher on the same binding is still a sole weak expect.
+    {
+      code: "it('inspects', async () => { const { container } = await docker.inspect(id); expect(container).toBeTruthy(); });",
+      errors: [{ messageId: 'soleWeakExpect', data: { matcher: 'toBeTruthy' } }],
     },
     // A custom root name.
     {
