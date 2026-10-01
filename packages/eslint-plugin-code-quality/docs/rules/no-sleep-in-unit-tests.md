@@ -31,7 +31,7 @@ it('announces the new route', async () => {
 ## What it flags
 
 In a unit test file (a path ending in one of `testFileSuffixes`, and not containing any
-`integrationMarkers`) that never installs fake timers:
+`integrationMarkers`), outside the tests and suites that install fake timers:
 
 - a `new Promise` whose executor calls `setTimeout` (or `globalThis.setTimeout`) with a callback
   that resolves it: `setTimeout(resolve, n)` or `setTimeout(() => resolve(value), n)`, in an
@@ -65,6 +65,54 @@ it('stops the child', async () => {
 });
 ```
 
+### Fake timers cover a test or a suite, not the file
+
+A `fakeTimerMethods` call (`vi.useFakeTimers()`, `jest.useFakeTimers()`) covers the test it is
+written in. Written in a suite, directly or in a `beforeEach` / `beforeAll` hook, it covers that
+`describe` and the suites nested in it. Written outside any test or suite (at the top level, in a
+top-level hook, or in a top-level helper such as `installClock()`), it covers the whole file. A timer
+promise outside every covered test and suite runs on the real clock and is reported.
+
+A sleep helper defined in the file (`const sleep = (ms) => new Promise(...)`, `function sleep`) is
+judged by its callers. It is silent when every call to it in the file is covered, also through
+another helper, and reported where it sleeps when a test on real timers calls it or nothing in the
+file does.
+
+```ts bad filename=src/lib/poller.test.ts
+it('polls every second', async () => {
+  vi.useFakeTimers();
+  const poller = start();
+  await vi.advanceTimersByTimeAsync(1_000);
+  expect(poller.ticks).toBe(1);
+  vi.useRealTimers();
+});
+
+it('stops', async () => {
+  const poller = start();
+  poller.stop();
+  await new Promise((resolve) => setTimeout(resolve, 100));
+  expect(poller.ticks).toBe(0);
+});
+```
+
+```ts good filename=src/lib/poller.test.ts
+beforeEach(() => vi.useFakeTimers());
+afterEach(() => vi.useRealTimers());
+
+it('polls every second', async () => {
+  const poller = start();
+  await vi.advanceTimersByTimeAsync(1_000);
+  expect(poller.ticks).toBe(1);
+});
+
+it('stops', async () => {
+  const poller = start();
+  poller.stop();
+  await vi.advanceTimersByTimeAsync(100);
+  expect(poller.ticks).toBe(0);
+});
+```
+
 ## What it does not flag
 
 - A zero or omitted delay while `allowZeroDelay` is on: `setTimeout(resolve, 0)` yields one
@@ -78,9 +126,11 @@ it('stops the child', async () => {
 - `setImmediate`, `process.nextTick` and `queueMicrotask` inside a promise.
 - A `setTimeout` that is not a promise executor's resolve, such as a timer the code under test
   schedules.
-- Any timer promise in a file that calls a `fakeTimerMethods` method anywhere (`vi.useFakeTimers()`,
-  `jest.useFakeTimers()`, in a `beforeEach` or a test). Under fake timers the wait is virtual and the
-  test drives it with `advanceTimersByTimeAsync`, so it costs no wall-clock time.
+- A timer promise in a test or a suite that installs fake timers with a `fakeTimerMethods` method
+  (`vi.useFakeTimers()`, `jest.useFakeTimers()`), and any timer promise in a file that installs them
+  at the top level or in a top-level `beforeEach`. Under fake timers the wait is virtual and the
+  test drives it with `advanceTimersByTimeAsync`, so it costs no wall-clock time. A sleep helper
+  defined in the file is covered when every call to it is.
 - Files that are not unit tests, or whose path contains an `integrationMarkers` entry.
 - A sleep helper imported from another module (`import { sleep } from './test-utils'`): the rule
   reads one file at a time, so it reports the helper where it is defined, if that file is a unit
@@ -113,8 +163,11 @@ it('reads a slow body', async () => {
 });
 ```
 
-The file-level check is coarse: one `useFakeTimers()` call anywhere exempts every timer promise in
-the file, including one in a test that runs on real timers.
+Inside a covered test or suite the check is still coarse: the order of the calls is not read, so a
+sleep after `useRealTimers()` in the same test or suite stays exempt. Only helpers bound to a name
+(`function sleep`, `const sleep = ...`) are followed to their callers; a sleep in an object method
+or in a function passed to a wrapper is judged by where it is written. Fake timers installed from
+another module or a setup file are not seen, so a timer promise that relies on them is reported.
 
 ## Options
 
@@ -123,7 +176,7 @@ the file, including one in a test that runs on real timers.
 | `testFileSuffixes` | `string[]` | `.test` / `.spec` with `.ts`, `.tsx`, `.js`, `.jsx` | A file is a unit test when its path ends with one of these. |
 | `integrationMarkers` | `string[]` | `.integration.test.`, `.integration.spec.`, `.e2e.test.`, `.e2e.spec.`, `.e2e-spec.`, `/integration/`, `/e2e/` | A test file whose path, relative to the ESLint working directory, contains one of these is skipped. |
 | `allowZeroDelay` | `boolean` | `true` | Accept a zero or omitted delay. |
-| `fakeTimerMethods` | `string[]` | `["useFakeTimers"]` | Methods (on any receiver) that install fake timers. A file that calls one is not checked. |
+| `fakeTimerMethods` | `string[]` | `["useFakeTimers"]` | Methods (on any receiver) that install fake timers. A call covers the test it is in, else the suite it is in, else the whole file; timer promises there are not checked. |
 
 ```js
 'noctcore-code-quality/no-sleep-in-unit-tests': ['error', {

@@ -1,9 +1,9 @@
-import { AST_NODE_TYPES, type TSESTree } from '@typescript-eslint/utils';
+import { AST_NODE_TYPES, ASTUtils, type TSESTree } from '@typescript-eslint/utils';
 import type { JSONSchema4 } from '@typescript-eslint/utils/json-schema';
 
 import { createRule } from '../createRule';
 import { matchesAny } from '../utils/allowMatch';
-import { walkSome } from '../utils/ast';
+import { unwrapTypeWrappers, walkSome } from '../utils/ast';
 
 const RULE_NAME = 'typed-mock-over-double-cast';
 
@@ -122,6 +122,54 @@ export const typedMockOverDoubleCastRule = createRule<RuleOptions, MessageIds>({
       return path !== null && mockFactories.has(path);
     }
 
+    /** True for a mock call or a call chain rooted at one (`jest.fn().mockResolvedValue(1)`). */
+    function isMockValue(node: TSESTree.Node): boolean {
+      const value = unwrapTypeWrappers(node);
+      if (value.type !== AST_NODE_TYPES.CallExpression) {
+        return false;
+      }
+      return (
+        isMockCall(value) ||
+        (value.callee.type === AST_NODE_TYPES.MemberExpression && isMockValue(value.callee.object))
+      );
+    }
+
+    /** True when `identifier` is the direct target of a write of a mock: `fn = jest.fn()`. */
+    function isMockWrite(identifier: TSESTree.Node): boolean {
+      const parent = identifier.parent;
+      if (parent?.type === AST_NODE_TYPES.VariableDeclarator) {
+        return parent.id === identifier && parent.init !== null && isMockValue(parent.init);
+      }
+      return (
+        parent?.type === AST_NODE_TYPES.AssignmentExpression &&
+        parent.operator === '=' &&
+        parent.left === identifier &&
+        isMockValue(parent.right)
+      );
+    }
+
+    /**
+     * True for a property value that names a mock created earlier: `{ fn }` or
+     * `{ run: fn }` where `fn` is initialised with, or assigned, a mock.
+     */
+    function isMockReference(node: TSESTree.Node): boolean {
+      const parent = node.parent;
+      if (
+        node.type !== AST_NODE_TYPES.Identifier ||
+        parent?.type !== AST_NODE_TYPES.Property ||
+        parent.value !== node ||
+        parent.parent.type !== AST_NODE_TYPES.ObjectExpression
+      ) {
+        return false;
+      }
+      const variable = ASTUtils.findVariable(context.sourceCode.getScope(node), node);
+      return (
+        variable?.references.some(
+          (reference) => reference.isWrite() && isMockWrite(reference.identifier),
+        ) ?? false
+      );
+    }
+
     /** Report an object of mocks cast through `unknown` / `any` / `never` to a real type. */
     function checkCast(node: Cast): void {
       const inner = node.expression;
@@ -133,7 +181,12 @@ export const typedMockOverDoubleCastRule = createRule<RuleOptions, MessageIds>({
       ) {
         return;
       }
-      if (!walkSome(inner.expression, keys, isMockCall)) {
+      const holdsMock = walkSome(
+        inner.expression,
+        keys,
+        (child) => isMockCall(child) || isMockReference(child),
+      );
+      if (!holdsMock) {
         return;
       }
       const text = context.sourceCode.getText(node.typeAnnotation);

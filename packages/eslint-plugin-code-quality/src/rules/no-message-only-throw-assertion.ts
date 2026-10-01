@@ -1,7 +1,8 @@
-import { AST_NODE_TYPES, type TSESTree } from '@typescript-eslint/utils';
+import { AST_NODE_TYPES, ASTUtils, type TSESTree } from '@typescript-eslint/utils';
 import type { JSONSchema4 } from '@typescript-eslint/utils/json-schema';
 
 import { createRule } from '../createRule';
+import { isSelfOrAncestor, runnerName, unwrapTypeWrappers } from '../utils/ast';
 
 const RULE_NAME = 'no-message-only-throw-assertion';
 
@@ -126,16 +127,6 @@ function enclosingBlock(node: TSESTree.Node): TSESTree.Node {
   return current;
 }
 
-/** True when `ancestor` is `node` or contains it. */
-function isSelfOrAncestor(ancestor: TSESTree.Node, node: TSESTree.Node): boolean {
-  for (let current: TSESTree.Node | undefined = node; current; current = current.parent) {
-    if (current === ancestor) {
-      return true;
-    }
-  }
-  return false;
-}
-
 /** Decompose `expect(x).rejects.not.toThrow(y)` into its parts, or null. */
 function matcherChain(node: TSESTree.CallExpression): MatcherChain | null {
   const callee = node.callee;
@@ -183,23 +174,6 @@ function calleePath(callee: TSESTree.Expression): string | null {
     return `${owner}.${callee.property.name}`;
   }
   return null;
-}
-
-/** Root identifier of a test callee: `it`, `test.concurrent`, `it.each(table)`. */
-function runnerName(callee: TSESTree.Node): string | null {
-  let current: TSESTree.Node = callee;
-  for (;;) {
-    if (current.type === AST_NODE_TYPES.MemberExpression) {
-      current = current.object;
-    } else if (current.type === AST_NODE_TYPES.CallExpression) {
-      current = current.callee;
-    } else if (current.type === AST_NODE_TYPES.TaggedTemplateExpression) {
-      current = current.tag;
-    } else {
-      break;
-    }
-  }
-  return current.type === AST_NODE_TYPES.Identifier ? current.name : null;
 }
 
 function isTestCallback(node: FunctionNode): boolean {
@@ -358,6 +332,44 @@ export const noMessageOnlyThrowAssertionRule = createRule<RuleOptions, MessageId
       }
     }
 
+    /**
+     * The initialiser of the variable `identifier` names, when the variable is
+     * declared once with one and never written again. Null for a binding with
+     * no value to read: an import, a parameter, a class, a reassigned `let`.
+     */
+    function constantInit(identifier: TSESTree.Identifier): TSESTree.Expression | null {
+      const scope = context.sourceCode.getScope(identifier);
+      const variable = ASTUtils.findVariable(scope, identifier);
+      if (variable?.defs.length !== 1) {
+        return null;
+      }
+      const declarator = variable.defs[0]?.node;
+      if (
+        declarator?.type !== AST_NODE_TYPES.VariableDeclarator ||
+        declarator.id.type !== AST_NODE_TYPES.Identifier ||
+        variable.references.some((reference) => reference.isWrite() && !reference.init)
+      ) {
+        return null;
+      }
+      return declarator.init;
+    }
+
+    /**
+     * True for a message check written inline or held in a variable
+     * (`const expected = /no access/`). One hop only: a variable initialised
+     * from another variable is not followed.
+     */
+    function isMessageCheck(argument: TSESTree.Node): boolean {
+      if (isMessageArgument(argument)) {
+        return true;
+      }
+      if (argument.type !== AST_NODE_TYPES.Identifier) {
+        return false;
+      }
+      const init = constantInit(argument);
+      return init !== null && isMessageArgument(unwrapTypeWrappers(init));
+    }
+
     /** True when `.rejects.<matcher>(argument)` pins more than the message. */
     function rejectsPinsClass(matcher: string, argument: TSESTree.Node | undefined): boolean {
       const comparesInstance =
@@ -383,7 +395,7 @@ export const noMessageOnlyThrowAssertionRule = createRule<RuleOptions, MessageId
       if (argument === undefined) {
         return 'bareThrow';
       }
-      if (isMessageArgument(argument)) {
+      if (isMessageCheck(argument)) {
         return allowMessageOnly ? null : 'messageOnlyThrow';
       }
       if (argument.type === AST_NODE_TYPES.NewExpression && !trustErrorInstances) {

@@ -106,6 +106,44 @@ ruleTester.run('no-message-only-throw-assertion', noMessageOnlyThrowAssertionRul
     },
     // Not an expect chain.
     { code: 'emitter.toThrow();' },
+    // An identifier that is not bound to a message value is read as a class.
+    { code: "const Expected = NotFoundError; it('refuses', () => { expect(() => run()).toThrow(Expected); });" },
+    {
+      code: "class QuotaError extends Error {} it('refuses', () => { expect(() => run()).toThrow(QuotaError); });",
+    },
+    {
+      code: "import { NotFoundError } from './errors'; it('refuses', async () => { await expect(load(1)).rejects.toThrow(NotFoundError); });",
+    },
+    // A parameter, a call result and a reassigned binding are not followed.
+    {
+      code: "it.each([NotFoundError, GoneError])('refuses with %p', (expected) => { expect(() => run()).toThrow(expected); });",
+    },
+    { code: "it('refuses', () => { const expected = buildError(); expect(() => run()).toThrow(expected); });" },
+    {
+      code: `
+        it('refuses', () => {
+          let expected = 'No access';
+          expected = ForbiddenError;
+          expect(() => run()).toThrow(expected);
+        });
+      `,
+    },
+    { code: "it('refuses', () => { let expected; expected = /no access/; expect(() => run()).toThrow(expected); });" },
+    // allowMessageOnly accepts a message held in a variable like any other message check.
+    {
+      code: "const MESSAGE = 'No access'; it('refuses', () => { expect(() => run()).toThrow(MESSAGE); });",
+      options: [{ allowMessageOnly: true }],
+    },
+    // A message constant next to a class pin on the same subject.
+    {
+      code: `
+        const MESSAGE = 'Employee not found.';
+        it('refuses', async () => {
+          await expect(service.find(id)).rejects.toThrow(NotFoundError);
+          await expect(service.find(id)).rejects.toThrow(MESSAGE);
+        });
+      `,
+    },
   ],
   invalid: [
     // Settly shape: a Prisma rejection asserted with no argument.
@@ -291,6 +329,58 @@ ruleTester.run('no-message-only-throw-assertion', noMessageOnlyThrowAssertionRul
         });
       `,
       errors: [{ messageId: 'messageOnlyThrow' }],
+    },
+    // A message held in a variable is still a message check.
+    {
+      code: `
+        it('refuses', async () => {
+          const expected = /no access/;
+          await expect(run()).rejects.toThrow(expected);
+        });
+      `,
+      errors: [{ messageId: 'messageOnlyThrow', data: { matcher: 'toThrow' }, line: 4 }],
+    },
+    {
+      code: "it('refuses', () => { const expected = 'No access'; expect(() => run()).toThrowError(expected); });",
+      errors: [{ messageId: 'messageOnlyThrow', data: { matcher: 'toThrowError' } }],
+    },
+    {
+      code: "it('refuses', () => { const expected = `Queue ${name} missing`; expect(() => run()).toThrow(expected); });",
+      errors: [{ messageId: 'messageOnlyThrow' }],
+    },
+    {
+      code: "it('refuses', () => { const expected = new RegExp(`Queue \"${missing}\" is declared`); expect(() => run()).toThrow(expected); });",
+      errors: [{ messageId: 'messageOnlyThrow' }],
+    },
+    // A module-level constant, a `let` that is never reassigned and an `as const` string.
+    {
+      code: `
+        const MESSAGE = 'Employee not found.';
+        it('refuses', () => { expect(() => run()).toThrow(MESSAGE); });
+      `,
+      errors: [{ messageId: 'messageOnlyThrow', line: 3 }],
+    },
+    {
+      code: "it('refuses', async () => { let expected = /no access/; await expect(run()).rejects.toThrow(expected); });",
+      errors: [{ messageId: 'messageOnlyThrow' }],
+    },
+    {
+      code: "const MESSAGE = 'No access' as const; it('refuses', () => { expect(() => run()).toThrow(MESSAGE); });",
+      errors: [{ messageId: 'messageOnlyThrow' }],
+    },
+    // A message variable does not pin the class for a later message check.
+    {
+      code: `
+        it('refuses', async () => {
+          const expected = /no access/;
+          await expect(load(id)).rejects.toThrow(expected);
+          await expect(load(id)).rejects.toThrow('No access');
+        });
+      `,
+      errors: [
+        { messageId: 'messageOnlyThrow', line: 4 },
+        { messageId: 'messageOnlyThrow', line: 5 },
+      ],
     },
     // Outside a test callback (a shared helper) it still reports.
     {
