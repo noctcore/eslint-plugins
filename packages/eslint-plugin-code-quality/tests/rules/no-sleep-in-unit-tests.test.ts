@@ -89,6 +89,134 @@ ruleTester.run('no-sleep-in-unit-tests', noSleepInUnitTestsRule, {
       code: "jest.useFakeTimers(); it('x', async () => { const p = new Promise((r) => setTimeout(r, 1000)); jest.advanceTimersByTime(1000); await p; });",
       filename: TEST_FILE,
     },
+    // Fake timers installed for a suite cover its tests, nested suites included.
+    {
+      code: `
+        describe('polling', () => {
+          beforeEach(() => { vi.useFakeTimers(); });
+          afterEach(() => { vi.useRealTimers(); });
+          it('polls', async () => {
+            const tick = new Promise((resolve) => setTimeout(resolve, 1_000));
+            await vi.advanceTimersByTimeAsync(1_000);
+            await tick;
+          });
+          describe('when offline', () => {
+            it('backs off', async () => {
+              const tick = new Promise((resolve) => setTimeout(resolve, 5_000));
+              await vi.advanceTimersByTimeAsync(5_000);
+              await tick;
+            });
+          });
+        });
+        describe('parsing', () => { it('parses', () => { expect(parse('1')).toBe(1); }); });
+      `,
+      filename: TEST_FILE,
+    },
+    // A test that installs fake timers itself covers the rest of its callback.
+    {
+      code: `
+        it('advances', async () => {
+          vi.useFakeTimers();
+          const tick = new Promise((resolve) => setTimeout(resolve, 1_000));
+          await vi.advanceTimersByTimeAsync(1_000);
+          await tick;
+          vi.useRealTimers();
+        });
+        it('parses', () => { expect(parse('1')).toBe(1); });
+      `,
+      filename: TEST_FILE,
+    },
+    // A top-level sleep helper that is only called where the timers are faked.
+    {
+      code: `
+        const sleep = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
+        describe('polling', () => {
+          beforeEach(() => { vi.useFakeTimers(); });
+          it('polls', async () => {
+            const done = sleep(1_000);
+            await vi.advanceTimersByTimeAsync(1_000);
+            await done;
+          });
+        });
+        describe('parsing', () => { it('parses', () => { expect(parse('1')).toBe(1); }); });
+      `,
+      filename: TEST_FILE,
+    },
+    // A helper reached only through another helper, itself only called under fake timers.
+    {
+      code: `
+        function sleep(ms: number) { return new Promise((resolve) => setTimeout(resolve, ms)); }
+        async function slowReply(body: string) { await sleep(2_000); return body; }
+        it('times out', async () => {
+          vi.useFakeTimers();
+          const reply = slowReply('late');
+          await vi.advanceTimersByTimeAsync(2_000);
+          expect(await reply).toBe('late');
+          vi.useRealTimers();
+        });
+        it('parses', () => { expect(parse('1')).toBe(1); });
+      `,
+      filename: TEST_FILE,
+    },
+    // A helper that calls itself, and two that call each other, are judged by their other callers.
+    {
+      code: `
+        async function retry(times: number) {
+          await new Promise((resolve) => setTimeout(resolve, 100));
+          if (times > 0) { await retry(times - 1); }
+        }
+        async function ping(n: number) { await new Promise((resolve) => setTimeout(resolve, 10)); if (n > 0) { await pong(n - 1); } }
+        async function pong(n: number) { await new Promise((resolve) => setTimeout(resolve, 10)); if (n > 0) { await ping(n - 1); } }
+        describe('backoff', () => {
+          beforeEach(() => { jest.useFakeTimers(); });
+          it('retries', async () => { const done = retry(2); await jest.advanceTimersByTimeAsync(300); await done; });
+          it('rallies', async () => { const done = ping(2); await jest.advanceTimersByTimeAsync(30); await done; });
+        });
+        it('parses', () => { expect(parse('1')).toBe(1); });
+      `,
+      filename: TEST_FILE,
+    },
+    // `describe.each` and `it.each` are a suite and a test like any other.
+    {
+      code: `
+        describe.each(['get', 'post'])('%s', (method) => {
+          beforeAll(() => { jest.useFakeTimers(); });
+          it.each([100, 200])('waits %i', async (ms) => {
+            const tick = new Promise((resolve) => setTimeout(resolve, ms));
+            jest.advanceTimersByTime(ms);
+            await tick;
+          });
+        });
+        describe('parsing', () => { it('parses', () => { expect(parse('1')).toBe(1); }); });
+      `,
+      filename: TEST_FILE,
+    },
+    {
+      code: `
+        it.each([100, 200])('waits %i', async (ms) => {
+          vi.useFakeTimers();
+          const tick = new Promise((resolve) => setTimeout(resolve, ms));
+          vi.advanceTimersByTime(ms);
+          await tick;
+        });
+        it('parses', () => { expect(parse('1')).toBe(1); });
+      `,
+      filename: TEST_FILE,
+    },
+    // A top-level helper that installs the timers may run before any test: the whole file is exempt.
+    {
+      code: `
+        function installClock() { vi.useFakeTimers(); }
+        it('advances', async () => {
+          installClock();
+          const tick = new Promise((resolve) => setTimeout(resolve, 1_000));
+          await vi.advanceTimersByTimeAsync(1_000);
+          await tick;
+        });
+        it('settles', async () => { installClock(); await new Promise((resolve) => setTimeout(resolve, 50)); });
+      `,
+      filename: TEST_FILE,
+    },
     // Not a unit test file.
     {
       code: "it('waits', async () => { await new Promise((resolve) => setTimeout(resolve, 100)); });",
@@ -198,6 +326,82 @@ ruleTester.run('no-sleep-in-unit-tests', noSleepInUnitTestsRule, {
       filename: TEST_FILE,
       options: [{ fakeTimerMethods: ['installClock'] }],
       errors: [{ messageId: 'sleepInUnitTest' }],
+    },
+    // One test faking its timers does not cover a sibling test that sleeps for real.
+    {
+      code: `
+        it('advances', async () => {
+          vi.useFakeTimers();
+          await vi.advanceTimersByTimeAsync(100);
+          vi.useRealTimers();
+        });
+        it('waits', async () => {
+          await new Promise((resolve) => setTimeout(resolve, 100));
+        });
+      `,
+      filename: TEST_FILE,
+      errors: [{ messageId: 'sleepInUnitTest', data: { delay: '100' }, line: 8 }],
+    },
+    // Fake timers installed for one suite do not cover a sibling suite.
+    {
+      code: `
+        describe('polling', () => {
+          beforeEach(() => { vi.useFakeTimers(); });
+          afterEach(() => { vi.useRealTimers(); });
+          it('polls', async () => { await vi.advanceTimersByTimeAsync(1_000); });
+        });
+        describe('upload', () => {
+          it('settles', async () => { await new Promise((resolve) => setTimeout(resolve, 50)); });
+        });
+      `,
+      filename: TEST_FILE,
+      errors: [{ messageId: 'sleepInUnitTest', data: { delay: '50' }, line: 8 }],
+    },
+    // The same for a timers/promises sleep.
+    {
+      code: `
+        import { setTimeout as delay } from 'node:timers/promises';
+        it('advances', () => { jest.useFakeTimers(); jest.advanceTimersByTime(10); jest.useRealTimers(); });
+        it('waits', async () => { await delay(200); });
+      `,
+      filename: TEST_FILE,
+      errors: [{ messageId: 'sleepInUnitTest', data: { delay: '200' }, line: 4 }],
+    },
+    // A helper called under fake timers and from a real-timer test is reported where it sleeps.
+    {
+      code: `
+        const sleep = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
+        describe('polling', () => {
+          beforeEach(() => { vi.useFakeTimers(); });
+          it('polls', async () => {
+            const done = sleep(1_000);
+            await vi.advanceTimersByTimeAsync(1_000);
+            await done;
+          });
+        });
+        it('retries', async () => { await sleep(100); expect(calls).toBe(2); });
+      `,
+      filename: TEST_FILE,
+      errors: [{ messageId: 'sleepInUnitTest', data: { delay: 'ms' }, line: 2 }],
+    },
+    // A helper nobody calls under fake timers: an unrelated test faking its clock does not cover it.
+    {
+      code: `
+        export const sleep = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
+        it('advances', () => { vi.useFakeTimers(); vi.advanceTimersByTime(10); vi.useRealTimers(); });
+      `,
+      filename: TEST_FILE,
+      errors: [{ messageId: 'sleepInUnitTest', line: 2 }],
+    },
+    {
+      code: `
+        function sleep(ms: number) { return new Promise((resolve) => setTimeout(resolve, ms)); }
+        async function slowReply(body: string) { await sleep(2_000); return body; }
+        it('advances', () => { vi.useFakeTimers(); vi.advanceTimersByTime(10); vi.useRealTimers(); });
+        it('replies', async () => { expect(await slowReply('late')).toBe('late'); });
+      `,
+      filename: TEST_FILE,
+      errors: [{ messageId: 'sleepInUnitTest', data: { delay: 'ms' }, line: 2 }],
     },
     // A custom suffix brings a file into scope.
     {

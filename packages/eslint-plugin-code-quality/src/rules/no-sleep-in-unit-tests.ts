@@ -4,7 +4,7 @@ import { AST_NODE_TYPES, type TSESTree } from '@typescript-eslint/utils';
 import type { JSONSchema4 } from '@typescript-eslint/utils/json-schema';
 
 import { createRule } from '../createRule';
-import { type VisitorKeys, walkSome } from '../utils/ast';
+import { isSelfOrAncestor, runnerName, type VisitorKeys, walkSome } from '../utils/ast';
 
 const RULE_NAME = 'no-sleep-in-unit-tests';
 
@@ -21,8 +21,9 @@ export interface NoSleepInUnitTestsOptions {
   readonly allowZeroDelay?: boolean;
   /**
    * Method names that install fake timers (`vi.useFakeTimers()`,
-   * `jest.useFakeTimers()`). A file that calls one anywhere drives its timers
-   * virtually, so its timer promises cost no wall-clock time.
+   * `jest.useFakeTimers()`). A call covers the test it is in, else the suite
+   * it is in (a `beforeEach` hook), else the whole file: timer promises there
+   * are driven virtually and cost no wall-clock time.
    */
   readonly fakeTimerMethods?: readonly string[];
 }
@@ -59,6 +60,8 @@ const TIMERS_PROMISES_MODULES = new Set(['timers/promises', 'node:timers/promise
 const TIMERS_PROMISES_SLEEPS = new Set(['setTimeout']);
 const TIMER_RECEIVERS = new Set(['globalThis', 'window', 'self', 'global']);
 const CLEAR_TIMERS = new Set(['clearTimeout', 'clearInterval']);
+const TEST_RUNNERS = new Set(['it', 'test']);
+const SUITE_RUNNERS = new Set(['describe', 'suite', 'context']);
 
 const stringList: JSONSchema4 = {
   type: 'array',
@@ -78,6 +81,14 @@ const optionSchema: JSONSchema4 = {
 };
 
 type FunctionNode = TSESTree.ArrowFunctionExpression | TSESTree.FunctionExpression;
+
+/** A function bound to a name in the file, so its callers can be found. */
+interface Helper {
+  readonly fn: FunctionNode | TSESTree.FunctionDeclaration;
+  readonly id: TSESTree.Identifier;
+  /** The node that declares `id`: the function declaration or the declarator. */
+  readonly declaration: TSESTree.FunctionDeclaration | TSESTree.VariableDeclarator;
+}
 
 function toPosixRelative(filename: string, cwd: string): string {
   const relative = path.isAbsolute(filename) ? path.relative(cwd, filename) : filename;
@@ -120,6 +131,54 @@ function enclosingFunction(node: TSESTree.Node): TSESTree.Node | null {
   for (let current = node.parent; current != null; current = current.parent) {
     if (isFunction(current) || current.type === AST_NODE_TYPES.FunctionDeclaration) {
       return current;
+    }
+  }
+  return null;
+}
+
+/** True for the callback of a test (`it`, `test`) or of a suite (`describe`, `suite`, `context`). */
+function isTestOrSuiteCallback(node: FunctionNode): boolean {
+  const parent = node.parent;
+  if (parent.type !== AST_NODE_TYPES.CallExpression || !parent.arguments.includes(node)) {
+    return false;
+  }
+  const name = runnerName(parent.callee);
+  return name !== null && (TEST_RUNNERS.has(name) || SUITE_RUNNERS.has(name));
+}
+
+/**
+ * The callback a fake-timer call covers: the test it is in, else the suite it
+ * is in (directly or through a `beforeEach` hook), else null for the whole file.
+ */
+function fakeTimerScope(node: TSESTree.Node): FunctionNode | null {
+  for (let current = node.parent; current != null; current = current.parent) {
+    if (isFunction(current) && isTestOrSuiteCallback(current)) {
+      return current;
+    }
+  }
+  return null;
+}
+
+/**
+ * The nearest enclosing function bound to a name: a function declaration, or
+ * a function that initialises a `const sleep = ...` declarator. Callbacks and
+ * methods on the way up are skipped.
+ */
+function enclosingHelper(node: TSESTree.Node): Helper | null {
+  for (let current = node.parent; current != null; current = current.parent) {
+    if (current.type === AST_NODE_TYPES.FunctionDeclaration) {
+      if (current.id !== null) {
+        return { fn: current, id: current.id, declaration: current };
+      }
+    } else if (isFunction(current)) {
+      const parent = current.parent;
+      if (
+        parent.type === AST_NODE_TYPES.VariableDeclarator &&
+        parent.init === current &&
+        parent.id.type === AST_NODE_TYPES.Identifier
+      ) {
+        return { fn: current, id: parent.id, declaration: parent };
+      }
     }
   }
   return null;
@@ -262,7 +321,52 @@ export const noSleepInUnitTestsRule = createRule<RuleOptions, MessageIds>({
     const findings: { node: TSESTree.Node; delay: string; handle: string | null }[] = [];
     /** Source text of every handle passed to `clearTimeout` / `clearInterval` in the file. */
     const clearedHandles = new Set<string>();
-    let fakesTimers = false;
+    /** Test and suite callbacks that install fake timers. */
+    const fakedScopes = new Set<TSESTree.Node>();
+    /** True when fake timers are installed outside any test or suite, so for every test. */
+    let fakesWholeFile = false;
+
+    /** True when `node` sits in a test or suite that installs fake timers, or the file does. */
+    function isUnderFakeTimers(node: TSESTree.Node): boolean {
+      if (fakesWholeFile) {
+        return true;
+      }
+      let current: TSESTree.Node | undefined = node;
+      for (; current != null; current = current.parent) {
+        if (fakedScopes.has(current)) {
+          return true;
+        }
+      }
+      return false;
+    }
+
+    /**
+     * True when `node` only runs under fake timers: it sits in a test or suite
+     * that installs them, or in a helper that the file calls, and only from
+     * such places. `seen` holds the helpers already entered in this query, so
+     * helpers that call each other are judged by their other callers and a
+     * helper reached twice is walked once.
+     */
+    function runsOnlyUnderFakeTimers(node: TSESTree.Node, seen: Set<TSESTree.Node>): boolean {
+      if (isUnderFakeTimers(node)) {
+        return true;
+      }
+      const helper = enclosingHelper(node);
+      if (helper === null) {
+        return false;
+      }
+      if (seen.has(helper.fn)) {
+        return true;
+      }
+      seen.add(helper.fn);
+      const variable = context.sourceCode
+        .getDeclaredVariables(helper.declaration)
+        .find((candidate) => candidate.identifiers.includes(helper.id));
+      const uses = (variable?.references ?? []).filter(
+        (reference) => reference.isRead() && !isSelfOrAncestor(helper.fn, reference.identifier),
+      );
+      return uses.length > 0 && uses.every((use) => runsOnlyUnderFakeTimers(use.identifier, seen));
+    }
 
     function record(
       node: TSESTree.Node,
@@ -305,7 +409,12 @@ export const noSleepInUnitTestsRule = createRule<RuleOptions, MessageIds>({
           callee.type === AST_NODE_TYPES.MemberExpression &&
           fakeTimerMethods.has(staticPropertyName(callee) ?? '')
         ) {
-          fakesTimers = true;
+          const scope = fakeTimerScope(node);
+          if (scope === null) {
+            fakesWholeFile = true;
+          } else {
+            fakedScopes.add(scope);
+          }
           return;
         }
         if (callee.type === AST_NODE_TYPES.Identifier && sleepFunctions.has(callee.name)) {
@@ -340,11 +449,11 @@ export const noSleepInUnitTestsRule = createRule<RuleOptions, MessageIds>({
         }
       },
       'Program:exit'(): void {
-        if (fakesTimers) {
-          return;
-        }
         for (const { node, delay, handle } of findings) {
           if (handle !== null && clearedHandles.has(handle)) {
+            continue;
+          }
+          if (runsOnlyUnderFakeTimers(node, new Set())) {
             continue;
           }
           context.report({ node, messageId: 'sleepInUnitTest', data: { delay } });
