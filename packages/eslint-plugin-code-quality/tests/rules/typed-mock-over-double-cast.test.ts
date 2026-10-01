@@ -35,6 +35,18 @@ ruleTester.run('typed-mock-over-double-cast', typedMockOverDoubleCastRule, {
     {
       code: 'const repo = { find: sinon.stub() } as unknown as Repository;',
     },
+    { code: 'const find = sinon.stub(); const repo = { find } as unknown as Repository;' },
+    // A hoisted value that is not a mock: plain data, a parameter, an import.
+    { code: "const name = 'ada'; const input = { name } as unknown as CreateUserDto;" },
+    { code: 'function build(get) { return { get } as unknown as ConfigService; }' },
+    {
+      code: "import { get } from './doubles'; const config = { get } as unknown as ConfigService;",
+    },
+    // A property key or a member name that matches a hoisted mock is not a reference to it.
+    { code: 'const fn = vi.fn(); const input = { fn: 1 } as unknown as CreateUserDto;' },
+    { code: 'const fn = vi.fn(); const input = { a: other.fn } as unknown as CreateUserDto;' },
+    // A name destructured out of a mock call is not the mock itself.
+    { code: 'const { fn } = vi.fn(); const input = { fn } as unknown as CreateUserDto;' },
   ],
   invalid: [
     // Settly shape: a NestJS ConfigService double.
@@ -83,9 +95,62 @@ ruleTester.run('typed-mock-over-double-cast', typedMockOverDoubleCastRule, {
       filename: 'src/mail.service.spec.ts',
       errors: [{ messageId: 'doubleCastMock' }],
     },
+    // A mock created first and placed in the object by name, shorthand or not.
+    {
+      code: `
+        const fn = vi.fn();
+        const svc = { fn } as unknown as Service;
+      `,
+      errors: [{ messageId: 'doubleCastMock', data: { target: 'Service' }, line: 3 }],
+    },
+    {
+      code: 'const fn = jest.fn(); const svc = { run: fn } as unknown as MailService;',
+      errors: [{ messageId: 'doubleCastMock', data: { target: 'MailService' } }],
+    },
+    // A hoisted chain, also through a cast on the initialiser.
+    {
+      code: "const getRawInput = jest.fn().mockResolvedValue({ foo: 'bar' }); const mw = { getRawInput } as unknown as MwOpts;",
+      errors: [{ messageId: 'doubleCastMock' }],
+    },
+    {
+      code: 'const get = vi.fn() as Mock; const config = { get } as unknown as ConfigService;',
+      errors: [{ messageId: 'doubleCastMock' }],
+    },
+    // A hoisted mock nested in an inner object.
+    {
+      code: 'const setHeader = jest.fn(); const opts = { ctx: { res: { setHeader } } } as unknown as OnErrorOptions;',
+      errors: [{ messageId: 'doubleCastMock' }],
+    },
+    // A binding declared first and assigned its mock in a hook.
+    {
+      code: `
+        let get: jest.Mock;
+        let config: ConfigService;
+        beforeEach(() => {
+          get = jest.fn();
+          config = { get } as unknown as ConfigService;
+        });
+      `,
+      errors: [{ messageId: 'doubleCastMock', line: 6 }],
+    },
+    // A module-level mock used inside a function.
+    {
+      code: `
+        const send = vi.fn();
+        function makeMailer() {
+          return { send } as unknown as Mailer;
+        }
+      `,
+      errors: [{ messageId: 'doubleCastMock', line: 4 }],
+    },
     // A custom factory list.
     {
       code: 'const repo = { find: sinon.stub() } as unknown as Repository;',
+      options: [{ mockFactories: ['sinon.stub'] }],
+      errors: [{ messageId: 'doubleCastMock' }],
+    },
+    {
+      code: 'const find = sinon.stub(); const repo = { find } as unknown as Repository;',
       options: [{ mockFactories: ['sinon.stub'] }],
       errors: [{ messageId: 'doubleCastMock' }],
     },

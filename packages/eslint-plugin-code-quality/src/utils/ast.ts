@@ -56,6 +56,20 @@ export function runnerName(callee: TSESTree.Node): string | null {
   return current.type === AST_NODE_TYPES.Identifier ? current.name : null;
 }
 
+/** `x` for `x as T`, `<T>x`, `x satisfies T` and `x!`, else the node itself. */
+export function unwrapTypeWrappers(node: TSESTree.Node): TSESTree.Node {
+  let current = node;
+  while (
+    current.type === AST_NODE_TYPES.TSAsExpression ||
+    current.type === AST_NODE_TYPES.TSTypeAssertion ||
+    current.type === AST_NODE_TYPES.TSSatisfiesExpression ||
+    current.type === AST_NODE_TYPES.TSNonNullExpression
+  ) {
+    current = current.expression;
+  }
+  return current;
+}
+
 /** Child keys per node type, from the parser (`context.sourceCode.visitorKeys`). */
 export type VisitorKeys = Readonly<Record<string, readonly string[] | undefined>>;
 

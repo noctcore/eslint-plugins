@@ -52,6 +52,32 @@ const host: jest.Mocked<Pick<ArgumentsHost, 'switchToHttp'>> = {
 };
 ```
 
+A mock created first and placed in the object by name counts too, shorthand (`{ send }`) or not
+(`{ run: send }`): the name must be bound to a mock-function call, or to a chain that starts with
+one, by its initialiser or by a plain assignment (`let get; beforeEach(() => { get = jest.fn(); })`).
+
+```ts bad filename=src/mail/mailer.spec.ts reports=2
+const send = vi.fn();
+const mailer = { send } as unknown as Mailer;
+
+let get: jest.Mock;
+beforeEach(() => {
+  get = jest.fn().mockReturnValue('smtp://localhost');
+  config = { get } as unknown as ConfigService;
+});
+```
+
+```ts good filename=src/mail/mailer.spec.ts
+const send = vi.fn();
+const mailer: Mocked<Pick<Mailer, 'send'>> = { send };
+
+let get: jest.Mock;
+beforeEach(() => {
+  get = jest.fn().mockReturnValue('smtp://localhost');
+  config = { get } satisfies Partial<ConfigService>;
+});
+```
+
 ## What it does not flag
 
 - A single cast (`as jest.Mocked<Pick<T, 'get'>>`): TypeScript still checks that the two types
@@ -59,6 +85,9 @@ const host: jest.Mocked<Pick<ArgumentsHost, 'switchToHttp'>> = {
 - A double cast of an object with no mock in it (a data fixture), or of something that is not an
   object literal (`existingDouble as unknown as T`).
 - `as unknown` on its own.
+- A mock the rule cannot trace to its factory call in the same file: one that arrives through a
+  spread (`{ ...mocks }`), an import, a parameter, a destructuring or a helper's return value
+  (`{ send: makeSend() }`).
 - A target matching `allowTargets`.
 
 ## Options
