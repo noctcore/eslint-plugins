@@ -116,12 +116,11 @@ function isGlobalSetTimeout(callee: TSESTree.Node): boolean {
 
 /** The nearest enclosing function of `node`, or null at the top level. */
 function enclosingFunction(node: TSESTree.Node): TSESTree.Node | null {
-  let current: TSESTree.Node | undefined = node.parent;
-  while (current !== undefined) {
+  // `parent` is null on the Program node at runtime, whatever the types say.
+  for (let current = node.parent; current != null; current = current.parent) {
     if (isFunction(current) || current.type === AST_NODE_TYPES.FunctionDeclaration) {
       return current;
     }
-    current = current.parent;
   }
   return null;
 }

@@ -62,6 +62,8 @@ ruleTester.run('no-sleep-in-unit-tests', noSleepInUnitTestsRule, {
       code: "it('debounces', () => { setTimeout(onSave, 300); vi.advanceTimersByTime(300); expect(onSave).toHaveBeenCalled(); });",
       filename: TEST_FILE,
     },
+    // A timer at the top level of the file has no enclosing function to be an executor.
+    { code: 'setTimeout(onSave, 300);', filename: TEST_FILE },
     // Settly shape: a fake slow stream in a file that fakes timers, so the wait is virtual.
     {
       code: `
