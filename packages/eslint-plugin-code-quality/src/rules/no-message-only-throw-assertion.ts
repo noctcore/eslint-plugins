@@ -2,6 +2,7 @@ import { AST_NODE_TYPES, type TSESTree } from '@typescript-eslint/utils';
 import type { JSONSchema4 } from '@typescript-eslint/utils/json-schema';
 
 import { createRule } from '../createRule';
+import { isSelfOrAncestor, runnerName } from '../utils/ast';
 
 const RULE_NAME = 'no-message-only-throw-assertion';
 
@@ -126,16 +127,6 @@ function enclosingBlock(node: TSESTree.Node): TSESTree.Node {
   return current;
 }
 
-/** True when `ancestor` is `node` or contains it. */
-function isSelfOrAncestor(ancestor: TSESTree.Node, node: TSESTree.Node): boolean {
-  for (let current: TSESTree.Node | undefined = node; current; current = current.parent) {
-    if (current === ancestor) {
-      return true;
-    }
-  }
-  return false;
-}
-
 /** Decompose `expect(x).rejects.not.toThrow(y)` into its parts, or null. */
 function matcherChain(node: TSESTree.CallExpression): MatcherChain | null {
   const callee = node.callee;
@@ -183,23 +174,6 @@ function calleePath(callee: TSESTree.Expression): string | null {
     return `${owner}.${callee.property.name}`;
   }
   return null;
-}
-
-/** Root identifier of a test callee: `it`, `test.concurrent`, `it.each(table)`. */
-function runnerName(callee: TSESTree.Node): string | null {
-  let current: TSESTree.Node = callee;
-  for (;;) {
-    if (current.type === AST_NODE_TYPES.MemberExpression) {
-      current = current.object;
-    } else if (current.type === AST_NODE_TYPES.CallExpression) {
-      current = current.callee;
-    } else if (current.type === AST_NODE_TYPES.TaggedTemplateExpression) {
-      current = current.tag;
-    } else {
-      break;
-    }
-  }
-  return current.type === AST_NODE_TYPES.Identifier ? current.name : null;
 }
 
 function isTestCallback(node: FunctionNode): boolean {

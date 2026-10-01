@@ -8,6 +8,7 @@ import { AST_NODE_TYPES, type TSESTree } from '@typescript-eslint/utils';
 import type { JSONSchema4 } from '@typescript-eslint/utils/json-schema';
 
 import { createRule } from '../createRule';
+import { runnerName } from '../utils/ast';
 
 const RULE_NAME = 'no-vacuous-expect';
 
@@ -209,23 +210,6 @@ function calleePath(callee: TSESTree.Expression): string | null {
     return `${owner}.${callee.property.name}`;
   }
   return null;
-}
-
-/** Root identifier of a test callee: `it`, `test.concurrent`, `it.each(table)`, ``test.each`...` ``. */
-function runnerName(callee: TSESTree.Node): string | null {
-  let current: TSESTree.Node = callee;
-  for (;;) {
-    if (current.type === AST_NODE_TYPES.MemberExpression) {
-      current = current.object;
-    } else if (current.type === AST_NODE_TYPES.CallExpression) {
-      current = current.callee;
-    } else if (current.type === AST_NODE_TYPES.TaggedTemplateExpression) {
-      current = current.tag;
-    } else {
-      break;
-    }
-  }
-  return current.type === AST_NODE_TYPES.Identifier ? current.name : null;
 }
 
 function isTestCallback(node: TestCallback): boolean {
