@@ -12,10 +12,10 @@
     "test": "bun test scripts"
   },
   "dependencies": {
-    "@astrojs/starlight": "^0.42.2",
+    "@astrojs/starlight": "^0.42.3",
     "@fontsource-variable/jetbrains-mono": "^5.3.0",
     "@fontsource-variable/space-grotesk": "^5.3.0",
-    "astro": "^7.3.3",
+    "astro": "^7.3.4",
     "satteri": "^0.10.5"
   },
   "devDependencies": {
