@@ -49,12 +49,22 @@ negated and whose argument:
   snapshot of the error (`toThrowErrorMatchingSnapshot()`, `toThrowErrorMatchingInlineSnapshot()`)
   records only its message, so it is a message check too, whatever its argument.
 
+A message held in a variable is the same check: an identifier argument bound to one of those values
+(`const expected = /no access/`, also with `as const`) is read through its declaration, as long as
+the variable is initialised where it is declared and never assigned again.
+
 It reports inside and outside test callbacks, so a shared helper that asserts `.rejects.toThrow()`
 is reported where it is written.
 
-```ts bad filename=src/lib/api-path.test.ts reports=3
+```ts bad filename=src/lib/api-path.test.ts reports=4
+const REFUSAL = /non-relative api path/;
+
 it('rejects an absolute url', () => {
   expect(() => toApiPath('https://evil.test')).toThrow('Refusing a non-relative api path');
+});
+
+it('rejects a protocol-relative url', () => {
+  expect(() => toApiPath('//evil.test')).toThrow(REFUSAL);
 });
 
 it('rejects an unknown queue', () => {
@@ -67,8 +77,15 @@ export async function expectRefusal(promise: Promise<unknown>) {
 ```
 
 ```ts good filename=src/lib/api-path.test.ts
+const REFUSAL = /non-relative api path/;
+
 it('rejects an absolute url', () => {
   expect(() => toApiPath('https://evil.test')).toThrow(UnsafePathError);
+});
+
+it('rejects a protocol-relative url', () => {
+  expect(() => toApiPath('//evil.test')).toThrow(UnsafePathError);
+  expect(() => toApiPath('//evil.test')).toThrow(REFUSAL);
 });
 
 it('rejects an unknown queue', () => {
@@ -134,8 +151,10 @@ it('refuses', async () => {
   Vitest compares it like `toEqual`, so its class name takes part. See Options for Jest.
 - `.not.toThrow()` and `.resolves.not.toThrow()`: a negated throw assertion has no class to pin.
 - `.rejects.toMatchObject(...)` and the other value matchers on their own.
-- A message held in a variable (`toThrow(expectedMessage)`): the rule reads syntax, not values, and
-  treats it as it would an error class.
+- A message the rule cannot read from the variable's own declaration: one that arrives through an
+  import, a parameter, a call result, another variable (`const expected = MESSAGE`) or a binding
+  that is assigned again. The rule reads syntax, not values, so it treats such an identifier as it
+  would an error class.
 
 ## Options
 
