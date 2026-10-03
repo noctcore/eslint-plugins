@@ -18,12 +18,13 @@ outright, so it can never legitimately appear with or without tracking.
 
 ## What it flags
 
-Any line matching a skip form — `it.skip(` / `test.skip(` / `describe.skip(`, the `.fixme(` variants,
-`xit(`, `xdescribe(`, `xtest(` — with **no** tracking marker on that line or within the `lookback`
-window above it.
+Any call of a skip form (`it.skip(` / `test.skip(` / `describe.skip(`, the `.fixme(` variants,
+`xit(`, `xdescribe(`, `xtest(`) with **no** tracking marker on that line or within the `lookback`
+window above it. The report sits on the callee (`it.skip`, `xit`).
 
-Faithful to the original text-scanning implementation, the source is scanned line by line, so a marker
-in a trailing comment, a preceding comment, or anywhere in the lookback window is honoured.
+The skip is read from the syntax, the marker from the source text: the lines of the lookback window
+are scanned as written, so a marker in a trailing comment, a preceding comment, or anywhere in the
+window is honoured.
 
 ```ts bad filename=src/example.test.ts reports=2
 // untracked
@@ -41,9 +42,8 @@ it.skip('later', () => {}); // https://github.com/org/repo/issues/1
 
 ### `node:test` skips
 
-`node:test` skips through the test's options or its context, which a line scan cannot tell apart
-from a platform guard. These forms are read from the syntax, and only an unconditional skip is
-reported, from the line of the option or the call:
+`node:test` skips through the test's options or its context, the same way it spells a platform
+guard. Only an unconditional skip is reported, on the option or the call:
 
 - a `skip` or `todo` option on `test` / `it` / `describe` / `suite` (and a `t.test` subtest) whose
   value is a truthy literal: `{ skip: true }`, `{ skip: 1 }`, `{ todo: 'write it' }`;
@@ -77,6 +77,8 @@ test('signs the release', (t) => {
   `t.skip(...)` inside an `if`, a loop or a helper. Those are platform or environment guards.
 - A `skip` / `todo` key in an object passed to anything that is not a test runner, and a `skip`
   method on a receiver that is not the test's context (`query.skip(10)`).
+- The text of a skip that is not a call: inside a string, a template literal or a comment. A test
+  that lints probe code held as a string can spell a skipped test in its own source.
 
 ```ts good filename=scripts/release.test.ts
 test('uses POSIX signals', { skip: process.platform === 'win32' }, () => {});
@@ -86,6 +88,15 @@ test('kills the process group', (t) => {
     t.skip('taskkill ends a Windows tree at once');
     return;
   }
+});
+```
+
+```ts good filename=src/example.test.ts
+// A probe for the linter, e.g. it.skip('later', () => {}), is not a skipped test.
+const probe = "it.skip('later', () => {});";
+
+it('reports an untracked skip', async () => {
+  expect(await lint(probe)).toHaveLength(1);
 });
 ```
 

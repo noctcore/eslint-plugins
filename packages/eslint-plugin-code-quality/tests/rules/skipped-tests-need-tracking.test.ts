@@ -63,19 +63,57 @@ ruleTester.run('skipped-tests-need-tracking', skippedTestsNeedTrackingRule, {
     { code: "const report = pass(FILE_A, 'later', 0, { skip: true });" },
     // `skip` on a non-context receiver (a query builder) is not a test skip.
     { code: "it('pages', (t) => { const q = query.skip(10); assert.equal(q.offset, 10); });" },
+    // The text of a skip inside a string, a template literal or a comment skips nothing.
+    { code: "export const probe = ['it.skip(\"later\", () => {', '});'].join('\\n');" },
+    { code: "export const probe = `\nit.skip('later', () => {});\nxit('later', () => {});\n`;" },
+    { code: "// example: it.skip('later', () => {})\nexport {};" },
+    { code: "/*\n * test.fixme('later', () => {});\n * xdescribe('later', () => {});\n */\nit('runs', () => {});" },
+    { code: "it('names a probe', () => { lint(\"test('x', { skip: true }, () => {});\"); });" },
+    // A reference to the skipping runner that is not called.
+    { code: "const maybe = ready ? it : it.skip;\nmaybe('runs', () => {});" },
+    // A marker on the line the callee ends on, when the chain is split over lines.
+    { code: "test\n  .skip('later', () => {}); // TODO(@alice): flaky under CI" },
   ],
   invalid: [
+    // The report sits on the callee, not on the whole line.
     {
       code: "it.skip('later', () => {});",
-      errors: [{ messageId: 'needsTracking', line: 1 }],
+      errors: [
+        { messageId: 'needsTracking', line: 1, column: 1, endColumn: 8, data: { label: '.skip(' } },
+      ],
     },
     {
       code: "xdescribe('later', () => {});",
-      errors: [{ messageId: 'needsTracking', line: 1 }],
+      errors: [
+        { messageId: 'needsTracking', line: 1, column: 1, endColumn: 10, data: { label: 'xdescribe(' } },
+      ],
     },
     {
       code: "test.fixme('later', () => {});",
+      errors: [{ messageId: 'needsTracking', line: 1, data: { label: '.fixme(' } }],
+    },
+    {
+      code: "xtest('later', () => {});",
+      errors: [{ messageId: 'needsTracking', line: 1, data: { label: 'xtest(' } }],
+    },
+    // A skip nested in a suite, a runner reached through a member, and a space before the call.
+    {
+      code: "describe('suite', () => {\n  it.skip('later', () => {});\n});",
+      errors: [{ messageId: 'needsTracking', line: 2, column: 3 }],
+    },
+    {
+      code: "test.describe.skip('later', () => {});",
+      errors: [{ messageId: 'needsTracking', line: 1, data: { label: '.skip(' } }],
+    },
+    {
+      code: "describe.skip ('later', () => {});",
       errors: [{ messageId: 'needsTracking', line: 1 }],
+    },
+    // A real skip next to the same text in a string and a comment is reported once.
+    {
+      code: "// it.skip('a', () => {})\nconst probe = \"it.skip('b', () => {})\";\nit.skip('c', () => {});",
+      options: [{ lookback: 0 }],
+      errors: [{ messageId: 'needsTracking', line: 3, column: 1 }],
     },
     // A marker outside the lookback window does not count.
     {

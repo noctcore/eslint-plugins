@@ -2,6 +2,7 @@ import { AST_NODE_TYPES, type TSESTree } from '@typescript-eslint/utils';
 import type { JSONSchema4 } from '@typescript-eslint/utils/json-schema';
 
 import { createRule } from '../createRule';
+import { runnerName } from '../utils/ast';
 
 const RULE_NAME = 'skipped-tests-need-tracking';
 
@@ -23,25 +24,25 @@ type MessageIds = 'needsTracking';
  * human attached. `.only` is NOT listed here: `no-focused-tests` bans it
  * outright, so it can never legitimately appear with or without tracking.
  *
- * Faithful to the original text-scanning implementation: the source is scanned
- * line by line rather than through the AST, so a marker in a trailing or
- * preceding comment (or anywhere in the lookback window) is honoured exactly as
- * a human reviewer would read it.
+ * A skip is found in the AST, as a call, so the same text inside a string, a
+ * template literal or a comment is not one. Only the tracking marker is looked
+ * up in the source text: the lines of the lookback window are scanned as
+ * written, so a marker in a trailing or preceding comment (or anywhere in the
+ * window) is honoured exactly as a human reviewer would read it.
  *
  * `node:test` skips a test through its options (`test('x', { skip: true })`,
- * `{ todo: 'reason' }`) or its context (`t.skip()`, `t.todo()`). Those are read
- * from the AST, because only an UNCONDITIONAL skip is debt: `{ skip:
- * process.platform === 'win32' }` or a `t.skip('POSIX only')` inside an `if` is
- * a platform guard, not a test someone meant to come back to. The marker is
- * looked up the same way, from the line of the option or the call.
+ * `{ todo: 'reason' }`) or its context (`t.skip()`, `t.todo()`). Only an
+ * UNCONDITIONAL skip is debt there: `{ skip: process.platform === 'win32' }` or
+ * a `t.skip('POSIX only')` inside an `if` is a platform guard, not a test
+ * someone meant to come back to. The marker is looked up the same way, from the
+ * line of the option or the call.
  */
-const SKIP_PATTERNS: readonly { pattern: RegExp; label: string }[] = [
-  { pattern: /\b(?:it|test|describe)\.skip\s*\(/u, label: '.skip(' },
-  { pattern: /\b(?:it|test|describe)\.fixme\s*\(/u, label: '.fixme(' },
-  { pattern: /\bxit\s*\(/u, label: 'xit(' },
-  { pattern: /\bxdescribe\s*\(/u, label: 'xdescribe(' },
-  { pattern: /\bxtest\s*\(/u, label: 'xtest(' },
-];
+/** Runners that skip through a modifier: `it.skip(`, `test.describe.fixme(`. */
+const SKIPPABLE_RUNNERS = new Set(['it', 'test', 'describe']);
+/** Modifiers that skip the runner they are called on. */
+const SKIP_MODIFIERS = new Set(['skip', 'fixme']);
+/** Runner aliases that skip by name. */
+const SKIPPED_RUNNERS = new Set(['xit', 'xdescribe', 'xtest']);
 
 /** Runners whose options object may carry `skip` / `todo` (`node:test`, and `t.test` subtests). */
 const NODE_TEST_RUNNERS = new Set(['test', 'it', 'describe', 'suite']);
@@ -65,16 +66,32 @@ const optionSchema: JSONSchema4 = {
   },
 };
 
-/** Root identifier of a test callee: `test`, `describe.skip`, `test.each(table)`. */
-function runnerName(callee: TSESTree.Node): string | null {
-  let current: TSESTree.Node = callee;
-  while (
-    current.type === AST_NODE_TYPES.MemberExpression ||
-    current.type === AST_NODE_TYPES.CallExpression
-  ) {
-    current = current.type === AST_NODE_TYPES.MemberExpression ? current.object : current.callee;
+/** Last name of a callee: `xit` for `xit`, `skip` for `it.skip`, else null. */
+function calleeName(callee: TSESTree.Node): string | null {
+  if (callee.type === AST_NODE_TYPES.Identifier) {
+    return callee.name;
   }
-  return current.type === AST_NODE_TYPES.Identifier ? current.name : null;
+  return callee.type === AST_NODE_TYPES.MemberExpression &&
+    !callee.computed &&
+    callee.property.type === AST_NODE_TYPES.Identifier
+    ? callee.property.name
+    : null;
+}
+
+/** The label of a skipping runner call (`it.skip(...)`, `xit(...)`), else null. */
+function skipLabel(callee: TSESTree.Node): string | null {
+  const name = calleeName(callee);
+  if (name === null) {
+    return null;
+  }
+  if (SKIPPED_RUNNERS.has(name)) {
+    return `${name}(`;
+  }
+  if (callee.type !== AST_NODE_TYPES.MemberExpression || !SKIP_MODIFIERS.has(name)) {
+    return null;
+  }
+  const runner = calleeName(callee.object);
+  return runner !== null && SKIPPABLE_RUNNERS.has(runner) ? `.${name}(` : null;
 }
 
 /** True for a call to a test runner, including a subtest (`t.test(...)`). */
@@ -170,18 +187,16 @@ export const skippedTestsNeedTrackingRule = createRule<RuleOptions, MessageIds>(
       return markers.some((marker) => marker.test(window));
     }
 
-    /** Report `label` on the 1-based `line` unless a marker sits in its lookback window. */
-    function checkLine(line: number, label: string): void {
-      const index = line - 1;
+    /**
+     * Report `label` on `node` unless a marker sits on the line `node` ends on
+     * or in the lookback window above it.
+     */
+    function check(node: TSESTree.Node, label: string): void {
+      const index = node.loc.end.line - 1;
       if (hasTrackingMarker(Math.max(0, index - lookback), index)) {
         return;
       }
-      const text = lines[index] ?? '';
-      context.report({
-        loc: { start: { line, column: 0 }, end: { line, column: text.length } },
-        messageId: 'needsTracking',
-        data: { label },
-      });
+      context.report({ node, messageId: 'needsTracking', data: { label } });
     }
 
     return {
@@ -197,12 +212,17 @@ export const skippedTestsNeedTrackingRule = createRule<RuleOptions, MessageIds>(
               }
               const key = propertyKey(property);
               if (key !== null && NODE_TEST_SKIPS.has(key) && isUnconditionalSkip(property.value)) {
-                checkLine(property.loc.start.line, `{ ${key} }`);
+                check(property, `{ ${key} }`);
               }
             }
           }
         }
         const callee = node.callee;
+        const label = skipLabel(callee);
+        if (label !== null) {
+          check(callee, label);
+          return;
+        }
         if (
           callee.type !== AST_NODE_TYPES.MemberExpression ||
           callee.computed ||
@@ -213,29 +233,7 @@ export const skippedTestsNeedTrackingRule = createRule<RuleOptions, MessageIds>(
           return;
         }
         if (unconditionalContextName(node) === callee.object.name) {
-          checkLine(node.loc.start.line, `${callee.object.name}.${callee.property.name}(`);
-        }
-      },
-      Program(): void {
-        for (let i = 0; i < lines.length; i++) {
-          const line = lines[i] ?? '';
-          for (const { pattern, label } of SKIP_PATTERNS) {
-            if (!pattern.test(line)) {
-              continue;
-            }
-            const start = Math.max(0, i - lookback);
-            if (hasTrackingMarker(start, i)) {
-              continue;
-            }
-            context.report({
-              loc: {
-                start: { line: i + 1, column: 0 },
-                end: { line: i + 1, column: line.length },
-              },
-              messageId: 'needsTracking',
-              data: { label },
-            });
-          }
+          check(callee, `${callee.object.name}.${callee.property.name}(`);
         }
       },
     };
