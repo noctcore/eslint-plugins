@@ -54,6 +54,7 @@ jobs:
       - run: bun run build
       - run: bun run test
       - name: Create Version PR or publish to npm
+        id: changesets
         uses: changesets/action@ae32849d5ba541f9ae29e40e22a623bc13562f51 # v2.1.2
         with:
           version-script: bun run version-packages
@@ -63,3 +64,13 @@ jobs:
           github-token: ${{ secrets.GITHUB_TOKEN }}
         env:
           NPM_CONFIG_PROVENANCE: 'true'
+
+      # changesets/action can't label the PR it opens. A failure here must not fail a run that
+      # may already have published, hence continue-on-error.
+      - name: Label and assign the Version Packages PR
+        if: steps.changesets.outputs.pullRequestNumber != ''
+        continue-on-error: true
+        run: gh pr edit "$PR_NUMBER" --repo "$GITHUB_REPOSITORY" --add-label release --add-assignee Shironex
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          PR_NUMBER: ${{ steps.changesets.outputs.pullRequestNumber }}
