@@ -18,6 +18,7 @@ updates:
       actions:
         patterns: ['*']
         update-types: [minor, patch]
+    assignees: [Shironex]
     commit-message:
       prefix: ci
 
@@ -46,6 +47,7 @@ updates:
       # newest Node release.
       - dependency-name: '@types/node'
         update-types: [version-update:semver-major]
+    assignees: [Shironex]
     commit-message:
       prefix: chore
       include: scope
