@@ -19,40 +19,40 @@ ruleTester.run('no-focused-tests', noFocusedTestsRule, {
   invalid: [
     {
       code: "it.only('runs', () => {});",
-      errors: [{ messageId: 'focused' }],
+      errors: [{ messageId: 'focused', suggestions: [{ messageId: 'removeOnly', output: "it('runs', () => {});" }] }],
     },
     {
       code: "describe.only('suite', () => {});",
-      errors: [{ messageId: 'focused' }],
+      errors: [{ messageId: 'focused', suggestions: [{ messageId: 'removeOnly', output: "describe('suite', () => {});" }] }],
     },
     {
       code: "test.only('case', () => {});",
-      errors: [{ messageId: 'focused' }],
+      errors: [{ messageId: 'focused', suggestions: [{ messageId: 'removeOnly', output: "test('case', () => {});" }] }],
     },
     // Chained modifiers (vitest concurrent) still resolve to the root runner.
     {
       code: "test.concurrent.only('case', () => {});",
-      errors: [{ messageId: 'focused' }],
+      errors: [{ messageId: 'focused', suggestions: [{ messageId: 'removeOnly', output: "test.concurrent('case', () => {});" }] }],
     },
     {
       code: "describe.concurrent.only('suite', () => {});",
-      errors: [{ messageId: 'focused' }],
+      errors: [{ messageId: 'focused', suggestions: [{ messageId: 'removeOnly', output: "describe.concurrent('suite', () => {});" }] }],
     },
     {
       code: "it.concurrent.only('runs', () => {});",
-      errors: [{ messageId: 'focused' }],
+      errors: [{ messageId: 'focused', suggestions: [{ messageId: 'removeOnly', output: "it.concurrent('runs', () => {});" }] }],
     },
     {
       code: "fit('runs', () => {});",
-      errors: [{ messageId: 'focusedCall' }],
+      errors: [{ messageId: 'focusedCall', suggestions: [{ messageId: 'useBase', output: "it('runs', () => {});" }] }],
     },
     {
       code: "fdescribe('suite', () => {});",
-      errors: [{ messageId: 'focusedCall' }],
+      errors: [{ messageId: 'focusedCall', suggestions: [{ messageId: 'useBase', output: "describe('suite', () => {});" }] }],
     },
     {
       code: "ddescribe('suite', () => {});",
-      errors: [{ messageId: 'focusedCall' }],
+      errors: [{ messageId: 'focusedCall', suggestions: [{ messageId: 'useBase', output: "describe('suite', () => {});" }] }],
     },
   ],
 });

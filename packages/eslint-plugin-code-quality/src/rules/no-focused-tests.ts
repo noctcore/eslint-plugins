@@ -4,7 +4,7 @@ import { createRule } from '../createRule';
 
 const RULE_NAME = 'no-focused-tests';
 
-type MessageIds = 'focused' | 'focusedCall';
+type MessageIds = 'focused' | 'focusedCall' | 'removeOnly' | 'useBase';
 
 /**
  * Test runner identifiers whose `.only` member focuses a single test/suite.
@@ -42,12 +42,15 @@ export const noFocusedTestsRule = createRule<[], MessageIds>({
       description:
         'Ban focused tests (it.only / describe.only / test.only, fdescribe / fit / ddescribe) so a focused test never silently lands in CI.',
     },
+    hasSuggestions: true,
     schema: [],
     messages: {
       focused:
         'Focused test: remove `.only` from `{{runner}}.only(...)` so the whole suite runs in CI.',
       focusedCall:
         'Focused test: replace `{{name}}(...)` with `{{base}}(...)` so the whole suite runs in CI.',
+      removeOnly: 'Remove `.only`.',
+      useBase: 'Replace `{{name}}` with `{{base}}`.',
     },
   },
   defaultOptions: [],
@@ -61,10 +64,15 @@ export const noFocusedTestsRule = createRule<[], MessageIds>({
         // the root `test`/`describe`/`it` runner.
         const runner = rootRunnerName(node.object);
         if (runner !== null && FOCUSABLE_RUNNERS.has(runner)) {
+          // A suggestion, not an autofix: `--fix` must not undo a focus mid-debug.
+          const objectEnd = node.object.range[1];
           context.report({
             node: node.property,
             messageId: 'focused',
             data: { runner },
+            suggest: [
+              { messageId: 'removeOnly', fix: (fixer) => fixer.removeRange([objectEnd, node.property.range[1]]) },
+            ],
           });
         }
       },
@@ -76,10 +84,13 @@ export const noFocusedTestsRule = createRule<[], MessageIds>({
           FOCUSED_CALL_NAMES.has(node.callee.name)
         ) {
           const name = node.callee.name;
+          const base = name.startsWith('f') ? name.slice(1) : 'describe';
+          const callee = node.callee;
           context.report({
-            node: node.callee,
+            node: callee,
             messageId: 'focusedCall',
-            data: { name, base: name.startsWith('f') ? name.slice(1) : 'describe' },
+            data: { name, base },
+            suggest: [{ messageId: 'useBase', data: { name, base }, fix: (fixer) => fixer.replaceText(callee, base) }],
           });
         }
       },

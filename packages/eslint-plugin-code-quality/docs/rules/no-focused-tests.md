@@ -3,7 +3,7 @@
 > Ban `.only` / `fdescribe` / `fit` so a focused test never silently lands in CI.
 
 <!-- begin generated rule header -->
-✅ In `recommended` at `error` · 💭 Type information: not needed
+✅ In `recommended` at `error` · 💡 Offers editor suggestions · 💭 Type information: not needed
 <!-- end generated rule header -->
 
 ## Why
@@ -29,6 +29,11 @@ fdescribe('suite', () => {});
 it('runs', () => {});
 layout.fit('contain'); // not a test runner
 ```
+
+### Suggestion
+
+Reports offer an editor suggestion (not an autofix, so `--fix` never undoes a focus you are using
+mid-debug) that removes `.only`, or replaces `fit` / `fdescribe` / `ddescribe` with `it` / `describe`.
 
 ## What it does not flag
 
