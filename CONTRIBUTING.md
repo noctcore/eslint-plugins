@@ -18,6 +18,7 @@ bun run build        # first, always: see below
 bun run typecheck
 bun run test         # every package, on ESLint 10 and then on ESLint 9
 bun run docs:build   # the docs site, plus its post-build checks
+bun run check:package  # after build: publint and arethetypeswrong on each packed package
 ```
 
 **Build before you typecheck.** Every plugin imports `@noctcore/eslint-utils`, and TypeScript
