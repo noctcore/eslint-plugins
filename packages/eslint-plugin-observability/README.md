@@ -10,7 +10,7 @@ context object.
 
 ## Requirements
 
-- ESLint 9 or newer, flat config (`eslint.config.js`) only.
+- ESLint 9 or 10, flat config (`eslint.config.js`) only.
 - `configs.recommended` registers the plugin and sets rule severities, nothing else. It sets no
   `files` and no parser, so it applies to whatever files the rest of your config lints. To lint
   TypeScript, add a `files` pattern and `@typescript-eslint/parser`, as in the quick start.

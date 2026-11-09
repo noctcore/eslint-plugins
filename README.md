@@ -43,7 +43,7 @@ and installed on its own.
 
 ## Install
 
-Requirements: ESLint 9 or newer, flat config (`eslint.config.js`) only. Install the plugins you want
+Requirements: ESLint 9 or 10, TypeScript 5 or 6, flat config (`eslint.config.js`) only. Install the plugins you want
 and `@typescript-eslint/parser`:
 
 ```sh

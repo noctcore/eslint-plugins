@@ -32,8 +32,8 @@
         "vitest": "^5",
       },
       "peerDependencies": {
-        "eslint": ">=9.0.0",
-        "typescript": ">=5.0.0",
+        "eslint": ">=9.0.0 <11",
+        "typescript": ">=5.0.0 <7",
       },
     },
     "packages/eslint-plugin-async-safety": {
@@ -53,8 +53,8 @@
         "vitest": "^5",
       },
       "peerDependencies": {
-        "eslint": ">=9.0.0",
-        "typescript": ">=5.0.0",
+        "eslint": ">=9.0.0 <11",
+        "typescript": ">=5.0.0 <7",
       },
     },
     "packages/eslint-plugin-code-quality": {
@@ -74,8 +74,8 @@
         "vitest": "^5",
       },
       "peerDependencies": {
-        "eslint": ">=9.0.0",
-        "typescript": ">=5.0.0",
+        "eslint": ">=9.0.0 <11",
+        "typescript": ">=5.0.0 <7",
       },
     },
     "packages/eslint-plugin-contracts": {
@@ -95,8 +95,8 @@
         "vitest": "^5",
       },
       "peerDependencies": {
-        "eslint": ">=9.0.0",
-        "typescript": ">=5.0.0",
+        "eslint": ">=9.0.0 <11",
+        "typescript": ">=5.0.0 <7",
       },
     },
     "packages/eslint-plugin-llm": {
@@ -116,8 +116,8 @@
         "vitest": "^5",
       },
       "peerDependencies": {
-        "eslint": ">=9.0.0",
-        "typescript": ">=5.0.0",
+        "eslint": ">=9.0.0 <11",
+        "typescript": ">=5.0.0 <7",
       },
     },
     "packages/eslint-plugin-monorepo": {
@@ -137,8 +137,8 @@
         "vitest": "^5",
       },
       "peerDependencies": {
-        "eslint": ">=9.0.0",
-        "typescript": ">=5.0.0",
+        "eslint": ">=9.0.0 <11",
+        "typescript": ">=5.0.0 <7",
       },
     },
     "packages/eslint-plugin-observability": {
@@ -158,8 +158,8 @@
         "vitest": "^5",
       },
       "peerDependencies": {
-        "eslint": ">=9.0.0",
-        "typescript": ">=5.0.0",
+        "eslint": ">=9.0.0 <11",
+        "typescript": ">=5.0.0 <7",
       },
     },
     "packages/eslint-plugin-prisma": {
@@ -179,8 +179,8 @@
         "vitest": "^5",
       },
       "peerDependencies": {
-        "eslint": ">=9.0.0",
-        "typescript": ">=5.0.0",
+        "eslint": ">=9.0.0 <11",
+        "typescript": ">=5.0.0 <7",
       },
     },
     "packages/eslint-plugin-react": {
@@ -200,8 +200,8 @@
         "vitest": "^5",
       },
       "peerDependencies": {
-        "eslint": ">=9.0.0",
-        "typescript": ">=5.0.0",
+        "eslint": ">=9.0.0 <11",
+        "typescript": ">=5.0.0 <7",
       },
     },
     "packages/eslint-plugin-rsc": {
@@ -221,8 +221,8 @@
         "vitest": "^5",
       },
       "peerDependencies": {
-        "eslint": ">=9.0.0",
-        "typescript": ">=5.0.0",
+        "eslint": ">=9.0.0 <11",
+        "typescript": ">=5.0.0 <7",
       },
     },
     "packages/eslint-plugin-security": {
@@ -242,8 +242,8 @@
         "vitest": "^5",
       },
       "peerDependencies": {
-        "eslint": ">=9.0.0",
-        "typescript": ">=5.0.0",
+        "eslint": ">=9.0.0 <11",
+        "typescript": ">=5.0.0 <7",
       },
     },
     "packages/eslint-test-utils": {
@@ -276,8 +276,8 @@
         "typescript": "^5.6.0",
       },
       "peerDependencies": {
-        "eslint": ">=9.0.0",
-        "typescript": ">=5.0.0",
+        "eslint": ">=9.0.0 <11",
+        "typescript": ">=5.0.0 <7",
       },
     },
     "packages/lint-meta-rules": {
@@ -298,7 +298,7 @@
       },
       "peerDependencies": {
         "@typescript-eslint/parser": "^8.0.0",
-        "eslint": ">=9.0.0",
+        "eslint": ">=9.0.0 <11",
       },
       "optionalPeers": [
         "@typescript-eslint/parser",
