@@ -2,7 +2,7 @@ import { spawnSync } from 'node:child_process';
 import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
-import { fileURLToPath } from 'node:url';
+import { fileURLToPath, pathToFileURL } from 'node:url';
 
 import type * as I18nRules from '../../src/i18n';
 import type * as PrismaRules from '../../src/prisma';
@@ -110,7 +110,8 @@ export function runLintMetaOnRealTree(
       registry,
       [
         `import { Linter } from 'eslint';`,
-        `import { ${factory} } from ${JSON.stringify(entryFor(factory, runtime))};`,
+        // A file URL, not a bare path: Node's ESM loader rejects `D:\\...` on Windows.
+        `import { ${factory} } from ${JSON.stringify(pathToFileURL(entryFor(factory, runtime)).href)};`,
         `console.log('eslint ' + new Linter().version);`,
         `export const META_RULES = [${factory}(${JSON.stringify(options)})];`,
         '',
@@ -118,7 +119,7 @@ export function runLintMetaOnRealTree(
       'utf8',
     );
     const [command, prefix] =
-      runtime === 'bun' ? [process.execPath, []] : ['node', ['--import', ESLINT9_HOOK]];
+      runtime === 'bun' ? [process.execPath, []] : ['node', ['--import', pathToFileURL(ESLINT9_HOOK).href]];
     // The child gets its runtime from `prefix`, not from an inherited
     // NODE_OPTIONS: the root `test:eslint9` script sets one whose bare
     // specifier does not resolve from here.

@@ -40,14 +40,28 @@ jobs:
   # One job per ESLint major, in parallel with typecheck: the two test passes
   # used to run back to back and made up most of the job. The public repo's
   # runners are free, so building once per job costs no Actions minutes.
+  #
+  # The Windows leg runs the ESLint 10 suite once more: rules match filenames
+  # and globs, and several normalise path separators by hand, which only a
+  # Windows run exercises. Its name gains a suffix so the two Linux check names
+  # stay unchanged.
   test:
-    name: test · eslint ${{ matrix.eslint }}
-    runs-on: ubuntu-24.04
+    name: test · eslint ${{ matrix.eslint }}${{ matrix.os == 'windows-latest' && ' · windows' || '' }}
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 30
     strategy:
       fail-fast: false
       matrix:
+        os: [ubuntu-24.04]
         eslint: [10, 9]
+        include:
+          - os: windows-latest
+            eslint: 10
     steps:
+      # Keep LF on checkout so fixtures and doc examples match byte for byte;
+      # the leg is here for path handling, not line endings.
+      - if: runner.os == 'Windows'
+        run: git config --global core.autocrlf false
       - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5.1.0
         with:
           persist-credentials: false
