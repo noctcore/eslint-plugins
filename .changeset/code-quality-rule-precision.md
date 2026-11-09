@@ -14,6 +14,7 @@ Fix false positives and false negatives in five `recommended` rules, and add two
 - `no-bare-date-now` exempts test files by default (`**/*.{spec,test}.*`, `**/__tests__/**`), like the other allowlisted rules. A project that sets `allowIn` replaces the default and sees no change. The messages no longer present `now()` / `nowMs()` as names the project must have.
 - `skipped-tests-need-tracking` no longer reports Playwright's conditional skip, `test.skip(browserName === 'webkit', 'reason')`. `test.skip()` and `test.skip(true, 'reason')` are still reported.
 - `no-historical-comments` no longer reports `no longer` describing runtime state ("the socket is no longer writable") or `historical` as a domain word ("historical exchange rates"). `we no longer`, `no longer needed/used/required/...` and `historically` are still reported.
+- `no-focused-tests` no longer reports `.only` read as a value (`RuleTester.itOnly = it.only`, the usual Vitest wiring for typescript-eslint's `RuleTester`); a called chain such as `it.only.each([...])(...)` is still reported.
 - `no-pr-reference-comments` no longer reports a bare `#` number with one digit (`step #2`), a leading zero (`#000`), or a following `%` or letter. A new `trackerPatterns` option reports tracker keys such as Jira's (`['(?:OPS|WEB)-\\d+']`); it is empty by default.
 
 **Suggestions:** `no-focused-tests` suggests removing `.only` (or `fit` to `it`), and `skipped-tests-need-tracking` suggests inserting a `// TODO(@owner):` line above the skip. Both are suggestions, not autofixes.
