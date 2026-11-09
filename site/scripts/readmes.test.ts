@@ -6,7 +6,7 @@
  * `bun run docs:readmes` is rerun and its output committed.
  */
 import { describe, expect, test } from 'bun:test';
-import { relative } from 'node:path';
+import { join, relative } from 'node:path';
 
 import { REPO_ROOT, loadInventory } from './inventory';
 import {
@@ -38,7 +38,7 @@ describe('generated README tables and rule-doc headers', () => {
   test('regenerating is a no-op', () => {
     const pkg = inventory[0]!;
     const rule = pkg.rules[0]!;
-    const readme = files.find((file) => file.path.endsWith(`${pkg.dir}/README.md`))!.expected;
+    const readme = files.find((file) => file.path === join(pkg.dir, 'README.md'))!.expected;
     expect(applyRulesBlock(readme, pkg, 'README.md')).toBe(readme);
     const doc = `# \`${rule.id}\`\n\n> Summary.\n\n## Why\n\nBecause.\n`;
     const once = applyRuleHeader(doc, pkg, rule, 'doc.md');
@@ -51,7 +51,7 @@ describe('generated README tables and rule-doc headers', () => {
       inventory
         .filter((pkg) => pkg.kind === 'eslint-plugin')
         .map((pkg) => {
-          const readme = files.find((file) => file.path.endsWith(`${pkg.dir}/README.md`))!.expected;
+          const readme = files.find((file) => file.path === join(pkg.dir, 'README.md'))!.expected;
           return readme.slice(readme.indexOf(RULES_BEGIN)).split('\n').find((line) => line.startsWith('| Rule'));
         }),
     );
