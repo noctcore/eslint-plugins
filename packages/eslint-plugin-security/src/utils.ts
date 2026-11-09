@@ -1,31 +1,12 @@
 import { AST_NODE_TYPES, type TSESLint, type TSESTree } from '@typescript-eslint/utils';
 
 /*
- * Layout-independent AST helpers shared by this package's rules. Kept
- * dependency-free on purpose, and copied rather than imported from a sibling
- * plugin: each package carries only the helpers it needs so it survives being
- * published on its own.
+ * Layout-independent AST helpers for this package's rules. Helpers every plugin
+ * needs come from `@noctcore/eslint-utils`, a runtime dependency of each plugin.
  */
 
-/**
- * Dotted source text of a call's callee when it is a plain identifier or a chain
- * of member accesses (`fetch`, `undici.request`, `client.http.get`). Returns
- * `null` for computed access, `this`, calls, or any other shape, so callers
- * match conservatively against the returned string only.
- */
-export function calleeText(callee: TSESTree.Node): string | null {
-  if (callee.type === AST_NODE_TYPES.Identifier) {
-    return callee.name;
-  }
-  if (callee.type === AST_NODE_TYPES.MemberExpression && !callee.computed) {
-    const object = calleeText(callee.object);
-    if (object === null || callee.property.type !== AST_NODE_TYPES.Identifier) {
-      return null;
-    }
-    return `${object}.${callee.property.name}`;
-  }
-  return null;
-}
+// Shared with the other plugins through @noctcore/eslint-utils.
+export { calleePath as calleeText } from '@noctcore/eslint-utils';
 
 /** Drops all whitespace so configured source text matches however the code is wrapped. */
 export function squash(text: string): string {

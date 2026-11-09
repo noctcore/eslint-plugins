@@ -1,3 +1,4 @@
+import { enclosingFunction, type FunctionNode as FnNode } from '@noctcore/eslint-utils';
 import { AST_NODE_TYPES, type TSESTree } from '@typescript-eslint/utils';
 
 import { createRule } from '../createRule';
@@ -20,11 +21,6 @@ type MessageIds = 'jsxInHook';
  * not the hook, and are not attributed to it.
  */
 
-type FnNode =
-  | TSESTree.FunctionDeclaration
-  | TSESTree.FunctionExpression
-  | TSESTree.ArrowFunctionExpression;
-
 /** True when an expression is — or, unwrapped through ternary/logical/sequence, contains — top-level JSX. */
 function isJsxExpression(node: TSESTree.Node | null | undefined): boolean {
   if (!node) {
@@ -43,26 +39,6 @@ function isJsxExpression(node: TSESTree.Node | null | undefined): boolean {
     default:
       return false;
   }
-}
-
-function isFunctionNode(node: TSESTree.Node): node is FnNode {
-  return (
-    node.type === AST_NODE_TYPES.FunctionDeclaration ||
-    node.type === AST_NODE_TYPES.FunctionExpression ||
-    node.type === AST_NODE_TYPES.ArrowFunctionExpression
-  );
-}
-
-/** Nearest enclosing function of a node, or null at module scope. */
-function enclosingFunction(node: TSESTree.Node): FnNode | null {
-  let current = node.parent;
-  while (current) {
-    if (isFunctionNode(current)) {
-      return current;
-    }
-    current = current.parent;
-  }
-  return null;
 }
 
 /** Declared name of a function, from its own id or the variable it is assigned to. */

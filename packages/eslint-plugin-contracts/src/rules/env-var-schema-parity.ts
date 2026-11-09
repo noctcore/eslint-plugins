@@ -1,6 +1,6 @@
-import { readFileSync, statSync } from 'node:fs';
 import path from 'node:path';
 
+import { createFileCache } from '@noctcore/eslint-utils';
 import { AST_NODE_TYPES, type TSESTree } from '@typescript-eslint/utils';
 import type { JSONSchema4 } from '@typescript-eslint/utils/json-schema';
 
@@ -51,8 +51,8 @@ const optionSchema: JSONSchema4 = {
 
 const BUILTIN_KEYS: ReadonlySet<string> = new Set(['MODE', 'DEV', 'PROD', 'SSR', 'BASE_URL', 'NODE_ENV']);
 
-// Resolved schema path -> declared key set at an mtime (keys null = unreadable, rule stays inert).
-const schemaCache = new Map<string, { readonly mtimeMs: number; readonly keys: ReadonlySet<string> | null }>();
+// Resolved schema path -> declared key set, re-read when the mtime moves (unreadable = rule stays inert).
+const schemaCache = createFileCache((text) => parseDeclaredKeys(text));
 
 const DOTENV_KEY = /^\s*(?:export\s+)?([A-Za-z_][A-Za-z0-9_]*)\s*=/gm;
 const OBJECT_KEY = /["'`]?([A-Za-z_][A-Za-z0-9_]*)["'`]?\s*:/g;
@@ -72,25 +72,7 @@ function parseDeclaredKeys(source: string): ReadonlySet<string> {
 /** Read + cache the declared key set for a schema path; null when unreadable. */
 function loadSchema(cwd: string, schema: string): ReadonlySet<string> | null {
   const resolved = path.isAbsolute(schema) ? schema : path.resolve(cwd, schema);
-  let mtimeMs: number;
-  try {
-    mtimeMs = statSync(resolved).mtimeMs;
-  } catch {
-    schemaCache.delete(resolved);
-    return null;
-  }
-  const cached = schemaCache.get(resolved);
-  if (cached !== undefined && cached.mtimeMs === mtimeMs) {
-    return cached.keys;
-  }
-  let keys: ReadonlySet<string> | null;
-  try {
-    keys = parseDeclaredKeys(readFileSync(resolved, 'utf8'));
-  } catch {
-    keys = null;
-  }
-  schemaCache.set(resolved, { mtimeMs, keys });
-  return keys;
+  return schemaCache.get(resolved) ?? null;
 }
 
 /** `process.env` member expression. */

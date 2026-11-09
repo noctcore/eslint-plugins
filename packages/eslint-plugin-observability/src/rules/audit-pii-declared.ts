@@ -1,3 +1,4 @@
+import { calleePath } from '@noctcore/eslint-utils';
 import { AST_NODE_TYPES, type TSESTree } from '@typescript-eslint/utils';
 import type { JSONSchema4 } from '@typescript-eslint/utils/json-schema';
 
@@ -98,28 +99,6 @@ const optionSchema: JSONSchema4 = {
     reportOpaque: { type: 'boolean', default: true },
   },
 };
-
-/**
- * Dotted text of a callee made of identifiers, `this` and non-computed member
- * accesses (`this.auditService.log`). Null for any other shape.
- */
-function calleeText(node: TSESTree.Node): string | null {
-  if (node.type === AST_NODE_TYPES.Identifier) {
-    return node.name;
-  }
-  if (node.type === AST_NODE_TYPES.ThisExpression) {
-    return 'this';
-  }
-  if (
-    node.type === AST_NODE_TYPES.MemberExpression &&
-    !node.computed &&
-    node.property.type === AST_NODE_TYPES.Identifier
-  ) {
-    const object = calleeText(node.object);
-    return object === null ? null : `${object}.${node.property.name}`;
-  }
-  return null;
-}
 
 /** A property's static key name, or null for a computed / non-string key. */
 function staticKeyName(property: TSESTree.Property): string | null {
@@ -268,7 +247,7 @@ export const auditPiiDeclaredRule = createRule<RuleOptions, MessageIds>({
     };
 
     const isAuditCall = (callee: TSESTree.Node): boolean => {
-      const text = calleeText(callee);
+      const text = calleePath(callee, { allowThis: true });
       return (
         text !== null && auditCallees.some((entry) => text === entry || text.endsWith(`.${entry}`))
       );

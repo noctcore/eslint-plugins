@@ -8,6 +8,7 @@ import { AST_NODE_TYPES, type TSESTree } from '@typescript-eslint/utils';
 import type { JSONSchema4 } from '@typescript-eslint/utils/json-schema';
 
 import { createRule } from '../createRule';
+import { runnerName } from '../utils/ast';
 
 const RULE_NAME = 'no-conditional-expect';
 
@@ -88,23 +89,6 @@ function isAssertionCountGuard(node: TSESTree.CallExpression): boolean {
     callee.property.type === AST_NODE_TYPES.Identifier &&
     ASSERTION_COUNT_GUARDS.has(callee.property.name)
   );
-}
-
-/** Root identifier of a runner callee: `it`, `test.each(table)`, `describe.concurrent`. */
-function runnerName(callee: TSESTree.Node): string | null {
-  let current: TSESTree.Node = callee;
-  for (;;) {
-    if (current.type === AST_NODE_TYPES.MemberExpression) {
-      current = current.object;
-    } else if (current.type === AST_NODE_TYPES.CallExpression) {
-      current = current.callee;
-    } else if (current.type === AST_NODE_TYPES.TaggedTemplateExpression) {
-      current = current.tag;
-    } else {
-      break;
-    }
-  }
-  return current.type === AST_NODE_TYPES.Identifier ? current.name : null;
 }
 
 function isRunnerCallback(node: FunctionNode): boolean {

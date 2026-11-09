@@ -4,9 +4,9 @@
  * at commit 75100ffd54fafc4874375e28f6865198dcb91839.
  * Copyright (c) 2026 Aleksandar Grbic. See THIRD_PARTY_NOTICES.md for the license text.
  */
-import fs from 'node:fs';
 import path from 'node:path';
 
+import { createFileCache } from '@noctcore/eslint-utils';
 import { AST_NODE_TYPES, type TSESLint, type TSESTree } from '@typescript-eslint/utils';
 import type { JSONSchema4 } from '@typescript-eslint/utils/json-schema';
 
@@ -73,27 +73,10 @@ const optionSchema: JSONSchema4 = {
  * The read is one level deep and text-based (a restore named in a comment also
  * counts), and results are cached per file modification time.
  */
-const sourceCache = new Map<string, { mtimeMs: number; text: string }>();
+const sourceCache = createFileCache((text) => text);
 
 function readSource(file: string): string | null {
-  try {
-    const stat = fs.statSync(file);
-    if (!stat.isFile()) {
-      return null;
-    }
-    const cached = sourceCache.get(file);
-    if (cached !== undefined && cached.mtimeMs === stat.mtimeMs) {
-      return cached.text;
-    }
-    const text = fs.readFileSync(file, 'utf8');
-    sourceCache.set(file, { mtimeMs: stat.mtimeMs, text });
-    return text;
-  } catch (error) {
-    if (error instanceof Error && 'code' in error) {
-      return null;
-    }
-    throw error;
-  }
+  return sourceCache.get(file) ?? null;
 }
 
 /** Resolve a relative specifier the way a bundler would: as-is, with an extension, or as a directory index. */

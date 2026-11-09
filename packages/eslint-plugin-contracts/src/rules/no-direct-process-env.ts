@@ -1,3 +1,4 @@
+import { matchesAnyGlob } from '@noctcore/eslint-utils';
 import { AST_NODE_TYPES, type TSESTree } from '@typescript-eslint/utils';
 import type { JSONSchema4 } from '@typescript-eslint/utils/json-schema';
 
@@ -46,52 +47,6 @@ const optionSchema: JSONSchema4 = {
   },
 };
 
-/** Compile a glob (with `*`, `**`, `?`, `{a,b}`) to an anchored RegExp. */
-function globToRegExp(glob: string): RegExp {
-  let re = '';
-  let braceDepth = 0;
-  for (let i = 0; i < glob.length; i++) {
-    const c = glob[i];
-    if (c === '*') {
-      if (glob[i + 1] === '*') {
-        i++; // consume the second `*`
-        if (glob[i + 1] === '/') {
-          i++; // consume the slash: `**/` matches zero or more leading dirs
-          re += '(?:.*/)?';
-        } else {
-          re += '.*'; // `**` matches anything, including path separators
-        }
-      } else {
-        re += '[^/]*'; // `*` stays within a path segment
-      }
-    } else if (c === '?') {
-      re += '[^/]';
-    } else if (c === '{') {
-      re += '(?:';
-      braceDepth++;
-    } else if (c === '}') {
-      re += ')';
-      if (braceDepth > 0) braceDepth--;
-    } else if (c === ',') {
-      re += braceDepth > 0 ? '|' : '\\,';
-    } else if ('.+^$()|[]\\/'.includes(c as string)) {
-      re += `\\${c}`;
-    } else {
-      re += c;
-    }
-  }
-  return new RegExp(`^${re}$`);
-}
-
-/** True when the file is covered by one of the allowlist globs. Empty list allowlists nothing. */
-function isAllowedFile(filename: string, patterns: readonly string[]): boolean {
-  if (patterns.length === 0) {
-    return false;
-  }
-  const normalized = filename.split('\\').join('/');
-  return patterns.some((pattern) => globToRegExp(pattern).test(normalized));
-}
-
 // Matches both `process.env` and `process['env']` so a computed access cannot
 // bypass the rule.
 function isProcessEnv(node: TSESTree.Node): boolean {
@@ -132,7 +87,7 @@ export const noDirectProcessEnvRule = createRule<RuleOptions, MessageIds>({
     const configModule = options.configModule ?? DEFAULT_CONFIG_MODULE;
     const allowedFiles = options.allowedFiles ?? DEFAULT_ALLOWED_FILES;
 
-    if (isAllowedFile(context.filename, allowedFiles)) {
+    if (matchesAnyGlob(context.filename, allowedFiles)) {
       return {};
     }
 

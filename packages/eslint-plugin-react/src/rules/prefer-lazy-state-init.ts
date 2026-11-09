@@ -1,3 +1,4 @@
+import { calleePath } from '@noctcore/eslint-utils';
 import { AST_NODE_TYPES, type TSESTree } from '@typescript-eslint/utils';
 import type { JSONSchema4 } from '@typescript-eslint/utils/json-schema';
 
@@ -39,22 +40,6 @@ const optionSchema: JSONSchema4 = {
     initializers: { type: 'array', items: { type: 'string' }, uniqueItems: true },
   },
 };
-
-/** Dotted callee path (`localStorage.getItem`) for a plain identifier/member chain, else null. */
-function calleePath(node: TSESTree.Node): string | null {
-  if (node.type === AST_NODE_TYPES.Identifier) {
-    return node.name;
-  }
-  if (
-    node.type === AST_NODE_TYPES.MemberExpression &&
-    !node.computed &&
-    node.property.type === AST_NODE_TYPES.Identifier
-  ) {
-    const objectPath = calleePath(node.object);
-    return objectPath === null ? null : `${objectPath}.${node.property.name}`;
-  }
-  return null;
-}
 
 /**
  * The same path with a global object prefix removed.

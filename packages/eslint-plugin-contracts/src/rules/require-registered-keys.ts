@@ -1,3 +1,4 @@
+import { calleePath } from '@noctcore/eslint-utils';
 import { AST_NODE_TYPES, type TSESTree } from '@typescript-eslint/utils';
 import type { JSONSchema4 } from '@typescript-eslint/utils/json-schema';
 
@@ -61,29 +62,6 @@ const optionSchema: JSONSchema4 = {
   },
 };
 
-/**
- * The dotted callee path of a call (`localStorage.getItem`, `emitter.on`,
- * `this.redis.set`), or null when any link is computed or not a plain
- * identifier chain (`a().b`, `obj[k].on`): those cannot be matched against a
- * string config entry.
- */
-function calleePath(callee: TSESTree.Expression): string | null {
-  if (callee.type === AST_NODE_TYPES.Identifier) {
-    return callee.name;
-  }
-  if (callee.type === AST_NODE_TYPES.ThisExpression) {
-    return 'this';
-  }
-  if (callee.type === AST_NODE_TYPES.MemberExpression && !callee.computed) {
-    if (callee.property.type !== AST_NODE_TYPES.Identifier) {
-      return null;
-    }
-    const objectPath = calleePath(callee.object as TSESTree.Expression);
-    return objectPath === null ? null : `${objectPath}.${callee.property.name}`;
-  }
-  return null;
-}
-
 /** True when the argument is a raw string literal (the smell we replace with a constant). */
 function isStringLiteral(node: TSESTree.CallExpressionArgument): node is TSESTree.StringLiteral {
   return node.type === AST_NODE_TYPES.Literal && typeof node.value === 'string';
@@ -144,7 +122,7 @@ export const requireRegisteredKeysRule = createRule<RuleOptions, MessageIds>({
 
     return {
       CallExpression(node): void {
-        const path = calleePath(node.callee as TSESTree.Expression);
+        const path = calleePath(node.callee, { allowThis: true });
         if (path === null) {
           return;
         }
