@@ -1,5 +1,7 @@
 import path from 'node:path';
 
+import { AST_NODE_TYPES, ASTUtils, type TSESLint, type TSESTree } from '@typescript-eslint/utils';
+
 /*
  * Minimal, layout-independent helpers shared by this package's rules. These were
  * inlined (rather than depending on `@noctcore/eslint-utils`) so the rules carry
@@ -119,4 +121,47 @@ export function matchesAny(filename: string, globs: readonly string[]): boolean 
   }
   const normalized = filename.split('\\').join('/');
   return globs.some((glob) => compileGlob(glob).test(normalized));
+}
+
+const STATE_HOOKS: ReadonlySet<string> = new Set(['useState', 'useReducer']);
+
+/** `useState(...)` / `useReducer(...)`, also through a namespace (`React.useState`). */
+function isStateHookCall(node: TSESTree.Node | null): node is TSESTree.CallExpression {
+  if (node?.type !== AST_NODE_TYPES.CallExpression) {
+    return false;
+  }
+  const callee = node.callee;
+  if (callee.type === AST_NODE_TYPES.Identifier) {
+    return STATE_HOOKS.has(callee.name);
+  }
+  return (
+    callee.type === AST_NODE_TYPES.MemberExpression &&
+    !callee.computed &&
+    callee.property.type === AST_NODE_TYPES.Identifier &&
+    STATE_HOOKS.has(callee.property.name)
+  );
+}
+
+/**
+ * The `useState` / `useReducer` call whose second destructured element
+ * `identifier` is bound to (`const [x, setX] = useState(...)`,
+ * `const [state, dispatch] = useReducer(...)`), or null when the name comes
+ * from anywhere else: a context hook, a prop, an import, or a global such as
+ * `setTimeout`.
+ */
+export function stateSetterSource(
+  identifier: TSESTree.Identifier,
+  scope: TSESLint.Scope.Scope,
+): TSESTree.CallExpression | null {
+  const variable = ASTUtils.findVariable(scope, identifier);
+  const def = variable?.defs.length === 1 ? variable.defs[0] : undefined;
+  if (
+    def?.node.type !== AST_NODE_TYPES.VariableDeclarator ||
+    def.node.id.type !== AST_NODE_TYPES.ArrayPattern ||
+    def.node.id.elements[1] !== def.name ||
+    !isStateHookCall(def.node.init)
+  ) {
+    return null;
+  }
+  return def.node.init;
 }

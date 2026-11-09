@@ -25,13 +25,16 @@ unflagged.
 This rule is deliberately **conservative** — it fires only on the unambiguous shape:
 
 - a `useEffect` / `useLayoutEffect` with a dependency array;
-- a non-async callback whose body is nothing but `setX(...)` statements;
+- a non-async callback whose body is nothing but `setX(...)` statements, where each `setX` is a
+  setter destructured from `useState` / `useReducer` in scope (resolved through scope analysis, not
+  by its name);
 - every setter argument is a pure expression (no calls, awaits, `new`, JSX, or assignments) whose
   identifiers all resolve to a dependency;
 - at least one argument actually reads a dependency.
 
 ```tsx bad
 // derived state synced through an effect
+const [fullName, setFullName] = useState('');
 useEffect(() => {
   setFullName(firstName + ' ' + lastName);
 }, [firstName, lastName]);
@@ -50,7 +53,13 @@ dependency array bails out unflagged:
 - a setter argument that is a call (`setX(compute(a))`), which could be impure;
 - an effect with no dependency array, or an `async` callback;
 - a constant initialiser (`setX(0)`) that reads no dependency;
-- an `if`, a cleanup `return`, or any statement besides the setters.
+- an `if`, a cleanup `return`, or any statement besides the setters;
+- a function that only looks like a setter: one from a context hook or a prop
+  (`const { setPageTitle } = usePageMeta()`), which syncs an external store, and `setTimeout` /
+  `setInterval`;
+- prop-to-state with local edits: `const [draft, setDraft] = useState(value)` re-synced by
+  `useEffect(() => { setDraft(value); }, [value])`. The state is seeded from the same dependency,
+  so the effect resets a local draft rather than deriving a value.
 
 ## When not to use it
 
