@@ -110,6 +110,7 @@ function compilePattern(pattern: string): RegExp {
   } catch (error: unknown) {
     throw new Error(
       `single-semantic-module: hookDetection.namePattern ${JSON.stringify(pattern)} is not a valid regular expression (${String(error)}).`,
+      { cause: error },
     );
   }
 }

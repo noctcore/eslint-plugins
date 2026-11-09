@@ -28,6 +28,9 @@ jobs:
       # Build first: plugins resolve @noctcore/eslint-utils via its emitted
       # dist/*.d.ts, so typecheck needs the build to have run.
       - run: bun run build
+      # Lints the repo with eslint-plugin-eslint-plugin and its own plugins,
+      # loaded from the dist/ just built (see eslint.config.js).
+      - run: bun run lint
       - run: bun run typecheck
       # Packs every published package and checks the tarball with publint and
       # @arethetypeswrong/cli, so a manifest that hands one runtime the other's
