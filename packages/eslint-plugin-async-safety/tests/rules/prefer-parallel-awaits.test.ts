@@ -24,6 +24,20 @@ ruleTester.run('prefer-parallel-awaits', preferParallelAwaitsRule, {
     },
   ],
   invalid: [
+    // A type annotation would be dropped by the rewrite: report, but offer no suggestion.
+    {
+      code: `async function f() { const a: Foo = await getA(); const b = await getB(); }`,
+      errors: [{ messageId: 'parallelizable', suggestions: [] }],
+    },
+    // A comment inside the run would be dropped too.
+    {
+      code: `async function f() {
+        const a = await getA();
+        // b is cached upstream
+        const b = await getB();
+      }`,
+      errors: [{ messageId: 'parallelizable', suggestions: [] }],
+    },
     // Two independent read calls.
     {
       code: `async function f() { const a = await getUser(); const b = await getFeed(); return { a, b }; }`,

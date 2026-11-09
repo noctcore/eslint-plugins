@@ -15,15 +15,19 @@ the failure observable.
 
 ## What it flags
 
-A call to global `fetch` — or any wrapper named in the `callees` option (e.g. `undici.request`, `axios`) —
-whose options carry neither a `signal` nor a `timeout`.
+A call to global `fetch` whose options carry no `signal`, or a call to a wrapper named in the `callees` option
+(e.g. `undici.request`, `got`) whose options carry neither a `signal` nor a `timeout`. `timeout` is not a
+`fetch` option, so it only counts for wrappers.
 
-It reports only when the arguments are plainly signal-free: a bare string/template URL, or a visible options
-object literal with neither key.
+It reports only when the arguments are plainly signal-free: a visible options object literal without the key,
+or no options at all. The first argument of `fetch` is always the resource, so `fetch(url)` is reported whatever
+`url` is. A wrapper's lone argument may be its config bag (`axios(config)`), so for wrappers only a
+string/template URL with no options is reported.
 
-```ts bad reports=2
+```ts bad reports=3
 // no timeout: can hang forever
 await fetch('https://api.example.com/data');
+await fetch(url);
 await fetch(url, { method: 'POST' });
 ```
 
@@ -44,7 +48,9 @@ The rule is purely syntactic and stays silent whenever it cannot see the argumen
 
 - a spread argument (`fetch(url, ...opts)`) or a `...spread` inside the options object — opaque, skipped;
 - an options slot that is an identifier/call/member (`fetch(url, opts)`) — that bag may already set a signal, skipped;
-- a single non-string argument (`fetch(request)`) — could be a `Request` carrying its own signal, skipped.
+- a `Request` built in view (`fetch(new Request(url, { signal }))`, or a `const` initialised with
+  `new Request(...)`): it can carry its own signal, skipped;
+- a wrapper named in `callees` called with one non-string argument (`axios(config)`): that may be the config bag, skipped.
 
 ## Options
 

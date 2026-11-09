@@ -32,6 +32,22 @@ ruleTester.run('no-concurrent-shared-mutation', noConcurrentSharedMutationRule, 
     {
       code: `async function f(items) { let last; await Promise.all(items.map(async (x) => { last = await g(x); })); }`,
     },
+    // A counter bumped after an await reads and writes in one synchronous step.
+    {
+      code: `async function f(items) { let done = 0; await Promise.all(items.map(async (i) => { await save(i); done++; })); }`,
+    },
+    // The awaited value is bound first; the compound assignment itself never suspends.
+    {
+      code: `async function f(items) { let total = 0; await Promise.all(items.map(async (i) => { const n = await size(i); total += n; })); }`,
+    },
+    // The await settles before \`total\` is read.
+    {
+      code: `async function f(items) { let total = 0; await Promise.all(items.map(async (i) => { total = (await size(i)) + total; })); }`,
+    },
+    // An await inside a nested function in the right-hand side does not suspend this callback.
+    {
+      code: `async function f(items) { let total = 0; await Promise.all(items.map(async (i) => { await g(i); total += [i].map(async (y) => await y).length; })); }`,
+    },
   ],
   invalid: [
     // Compound assignment across an await.
@@ -44,10 +60,10 @@ ruleTester.run('no-concurrent-shared-mutation', noConcurrentSharedMutationRule, 
       code: `async function f(items) { let total = 0; await Promise.all(items.map(async (x) => { total = total + await g(x); })); }`,
       errors: [{ messageId: 'concurrentMutation', data: { name: 'total' } }],
     },
-    // Update expression after an await.
+    // The awaited call is inside the right-hand side argument, read of `total` first.
     {
-      code: `async function f(items) { let count = 0; await Promise.all(items.map(async (x) => { await g(x); count++; })); }`,
-      errors: [{ messageId: 'concurrentMutation', data: { name: 'count' } }],
+      code: `async function f(items) { let total = 0; await Promise.all(items.map(async (x) => { total = await add(total, x); })); }`,
+      errors: [{ messageId: 'concurrentMutation', data: { name: 'total' } }],
     },
     // allSettled counts as concurrent too.
     {

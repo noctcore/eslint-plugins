@@ -98,8 +98,8 @@ async function load(url: string): Promise<Response> {
 
 The rule errs toward silence. It does not report:
 
-- a race with no `setTimeout` in an inline `new Promise` executor (`AbortSignal.timeout(ms)`, an
-  event, a helper call it cannot see into);
+- a race with no `setTimeout` in a `new Promise` executor, written inline or held in a `const` declared
+  with it (`AbortSignal.timeout(ms)`, an event, a helper call it cannot see into);
 - a `setTimeout` bound locally, such as the promise-returning one imported from
   `node:timers/promises` and passed a `{ signal }`;
 - a handle cleared anywhere after the race in the race's own function, inside the race's array, or

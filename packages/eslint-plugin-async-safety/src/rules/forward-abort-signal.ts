@@ -22,9 +22,25 @@ type MessageIds = 'unforwardedSignal';
  *   - "forwarded" is any read of the signal binding that is not a member-access
  *     check (`signal.aborted`, `signal.throwIfAborted()`): passing it as an
  *     argument, into an options object, or assigning it away all count as forwarding,
- *     so the rule errs toward silence.
+ *     so the rule errs toward silence;
+ *   - wiring the abort by hand is forwarding too: `signal.addEventListener(...)`,
+ *     `signal.onabort = ...` and `AbortSignal.any([signal, ...])`;
+ *   - a parameter named `signal` whose type annotation does not mention
+ *     `AbortSignal` (`signal: NodeJS.Signals` in a `process.on('SIGTERM', ...)`
+ *     handler) is not an abort signal and is skipped.
  * No fix — the correct call to thread it through is the author's choice.
  */
+
+/** The type mentions `AbortSignal` anywhere (`AbortSignal`, `AbortSignal | undefined`, `globalThis.AbortSignal`). */
+function mentionsAbortSignal(type: TSESTree.Node): boolean {
+  let found = false;
+  walk(type, (node) => {
+    if (node.type === AST_NODE_TYPES.Identifier && node.name === 'AbortSignal') {
+      found = true;
+    }
+  });
+  return found;
+}
 
 /** Collect the local binding names of any AbortSignal-shaped parameters. */
 function signalBindingNames(params: readonly TSESTree.Parameter[]): {
@@ -45,11 +61,10 @@ function signalBindingNames(params: readonly TSESTree.Parameter[]): {
       param = param.left; // `signal = ...` default.
     }
     if (param.type === AST_NODE_TYPES.Identifier) {
-      const typedAbortSignal =
-        param.typeAnnotation?.typeAnnotation.type === AST_NODE_TYPES.TSTypeReference &&
-        param.typeAnnotation.typeAnnotation.typeName.type === AST_NODE_TYPES.Identifier &&
-        param.typeAnnotation.typeAnnotation.typeName.name === 'AbortSignal';
-      if (param.name === 'signal' || typedAbortSignal) {
+      const annotation = param.typeAnnotation?.typeAnnotation;
+      const typedAbortSignal = annotation !== undefined && mentionsAbortSignal(annotation);
+      const untypedSignalName = annotation === undefined && param.name === 'signal';
+      if (untypedSignalName || typedAbortSignal) {
         consider(param.name, param);
       }
       continue;
@@ -98,10 +113,23 @@ function hasCancellableWork(fn: TSESTree.Node): boolean {
   return found;
 }
 
-/** A read that is the object of a member access (`signal.aborted`) is a check, not a forward. */
+const HAND_WIRED_MEMBERS: ReadonlySet<string> = new Set(['addEventListener', 'onabort']);
+
+/**
+ * A read that is the object of a member access (`signal.aborted`,
+ * `signal.throwIfAborted()`) is a check, not a forward. Hooking the abort event
+ * (`signal.addEventListener(...)`, `signal.onabort = ...`) is forwarding by hand.
+ */
 function isCheckOnlyRead(identifier: TSESTree.Identifier): boolean {
   const parent = identifier.parent;
-  return parent.type === AST_NODE_TYPES.MemberExpression && parent.object === identifier;
+  if (parent.type !== AST_NODE_TYPES.MemberExpression || parent.object !== identifier) {
+    return false;
+  }
+  return !(
+    !parent.computed &&
+    parent.property.type === AST_NODE_TYPES.Identifier &&
+    HAND_WIRED_MEMBERS.has(parent.property.name)
+  );
 }
 
 export const forwardAbortSignalRule = createRule<RuleOptions, MessageIds>({

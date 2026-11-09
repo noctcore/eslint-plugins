@@ -17,12 +17,16 @@ reaches the socket.
 
 A function (declaration, expression, or arrow) that:
 
-- accepts an AbortSignal-shaped parameter — named `signal`, typed `AbortSignal`, or the destructured `{ signal }` form; **and**
+- accepts an AbortSignal-shaped parameter: typed `AbortSignal` (also in a union), an untyped parameter named `signal`, or the destructured `{ signal }` form; **and**
 - contains an awaited call or a `fetch(...)` (something that could have received the signal); **and**
 - never forwards the signal — every use is a member-access check (`signal.aborted`, `signal.throwIfAborted()`), or it is unused.
 
 "Forwarding" is deliberately generous: passing the signal as an argument, into an options object, assigning it,
-or returning it all count — so the rule errs toward silence rather than false positives.
+or returning it all count, so the rule errs toward silence rather than false positives. Wiring the abort by
+hand counts too: `signal.addEventListener('abort', ...)`, `signal.onabort = ...`, `AbortSignal.any([signal, ...])`.
+
+A parameter named `signal` whose type annotation does not mention `AbortSignal` (`signal: NodeJS.Signals` in a
+`process.on('SIGTERM', ...)` handler) is not an abort signal and is not checked.
 
 ```ts bad
 // signal accepted, fetch left uncancellable
