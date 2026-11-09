@@ -1,0 +1,56 @@
+---
+title: Rules that read other files
+description: A few rules decide from files other than the one being linted. ESLint's cache and a long-running editor server can both hand you a stale result for them. Which rules, why, and what to do.
+sidebar:
+  order: 2
+---
+
+ESLint lints one file at a time. Most rules here decide from that file alone, so a result is
+always current. A few rules also read another file or a directory listing: a schema, a catalog, a
+sibling test, a workspace `package.json`. Their verdict can change when that other file changes,
+and two common setups will not notice.
+
+## The rules
+
+| Rule | What it reads | Picks up an edit in a running process |
+| --- | --- | --- |
+| [`noctcore-architecture/colocated-test-required`](/eslint-plugins/rules/architecture/colocated-test-required/) | the source file's directory listing | no, the listing is cached until the process exits |
+| [`noctcore-architecture/component-folder-structure`](/eslint-plugins/rules/architecture/component-folder-structure/) | the component folder's listing | yes, read on every lint |
+| [`noctcore-architecture/index-must-reexport-default`](/eslint-plugins/rules/architecture/index-must-reexport-default/) | the folder's listing | yes, read on every lint |
+| [`noctcore-code-quality/fake-timers-must-be-restored`](/eslint-plugins/rules/code-quality/fake-timers-must-be-restored/) | the suite's setup files | yes, re-read when the modification time moves |
+| [`noctcore-contracts/env-var-schema-parity`](/eslint-plugins/rules/contracts/env-var-schema-parity/) | the env schema file | no, the parsed keys are cached until the process exits |
+| [`noctcore-contracts/translation-key-exists`](/eslint-plugins/rules/contracts/translation-key-exists/) | the translation catalogs | yes, re-read when the modification time moves |
+| [`noctcore-monorepo/no-unexported-subpath-import`](/eslint-plugins/rules/monorepo/no-unexported-subpath-import/) | workspace manifests and their `exports` | no, cached until the process exits |
+| [`noctcore-prisma/restrict-model-writes`](/eslint-plugins/rules/prisma/restrict-model-writes/) | the Prisma schema | yes, re-read when the modification time moves |
+
+## `eslint --cache` keeps the old answer
+
+`--cache` (and tools that turn it on, such as some lint-staged setups) skips a file when the file
+and the config are unchanged. It does not know about the other file a rule read. Add a key to the
+env schema, create the missing test, or export a new subpath, and the files that were reported
+stay reported (or the ones that should now fail stay green) until each of them is edited.
+
+What to do:
+
+- Run these rules without `--cache` in CI. A cold run is the source of truth.
+- If you want `--cache` locally, put a digest of the inputs in `settings`, so the config changes
+  when they do. For example, a hash of the env schema file or the Prisma schema computed in
+  `eslint.config.js`. ESLint's cache keys on the resolved config, so the cache drops the old
+  results when the digest moves.
+- After a change to one of the read files, `rm .eslintcache` (or your `--cache-location`) is the
+  blunt fix.
+
+## A long-running editor server keeps an older read
+
+An editor integration runs one ESLint process for hours. Rules marked "no" in the table above keep
+what they read the first time for the life of that process, so creating the missing test or adding
+the key does not clear the squiggle. Restart the ESLint server (in VS Code, "ESLint: Restart ESLint
+Server") after changing one of their inputs. The CLI starts a fresh process on every run and is not
+affected.
+
+## Why the rules work this way
+
+Reading the same schema or directory once per linted file would make a large repo slow, so each
+rule caches what it reads. The rules marked "yes" key their cache on the file's modification time
+and re-read when it moves; the ones marked "no" do not yet. Neither kind can see past ESLint's own
+`--cache`, which is decided before a rule runs.

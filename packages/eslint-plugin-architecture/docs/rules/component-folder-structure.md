@@ -43,6 +43,13 @@ components/board/TaskCard/
 - Files matched by `ignorePaths`; the default `**/ui/**` keeps the lighter shadcn-style layout.
 - A component folder whose siblings cover whatever `requiredSiblings` is set to, even a trimmed set.
 
+### Edits to other files
+
+This rule also reads the component folder's listing, so its result can change when that file does.
+`eslint --cache` does not notice and keeps the old result until the linted file itself changes. A
+long-running editor server picks up an edit to it, because the rule re-reads it when it changes. See
+[Rules that read other files](https://noctcore.github.io/eslint-plugins/filesystem-rules/).
+
 ## Options
 
 | Option | Type | Default | Meaning |

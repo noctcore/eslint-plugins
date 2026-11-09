@@ -38,6 +38,14 @@ const port = import.meta.env.PORT;
 - Anything at all when `schema` is unset, or when the schema file cannot be read: the rule goes inert
   rather than flagging every access.
 
+### Edits to other files
+
+This rule also reads the env schema file, so its result can change when that file does.
+`eslint --cache` does not notice and keeps the old result until the linted file itself changes. A
+long-running editor server keeps the first read until it restarts, so restart it after changing that
+file. See [Rules that read other
+files](https://noctcore.github.io/eslint-plugins/filesystem-rules/).
+
 ## Options
 
 | Option | Type | Default | Meaning |

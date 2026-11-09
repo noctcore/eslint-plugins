@@ -38,6 +38,14 @@ Directory listings are cached for the lint run, so a folder full of gated files 
 - A test file that itself matches `include`: it is never asked to test itself.
 - A gated file with either a `.test.*` or a `.spec.*` sibling.
 
+### Edits to other files
+
+This rule also reads the source file's directory listing, so its result can change when that file
+does. `eslint --cache` does not notice and keeps the old result until the linted file itself
+changes. A long-running editor server keeps the first read until it restarts, so restart it after
+changing that file. See [Rules that read other
+files](https://noctcore.github.io/eslint-plugins/filesystem-rules/).
+
 ## Options
 
 | Option | Type | Default | Meaning |

@@ -46,6 +46,7 @@ export default defineConfig({
           items: [
             { label: 'Getting started', link: '/getting-started/' },
             { label: 'Adopting in an existing codebase', link: '/adopting/' },
+            { label: 'Rules that read other files', link: '/filesystem-rules/' },
           ],
         },
         { label: 'Packages', items: [{ autogenerate: { directory: 'packages' } }] },
