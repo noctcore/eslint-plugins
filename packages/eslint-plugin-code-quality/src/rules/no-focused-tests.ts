@@ -34,6 +34,23 @@ function rootRunnerName(node: TSESTree.Expression): string | null {
   return current.type === AST_NODE_TYPES.Identifier ? current.name : null;
 }
 
+/**
+ * True when `node` (or a member chain continuing from it, `it.only.each`) is
+ * called or used as a template tag. `RuleTester.itOnly = it.only` reads the
+ * value and focuses nothing.
+ */
+function isInvoked(node: TSESTree.MemberExpression): boolean {
+  let current: TSESTree.Node = node;
+  while (current.parent?.type === AST_NODE_TYPES.MemberExpression && current.parent.object === current) {
+    current = current.parent;
+  }
+  const parent = current.parent;
+  return (
+    (parent?.type === AST_NODE_TYPES.CallExpression && parent.callee === current) ||
+    (parent?.type === AST_NODE_TYPES.TaggedTemplateExpression && parent.tag === current)
+  );
+}
+
 export const noFocusedTestsRule = createRule<[], MessageIds>({
   name: RULE_NAME,
   meta: {
@@ -63,7 +80,7 @@ export const noFocusedTestsRule = createRule<[], MessageIds>({
         // Resolve `test.only` and chained `test.concurrent.only` alike back to
         // the root `test`/`describe`/`it` runner.
         const runner = rootRunnerName(node.object);
-        if (runner !== null && FOCUSABLE_RUNNERS.has(runner)) {
+        if (runner !== null && FOCUSABLE_RUNNERS.has(runner) && isInvoked(node)) {
           // A suggestion, not an autofix: `--fix` must not undo a focus mid-debug.
           const objectEnd = node.object.range[1];
           context.report({
