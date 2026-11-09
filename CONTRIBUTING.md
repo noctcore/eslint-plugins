@@ -30,7 +30,7 @@ and the errors go away. CI does the same thing, in that order (`.github/workflow
 
 **`bun run test` runs twice.** It is `test:eslint10 && test:eslint9`. The second leg sets
 `NODE_OPTIONS=--import=@noctcore/eslint-test-utils/eslint9`, a Node resolve hook that redirects
-every `eslint` import to `eslint@9.0.0`, the floor of the `eslint >=9.0.0` peer range each plugin
+every `eslint` import to `eslint@9.0.0`, the floor of the `eslint >=9.0.0 <11` peer range each plugin
 declares. A rule that only works on ESLint 10 fails there, which is the point.
 
 For a tighter loop while you work on one rule:

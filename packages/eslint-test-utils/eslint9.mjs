@@ -7,7 +7,7 @@
  * never reaches, so the redirect is a Node resolve hook: it applies to
  * `require` and `import` alike, in the Vitest main process and its workers.
  *
- * The `eslint-v9` alias is pinned to 9.0.0, the floor of the `eslint >=9.0.0`
+ * The `eslint-v9` alias is pinned to 9.0.0, the floor of the `eslint >=9.0.0 <11`
  * peer range every plugin declares.
  */
 import { createRequire, registerHooks } from 'node:module';
