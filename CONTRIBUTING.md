@@ -15,6 +15,7 @@ Node 22 or newer (`engines`; the docs site needs 22.12 or newer).
 ```sh
 bun install
 bun run build        # first, always: see below
+bun run lint         # eslint-plugin-eslint-plugin plus this repo's own rules, after build
 bun run typecheck
 bun run test         # every package, on ESLint 10 and then on ESLint 9
 bun run docs:build   # the docs site, plus its post-build checks
@@ -47,8 +48,10 @@ cd site
 bun test scripts                                                # the rule/doc parity guard
 ```
 
-There is no linter or formatter configured for this repository itself. Match the file you are
-in: two-space indent, single quotes, trailing commas, prose wrapped near 100 columns.
+`bun run lint` (after `bun run build`) lints the repo with `eslint-plugin-eslint-plugin` and with
+this repo's own plugins, loaded from their built `dist/` (`eslint.config.js` says which rules are
+off here and why). CI runs it. There is no formatter: match the file you are in, two-space indent,
+single quotes, trailing commas, prose wrapped near 100 columns.
 
 ## How a rule is put together
 

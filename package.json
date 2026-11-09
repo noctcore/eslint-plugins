@@ -23,12 +23,16 @@
     "docs:build": "bun run --filter @noctcore/docs-site docs:build",
     "docs:readmes": "bun site/scripts/readmes.ts",
     "sync:versions": "bun scripts/sync-plugin-versions.ts",
-    "check:package": "bun scripts/check-package-shape.ts"
+    "check:package": "bun scripts/check-package-shape.ts",
+    "lint": "eslint ."
   },
   "devDependencies": {
     "@arethetypeswrong/cli": "0.18.5",
     "@changesets/changelog-github": "^1.0.1",
     "@changesets/cli": "^3.0.3",
+    "@typescript-eslint/parser": "^8.70.0",
+    "eslint": "^10.10.0",
+    "eslint-plugin-eslint-plugin": "^7.6.0",
     "publint": "0.3.15",
     "typescript": "^5.6.0"
   }
