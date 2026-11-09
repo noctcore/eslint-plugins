@@ -2,12 +2,23 @@ import { AST_NODE_TYPES, type TSESTree } from '@typescript-eslint/utils';
 import type { JSONSchema4 } from '@typescript-eslint/utils/json-schema';
 
 import { createRule } from '../createRule';
-import { DEFAULT_LOGGERS, loggerCallMethod, makeNameMatcher } from '../utils';
+import {
+  DEFAULT_LOG_METHODS,
+  DEFAULT_LOGGERS,
+  type LoggerCallOptions,
+  loggerCallMatcher,
+  loggerCallMethod,
+  loggerCallOptionProperties,
+  makeNameMatcher,
+  nameSegments,
+} from '../utils';
 
 const RULE_NAME = 'no-sensitive-fields-in-logs';
 
-export interface NoSensitiveFieldsInLogsOptions {
+export interface NoSensitiveFieldsInLogsOptions extends LoggerCallOptions {
   readonly denyNames?: readonly string[];
+  readonly redactors?: readonly string[];
+  readonly allowNames?: readonly string[];
 }
 
 type RuleOptions = [NoSensitiveFieldsInLogsOptions];
@@ -26,6 +37,13 @@ type MessageIds = 'sensitiveField';
  * `tokenizer`). A multi-word denyName (`apiKey`) matches on the compacted name
  * (`myApiKey` → `myapikey` contains `apikey`). String LITERAL arguments are never
  * inspected — only names — so `log.info('password reset sent')` is fine.
+ *
+ * A call to a redactor (`redact(token)`, `mask(user.password)`, configurable via
+ * `redactors`) is a boundary: the walk does not enter it, and an object key whose
+ * value is a redactor call is not reported. Names that read as a flag, a count or
+ * a timestamp about the secret rather than the secret itself are exempt
+ * (`hasPassword`, `isTokenValid`, `tokenCount`, `passwordLength`,
+ * `tokenExpiresAt`, `cookieConsent`).
  */
 const DEFAULT_DENY_NAMES: readonly string[] = [
   'password',
@@ -37,6 +55,60 @@ const DEFAULT_DENY_NAMES: readonly string[] = [
   'ssn',
 ];
 
+const DEFAULT_REDACTORS: readonly string[] = ['redact', 'mask'];
+
+/** A leading segment that makes a name a flag about the field (`hasPassword`). */
+const FLAG_PREFIXES: ReadonlySet<string> = new Set([
+  'is',
+  'has',
+  'should',
+  'can',
+  'did',
+  'was',
+  'needs',
+  'show',
+]);
+
+/** A trailing segment that makes a name metadata about the field (`tokenCount`). */
+const METADATA_SUFFIXES: ReadonlySet<string> = new Set([
+  'count',
+  'length',
+  'size',
+  'ttl',
+  'at',
+  'in',
+  'expires',
+  'expiry',
+  'consent',
+  'enabled',
+  'required',
+]);
+
+/** True when a name reads as a flag, count or timestamp rather than the value. */
+function isMetadataName(name: string): boolean {
+  const segs = nameSegments(name);
+  if (segs.length < 2) {
+    return false;
+  }
+  return FLAG_PREFIXES.has(segs[0] ?? '') || METADATA_SUFFIXES.has(segs[segs.length - 1] ?? '');
+}
+
+/** The called name of a call: `redact(x)` gives `redact`, `utils.mask(x)` gives `mask`. */
+function calleeName(node: TSESTree.CallExpression): string | undefined {
+  const callee = node.callee;
+  if (callee.type === AST_NODE_TYPES.Identifier) {
+    return callee.name;
+  }
+  if (
+    callee.type === AST_NODE_TYPES.MemberExpression &&
+    !callee.computed &&
+    callee.property.type === AST_NODE_TYPES.Identifier
+  ) {
+    return callee.property.name;
+  }
+  return undefined;
+}
+
 const optionSchema: JSONSchema4 = {
   type: 'object',
   additionalProperties: false,
@@ -45,6 +117,15 @@ const optionSchema: JSONSchema4 = {
       type: 'array',
       items: { type: 'string' },
     },
+    redactors: {
+      type: 'array',
+      items: { type: 'string' },
+    },
+    allowNames: {
+      type: 'array',
+      items: { type: 'string' },
+    },
+    ...loggerCallOptionProperties,
   },
 };
 
@@ -59,15 +140,46 @@ export const noSensitiveFieldsInLogsRule = createRule<RuleOptions, MessageIds>({
     schema: [optionSchema],
     messages: {
       sensitiveField:
-        '`{{name}}` looks like a sensitive field being written to a log sink. Redact it before logging (e.g. `redact({{name}})`) or omit it — logs are long-lived and widely readable.',
+        '`{{name}}` looks like a sensitive field being written to a log sink. Pass it through a redactor (e.g. `redact({{name}})`) or omit it, because logs are long-lived and widely readable.',
     },
   },
-  defaultOptions: [{ denyNames: DEFAULT_DENY_NAMES }],
+  defaultOptions: [
+    {
+      denyNames: DEFAULT_DENY_NAMES,
+      redactors: DEFAULT_REDACTORS,
+      allowNames: [],
+      loggers: DEFAULT_LOGGERS,
+      methods: DEFAULT_LOG_METHODS,
+    },
+  ],
   create(context, [options]) {
-    const matches = makeNameMatcher(options.denyNames ?? DEFAULT_DENY_NAMES);
+    const denied = makeNameMatcher(options.denyNames ?? DEFAULT_DENY_NAMES);
+    const redactors = new Set(options.redactors ?? DEFAULT_REDACTORS);
+    const allowNames = new Set(options.allowNames ?? []);
+    const matcher = loggerCallMatcher(options);
 
-    /** Generic descent over an argument subtree, skipping the `parent` back-edge. */
+    const matches = (name: string): boolean =>
+      !allowNames.has(name) && !isMetadataName(name) && denied(name);
+
+    const isRedactorCall = (node: TSESTree.Node): boolean => {
+      if (node.type !== AST_NODE_TYPES.CallExpression) {
+        return false;
+      }
+      const name = calleeName(node);
+      return name !== undefined && redactors.has(name);
+    };
+
+    /**
+     * Descent over an argument subtree, skipping the `parent` back-edge, redactor
+     * calls, and any object property whose value is a redactor call.
+     */
     function walk(node: TSESTree.Node, visit: (n: TSESTree.Node) => void): void {
+      if (isRedactorCall(node)) {
+        return;
+      }
+      if (node.type === AST_NODE_TYPES.Property && isRedactorCall(node.value)) {
+        return;
+      }
       visit(node);
       for (const key of Object.keys(node)) {
         if (key === 'parent') {
@@ -88,9 +200,7 @@ export const noSensitiveFieldsInLogsRule = createRule<RuleOptions, MessageIds>({
 
     return {
       CallExpression(node): void {
-        if (loggerCallMethod(node, new Set(DEFAULT_LOGGERS)) === null) {
-          // Logger detection here uses the default logger set — this rule keys off
-          // WHAT is logged, not which sink; the sink names are fixed.
+        if (loggerCallMethod(node, matcher) === null) {
           return;
         }
         const reported = new Set<number>();
