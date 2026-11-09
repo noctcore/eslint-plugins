@@ -85,6 +85,13 @@ Name and shape matching with no type information, keyed on `<anything>.<model>.<
   would bury the real findings. A direct write keys on the accessor, so `invoice.update(payload)`
   is still caught.
 
+### Edits to other files
+
+This rule also reads the Prisma schema, so its result can change when that file does.
+`eslint --cache` does not notice and keeps the old result until the linted file itself changes. A
+long-running editor server picks up an edit to it, because the rule re-reads it when it changes. See
+[Rules that read other files](https://noctcore.github.io/eslint-plugins/filesystem-rules/).
+
 ## Options
 
 | Option | Default | Meaning |

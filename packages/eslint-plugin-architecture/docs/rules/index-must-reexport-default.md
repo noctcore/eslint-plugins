@@ -35,6 +35,13 @@ export * from './Card.types';             // ✗ (on its own — no default re-e
 - A barrel that re-exports the default in either form, alongside any other re-exports.
 - Paths matched by `ignorePaths`.
 
+### Edits to other files
+
+This rule also reads the folder's listing, so its result can change when that file does.
+`eslint --cache` does not notice and keeps the old result until the linted file itself changes. A
+long-running editor server picks up an edit to it, because the rule re-reads it when it changes. See
+[Rules that read other files](https://noctcore.github.io/eslint-plugins/filesystem-rules/).
+
 ## Options
 
 | Option | Type | Default | Meaning |

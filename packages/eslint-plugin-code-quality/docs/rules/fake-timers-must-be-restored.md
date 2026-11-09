@@ -90,6 +90,13 @@ Reading an imported suite from disk means an edit to the suite alone does not in
 `eslint --cache` for the spec. The rule caches each suite's source by modification time within one
 process.
 
+### Edits to other files
+
+This rule also reads the suite's setup files, so its result can change when that file does.
+`eslint --cache` does not notice and keeps the old result until the linted file itself changes. A
+long-running editor server picks up an edit to it, because the rule re-reads it when it changes. See
+[Rules that read other files](https://noctcore.github.io/eslint-plugins/filesystem-rules/).
+
 ## Options
 
 | Option | Type | Default | Meaning |
