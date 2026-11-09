@@ -20,6 +20,11 @@ jobs:
         with:
           bun-version: 1.4.2
       - run: bun install --frozen-lockfile
+      # A frozen install passes even when bun.lock records stale workspace
+      # versions (changeset version does not touch the lockfile), so compare a
+      # refreshed lockfile with the committed one.
+      - name: bun.lock matches the manifests
+        run: bun install --lockfile-only && git diff --exit-code -- bun.lock
       # Build first: plugins resolve @noctcore/eslint-utils via its emitted
       # dist/*.d.ts, so typecheck needs the build to have run.
       - run: bun run build
