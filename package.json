@@ -22,11 +22,14 @@
     "docs:dev": "bun run --filter @noctcore/docs-site dev",
     "docs:build": "bun run --filter @noctcore/docs-site docs:build",
     "docs:readmes": "bun site/scripts/readmes.ts",
-    "sync:versions": "bun scripts/sync-plugin-versions.ts"
+    "sync:versions": "bun scripts/sync-plugin-versions.ts",
+    "check:package": "bun scripts/check-package-shape.ts"
   },
   "devDependencies": {
+    "@arethetypeswrong/cli": "0.18.5",
     "@changesets/changelog-github": "^1.0.1",
     "@changesets/cli": "^3.0.3",
+    "publint": "0.3.15",
     "typescript": "^5.6.0"
   }
 }

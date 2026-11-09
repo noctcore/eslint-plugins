@@ -9,34 +9,64 @@
   "types": "./dist/index.d.ts",
   "exports": {
     ".": {
-      "types": "./dist/index.d.ts",
-      "import": "./dist/index.js",
-      "require": "./dist/index.cjs"
+      "import": {
+        "types": "./dist/index.d.ts",
+        "default": "./dist/index.js"
+      },
+      "require": {
+        "types": "./dist/index.d.cts",
+        "default": "./dist/index.cjs"
+      }
     },
     "./i18n": {
-      "types": "./dist/i18n.d.ts",
-      "import": "./dist/i18n.js",
-      "require": "./dist/i18n.cjs"
+      "import": {
+        "types": "./dist/i18n.d.ts",
+        "default": "./dist/i18n.js"
+      },
+      "require": {
+        "types": "./dist/i18n.d.cts",
+        "default": "./dist/i18n.cjs"
+      }
     },
     "./prisma": {
-      "types": "./dist/prisma.d.ts",
-      "import": "./dist/prisma.js",
-      "require": "./dist/prisma.cjs"
+      "import": {
+        "types": "./dist/prisma.d.ts",
+        "default": "./dist/prisma.js"
+      },
+      "require": {
+        "types": "./dist/prisma.d.cts",
+        "default": "./dist/prisma.cjs"
+      }
     },
     "./resolved-config": {
-      "types": "./dist/resolved-config.d.ts",
-      "import": "./dist/resolved-config.js",
-      "require": "./dist/resolved-config.cjs"
+      "import": {
+        "types": "./dist/resolved-config.d.ts",
+        "default": "./dist/resolved-config.js"
+      },
+      "require": {
+        "types": "./dist/resolved-config.d.cts",
+        "default": "./dist/resolved-config.cjs"
+      }
     },
     "./session": {
-      "types": "./dist/session.d.ts",
-      "import": "./dist/session.js",
-      "require": "./dist/session.cjs"
+      "import": {
+        "types": "./dist/session.d.ts",
+        "default": "./dist/session.js"
+      },
+      "require": {
+        "types": "./dist/session.d.cts",
+        "default": "./dist/session.cjs"
+      }
     },
     "./trpc": {
-      "types": "./dist/trpc.d.ts",
-      "import": "./dist/trpc.js",
-      "require": "./dist/trpc.cjs"
+      "import": {
+        "types": "./dist/trpc.d.ts",
+        "default": "./dist/trpc.js"
+      },
+      "require": {
+        "types": "./dist/trpc.d.cts",
+        "default": "./dist/trpc.cjs"
+      }
     },
     "./package.json": "./package.json"
   },

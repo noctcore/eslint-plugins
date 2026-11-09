@@ -121,10 +121,11 @@ describe('sub-path entry points', () => {
       scripts: { build: string };
     };
     for (const entry of ['i18n', 'prisma', 'resolved-config', 'session', 'trpc']) {
+      // One `types` per condition: a CommonJS consumer must get the `.d.cts`
+      // declarations that describe the `.cjs` file, not the ESM ones.
       expect(manifest.exports[`./${entry}`]).toEqual({
-        types: `./dist/${entry}.d.ts`,
-        import: `./dist/${entry}.js`,
-        require: `./dist/${entry}.cjs`,
+        import: { types: `./dist/${entry}.d.ts`, default: `./dist/${entry}.js` },
+        require: { types: `./dist/${entry}.d.cts`, default: `./dist/${entry}.cjs` },
       });
       expect(manifest.scripts.build).toContain(`src/${entry}.ts`);
     }
