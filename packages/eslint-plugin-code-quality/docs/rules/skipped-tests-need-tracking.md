@@ -3,7 +3,7 @@
 > A skipped test must carry a tracking marker (issue URL or `TODO(@owner)`) so the debt has an owner.
 
 <!-- begin generated rule header -->
-✅ In `recommended` at `error` · 💭 Type information: not needed
+✅ In `recommended` at `error` · 💡 Offers editor suggestions · 💭 Type information: not needed
 <!-- end generated rule header -->
 
 ## Why
@@ -19,12 +19,17 @@ outright, so it can never legitimately appear with or without tracking.
 ## What it flags
 
 Any call of a skip form (`it.skip(` / `test.skip(` / `describe.skip(`, the `.fixme(` variants,
-`xit(`, `xdescribe(`, `xtest(`) with **no** tracking marker on that line or within the `lookback`
-window above it. The report sits on the callee (`it.skip`, `xit`).
+`xit(`, `xdescribe(`, `xtest(`, and a skip modifier anywhere in the chain such as
+`it.concurrent.skip(` or `it.skip.each([...])(`) with **no** tracking marker in a comment on that line
+or within the `lookback` lines above it. The report sits on the callee (`it.skip`, `xit`), and offers
+a suggestion that inserts a `// TODO(@owner): link the tracking issue` line above the skip for you to
+complete.
 
-The skip is read from the syntax, the marker from the source text: the lines of the lookback window
-are scanned as written, so a marker in a trailing comment, a preceding comment, or anywhere in the
-window is honoured.
+The marker is read from comments only. A comment counts when it is on the skip's line or ends within
+the `lookback` window, and so does every comment in the same run of adjacent comment lines, so a
+URL at the top of a five-line `//` explanation still counts. Code never counts: a
+`const BASE = 'http://localhost:3000'` above a skip is not a marker. A `node:test` skip reason given as
+text (`{ skip: 'https://...' }`, `t.skip('TODO(@alice)')`) counts too.
 
 ```ts bad filename=src/example.test.ts reports=2
 // untracked
@@ -70,7 +75,10 @@ test('signs the release', (t) => {
 ## What it does not flag
 
 - A test that is not skipped.
-- A skip with a `markers` match on its own line or within the `lookback` lines above it.
+- A skip with a `markers` match in a comment on its own line or within the `lookback` lines above it.
+- Playwright's conditional skip, `test.skip(browserName === 'webkit', 'reason')`: the first argument is a
+  condition rather than a test name, and no argument is the test body. `test.skip()` and
+  `test.skip(true, 'reason')` are unconditional and still reported.
 - `.only`: [`no-focused-tests`](./no-focused-tests.md) bans it outright.
 - A conditional `node:test` skip: an option whose value is computed
   (`{ skip: process.platform === 'win32' }`, `{ skip: !ready }`, shorthand `{ skip }`), or a
@@ -104,8 +112,8 @@ it('reports an untracked skip', async () => {
 
 | Option | Type | Default | Meaning |
 | --- | --- | --- | --- |
-| `markers` | `string[]` (regex sources) | `["https?://\\S+", "TODO\\(@?\\S+\\)"]` | Any pattern that, if found in the lookback window, satisfies the tracking requirement. Compiled with the `u` flag. |
-| `lookback` | `integer` (≥0) | `30` | How many lines above the skip a marker may live and still count. |
+| `markers` | `string[]` (regex sources) | `["https?://\\S+", "TODO\\(@?\\S+\\)"]` | Any pattern that, if found in a comment in the lookback window, satisfies the tracking requirement. Compiled with the `u` flag. |
+| `lookback` | `integer` (≥0) | `3` | How many lines above the skip a comment may end and still count (with the rest of its comment run). |
 
 ```js
 // Require a Jira-style key instead of a URL / TODO.

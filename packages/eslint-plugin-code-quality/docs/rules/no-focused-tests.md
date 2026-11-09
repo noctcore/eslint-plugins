@@ -3,7 +3,7 @@
 > Ban `.only` / `fdescribe` / `fit` so a focused test never silently lands in CI.
 
 <!-- begin generated rule header -->
-✅ In `recommended` at `error` · 💭 Type information: not needed
+✅ In `recommended` at `error` · 💡 Offers editor suggestions · 💭 Type information: not needed
 <!-- end generated rule header -->
 
 ## Why
@@ -30,11 +30,17 @@ it('runs', () => {});
 layout.fit('contain'); // not a test runner
 ```
 
+### Suggestion
+
+Reports offer an editor suggestion (not an autofix, so `--fix` never undoes a focus you are using
+mid-debug) that removes `.only`, or replaces `fit` / `fdescribe` / `ddescribe` with `it` / `describe`.
+
 ## What it does not flag
 
 - `.only` on something that is not a test runner (`queue.only(...)`, `db.batch.only(...)`), and a plain
   variable named `only`.
 - A method named `fit` on some object (`layout.fit('contain')`): only the bare global counts.
+- `.only` read as a value rather than called (`RuleTester.itOnly = it.only`): nothing is focused.
 - Skipped tests (`it.skip`, `xit`): see [`skipped-tests-need-tracking`](./skipped-tests-need-tracking.md).
 
 ## When not to use it

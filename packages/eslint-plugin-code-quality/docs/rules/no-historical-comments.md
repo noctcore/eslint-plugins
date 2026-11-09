@@ -16,8 +16,9 @@ This is also a common tell that a comment was generated to narrate a change rath
 ## What it flags
 
 Line and block comments matching narrow past-framing phrases:
-`before/after the fix`, `before/after the refactor`, `we/this used to`, `used to be`, `no longer`,
-`kept for backwards/legacy/compat`, `was/were a bug/footgun`, and `historical(ly)`.
+`before/after the fix`, `before/after the refactor`, `we/this used to`, `used to be`, `we no longer`,
+`no longer needed/used/required/necessary/supported/relevant/applies/happens/works`,
+`kept for backwards/legacy/compat`, `was/were a bug/footgun`, and `historically`.
 
 ```ts bad reports=2
 // We used to read process.env directly here.
@@ -33,6 +34,8 @@ Line and block comments matching narrow past-framing phrases:
 - JSDoc `/** … */` blocks, even when they mention past behaviour.
 - Comments that describe what the code does now (`// The pool size caps concurrent DB connections.`).
 - Code and string literals: only comments are read.
+- `no longer` describing runtime state (`// Once closed, the socket is no longer writable.`).
+- `historical` as a domain word (`// Historical exchange rates are cached for a day.`).
 
 ## When not to use it
 

@@ -2,6 +2,54 @@ import { ruleTester } from '@noctcore/eslint-test-utils';
 
 import { skippedTestsNeedTrackingRule } from '../../src/rules/skipped-tests-need-tracking';
 
+const TODO_LINE = '// TODO(@owner): link the tracking issue';
+
+/** The source with the suggested TODO line inserted above `line` (1-based), at that line's indentation. */
+function withTodoAbove(code: string, line: number): string {
+  const lines = code.split('\n');
+  const indent = /^\s*/u.exec(lines[line - 1] ?? '')?.[0] ?? '';
+  lines.splice(line - 1, 0, `${indent}${TODO_LINE}`);
+  return lines.join('\n');
+}
+
+interface InvalidCase {
+  readonly code: string;
+  readonly options?: readonly [Record<string, unknown>];
+  readonly errors: readonly ({ readonly line: number } & Record<string, unknown>)[];
+}
+
+/** Every report offers the TODO suggestion above the reported line. */
+function withSuggestions(cases: readonly InvalidCase[]) {
+  return cases.map((testCase) => ({
+    ...testCase,
+    errors: testCase.errors.map((error) => ({
+      ...error,
+      suggestions: [{ messageId: 'addTodoMarker' as const, output: withTodoAbove(testCase.code, error.line) }],
+    })),
+  }));
+}
+
+// The suggestion text, pinned once without the helper.
+ruleTester.run('skipped-tests-need-tracking suggestion', skippedTestsNeedTrackingRule, {
+  valid: [],
+  invalid: [
+    {
+      code: "describe('s', () => {\n  it.skip('later', () => {});\n});",
+      errors: [
+        {
+          messageId: 'needsTracking',
+          suggestions: [
+            {
+              messageId: 'addTodoMarker',
+              output: "describe('s', () => {\n  // TODO(@owner): link the tracking issue\n  it.skip('later', () => {});\n});",
+            },
+          ],
+        },
+      ],
+    },
+  ],
+});
+
 ruleTester.run('skipped-tests-need-tracking', skippedTestsNeedTrackingRule, {
   valid: [
     // A normal (non-skipped) test needs no marker.
@@ -73,8 +121,43 @@ ruleTester.run('skipped-tests-need-tracking', skippedTestsNeedTrackingRule, {
     { code: "const maybe = ready ? it : it.skip;\nmaybe('runs', () => {});" },
     // A marker on the line the callee ends on, when the chain is split over lines.
     { code: "test\n  .skip('later', () => {}); // TODO(@alice): flaky under CI" },
+    // Playwright's conditional skip is a platform guard.
+    { code: "test('renders', async ({ browserName }) => { test.skip(browserName === 'webkit', 'not on webkit'); });" },
+    { code: "test.skip(({ browserName }) => browserName === 'webkit', 'not on webkit');" },
+    // A marker at the top of a run of comments that ends just above the skip.
+    {
+      code: "// https://example.com/issue/9\n// Flaky under CI: the socket closes before the\n// server flushes, and the retry hides it most of\n// the time.\nit.skip('later', () => {});",
+    },
   ],
-  invalid: [
+  invalid: withSuggestions([
+    // A URL in code above the skip is not a marker.
+    {
+      code: "const BASE = 'http://localhost:3000';\n\nit.skip('later', () => {});",
+      errors: [{ messageId: 'needsTracking', line: 3 }],
+    },
+    // A marker more than three lines above, outside any comment run touching the window, does not count.
+    {
+      code: "// TODO(@alice): flaky\nconst a = 1;\nconst b = 2;\nconst c = 3;\nconst d = 4;\nit.skip('later', () => {});",
+      errors: [{ messageId: 'needsTracking', line: 6 }],
+    },
+    // A skip modifier anywhere in the chain.
+    {
+      code: "it.skip.each([1, 2])('case %i', () => {});",
+      errors: [{ messageId: 'needsTracking', line: 1, data: { label: '.skip(' } }],
+    },
+    {
+      code: "it.concurrent.skip('later', async () => {});",
+      errors: [{ messageId: 'needsTracking', line: 1, data: { label: '.skip(' } }],
+    },
+    // Playwright's unconditional forms are still skips.
+    {
+      code: "test('x', async () => { test.skip(); });",
+      errors: [{ messageId: 'needsTracking', line: 1 }],
+    },
+    {
+      code: "test.skip(true, 'broken');",
+      errors: [{ messageId: 'needsTracking', line: 1 }],
+    },
     // The report sits on the callee, not on the whole line.
     {
       code: "it.skip('later', () => {});",
@@ -167,5 +250,5 @@ ruleTester.run('skipped-tests-need-tracking', skippedTestsNeedTrackingRule, {
       code: "test('later', { skip: 1 }, () => {});",
       errors: [{ messageId: 'needsTracking', line: 1, data: { label: '{ skip }' } }],
     },
-  ],
+  ]),
 });
