@@ -18,8 +18,29 @@ ruleTester.run('prefer-lazy-state-init', preferLazyStateInitRule, {
     { code: `const x = wrap(JSON.parse(raw));`, filename: FILE },
     // A bare identifier initializer (not a call).
     { code: `const [s, setS] = useState(initial);`, filename: FILE },
+    // A call on the right of || or ?? only runs when the left side is empty.
+    { code: `const [s, setS] = useState(cached ?? JSON.parse(raw));`, filename: FILE },
   ],
   invalid: [
+    // A TypeScript cast or a fallback around the call still runs it every render.
+    {
+      code: `const [s, setS] = useState(JSON.parse(raw) as Foo);`,
+      filename: FILE,
+      errors: [{ messageId: 'lazyInit' }],
+      output: `const [s, setS] = useState(() => JSON.parse(raw) as Foo);`,
+    },
+    {
+      code: `const [s, setS] = useState(JSON.parse(raw) ?? {});`,
+      filename: FILE,
+      errors: [{ messageId: 'lazyInit' }],
+      output: `const [s, setS] = useState(() => JSON.parse(raw) ?? {});`,
+    },
+    {
+      code: `const [s, setS] = useState(localStorage.getItem('k')!);`,
+      filename: FILE,
+      errors: [{ messageId: 'lazyInit' }],
+      output: `const [s, setS] = useState(() => localStorage.getItem('k')!);`,
+    },
     // JSON.parse — the canonical case.
     {
       code: `const [s, setS] = useState(JSON.parse(raw));`,

@@ -1,6 +1,7 @@
 import { AST_NODE_TYPES, type TSESTree } from '@typescript-eslint/utils';
 
 import { createRule } from '../createRule';
+import { stateSetterSource } from '../utils';
 
 const RULE_NAME = 'require-effect-cancellation';
 
@@ -73,17 +74,10 @@ function isUseEffectCallee(callee: TSESTree.Node): boolean {
   );
 }
 
-/** A call to `setX(...)` or `dispatch(...)`. */
-function isSetterCall(node: TSESTree.Node): node is TSESTree.CallExpression {
-  return (
-    node.type === AST_NODE_TYPES.CallExpression &&
-    node.callee.type === AST_NODE_TYPES.Identifier &&
-    (/^set[A-Z]/.test(node.callee.name) || node.callee.name === 'dispatch')
-  );
-}
+type SetterPredicate = (node: TSESTree.Node) => node is TSESTree.CallExpression;
 
 /** The setter call inside a `.then(cb)` callback, or null. */
-function thenCallbackSetter(node: TSESTree.Node): TSESTree.CallExpression | null {
+function thenCallbackSetter(node: TSESTree.Node, isSetterCall: SetterPredicate): TSESTree.CallExpression | null {
   if (node.type !== AST_NODE_TYPES.CallExpression) {
     return null;
   }
@@ -185,6 +179,16 @@ export const requireEffectCancellationRule = createRule<[], MessageIds>({
   },
   defaultOptions: [],
   create(context) {
+    /**
+     * A call of a `useState` setter or a `useReducer` dispatch. A function from
+     * a context, a prop or an import, and `setTimeout` / `setInterval`, are not
+     * component state.
+     */
+    const isSetterCall: SetterPredicate = (node): node is TSESTree.CallExpression =>
+      node.type === AST_NODE_TYPES.CallExpression &&
+      node.callee.type === AST_NODE_TYPES.Identifier &&
+      stateSetterSource(node.callee, context.sourceCode.getScope(node.callee)) !== null;
+
     return {
       CallExpression(node): void {
         if (!isUseEffectCallee(node.callee)) {
@@ -217,7 +221,7 @@ export const requireEffectCancellationRule = createRule<[], MessageIds>({
         // `.then(cb)` shape: a setter inside a then-callback.
         if (!offender) {
           for (const candidate of nodes) {
-            const setter = thenCallbackSetter(candidate);
+            const setter = thenCallbackSetter(candidate, isSetterCall);
             if (setter) {
               offender = setter;
               break;

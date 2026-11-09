@@ -1,6 +1,6 @@
 # `noctcore-react/context-value-must-be-memoized`
 
-> A context Provider `value` must be a stable reference, never an inline object literal.
+> A context Provider `value` must be a stable reference, never an inline object, array or function.
 
 <!-- begin generated rule header -->
 ✅ In `recommended` at `error` · 💭 Type information: not needed
@@ -15,7 +15,8 @@ reference, produced by `useMemo` (or held in a `useRef`), and passed in.
 
 ## What it flags
 
-In a `.tsx` file, a `value={{ ... }}` attribute (an inline object literal) on:
+In any file with JSX, a `value` attribute that is an inline object literal (`value={{ ... }}`), an
+array literal (`value={[a, b]}`), or an arrow or function expression (`value={() => toggle()}`) on:
 
 - `<Foo.Provider ...>` / `<FooContext.Provider ...>` — a JSX member element whose property is
   `Provider`;
@@ -35,10 +36,10 @@ const value = useMemo(() => ({ a, b }), [a, b]);
 
 ## What it does not flag
 
-- A `value` that is an identifier or any other non-literal expression (`value={value}`), on either
-  provider form.
+- A `value` that is an identifier, a call (`value={store.snapshot()}`, which may return a stable
+  reference) or any other expression that is not an inline literal or function, on either provider
+  form.
 - Inline objects on other elements and attributes (`<div style={{ color: 'red' }} />`).
-- Files that are not `.tsx`.
 
 Custom wrapper components (`<FooProvider value={...}>`) are intentionally **not** matched: the value
 they forward is memoized at their single call site, and matching every `*Provider`-named element

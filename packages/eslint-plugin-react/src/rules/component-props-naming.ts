@@ -7,7 +7,15 @@ const RULE_NAME = 'component-props-naming';
 
 export interface ComponentPropsNamingOptions {
   readonly requireExported?: boolean;
+  /**
+   * The expected props type name, with `{Component}` standing for the
+   * component name. Default `{Component}Props`; `I{Component}Props` fits a
+   * codebase that prefixes interfaces with `I`.
+   */
+  readonly pattern?: string;
 }
+
+const DEFAULT_PATTERN = '{Component}Props';
 
 type RuleOptions = [ComponentPropsNamingOptions];
 type MessageIds = 'propsNaming';
@@ -26,10 +34,16 @@ type MessageIds = 'propsNaming';
  *  - the first param's annotation must be a bare type reference with no type
  *    arguments (so wrappers like `PropsWithChildren<Props>` / `React.FC` args are
  *    left alone — there is no single name to rename);
- *  - the autofix runs ONLY when the type is declared in this file, is NOT exported
- *    (renaming an exported type would break other files' imports), the target name
- *    is free, and no OTHER component shares the type. Otherwise the rule reports
- *    without a fix.
+ *  - a type that is NOT declared in this file (imported, global) is not reported:
+ *    a shared or library props type (`IconProps`, a design-system `ButtonProps`)
+ *    is correct as written;
+ *  - the autofix runs ONLY when the type is declared once in this file, is NOT
+ *    exported (by its declaration or a later `export { X }` / `export type { X }`;
+ *    renaming would break other files' imports), the target name is free, no
+ *    OTHER component shares the type, and every other mention of the name is a
+ *    plain type reference. A mention the rename would miss (`extends Props`,
+ *    `implements Props`, `typeof`-style queries, a re-export) refuses the fix.
+ *    Otherwise the rule reports without a fix.
  *
  * `requireExported` (default false): when true, only exported components are
  * checked; internal/local components are ignored.
@@ -45,6 +59,7 @@ const optionSchema: JSONSchema4 = {
   additionalProperties: false,
   properties: {
     requireExported: { type: 'boolean' },
+    pattern: { type: 'string', pattern: '\\{Component\\}' },
   },
 };
 
@@ -210,21 +225,33 @@ export const componentPropsNamingRule = createRule<RuleOptions, MessageIds>({
         'Props type for `{{component}}` should be named `{{expected}}`, not `{{actual}}` — a `<Component>Props` name keeps the contract discoverable.',
     },
   },
-  defaultOptions: [{ requireExported: false }],
+  defaultOptions: [{ requireExported: false, pattern: DEFAULT_PATTERN }],
   create(context, [options]) {
     const requireExported = options.requireExported ?? false;
+    const pattern = options.pattern ?? DEFAULT_PATTERN;
+    const expectedName = (component: string): string => pattern.split('{Component}').join(component);
 
-    const typeDecls = new Map<string, { id: TSESTree.Identifier; exported: boolean }>();
+    const typeDecls = new Map<string, { id: TSESTree.Identifier; exported: boolean; count: number }>();
     const typeRefs = new Map<string, TSESTree.Identifier[]>();
+    const exportedNames = new Set<string>();
+    const mentions = new Map<string, TSESTree.Identifier[]>();
     const candidates: Candidate[] = [];
 
     function recordTypeDecl(
       node: TSESTree.TSInterfaceDeclaration | TSESTree.TSTypeAliasDeclaration,
     ): void {
+      const previous = typeDecls.get(node.id.name);
       typeDecls.set(node.id.name, {
-        id: node.id,
-        exported: node.parent?.type === AST_NODE_TYPES.ExportNamedDeclaration,
+        id: previous?.id ?? node.id,
+        exported: (previous?.exported ?? false) || node.parent?.type === AST_NODE_TYPES.ExportNamedDeclaration,
+        count: (previous?.count ?? 0) + 1,
       });
+    }
+
+    /** Every mention of `name` is the declaration or a plain type reference the fix renames. */
+    function onlyPlainReferences(name: string, declId: TSESTree.Identifier): boolean {
+      const renamed = new Set<TSESTree.Node>([declId, ...(typeRefs.get(name) ?? [])]);
+      return (mentions.get(name) ?? []).every((identifier) => renamed.has(identifier));
     }
 
     function considerFunction(fn: FnNode): void {
@@ -239,7 +266,7 @@ export const componentPropsNamingRule = createRule<RuleOptions, MessageIds>({
       if (typeRef === null || !functionReturnsJsx(fn)) {
         return;
       }
-      if (typeRef.name === `${componentName}Props`) {
+      if (typeRef.name === expectedName(componentName)) {
         return;
       }
       candidates.push({ componentName, propsTypeName: typeRef.name, typeRefNode: typeRef });
@@ -248,6 +275,16 @@ export const componentPropsNamingRule = createRule<RuleOptions, MessageIds>({
     return {
       TSInterfaceDeclaration: recordTypeDecl,
       TSTypeAliasDeclaration: recordTypeDecl,
+      Identifier(node): void {
+        const list = mentions.get(node.name) ?? [];
+        list.push(node);
+        mentions.set(node.name, list);
+      },
+      ExportSpecifier(node): void {
+        if (node.local.type === AST_NODE_TYPES.Identifier) {
+          exportedNames.add(node.local.name);
+        }
+      },
       TSTypeReference(node): void {
         if (node.typeName.type === AST_NODE_TYPES.Identifier) {
           const name = node.typeName.name;
@@ -269,12 +306,21 @@ export const componentPropsNamingRule = createRule<RuleOptions, MessageIds>({
         }
 
         for (const candidate of candidates) {
-          const expected = `${candidate.componentName}Props`;
+          const expected = expectedName(candidate.componentName);
           const decl = typeDecls.get(candidate.propsTypeName);
-          const targetTaken = typeDecls.has(expected);
+          // A props type declared elsewhere (imported, shared, a library type) is correct as written.
+          if (decl === undefined) {
+            continue;
+          }
+          const targetTaken = typeDecls.has(expected) || mentions.has(expected);
           const sharedByMany = (usedBy.get(candidate.propsTypeName)?.size ?? 0) > 1;
+          const exported = decl.exported || exportedNames.has(candidate.propsTypeName);
           const canFix =
-            decl !== undefined && !decl.exported && !targetTaken && !sharedByMany;
+            decl.count === 1 &&
+            !exported &&
+            !targetTaken &&
+            !sharedByMany &&
+            onlyPlainReferences(candidate.propsTypeName, decl.id);
 
           if (canFix) {
             context.report({

@@ -1,6 +1,7 @@
 import { AST_NODE_TYPES, type TSESTree } from '@typescript-eslint/utils';
 
 import { createRule } from '../createRule';
+import { stateSetterSource } from '../utils';
 
 const RULE_NAME = 'no-effect-derived-state';
 
@@ -188,8 +189,9 @@ export const noEffectDerivedStateRule = createRule<[], MessageIds>({
           return;
         }
 
-        // Every statement must be a bare `setX(...)` call.
+        // Every statement must be a bare `setX(...)` call of a state setter.
         const setterCalls: TSESTree.CallExpression[] = [];
+        const stateInits: TSESTree.CallExpression[] = [];
         for (const stmt of body) {
           if (
             stmt.type !== AST_NODE_TYPES.ExpressionStatement ||
@@ -198,10 +200,18 @@ export const noEffectDerivedStateRule = createRule<[], MessageIds>({
             return;
           }
           const callee = stmt.expression.callee;
-          if (callee.type !== AST_NODE_TYPES.Identifier || !/^set[A-Z]/.test(callee.name)) {
+          if (callee.type !== AST_NODE_TYPES.Identifier) {
+            return;
+          }
+          // Only a `useState` / `useReducer` setter is derived state. A setter
+          // from a context or a prop syncs an external store, which cannot be
+          // computed during render; `setTimeout` / `setInterval` are not setters.
+          const source = stateSetterSource(callee, context.sourceCode.getScope(callee));
+          if (source === null) {
             return;
           }
           setterCalls.push(stmt.expression);
+          stateInits.push(source);
         }
 
         // Reactive roots the args are allowed to read = the dependency roots.
@@ -217,6 +227,17 @@ export const noEffectDerivedStateRule = createRule<[], MessageIds>({
           depRoots.add(root);
         }
         if (depRoots.size === 0) {
+          return;
+        }
+
+        // `const [draft, setDraft] = useState(value)` re-synced from `value`: state
+        // seeded from the dependency and then edited locally. Correct by design.
+        const seededFromDep = stateInits.some((init) =>
+          init.arguments.some((arg) =>
+            descendants(arg).some((n) => n.type === AST_NODE_TYPES.Identifier && depRoots.has(n.name)),
+          ),
+        );
+        if (seededFromDep) {
           return;
         }
 

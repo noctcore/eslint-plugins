@@ -44,6 +44,12 @@ ruleTester.run('no-state-in-component-body', noStateInComponentBodyRule, {
     },
   ],
   invalid: [
+    // Through the React namespace.
+    {
+      code: `import * as React from 'react';\nexport default function TaskDetail() { const [n] = React.useState(0); return null; }`,
+      filename: COMPONENT,
+      errors: [{ messageId: 'stateInBody', data: { hook: 'useState' } }],
+    },
     {
       code: `import { useState } from 'react';\nexport default function TaskDetail() { const [n] = useState(0); return null; }`,
       filename: COMPONENT,

@@ -53,8 +53,10 @@ ruleTester.run('context-value-must-be-memoized', contextValueMustBeMemoizedRule,
     { code: stableBareContextValue, filename: TSX },
     { code: inlineStyleOnDiv, filename: TSX },
     { code: customWrapperInlineValue, filename: TSX },
-    // A non-`.tsx` file is never scanned (JSX cannot appear there anyway).
+    // A file without JSX has nothing to report.
     { code: `export const x = 1;`, filename: 'actions.ts' },
+    // A call may return a stable reference.
+    { code: `export function P({ children }) { return <ThemeContext.Provider value={store.snapshot()}>{children}</ThemeContext.Provider>; }`, filename: TSX },
   ],
   invalid: [
     {
@@ -65,6 +67,23 @@ ruleTester.run('context-value-must-be-memoized', contextValueMustBeMemoizedRule,
     {
       code: inlineObjectOnBareContext,
       filename: TSX,
+      errors: [{ messageId: 'inlineValue' }],
+    },
+    // An inline array or function is a fresh reference too.
+    {
+      code: `export function P({ a, b, children }) { return <PairContext.Provider value={[a, b]}>{children}</PairContext.Provider>; }`,
+      filename: TSX,
+      errors: [{ messageId: 'inlineValue' }],
+    },
+    {
+      code: `export function P({ children }) { return <ToggleContext value={() => setOpen(true)}>{children}</ToggleContext>; }`,
+      filename: TSX,
+      errors: [{ messageId: 'inlineValue' }],
+    },
+    // A .jsx file is scanned.
+    {
+      code: inlineObjectOnProvider,
+      filename: 'TaskDetail.jsx',
       errors: [{ messageId: 'inlineValue' }],
     },
   ],

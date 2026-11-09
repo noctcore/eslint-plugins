@@ -30,9 +30,11 @@ const DEFAULT_DENY_PROP_NAMES: readonly string[] = [
   '^userIds$',
   '^currentUser',
   '^sessionId$',
-  'token',
+  // Anchored at the end so a design `tokens` list, a `tokenCount` or a
+  // `showSecretField` flag is not taken for the secret itself.
+  'token$',
   'jwt',
-  'secret',
+  'secret$',
   'apiKey',
   'credential',
 ];

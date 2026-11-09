@@ -46,8 +46,15 @@ ruleTester.run('props-must-be-visual', propsMustBeVisualRule, {
       filename: FILE,
       options: [{ denyPropNames: ['^ssn$'] }],
     },
+    // Design tokens, counts and UI flags are not secrets.
+    { code: `interface ThemeSwatchProps { tokens: string[]; tokenCount: number; showSecretField: boolean; }`, filename: FILE },
   ],
   invalid: [
+    {
+      code: `interface OAuthButtonProps { clientSecret: string; }`,
+      filename: FILE,
+      errors: [{ messageId: 'nonVisualProp' }],
+    },
     {
       code: `interface LoginFormProps { userId: string; }`,
       filename: FILE,

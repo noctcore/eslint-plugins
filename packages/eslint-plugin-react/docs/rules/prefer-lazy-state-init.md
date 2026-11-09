@@ -19,7 +19,10 @@ a function — `useState(() => expensiveCall())` — makes React call it once, l
 A `useState` call (or `React.useState`) whose first argument is a **call expression** whose callee
 path is listed in `initializers`. By default that is `JSON.parse`, `localStorage.getItem`, and
 `sessionStorage.getItem`. A callee is matched by its dotted path (`localStorage.getItem`) or bare
-name (`buildInitialState`).
+name (`buildInitialState`). The call is found under a TypeScript wrapper (`JSON.parse(raw) as Foo`,
+`!`, `satisfies`) and on the left of `??` / `||` (`JSON.parse(raw) ?? {}`), since it still runs on
+every render there; the fix wraps the whole argument. A call on the right of `??` / `||` runs only
+when the left side is empty and is not reported.
 
 ```tsx bad
 // runs JSON.parse on every render

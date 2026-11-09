@@ -86,6 +86,35 @@ function isUseStateCallee(callee: TSESTree.Node): boolean {
   );
 }
 
+/**
+ * The call an initializer evaluates unconditionally on every render: the
+ * argument itself, or the call under a TypeScript wrapper (`JSON.parse(raw) as
+ * Foo`, `!`, `satisfies`) or on the left of `??` / `||` (`JSON.parse(raw) ?? {}`).
+ */
+function unwrapEagerCall(node: TSESTree.Expression): TSESTree.CallExpression | null {
+  let current: TSESTree.Expression = node;
+  for (;;) {
+    switch (current.type) {
+      case AST_NODE_TYPES.CallExpression:
+        return current;
+      case AST_NODE_TYPES.TSAsExpression:
+      case AST_NODE_TYPES.TSNonNullExpression:
+      case AST_NODE_TYPES.TSSatisfiesExpression:
+      case AST_NODE_TYPES.TSTypeAssertion:
+        current = current.expression;
+        break;
+      case AST_NODE_TYPES.LogicalExpression:
+        if (current.operator === '&&') {
+          return null;
+        }
+        current = current.left;
+        break;
+      default:
+        return null;
+    }
+  }
+}
+
 export const preferLazyStateInitRule = createRule<RuleOptions, MessageIds>({
   name: RULE_NAME,
   meta: {
@@ -111,10 +140,14 @@ export const preferLazyStateInitRule = createRule<RuleOptions, MessageIds>({
           return;
         }
         const arg = node.arguments[0];
-        if (!arg || arg.type !== AST_NODE_TYPES.CallExpression) {
+        if (!arg || arg.type === AST_NODE_TYPES.SpreadElement) {
           return;
         }
-        const path = calleePath(arg.callee);
+        const call = unwrapEagerCall(arg);
+        if (call === null) {
+          return;
+        }
+        const path = calleePath(call.callee);
         if (path === null) {
           return;
         }
@@ -130,7 +163,7 @@ export const preferLazyStateInitRule = createRule<RuleOptions, MessageIds>({
         }
         const text = context.sourceCode.getText(arg);
         context.report({
-          node: arg,
+          node: call,
           messageId: 'lazyInit',
           data: { call: path },
           fix: (fixer) => fixer.replaceText(arg, `() => ${text}`),

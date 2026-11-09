@@ -25,10 +25,13 @@ bug, and any recognisable guard (an AbortController, a cancel flag, a cleanup) s
 ## What it flags
 
 An `await` (or a `.then(cb)`) inside a `useEffect` / `useLayoutEffect` callback, followed by a
-`setState`/`dispatch`, when the effect has **no** recognisable cancellation guard:
+call of a `useState` setter or a `useReducer` dispatch, when the effect has **no** recognisable
+cancellation guard. The setter is resolved through scope analysis, so `setTimeout`, `setInterval`
+and a setter from a context hook or a prop are not state updates here:
 
 ```tsx bad
 // nothing cancels the update
+const [data, setData] = useState(null);
 useEffect(() => {
   async function load() {
     const data = await fetchThing(id);
@@ -40,6 +43,7 @@ useEffect(() => {
 
 ```tsx good
 // guarded with a cancelled flag
+const [data, setData] = useState(null);
 useEffect(() => {
   let cancelled = false;
   fetchThing(id).then((data) => {

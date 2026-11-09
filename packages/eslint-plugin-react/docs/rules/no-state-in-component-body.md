@@ -16,7 +16,8 @@ testable, and keeps re-render surfaces small.
 
 ## What it flags
 
-Inside a component file (`.tsx` that is **not** a hook file), a call to any of:
+Inside a component file (`.tsx` that is **not** a hook file), a call to any of these, written bare
+(`useState(...)`) or through a namespace (`React.useState(...)`):
 
 - React stateful hooks — `useState`, `useReducer`, `useEffect`, `useLayoutEffect`,
   `useInsertionEffect`, `useMemo`, `useCallback`, `useRef`, `useImperativeHandle`;

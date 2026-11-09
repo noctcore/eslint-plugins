@@ -42,6 +42,21 @@ ruleTester.run('component-props-naming', componentPropsNamingRule, {
       filename: FILE,
       options: [{ requireExported: true }],
     },
+    // A props type declared elsewhere (imported, shared, a library type) is correct as written.
+    {
+      code: `import type { Props } from './types';\nexport function Button(props: Props) { return <button />; }`,
+      filename: FILE,
+    },
+    {
+      code: `import type { IconProps } from './types';\nexport function CheckIcon(props: IconProps) { return <svg />; }`,
+      filename: FILE,
+    },
+    // The I-prefixed convention, expressed with the pattern option.
+    {
+      code: `interface ICardProps { label: string; }\nfunction Card(props: ICardProps) { return <div />; }`,
+      filename: FILE,
+      options: [{ pattern: 'I{Component}Props' }],
+    },
   ],
   invalid: [
     // Rename an in-file, non-exported interface + its references.
@@ -72,12 +87,26 @@ ruleTester.run('component-props-naming', componentPropsNamingRule, {
       errors: [{ messageId: 'propsNaming' }],
       output: null,
     },
-    // Imported type — not declared in file, reported without a fix.
+    // A mention the rename would miss (extends, a re-export) refuses the fix.
     {
-      code: `import type { Props } from './types';\nexport function Button(props: Props) { return <button />; }`,
+      code: `interface Base { id: string; }\ninterface Props extends Base { label: string; }\ninterface Wide extends Props { extra: number; }\nfunction Card(props: Props) { return <div>{props.label}</div>; }`,
       filename: FILE,
       errors: [{ messageId: 'propsNaming' }],
       output: null,
+    },
+    {
+      code: `interface Props { label: string; }\nfunction Card(props: Props) { return <div>{props.label}</div>; }\nexport type { Props };`,
+      filename: FILE,
+      errors: [{ messageId: 'propsNaming' }],
+      output: null,
+    },
+    // A custom pattern names the expected type.
+    {
+      code: `interface IProps { label: string; }\nfunction Card(props: IProps) { return <div>{props.label}</div>; }`,
+      filename: FILE,
+      options: [{ pattern: 'I{Component}Props' }],
+      errors: [{ messageId: 'propsNaming', data: { component: 'Card', actual: 'IProps', expected: 'ICardProps' } }],
+      output: `interface ICardProps { label: string; }\nfunction Card(props: ICardProps) { return <div>{props.label}</div>; }`,
     },
     // Shared props type across two components — reported for both, fixed for neither.
     {
