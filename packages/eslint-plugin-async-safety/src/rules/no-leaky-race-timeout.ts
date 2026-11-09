@@ -211,6 +211,35 @@ function promiseExecutor(node: TSESTree.Node | null): FunctionNode | null {
   return executor !== undefined && isFunction(executor) ? executor : null;
 }
 
+/**
+ * One level of indirection: `const timeout = new Promise(...); Promise.race([work, timeout])`.
+ * A `const` identifier resolves to its initialiser; anything else is returned as is.
+ */
+function resolveConstInit(
+  node: TSESTree.Node | null,
+  sourceCode: Readonly<TSESLint.SourceCode>,
+): TSESTree.Node | null {
+  if (node?.type !== AST_NODE_TYPES.Identifier) {
+    return node;
+  }
+  for (let scope: TSESLint.Scope.Scope | null = sourceCode.getScope(node); scope; scope = scope.upper) {
+    const variable = scope.set.get(node.name);
+    if (variable === undefined) {
+      continue;
+    }
+    const def = variable.defs.length === 1 ? variable.defs[0] : undefined;
+    if (
+      def?.node.type === AST_NODE_TYPES.VariableDeclarator &&
+      def.parent?.type === AST_NODE_TYPES.VariableDeclaration &&
+      def.parent.kind === 'const'
+    ) {
+      return def.node.init;
+    }
+    return node;
+  }
+  return node;
+}
+
 export const noLeakyRaceTimeoutRule = createRule<RuleOptions, MessageIds>({
   name: RULE_NAME,
   meta: {
@@ -259,7 +288,7 @@ export const noLeakyRaceTimeoutRule = createRule<RuleOptions, MessageIds>({
           return;
         }
         for (const element of racers.elements) {
-          const executor = promiseExecutor(element);
+          const executor = promiseExecutor(resolveConstInit(element, sourceCode));
           if (executor !== null) {
             checkExecutor(executor, node);
           }

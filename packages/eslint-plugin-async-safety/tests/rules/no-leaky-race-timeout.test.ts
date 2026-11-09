@@ -119,8 +119,25 @@ ruleTester.run('no-leaky-race-timeout', noLeakyRaceTimeoutRule, {
     // Not a Promise.race.
     { code: `async function f(work) { return await Promise.all([work, new Promise((r) => setTimeout(r, 1000))]); }` },
     { code: `function sleep(ms) { return new Promise((r) => setTimeout(r, ms)); }` },
+    // The timeout promise held in a const, its handle cleared after the race.
+    {
+      code: `async function f(work) {
+        let timer;
+        const timeout = new Promise((_, reject) => { timer = setTimeout(reject, 1000); });
+        try { return await Promise.race([work, timeout]); } finally { clearTimeout(timer); }
+      }`,
+    },
+    // A let binding may be reassigned, so it is not followed.
+    {
+      code: `async function f(work) { let timeout = new Promise((_, r) => setTimeout(r, 1000)); return Promise.race([work, timeout]); }`,
+    },
   ],
   invalid: [
+    // The two-line form: the timeout promise is built first and raced by name.
+    {
+      code: `async function f(work) { const timeout = new Promise((_, r) => setTimeout(r, 1000)); return Promise.race([work, timeout]); }`,
+      errors: [{ messageId: 'discardedHandle' }],
+    },
     // Handle discarded: arrow body.
     {
       code: `async function f(work) { return await Promise.race([work, new Promise((_, reject) => setTimeout(reject, 1000))]); }`,
