@@ -3,7 +3,7 @@
 > Workspace packages must be consumed through their package barrel only — never via a deep subpath into package internals.
 
 <!-- begin generated rule header -->
-🔘 Opt-in: `off` in `recommended` · ⚙️ Needs options (see Options) · 💭 Type information: not needed
+🔘 Opt-in: not in `recommended` · ⚙️ Needs options (see Options) · 💭 Type information: not needed
 <!-- end generated rule header -->
 
 ## Why
@@ -19,7 +19,7 @@ composes cleanly.
 
 ### In `recommended`
 
-The `recommended` preset ships this rule as **`'off'`**. Because there is no universal default scope,
+The `recommended` preset leaves this rule out. Because there is no universal default scope,
 enabling it in a shared preset would either do nothing (empty scopes) or fire against the wrong
 packages in a stranger's repo. Turn it on yourself with your own `scopes`:
 

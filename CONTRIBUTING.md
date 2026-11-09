@@ -198,11 +198,11 @@ adding it to that list too, and a new sub-entry point also goes in `LINT_META_SU
 Every rule in every preset is `error` or `off`. A warning is a rule nobody obeys. This is enforced,
 not just stated: each plugin's `tests/configs/recommended.test.ts` fails on any preset entry that is
 not `error` or `off`, and a second test in the same file makes leaving a rule out a decision you
-write down. In `code-quality`, `prisma` and `security`, which already ship opt-in rules, that test
-requires every rule to be in the preset or listed by name in `OMITTED_FROM_PRESETS`. In the other
-seven it requires every rule to be in the preset, full stop, so the first opt-in rule in one of those
-packages also adds that list to its test, copied from `eslint-plugin-security`. Either way, add a
-comment in `src/configs/recommended.ts` saying why the rule is left out.
+write down: every rule is either in the preset or listed by name in `OMITTED_FROM_PRESETS`. A third
+test requires every rule with `meta.docs.requiresOptions` to be in that list, because a preset entry
+that checks nothing reads as coverage the project does not have. Add a comment in
+`src/configs/recommended.ts` saying why a rule is left out. Each preset also carries a `name`
+(`noctcore-<short>/recommended`), which the ESLint config inspector shows.
 
 That gives a new rule two ways to ship, and you should know which before writing it:
 

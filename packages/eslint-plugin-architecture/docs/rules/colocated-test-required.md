@@ -3,7 +3,7 @@
 > A source file matching an `include` glob must have a colocated `*.test.*` / `*.spec.*` sibling on disk.
 
 <!-- begin generated rule header -->
-🔘 Opt-in: `off` in `recommended` · ⚙️ Needs options (see Options) · 💭 Type information: not needed
+🔘 Opt-in: not in `recommended` · ⚙️ Needs options (see Options) · 💭 Type information: not needed
 <!-- end generated rule header -->
 
 ## Why
@@ -15,7 +15,7 @@ is obvious when missing.
 
 ### In `recommended`
 
-Ships **`'off'`**. There is no universal "everything needs a colocated test" default, so the
+Left out of `recommended`. There is no universal "everything needs a colocated test" default, so the
 `recommended` preset cannot safely enable it — turn it on with your own `include` globs.
 
 ## What it flags

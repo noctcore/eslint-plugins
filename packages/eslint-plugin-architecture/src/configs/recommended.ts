@@ -1,11 +1,14 @@
-/** Rule id → severity for the `recommended` preset. Keys carry the plugin namespace. */
+/**
+ * Rule id → severity for the `recommended` preset. Keys carry the plugin namespace.
+ *
+ * A rule that needs options to do anything (`meta.docs.requiresOptions`) is left
+ * out, not listed at `error` or `off`: a preset entry that checks nothing
+ * would read as coverage the project does not have. The rules left out here
+ * are listed in `tests/configs/recommended.test.ts`, and the README's
+ * "Opt-in rules" block shows how to enable them.
+ */
 export const recommended = {
   'noctcore-architecture/barrel-purity': 'error',
-  // Ships OFF: this rule does nothing until you name the source globs that must
-  // be tested (there is no universal "everything needs a test" default). Enable
-  // it with your own `include`, e.g.
-  //   'noctcore-architecture/colocated-test-required': ['error', { include: ['**/use*.ts', '**/*.service.ts'] }]
-  'noctcore-architecture/colocated-test-required': 'off',
   'noctcore-architecture/component-folder-structure': 'error',
   'noctcore-architecture/filename-matches-export': 'error',
   'noctcore-architecture/index-must-reexport-default': 'error',

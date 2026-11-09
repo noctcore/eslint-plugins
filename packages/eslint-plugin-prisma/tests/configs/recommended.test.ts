@@ -9,7 +9,8 @@ function severityOf(entry: unknown): unknown {
 
 // Rules the preset leaves out on purpose; `src/configs/recommended.ts` says why.
 // A new rule must land in the preset or here, so leaving one out is a decision.
-const OMITTED_FROM_PRESETS = [
+// Every rule that needs options (`meta.docs.requiresOptions`) must be here.
+const OMITTED_FROM_PRESETS: readonly string[] = [
   'mutation-entry-must-reach-audit',
   'restrict-model-writes',
   'soft-deletable-tables-require-deleted-at',
@@ -17,11 +18,18 @@ const OMITTED_FROM_PRESETS = [
   'tenant-write-must-carry-tenant-id',
 ];
 
+type Preset = { name?: string; rules: Record<string, unknown> };
+type RuleMeta = { meta?: { docs?: { requiresOptions?: boolean } } };
+
 describe('presets', () => {
-  const presets = Object.entries(plugin.configs) as [string, { rules: Record<string, unknown> }][];
+  const presets = Object.entries(plugin.configs) as [string, Preset][];
 
   it('exports at least one preset', () => {
     expect(presets.length).toBeGreaterThan(0);
+  });
+
+  it.each(presets)('%s is named after the plugin and the preset', (name, preset) => {
+    expect(preset.name).toBe(`noctcore-prisma/${name}`);
   });
 
   it.each(presets)('%s ships only error or off', (_name, preset) => {
@@ -36,5 +44,12 @@ describe('presets', () => {
     const configured = Object.keys(preset.rules).map((id) => id.slice(id.indexOf('/') + 1));
     const accounted = [...configured, ...OMITTED_FROM_PRESETS].sort();
     expect(accounted).toEqual(Object.keys(plugin.rules).sort());
+  });
+
+  it('leaves out every rule that needs options', () => {
+    const needsOptions = Object.entries(plugin.rules as Record<string, RuleMeta>)
+      .filter(([, rule]) => rule.meta?.docs?.requiresOptions === true)
+      .map(([id]) => id);
+    expect(OMITTED_FROM_PRESETS).toEqual(expect.arrayContaining(needsOptions));
   });
 });

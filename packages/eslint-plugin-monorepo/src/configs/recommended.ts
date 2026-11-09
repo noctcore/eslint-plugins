@@ -1,12 +1,15 @@
-/** Rule id → severity for the `recommended` preset. Keys carry the plugin namespace. */
-export const recommended = {
-  // Ships OFF: this rule needs a `scopes` option to do anything (there is no
-  // universal default scope), so `recommended` cannot safely turn it on for a
-  // stranger's repo. Enable it explicitly with your own scopes, e.g.
-  //   'noctcore-monorepo/no-deep-package-imports': ['error', { scopes: ['@acme'] }]
-  'noctcore-monorepo/no-deep-package-imports': 'off',
-  // Ships OFF for the same reason — `scopes` is required, so the rule cannot be
-  // turned on in a shared preset. Enable it with your own scopes, e.g.
-  //   'noctcore-monorepo/no-unexported-subpath-import': ['error', { scopes: ['@acme'] }]
-  'noctcore-monorepo/no-unexported-subpath-import': 'off',
-} as const;
+/**
+ * Rule id → severity for the `recommended` preset. Keys carry the plugin namespace.
+ *
+ * A rule that needs options to do anything (`meta.docs.requiresOptions`) is left
+ * out, not listed at `error` or `off`: a preset entry that checks nothing
+ * would read as coverage the project does not have. The rules left out here
+ * are listed in `tests/configs/recommended.test.ts`, and the README's
+ * "Opt-in rules" block shows how to enable them.
+ *
+ * Both monorepo rules need a `scopes` option (there is no universal default
+ * scope), so this preset is empty today. It stays exported so a config that
+ * spreads it keeps working, and picks up any future rule that holds with no
+ * project knowledge.
+ */
+export const recommended = {} as const;
