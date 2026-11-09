@@ -14,6 +14,8 @@ const plugin = {
 // The plugin references itself so `configs.recommended` is a drop-in flat-config
 // block: `export default [prisma.configs.recommended]`.
 plugin.configs.recommended = {
+  // Shown by the ESLint config inspector and in config error messages.
+  name: `${NAMESPACE}/recommended`,
   plugins: { [NAMESPACE]: plugin },
   rules: recommended,
 };
