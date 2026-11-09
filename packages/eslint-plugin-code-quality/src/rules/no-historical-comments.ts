@@ -19,10 +19,14 @@ const HISTORICAL_PATTERNS: readonly RegExp[] = [
   /\bwe\s+used\s+to\b/iu,
   /\bthis\s+used\s+to\b/iu,
   /\bused\s+to\s+be\b/iu,
-  /\bno\s+longer\b/iu,
+  // "no longer" also describes runtime state ("the socket is no longer writable"),
+  // so it needs a narration cue: a first-person subject, or a verb about the code.
+  /\bwe\s+no\s+longer\b/iu,
+  /\bno\s+longer\s+(?:needed|used|required|necessary|supported|relevant|applies|apply|happens|works)\b/iu,
   /\bkept\s+for\s+(?:backwards|backward|legacy|compat)\b/iu,
   /\b(?:was|were)\s+a\s+(?:footgun|bug)\b/iu,
-  /\bhistorical(?:ly)?\b/iu,
+  // "historical" alone is a domain word ("historical exchange rates"); "historically" narrates.
+  /\bhistorically\b/iu,
 ];
 
 export const noHistoricalCommentsRule = createRule<[], MessageIds>({

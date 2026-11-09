@@ -9,6 +9,9 @@ ruleTester.run('no-historical-comments', noHistoricalCommentsRule, {
     // JSDoc blocks are exempt (they document current behavior).
     { code: '/**\n * We used to stringify here, but no longer.\n */\nconst x = 1;' },
     { code: 'const now = Date.now();' },
+    // "no longer" describing runtime state, and "historical" as a domain word.
+    { code: '// Once closed, the socket is no longer writable.' },
+    { code: '// Historical exchange rates are cached for a day.' },
   ],
   invalid: [
     {
@@ -25,6 +28,18 @@ ruleTester.run('no-historical-comments', noHistoricalCommentsRule, {
     },
     {
       code: '/* This no longer applies after the rewrite. */',
+      errors: [{ messageId: 'historicalComment' }],
+    },
+    {
+      code: '// We no longer retry here.',
+      errors: [{ messageId: 'historicalComment' }],
+    },
+    {
+      code: '// The cache flag is no longer needed.',
+      errors: [{ messageId: 'historicalComment' }],
+    },
+    {
+      code: '// Historically this ran on every request.',
       errors: [{ messageId: 'historicalComment' }],
     },
   ],
