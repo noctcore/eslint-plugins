@@ -1,4 +1,4 @@
-import { AST_NODE_TYPES, type TSESTree } from '@typescript-eslint/utils';
+import { AST_NODE_TYPES, type TSESLint, type TSESTree } from '@typescript-eslint/utils';
 import type { JSONSchema4 } from '@typescript-eslint/utils/json-schema';
 
 import { createRule } from '../createRule';
@@ -25,14 +25,20 @@ type MessageIds = 'missingTimeout' | 'addTimeout';
  *   - any spread argument (`fetch(url, ...opts)`) → skipped;
  *   - the options slot is an identifier/call/member (`fetch(url, opts)`) → skipped,
  *     because that bag may already set a signal;
- *   - an options object literal with a `...spread` property → skipped.
- * It reports only when the arguments are plainly signal-free: a bare
- * string/template URL, or an options object literal with neither `signal` nor
- * `timeout`. The suggestion inserts `signal: AbortSignal.timeout(<default>)`.
+ *   - an options object literal with a `...spread` property → skipped;
+ *   - the global `fetch` called with a `Request` built in view
+ *     (`fetch(new Request(...))`, or a `const` initialised that way) → skipped,
+ *     because a `Request` can carry its own signal.
+ * The first argument of the global `fetch` is never its options, so `fetch(url)`
+ * is reported whatever `url` is. A configured wrapper's single argument may be a
+ * config bag (`axios(config)`), so for wrappers only a string/template URL is
+ * reported. `timeout` counts only for wrappers: it is not a `fetch` option.
+ * The suggestion inserts `signal: AbortSignal.timeout(<default>)`.
  */
 const DEFAULT_TIMEOUT_MS = 10000;
 
-const SIGNAL_KEYS: ReadonlySet<string> = new Set(['signal', 'timeout']);
+const FETCH_SIGNAL_KEYS: ReadonlySet<string> = new Set(['signal']);
+const WRAPPER_SIGNAL_KEYS: ReadonlySet<string> = new Set(['signal', 'timeout']);
 
 const optionSchema: JSONSchema4 = {
   type: 'object',
@@ -51,12 +57,42 @@ function isUrlLike(node: TSESTree.Node): boolean {
   );
 }
 
+function isNewRequest(node: TSESTree.Node): boolean {
+  return (
+    node.type === AST_NODE_TYPES.NewExpression &&
+    node.callee.type === AST_NODE_TYPES.Identifier &&
+    node.callee.name === 'Request'
+  );
+}
+
+/** `new Request(...)`, or an identifier bound by `const x = new Request(...)`. */
+function isRequestObject(node: TSESTree.Node, scope: TSESLint.Scope.Scope): boolean {
+  if (isNewRequest(node)) {
+    return true;
+  }
+  if (node.type !== AST_NODE_TYPES.Identifier) {
+    return false;
+  }
+  for (let current: TSESLint.Scope.Scope | null = scope; current; current = current.upper) {
+    const variable = current.set.get(node.name);
+    if (variable) {
+      return variable.defs.some(
+        (def) =>
+          def.node.type === AST_NODE_TYPES.VariableDeclarator &&
+          def.node.init !== null &&
+          isNewRequest(def.node.init),
+      );
+    }
+  }
+  return false;
+}
+
 interface ObjectProbe {
   readonly satisfied: boolean; // has `signal` or `timeout`
   readonly opaque: boolean; // has a spread — cannot verify
 }
 
-function probeOptionsObject(object: TSESTree.ObjectExpression): ObjectProbe {
+function probeOptionsObject(object: TSESTree.ObjectExpression, signalKeys: ReadonlySet<string>): ObjectProbe {
   for (const property of object.properties) {
     if (property.type === AST_NODE_TYPES.SpreadElement) {
       return { satisfied: false, opaque: true };
@@ -68,7 +104,7 @@ function probeOptionsObject(object: TSESTree.ObjectExpression): ObjectProbe {
         : key.type === AST_NODE_TYPES.Literal && typeof key.value === 'string'
           ? key.value
           : null;
-    if (name !== null && SIGNAL_KEYS.has(name)) {
+    if (name !== null && signalKeys.has(name)) {
       return { satisfied: true, opaque: false };
     }
   }
@@ -108,12 +144,14 @@ export const requireFetchTimeoutRule = createRule<RuleOptions, MessageIds>({
           return;
         }
 
+        const isGlobalFetch = name === 'fetch';
+        const signalKeys = isGlobalFetch ? FETCH_SIGNAL_KEYS : WRAPPER_SIGNAL_KEYS;
         const objectArgs = args.filter(
           (arg): arg is TSESTree.ObjectExpression => arg.type === AST_NODE_TYPES.ObjectExpression,
         );
 
         if (objectArgs.length > 0) {
-          const probes = objectArgs.map(probeOptionsObject);
+          const probes = objectArgs.map((arg) => probeOptionsObject(arg, signalKeys));
           if (probes.some((probe) => probe.satisfied || probe.opaque)) {
             return; // already timed out, or an opaque spread we won't second-guess.
           }
@@ -143,9 +181,16 @@ export const requireFetchTimeoutRule = createRule<RuleOptions, MessageIds>({
           return;
         }
 
-        // No options object literal. Only flag when the args are plainly URL-only
-        // (string/template) — an identifier/call arg may itself be an options bag.
-        if (args.length === 0 || !args.every(isUrlLike)) {
+        // No options object literal. For the global `fetch`, a lone first argument
+        // is the resource, never the options; only a visible `Request` may carry a
+        // signal. A wrapper's identifier/call argument may itself be an options bag.
+        if (args.length === 0) {
+          return;
+        }
+        const plainlyUnbounded = isGlobalFetch
+          ? args.length === 1 && args[0] !== undefined && !isRequestObject(args[0], context.sourceCode.getScope(node))
+          : args.every(isUrlLike);
+        if (!plainlyUnbounded) {
           return;
         }
         const lastArg = args[args.length - 1];

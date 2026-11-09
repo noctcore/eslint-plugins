@@ -9,16 +9,19 @@ ruleTester.run('require-fetch-timeout', requireFetchTimeoutRule, {
     { code: `fetch(url, { signal: AbortSignal.timeout(1000) });` },
     // Shorthand signal.
     { code: `fetch(url, { signal });` },
-    // A `timeout` option counts.
-    { code: `fetch(url, { timeout: 5000 });` },
+    // A `timeout` option counts for a configured wrapper.
+    { code: `got(url, { timeout: 5000 });`, options: [{ callees: ['got'] }] },
     // Opaque options bag (identifier) — may already set a signal → not our call to make.
     { code: `fetch(url, opts);` },
     // Spread argument — opaque.
     { code: `fetch(url, ...rest);` },
     // Spread inside the options object — opaque.
     { code: `fetch(url, { ...base });` },
-    // A bare identifier URL could be a Request carrying its own signal.
-    { code: `fetch(request);` },
+    // A Request built in view may carry its own signal.
+    { code: `fetch(new Request(url, { signal }));` },
+    { code: `const request = new Request(url, { signal }); fetch(request);` },
+    // A wrapper's lone identifier argument may be its config bag.
+    { code: `got(url);`, options: [{ callees: ['got'] }] },
     // Not the global fetch.
     { code: `this.fetch('https://x');` },
     { code: `client.fetch('https://x');` },
@@ -133,6 +136,36 @@ ruleTester.run('require-fetch-timeout', requireFetchTimeoutRule, {
               output: `undici.request('https://x', { signal: AbortSignal.timeout(10000), method: 'GET' });`,
             },
           ],
+        },
+      ],
+    },
+      // A variable URL with no options: the first argument of fetch is never the options.
+    {
+      code: `async function load(url: string) { return fetch(url); }`,
+      errors: [
+        {
+          messageId: 'missingTimeout',
+          suggestions: [
+            {
+              messageId: 'addTimeout',
+              output: `async function load(url: string) { return fetch(url, { signal: AbortSignal.timeout(10000) }); }`,
+            },
+          ],
+        },
+      ],
+    },
+    // A Request whose origin is not visible is not exempt.
+    {
+      code: `fetch(request);`,
+      errors: [{ messageId: 'missingTimeout', suggestions: [{ messageId: 'addTimeout', output: `fetch(request, { signal: AbortSignal.timeout(10000) });` }] }],
+    },
+    // \`timeout\` is not a fetch option, so it does not bound a fetch.
+    {
+      code: `fetch('/api', { timeout: 5 });`,
+      errors: [
+        {
+          messageId: 'missingTimeout',
+          suggestions: [{ messageId: 'addTimeout', output: `fetch('/api', { signal: AbortSignal.timeout(10000), timeout: 5 });` }],
         },
       ],
     },
