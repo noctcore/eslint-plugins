@@ -109,12 +109,22 @@ export const noStateInComponentBodyRule = createRule<RuleOptions, MessageIds>({
 
     return {
       CallExpression(node: TSESTree.CallExpression): void {
-        if (node.callee.type !== AST_NODE_TYPES.Identifier) {
+        // `useState(...)`, or through a namespace: `React.useState(...)`.
+        const callee = node.callee;
+        const name =
+          callee.type === AST_NODE_TYPES.Identifier
+            ? callee.name
+            : callee.type === AST_NODE_TYPES.MemberExpression &&
+                !callee.computed &&
+                callee.object.type === AST_NODE_TYPES.Identifier &&
+                callee.property.type === AST_NODE_TYPES.Identifier
+              ? callee.property.name
+              : null;
+        if (name === null) {
           return;
         }
-        const name = node.callee.name;
         if (isFlaggedHook(name)) {
-          context.report({ node: node.callee, messageId: 'stateInBody', data: { hook: name } });
+          context.report({ node: callee, messageId: 'stateInBody', data: { hook: name } });
         }
       },
     };
