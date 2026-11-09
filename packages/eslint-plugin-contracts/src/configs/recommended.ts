@@ -1,4 +1,12 @@
-/** Rule id → severity for the `recommended` preset. Keys carry the plugin namespace. */
+/**
+ * Rule id → severity for the `recommended` preset. Keys carry the plugin namespace.
+ *
+ * A rule that needs options to do anything (`meta.docs.requiresOptions`) is left
+ * out, not listed at `error` or `off`: a preset entry that checks nothing
+ * would read as coverage the project does not have. The rules left out here
+ * are listed in `tests/configs/recommended.test.ts`, and the README's
+ * "Opt-in rules" block shows how to enable them.
+ */
 export const recommended = {
   'noctcore-contracts/zod-schema-naming': 'error',
   'noctcore-contracts/wire-message-naming': 'error',
@@ -9,12 +17,7 @@ export const recommended = {
   'noctcore-contracts/restrict-throw-to-taxonomy': 'error',
   'noctcore-contracts/schema-enum-field-consistency': 'error',
   'noctcore-contracts/fetch-must-check-ok': 'error',
-  // Config-required / heuristic rules ship inert. `require-registered-keys`,
-  // `env-var-schema-parity` and `translation-key-exists` do nothing until their
-  // `sinks` / `schema` / `catalogs` options are set; `require-schema-parse-at-boundary` is a conservative syntactic slice of a
-  // type-aware concern. Enable them explicitly once configured for your project.
-  'noctcore-contracts/require-registered-keys': 'off',
-  'noctcore-contracts/env-var-schema-parity': 'off',
+  // Ships OFF: a conservative syntactic slice of a type-aware concern. It needs
+  // no options, so it is listed here; enable it where you want the check.
   'noctcore-contracts/require-schema-parse-at-boundary': 'off',
-  'noctcore-contracts/translation-key-exists': 'off',
 } as const;

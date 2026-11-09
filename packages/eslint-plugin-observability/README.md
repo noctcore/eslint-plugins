@@ -74,7 +74,7 @@ export default [
 
 | Rule | Description | Preset | ⚙️ | 🔧 | 💡 | 💭 |
 | --- | --- | :-: | :-: | :-: | :-: | :-: |
-| [`audit-pii-declared`](https://noctcore.github.io/eslint-plugins/rules/observability/audit-pii-declared/) | A PII-shaped key written into an audit payload must be declared, either registered for scrubbing on purge or declared non-PII. | ✅ | ⚙️ |  |  |  |
+| [`audit-pii-declared`](https://noctcore.github.io/eslint-plugins/rules/observability/audit-pii-declared/) | A PII-shaped key written into an audit payload must be declared, either registered for scrubbing on purge or declared non-PII. | 🔘 | ⚙️ |  |  |  |
 | [`no-error-detail-loss`](https://noctcore.github.io/eslint-plugins/rules/observability/no-error-detail-loss/) | A catch block that reports a failure must not reduce the error to only `e.message` / `String(e)` / `${e}` — log the error itself so its stack and cause survive. | ✅ |  |  |  |  |
 | [`no-sensitive-fields-in-logs`](https://noctcore.github.io/eslint-plugins/rules/observability/no-sensitive-fields-in-logs/) | A logger call must not reference an identifier, property, or object key whose name matches a sensitive-field denylist (password, token, secret, ...). Redact it before logging. | ✅ |  |  |  |  |
 | [`structured-log-arguments`](https://noctcore.github.io/eslint-plugins/rules/observability/structured-log-arguments/) | A logger call must not interpolate dynamic values into the message string (a template literal with expressions). Pass a static message and a structured context object instead. | ✅ |  |  |  |  |

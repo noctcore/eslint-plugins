@@ -3,7 +3,7 @@
 > Importing a `@scope/pkg/<subpath>` that the target workspace package's `exports` map does not expose.
 
 <!-- begin generated rule header -->
-🔘 Opt-in: `off` in `recommended` · ⚙️ Needs options (see Options) · 💭 Type information: not needed
+🔘 Opt-in: not in `recommended` · ⚙️ Needs options (see Options) · 💭 Type information: not needed
 <!-- end generated rule header -->
 
 ## Why
@@ -20,8 +20,8 @@ publishes and only flags the ones it does not.
 
 ### In `recommended`
 
-Ships **`'off'`** — like `no-deep-package-imports`, it needs your `scopes`, so a shared preset cannot
-safely enable it. Turn it on yourself with your own scopes.
+Left out of `recommended`: like `no-deep-package-imports`, it needs your `scopes`, so a shared preset
+cannot safely enable it. Turn it on yourself with your own scopes.
 
 ## What it flags
 

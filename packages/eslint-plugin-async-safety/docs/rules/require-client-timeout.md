@@ -4,7 +4,7 @@
 > forever.
 
 <!-- begin generated rule header -->
-✅ In `recommended` at `error` · ⚙️ Does nothing until configured: needs options (see Options) · 💭 Type information: not needed
+🔘 Opt-in: not in `recommended` · ⚙️ Needs options (see Options) · 💭 Type information: not needed
 <!-- end generated rule header -->
 
 ## Why
