@@ -11,14 +11,19 @@ type MessageIds = 'concurrentMutation';
 /*
  * `Promise.all(arr.map(async …))` starts every callback concurrently; their
  * awaits interleave. A read-modify-write of an OUTER-scope binding inside such a
- * callback — `total = total + await x`, `total += …`, `count++` — can lose
- * updates: two iterations read the same value and one overwrites the other.
+ * callback can lose updates, but only when an `await` sits BETWEEN the read and
+ * the write: `total += await size(x)` reads `total`, suspends, then writes a
+ * value computed from the stale read. JavaScript runs each synchronous step to
+ * completion, so `await save(x); done++;` and `const n = await size(x); total += n;`
+ * read and write in one step and can never interleave; they are not reported.
  *
  * Conservative, syntactic, no types:
  *   - fires only for the inline `Promise.all(<...>.map(async …))` /
  *     `.flatMap` / `.forEach` shape whose callback is async AND awaits;
- *   - flags only direct binding read-modify-writes: compound assignment (`+=`),
- *     self-referential `x = x + …`, and `x++` — a plain overwrite is not flagged;
+ *   - flags only direct binding read-modify-writes whose right-hand side awaits
+ *     after the read: compound assignment (`x += await …`) and self-referential
+ *     `x = x + await …` / `x = await f(x)`. `x++` has no await inside it and a
+ *     plain overwrite is last-write-wins; neither is flagged;
  *   - `arr.push(...)`, `map.set(...)`, and `results[i] = …` are NOT flagged: method
  *     calls and distinct-index writes are order-tolerant, not lost updates;
  *   - the mutated binding must resolve to a variable declared OUTSIDE the callback.
@@ -62,24 +67,65 @@ function asyncIterationCallback(node: TSESTree.Node): AsyncCallback | null {
   return null;
 }
 
-function containsAwait(node: TSESTree.Node): boolean {
-  let found = false;
-  walk(node, (inner) => {
+function isFunctionNode(node: TSESTree.Node): boolean {
+  return (
+    node.type === AST_NODE_TYPES.ArrowFunctionExpression ||
+    node.type === AST_NODE_TYPES.FunctionExpression ||
+    node.type === AST_NODE_TYPES.FunctionDeclaration
+  );
+}
+
+/** Walk `node` without descending into nested functions (their awaits run elsewhere). */
+function walkSameFunction(node: TSESTree.Node, visit: (node: TSESTree.Node) => void): void {
+  visit(node);
+  for (const key of Object.keys(node)) {
+    if (key === 'parent') {
+      continue;
+    }
+    const value = (node as unknown as Record<string, unknown>)[key];
+    const children = Array.isArray(value) ? value : [value];
+    for (const child of children) {
+      if (
+        typeof child === 'object' &&
+        child !== null &&
+        typeof (child as { type?: unknown }).type === 'string' &&
+        !isFunctionNode(child as TSESTree.Node)
+      ) {
+        walkSameFunction(child as TSESTree.Node, visit);
+      }
+    }
+  }
+}
+
+/** End offsets of every `await` evaluated by `node` itself. */
+function awaitEnds(node: TSESTree.Node): number[] {
+  const ends: number[] = [];
+  walkSameFunction(node, (inner) => {
     if (inner.type === AST_NODE_TYPES.AwaitExpression) {
+      ends.push(inner.range[1]);
+    }
+  });
+  return ends;
+}
+
+/**
+ * `name` is read inside `node` before one of its awaits settles. Source order is
+ * evaluation order for the operands of one expression, so a read that starts
+ * before an await ends happened before the callback suspended there.
+ */
+function readsBeforeAwait(node: TSESTree.Node, name: string): boolean {
+  const ends = awaitEnds(node);
+  if (ends.length === 0) {
+    return false;
+  }
+  const lastEnd = Math.max(...ends);
+  let found = false;
+  walkSameFunction(node, (inner) => {
+    if (inner.type === AST_NODE_TYPES.Identifier && inner.name === name && inner.range[0] < lastEnd) {
       found = true;
     }
   });
   return found;
-}
-
-function referencedNames(node: TSESTree.Node): Set<string> {
-  const names = new Set<string>();
-  walk(node, (inner) => {
-    if (inner.type === AST_NODE_TYPES.Identifier) {
-      names.add(inner.name);
-    }
-  });
-  return names;
 }
 
 function resolveVariable(
@@ -101,12 +147,12 @@ export const noConcurrentSharedMutationRule = createRule<RuleOptions, MessageIds
     type: 'problem',
     docs: {
       description:
-        'A read-modify-write of an outer-scope binding inside a concurrent `Promise.all(arr.map(async …))` callback can lose updates.',
+        'A read-modify-write of an outer-scope binding that awaits between the read and the write, inside a concurrent `Promise.all(arr.map(async …))` callback, can lose updates.',
     },
     schema: [],
     messages: {
       concurrentMutation:
-        '`{{name}}` is read-modified-written inside a concurrent `Promise.all` callback — interleaved iterations can lose updates. Collect results into an array and reduce after the `Promise.all`, or update atomically.',
+        '`{{name}}` is read, then written after an `await` inside a concurrent `Promise.all` callback, so another iteration can write it in between and that update is lost. Collect results into an array and reduce after the `Promise.all`, or update atomically.',
     },
   },
   defaultOptions: [],
@@ -126,26 +172,17 @@ export const noConcurrentSharedMutationRule = createRule<RuleOptions, MessageIds
     }
 
     function checkCallback(callback: AsyncCallback): void {
-      if (!containsAwait(callback)) {
-        return;
-      }
       walk(callback, (node) => {
-        if (node.type === AST_NODE_TYPES.UpdateExpression) {
-          const arg = node.argument;
-          if (arg.type === AST_NODE_TYPES.Identifier && !reported.has(arg) && isOuterWrite(arg, callback)) {
-            reported.add(arg);
-            context.report({ node: arg, messageId: 'concurrentMutation', data: { name: arg.name } });
-          }
+        if (node.type !== AST_NODE_TYPES.AssignmentExpression || node.left.type !== AST_NODE_TYPES.Identifier) {
           return;
         }
-        if (node.type === AST_NODE_TYPES.AssignmentExpression && node.left.type === AST_NODE_TYPES.Identifier) {
-          const left = node.left;
-          const compound = node.operator !== '=';
-          const selfReferential = node.operator === '=' && referencedNames(node.right).has(left.name);
-          if ((compound || selfReferential) && !reported.has(left) && isOuterWrite(left, callback)) {
-            reported.add(left);
-            context.report({ node: left, messageId: 'concurrentMutation', data: { name: left.name } });
-          }
+        const left = node.left;
+        // `x op= rhs` reads `x` before evaluating `rhs`, so any await in `rhs` splits the read from the write.
+        const compound = node.operator !== '=' && awaitEnds(node.right).length > 0;
+        const selfReferential = node.operator === '=' && readsBeforeAwait(node.right, left.name);
+        if ((compound || selfReferential) && !reported.has(left) && isOuterWrite(left, callback)) {
+          reported.add(left);
+          context.report({ node: left, messageId: 'concurrentMutation', data: { name: left.name } });
         }
       });
     }

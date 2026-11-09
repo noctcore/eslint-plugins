@@ -9,18 +9,23 @@
 ## Why
 
 `Promise.all(arr.map(async …))` starts every callback before any of them resolve, so their `await` points
-interleave. A read-modify-write of a shared outer binding — `total = total + await amount()`, `total += …`,
-`count++` after an await — can have two iterations read the same value and one clobber the other. The classic
-lost update: the final total is wrong, non-deterministically.
+interleave. A read-modify-write of a shared outer binding that awaits between the read and the write
+(`total += await amount()`, `total = total + await amount()`) can have two iterations read the same value and
+one clobber the other. The classic lost update: the final total is wrong, non-deterministically.
+
+JavaScript runs each synchronous step to completion, so a write with no `await` inside it cannot interleave:
+`await save(item); done++;` and `const n = await size(item); total += n;` are safe and are not reported.
 
 ## What it flags
 
 Inside an `async` callback passed to `.map`/`.flatMap`/`.forEach` whose result is wrapped in `Promise.all` /
-`Promise.allSettled`, and which contains at least one `await`:
+`Promise.allSettled`:
 
-- a compound assignment to an outer binding (`x += …`, `x *= …`, …);
-- a self-referential assignment (`x = x + …`);
-- an update expression on an outer binding (`x++`, `--x`).
+- a compound assignment to an outer binding whose right-hand side awaits (`x += await f()`, `x *= await f()`);
+- a self-referential assignment that reads the binding before an await in the same expression
+  (`x = x + await f()`, `x = await add(x, y)`).
+
+An update expression (`x++`, `--x`) never awaits, so it is not reported.
 
 ```ts bad
 // lost updates
