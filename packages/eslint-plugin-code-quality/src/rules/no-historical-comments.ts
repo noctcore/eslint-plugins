@@ -25,7 +25,7 @@ const HISTORICAL_PATTERNS: readonly RegExp[] = [
   /\bno\s+longer\s+(?:needed|used|required|necessary|supported|relevant|applies|apply|happens|works)\b/iu,
   /\bkept\s+for\s+(?:backwards|backward|legacy|compat)\b/iu,
   /\b(?:was|were)\s+a\s+(?:footgun|bug)\b/iu,
-  // "historical" alone is a domain word ("historical exchange rates"); "historically" narrates.
+  // "historical" alone is a domain word ("historical exchange rates"); only the adverb narrates.
   /\bhistorically\b/iu,
 ];
 

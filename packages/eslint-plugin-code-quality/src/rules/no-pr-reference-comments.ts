@@ -50,7 +50,13 @@ export const noPrReferenceCommentsRule = createRule<RuleOptions, MessageIds>({
         type: 'object',
         additionalProperties: false,
         properties: {
-          trackerPatterns: { type: 'array', items: { type: 'string' }, uniqueItems: true },
+          trackerPatterns: {
+            type: 'array',
+            items: { type: 'string' },
+            uniqueItems: true,
+            description:
+              'Extra tracker-key patterns to report (regex sources), matched at word boundaries with the u flag.',
+          },
         },
       },
     ],
