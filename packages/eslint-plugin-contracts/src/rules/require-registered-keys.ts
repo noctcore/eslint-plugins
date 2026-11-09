@@ -35,6 +35,11 @@ type MessageIds = 'unregisteredKey';
  * there is no universal set of key sinks to hard-code. Only string literals are
  * flagged; an already-imported identifier, a template literal, or any computed
  * expression is left alone (those are not the raw-string smell).
+ *
+ * A sink with two or more segments also matches as a dotted SUFFIX of the
+ * callee path, so `redis.set` covers `this.redis.set(...)` in a NestJS service
+ * and `localStorage.getItem` covers `window.localStorage.getItem(...)`. A
+ * one-segment sink (`emit`) matches only a bare call of that name.
  */
 const optionSchema: JSONSchema4 = {
   type: 'object',
@@ -57,13 +62,17 @@ const optionSchema: JSONSchema4 = {
 };
 
 /**
- * The dotted callee path of a call (`localStorage.getItem`, `emitter.on`), or
- * null when any link is computed or not a plain identifier chain (`this.x`,
- * `a().b`, `obj[k].on`) — those cannot be matched against a string config entry.
+ * The dotted callee path of a call (`localStorage.getItem`, `emitter.on`,
+ * `this.redis.set`), or null when any link is computed or not a plain
+ * identifier chain (`a().b`, `obj[k].on`): those cannot be matched against a
+ * string config entry.
  */
 function calleePath(callee: TSESTree.Expression): string | null {
   if (callee.type === AST_NODE_TYPES.Identifier) {
     return callee.name;
+  }
+  if (callee.type === AST_NODE_TYPES.ThisExpression) {
+    return 'this';
   }
   if (callee.type === AST_NODE_TYPES.MemberExpression && !callee.computed) {
     if (callee.property.type !== AST_NODE_TYPES.Identifier) {
@@ -113,6 +122,23 @@ export const requireRegisteredKeysRule = createRule<RuleOptions, MessageIds>({
       }
     }
 
+    /** The configured sink for `path`: exact, or a dotted suffix of two or more segments. */
+    function matchSink(path: string): [string, Set<number>] | null {
+      const exact = sinkMap.get(path);
+      if (exact !== undefined) {
+        return [path, exact];
+      }
+      const segments = path.split('.');
+      for (let start = 1; start <= segments.length - 2; start += 1) {
+        const suffix = segments.slice(start).join('.');
+        const indexes = sinkMap.get(suffix);
+        if (indexes !== undefined) {
+          return [suffix, indexes];
+        }
+      }
+      return null;
+    }
+
     const registry = options.registry;
     const registryHint = registry ? ` (import it from '${registry}')` : '';
 
@@ -122,17 +148,18 @@ export const requireRegisteredKeysRule = createRule<RuleOptions, MessageIds>({
         if (path === null) {
           return;
         }
-        const indexes = sinkMap.get(path);
-        if (indexes === undefined) {
+        const match = matchSink(path);
+        if (match === null) {
           return;
         }
+        const [sinkName, indexes] = match;
         for (const index of indexes) {
           const arg = node.arguments[index];
           if (arg !== undefined && isStringLiteral(arg)) {
             context.report({
               node: arg,
               messageId: 'unregisteredKey',
-              data: { callee: path, value: `'${arg.value}'`, registryHint },
+              data: { callee: sinkName, value: `'${arg.value}'`, registryHint },
             });
           }
         }
