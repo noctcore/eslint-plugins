@@ -54,6 +54,20 @@ deliberately does not touch.
 A catch block with no logger call at all (`catch (e) { throw e; }`) is not reporting a failure, so it
 is not checked.
 
+## Options
+
+| Option | Type | Default | Meaning |
+| --- | --- | --- | --- |
+| `loggers` | `string[]` | `['console', 'logger', 'log']` | Logger object names to scan. |
+| `methods` | `string[]` | `['info', 'warn', 'error', 'debug', 'log', 'trace', 'fatal', 'verbose']` | Method names that make a call on a logger a log call. |
+
+A logger call is `<logger>.<method>(...)` with a logger name from `loggers` and a method from
+`methods`, so Nest's `this.logger.log(e.message)` counts by default.
+
+```js
+'noctcore-observability/no-error-detail-loss': ['error', { loggers: ['logger', 'pino'] }]
+```
+
 ## When not to use it
 
 If you deliberately log only messages (e.g. to a user-facing channel that must not include stack

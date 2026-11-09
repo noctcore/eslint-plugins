@@ -2,13 +2,18 @@ import { AST_NODE_TYPES, type TSESTree } from '@typescript-eslint/utils';
 import type { JSONSchema4 } from '@typescript-eslint/utils/json-schema';
 
 import { createRule } from '../createRule';
-import { DEFAULT_LOGGERS, loggerCallMethod } from '../utils';
+import {
+  DEFAULT_LOG_METHODS,
+  DEFAULT_LOGGERS,
+  type LoggerCallOptions,
+  loggerCallMatcher,
+  loggerCallMethod,
+  loggerCallOptionProperties,
+} from '../utils';
 
 const RULE_NAME = 'structured-log-arguments';
 
-export interface StructuredLogArgumentsOptions {
-  readonly loggers?: readonly string[];
-}
+export type StructuredLogArgumentsOptions = LoggerCallOptions;
 
 type RuleOptions = [StructuredLogArgumentsOptions];
 type MessageIds = 'interpolatedMessage';
@@ -30,12 +35,7 @@ type MessageIds = 'interpolatedMessage';
 const optionSchema: JSONSchema4 = {
   type: 'object',
   additionalProperties: false,
-  properties: {
-    loggers: {
-      type: 'array',
-      items: { type: 'string' },
-    },
-  },
+  properties: loggerCallOptionProperties,
 };
 
 export const structuredLogArgumentsRule = createRule<RuleOptions, MessageIds>({
@@ -52,13 +52,13 @@ export const structuredLogArgumentsRule = createRule<RuleOptions, MessageIds>({
         'This `.{{method}}(...)` call interpolates dynamic values into the message string — they become unqueryable free text. Pass a static message plus a structured context object (e.g. `log.{{method}}(\'processing task\', { taskId })`) so each field stays indexable.',
     },
   },
-  defaultOptions: [{ loggers: DEFAULT_LOGGERS }],
+  defaultOptions: [{ loggers: DEFAULT_LOGGERS, methods: DEFAULT_LOG_METHODS }],
   create(context, [options]) {
-    const loggers = new Set(options.loggers ?? DEFAULT_LOGGERS);
+    const matcher = loggerCallMatcher(options);
 
     return {
       CallExpression(node): void {
-        const method = loggerCallMethod(node, loggers);
+        const method = loggerCallMethod(node, matcher);
         if (method === null) {
           return;
         }

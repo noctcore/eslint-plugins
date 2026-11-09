@@ -1,11 +1,30 @@
 import { AST_NODE_TYPES, type TSESTree } from '@typescript-eslint/utils';
 
+import type { JSONSchema4 } from '@typescript-eslint/utils/json-schema';
+
 import { createRule } from '../createRule';
-import { DEFAULT_LOGGERS, loggerCallMethod } from '../utils';
+import {
+  DEFAULT_LOG_METHODS,
+  DEFAULT_LOGGERS,
+  type LoggerCallMatcher,
+  type LoggerCallOptions,
+  loggerCallMatcher,
+  loggerCallMethod,
+  loggerCallOptionProperties,
+} from '../utils';
 
 const RULE_NAME = 'no-error-detail-loss';
 
+export type NoErrorDetailLossOptions = LoggerCallOptions;
+
+type RuleOptions = [NoErrorDetailLossOptions];
 type MessageIds = 'detailLoss';
+
+const optionSchema: JSONSchema4 = {
+  type: 'object',
+  additionalProperties: false,
+  properties: loggerCallOptionProperties,
+};
 
 /*
  * A caught error carries a stack and often a `cause` — the parts you actually
@@ -27,7 +46,7 @@ type MessageIds = 'detailLoss';
 /** True when the catch body contains at least one logger call. */
 function containsLoggerCall(
   block: TSESTree.BlockStatement,
-  loggers: ReadonlySet<string>,
+  matcher: LoggerCallMatcher,
 ): boolean {
   let found = false;
   function walk(node: TSESTree.Node): void {
@@ -36,7 +55,7 @@ function containsLoggerCall(
     }
     if (
       node.type === AST_NODE_TYPES.CallExpression &&
-      loggerCallMethod(node, loggers) !== null
+      loggerCallMethod(node, matcher) !== null
     ) {
       found = true;
       return;
@@ -93,7 +112,7 @@ function isLossyReference(id: TSESTree.Identifier): boolean {
   return false;
 }
 
-export const noErrorDetailLossRule = createRule<[], MessageIds>({
+export const noErrorDetailLossRule = createRule<RuleOptions, MessageIds>({
   name: RULE_NAME,
   meta: {
     type: 'suggestion',
@@ -101,22 +120,22 @@ export const noErrorDetailLossRule = createRule<[], MessageIds>({
       description:
         'A catch block that reports a failure must not reduce the error to only `e.message` / `String(e)` / `${e}` — log the error itself so its stack and cause survive.',
     },
-    schema: [],
+    schema: [optionSchema],
     messages: {
       detailLoss:
         "This catch logs only the error message — its stack and `cause` are lost. Log the error object itself (e.g. `log.error('...', { err: {{name}} })`) so the failure is diagnosable.",
     },
   },
-  defaultOptions: [],
-  create(context) {
-    const loggers = new Set(DEFAULT_LOGGERS);
+  defaultOptions: [{ loggers: DEFAULT_LOGGERS, methods: DEFAULT_LOG_METHODS }],
+  create(context, [options]) {
+    const matcher = loggerCallMatcher(options);
 
     return {
       CatchClause(node): void {
         if (node.param === null || node.param.type !== AST_NODE_TYPES.Identifier) {
           return;
         }
-        if (!containsLoggerCall(node.body, loggers)) {
+        if (!containsLoggerCall(node.body, matcher)) {
           return;
         }
 

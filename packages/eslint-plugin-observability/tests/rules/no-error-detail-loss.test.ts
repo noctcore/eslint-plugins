@@ -6,6 +6,12 @@ const TS = 'service.ts';
 
 ruleTester.run('no-error-detail-loss', noErrorDetailLossRule, {
   valid: [
+    // A method outside a narrowed set is not a logger call.
+    {
+      code: `try { run(); } catch (e) { this.logger.log(e.message); }`,
+      filename: TS,
+      options: [{ methods: ['error'] }],
+    },
     // The error is passed whole in a structured field — diagnostics survive.
     {
       code: `try { run(); } catch (e) { logger.error('failed', { err: e }); }`,
@@ -66,6 +72,24 @@ ruleTester.run('no-error-detail-loss', noErrorDetailLossRule, {
     {
       code: 'try { run(); } catch (e) { logger.error(`${e}`); }',
       filename: TS,
+      errors: [{ messageId: 'detailLoss' }],
+    },
+    // Nest's `logger.log` and pino's `fatal` are logger calls.
+    {
+      code: `try { run(); } catch (e) { this.logger.log(e.message); }`,
+      filename: TS,
+      errors: [{ messageId: 'detailLoss' }],
+    },
+    {
+      code: `try { run(); } catch (e) { logger.fatal(e.message); }`,
+      filename: TS,
+      errors: [{ messageId: 'detailLoss' }],
+    },
+    // A configured logger name.
+    {
+      code: `try { run(); } catch (e) { pino.error(e.message); }`,
+      filename: TS,
+      options: [{ loggers: ['pino'] }],
       errors: [{ messageId: 'detailLoss' }],
     },
   ],

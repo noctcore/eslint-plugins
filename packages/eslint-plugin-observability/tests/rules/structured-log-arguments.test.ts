@@ -10,8 +10,6 @@ ruleTester.run('structured-log-arguments', structuredLogArgumentsRule, {
     { code: `logger.info('processing task', { taskId });`, filename: TS },
     // A template with no expressions carries no dynamic value.
     { code: 'logger.info(`ready`);', filename: TS },
-    // `console.log` uses a non-level method (`log`), out of scope by spec.
-    { code: 'console.log(`x=${x}`);', filename: TS },
     // A template nested inside a context object builds a value, not the message.
     { code: 'logger.info(`msg`, { url: `${base}/x` });', filename: TS },
     // An unknown object is not a configured logger.
@@ -23,6 +21,12 @@ ruleTester.run('structured-log-arguments', structuredLogArgumentsRule, {
       code: 'logger.info(`${x}`);',
       filename: TS,
       options: [{ loggers: ['audit'] }],
+    },
+    // A narrowed method set leaves other methods alone.
+    {
+      code: 'console.log(`${x}`);',
+      filename: TS,
+      options: [{ methods: ['info', 'warn', 'error', 'debug'] }],
     },
   ],
   invalid: [
@@ -53,6 +57,29 @@ ruleTester.run('structured-log-arguments', structuredLogArgumentsRule, {
       code: 'audit.info(`${x}`);',
       filename: TS,
       options: [{ loggers: ['audit'] }],
+      errors: [{ messageId: 'interpolatedMessage' }],
+    },
+    // `log`, `trace`, `fatal` and `verbose` are log methods by default.
+    {
+      code: 'this.logger.log(`processing task ${taskId}`);',
+      filename: TS,
+      errors: [{ messageId: 'interpolatedMessage', data: { method: 'log' } }],
+    },
+    {
+      code: 'console.log(`x=${x}`);',
+      filename: TS,
+      errors: [{ messageId: 'interpolatedMessage' }],
+    },
+    {
+      code: 'logger.trace(`x=${x}`);',
+      filename: TS,
+      errors: [{ messageId: 'interpolatedMessage' }],
+    },
+    // A configured method is scanned.
+    {
+      code: 'logger.notice(`x=${x}`);',
+      filename: TS,
+      options: [{ methods: ['notice'] }],
       errors: [{ messageId: 'interpolatedMessage' }],
     },
   ],

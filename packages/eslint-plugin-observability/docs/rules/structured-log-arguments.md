@@ -24,8 +24,8 @@ logger.info('processing task', { taskId, userId });
 
 ## What it flags
 
-A logger call — `<logger>.<method>(...)` where `<method>` is `info` / `warn` / `error` / `debug` and
-`<logger>` is a configured logger name — that receives a **template literal with expressions** as a
+A logger call (`<logger>.<method>(...)`, where `<method>` is one of the configured `methods` and
+`<logger>` is a configured logger name) that receives a **template literal with expressions** as a
 **direct** positional argument.
 
 ```ts bad
@@ -54,17 +54,22 @@ logger.info('fetching', { url: `${base}/tasks` });
 A template with **no** expressions carries no dynamic value and is ignored
 (`logger.info(\`ready\`)`).
 
-> Note: `console.log(...)` uses the `log` method, which is not one of the tracked log levels
-> (`info` / `warn` / `error` / `debug`), so it is out of scope by design.
+A call whose method is not in `methods` is not a logger call. The default covers `console.log`, Nest's
+`log` / `verbose` / `fatal` and pino's `trace` / `fatal`; narrow it to leave, say, `console.log` in
+scripts alone.
 
 ## Options
 
 | Option | Type | Default | Meaning |
 | --- | --- | --- | --- |
 | `loggers` | `string[]` | `['console', 'logger', 'log']` | Logger object names to scan. |
+| `methods` | `string[]` | `['info', 'warn', 'error', 'debug', 'log', 'trace', 'fatal', 'verbose']` | Method names that make a call on a logger a log call. |
 
 ```js
-'noctcore-observability/structured-log-arguments': ['error', { loggers: ['logger', 'log', 'pino'] }]
+'noctcore-observability/structured-log-arguments': ['error', {
+  loggers: ['logger', 'log', 'pino'],
+  methods: ['info', 'warn', 'error', 'debug', 'fatal'],
+}]
 ```
 
 ## When not to use it
