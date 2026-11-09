@@ -27,6 +27,7 @@
  * SOFTWARE.
  */
 
+import { calleePath, type VisitorKeys, walkSome } from '@noctcore/eslint-utils';
 import { AST_NODE_TYPES, type TSESTree } from '@typescript-eslint/utils';
 import type { JSONSchema4 } from '@typescript-eslint/utils/json-schema';
 
@@ -56,64 +57,6 @@ const optionSchema: JSONSchema4 = {
     },
   },
 };
-
-/** Child keys per node type, from the parser (`context.sourceCode.visitorKeys`). */
-type VisitorKeys = Readonly<Record<string, readonly string[] | undefined>>;
-
-function isNode(value: unknown): value is TSESTree.Node {
-  return typeof value === 'object' && value !== null && 'type' in value;
-}
-
-/** True if any node in the subtree satisfies `predicate`. Walks the parser's
- *  visitor keys, so `parent` back-links are never followed. */
-function walkSome(
-  root: TSESTree.Node,
-  keys: VisitorKeys,
-  predicate: (node: TSESTree.Node) => boolean
-): boolean {
-  const stack: TSESTree.Node[] = [root];
-
-  for (let node = stack.pop(); node !== undefined; node = stack.pop()) {
-    if (predicate(node)) {
-      return true;
-    }
-
-    for (const key of keys[node.type] ?? []) {
-      const value: unknown = Reflect.get(node, key);
-
-      if (Array.isArray(value)) {
-        for (const child of value) {
-          if (isNode(child)) {
-            stack.push(child);
-          }
-        }
-      } else if (isNode(value)) {
-        stack.push(value);
-      }
-    }
-  }
-
-  return false;
-}
-
-/** Dotted path of a plain callee (`fetch`, `globalThis.fetch`), or null. */
-function calleePath(node: TSESTree.Node): string | null {
-  if (node.type === AST_NODE_TYPES.Identifier) {
-    return node.name;
-  }
-
-  if (
-    node.type === AST_NODE_TYPES.MemberExpression &&
-    !node.computed &&
-    node.property.type === AST_NODE_TYPES.Identifier
-  ) {
-    const object = calleePath(node.object);
-
-    return object === null ? null : `${object}.${node.property.name}`;
-  }
-
-  return null;
-}
 
 /** The two properties that can carry a verdict about the response. They are not
  *  equivalent: `ok` IS the verdict, whereas `status` is a number that has to be

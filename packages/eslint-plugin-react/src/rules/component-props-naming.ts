@@ -1,3 +1,4 @@
+import { enclosingFunction, type FunctionNode as FnNode } from '@noctcore/eslint-utils';
 import { AST_NODE_TYPES, type TSESTree } from '@typescript-eslint/utils';
 import type { JSONSchema4 } from '@typescript-eslint/utils/json-schema';
 
@@ -49,11 +50,6 @@ type MessageIds = 'propsNaming';
  * checked; internal/local components are ignored.
  */
 
-type FnNode =
-  | TSESTree.FunctionDeclaration
-  | TSESTree.FunctionExpression
-  | TSESTree.ArrowFunctionExpression;
-
 const optionSchema: JSONSchema4 = {
   type: 'object',
   additionalProperties: false,
@@ -79,25 +75,6 @@ function isJsxExpression(node: TSESTree.Node | null | undefined): boolean {
     default:
       return false;
   }
-}
-
-function isFunctionNode(node: TSESTree.Node): node is FnNode {
-  return (
-    node.type === AST_NODE_TYPES.FunctionDeclaration ||
-    node.type === AST_NODE_TYPES.FunctionExpression ||
-    node.type === AST_NODE_TYPES.ArrowFunctionExpression
-  );
-}
-
-function enclosingFunction(node: TSESTree.Node): FnNode | null {
-  let current = node.parent;
-  while (current) {
-    if (isFunctionNode(current)) {
-      return current;
-    }
-    current = current.parent;
-  }
-  return null;
 }
 
 /** All descendant nodes of `root` (inclusive), never crossing the `parent` back-edge. */

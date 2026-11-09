@@ -1,6 +1,8 @@
 import { existsSync, readdirSync } from 'node:fs';
 import path from 'node:path';
 
+import { matchesAnyGlob } from '@noctcore/eslint-utils';
+
 /*
  * Framework-agnostic path helpers for the folder-per-component architecture
  * rules. The layout these rules assume is `<root>/<feature>/.../<Name>/<Name>.tsx`
@@ -10,10 +12,8 @@ import path from 'node:path';
  * absolute prefix, so a rule behaves identically whether ESLint runs from the
  * repo root or per-package, and on both POSIX and Windows separators.
  *
- * These were inlined and de-projected from nightcore's
- * `src/utils/component-architecture.ts`: the `components` anchor is now a
- * parameter, and glob matching for `ignorePaths` uses a small built-in matcher
- * (below) instead of `micromatch`, keeping this package dependency-light.
+ * The `components` anchor is a parameter, and glob matching for `ignorePaths`
+ * uses the dependency-free matcher from `@noctcore/eslint-utils`.
  */
 
 /** Forward-slash a path so separators match regardless of OS. */
@@ -89,51 +89,12 @@ export function getFeatureName(filename: string, root: string): string | null {
   return feature !== undefined && feature.length > 0 ? feature : null;
 }
 
-/** Escape a string so it can be embedded literally inside a RegExp. */
-function escapeRegExpLiteral(value: string): string {
-  return value.replace(/[.+^${}()|[\]\\]/g, '\\$&');
-}
-
-/**
- * Compile a glob into an anchored RegExp. Supports the subset the ignore
- * patterns use: `**` (zero or more path segments), `*` (zero or more non-slash
- * chars within a segment), and `?` (a single non-slash char). Dotfiles match
- * (there is no implicit dot exclusion), matching the `{ dot: true }` behavior
- * nightcore configured on micromatch.
- */
-function globToRegExp(glob: string): RegExp {
-  let out = '';
-  for (let i = 0; i < glob.length; i += 1) {
-    const char = glob[i];
-    if (char === '*') {
-      if (glob[i + 1] === '*') {
-        // `**/` matches zero or more leading segments; a bare `**` matches the rest.
-        if (glob[i + 2] === '/') {
-          out += '(?:[^/]*/)*';
-          i += 2;
-        } else {
-          out += '.*';
-          i += 1;
-        }
-      } else {
-        out += '[^/]*';
-      }
-    } else if (char === '?') {
-      out += '[^/]';
-    } else if (char !== undefined) {
-      out += escapeRegExpLiteral(char);
-    }
-  }
-  return new RegExp(`^${out}$`);
-}
-
 /** True when the file (forward-slashed) matches one of the ignore globs. */
 export function isIgnoredPath(filename: string, ignorePaths: readonly string[]): boolean {
   if (ignorePaths.length === 0) {
     return false;
   }
-  const posix = toPosix(filename);
-  return ignorePaths.some((glob) => globToRegExp(glob).test(posix));
+  return matchesAnyGlob(toPosix(filename), ignorePaths);
 }
 
 /** True when `sibling` exists on disk in `dir`. Wrapper kept for testability. */

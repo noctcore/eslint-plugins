@@ -1,6 +1,8 @@
 import { existsSync } from 'node:fs';
 import path from 'node:path';
 
+import { globToRegExp } from '@noctcore/eslint-utils';
+
 /*
  * File allowlists for the escape-hatch fences.
  *
@@ -91,69 +93,8 @@ export function toRepoRelative(filename: string): string | null {
   return toPosix(path.relative(root, absolute));
 }
 
-const REGEX_METACHARACTERS = /[.*+?^${}()|[\]\\]/gu;
-
-function escapeLiteral(text: string): string {
-  return text.replace(REGEX_METACHARACTERS, '\\$&');
-}
-
-const globCache = new Map<string, RegExp>();
-
-/** Compile a glob to an anchored RegExp. */
-export function globToRegExp(glob: string): RegExp {
-  const cached = globCache.get(glob);
-  if (cached !== undefined) {
-    return cached;
-  }
-
-  let source = '';
-  let i = 0;
-  while (i < glob.length) {
-    const char = glob[i];
-    if (char === undefined) {
-      break;
-    }
-    if (char === '*') {
-      if (glob[i + 1] === '*') {
-        i += 2;
-        // `**/` may match zero leading directories; a bare `**` matches anything.
-        if (glob[i] === '/') {
-          source += '(?:.*/)?';
-          i += 1;
-        } else {
-          source += '.*';
-        }
-      } else {
-        source += '[^/]*';
-        i += 1;
-      }
-    } else if (char === '?') {
-      source += '[^/]';
-      i += 1;
-    } else if (char === '{') {
-      const end = glob.indexOf('}', i);
-      if (end === -1) {
-        source += '\\{';
-        i += 1;
-      } else {
-        const alternatives = glob
-          .slice(i + 1, end)
-          .split(',')
-          .map(escapeLiteral)
-          .join('|');
-        source += `(?:${alternatives})`;
-        i = end + 1;
-      }
-    } else {
-      source += escapeLiteral(char);
-      i += 1;
-    }
-  }
-
-  const compiled = new RegExp(`^${source}$`, 'u');
-  globCache.set(glob, compiled);
-  return compiled;
-}
+// Glob compilation is shared with the other plugins through @noctcore/eslint-utils.
+export { globToRegExp };
 
 /**
  * True when the file is covered by one of the allowlist globs, matched against

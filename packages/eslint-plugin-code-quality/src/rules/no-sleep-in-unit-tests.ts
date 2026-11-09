@@ -4,7 +4,7 @@ import { AST_NODE_TYPES, type TSESTree } from '@typescript-eslint/utils';
 import type { JSONSchema4 } from '@typescript-eslint/utils/json-schema';
 
 import { createRule } from '../createRule';
-import { isSelfOrAncestor, runnerName, type VisitorKeys, walkSome } from '../utils/ast';
+import { enclosingFunction, isSelfOrAncestor, runnerName, type VisitorKeys, walkSome } from '../utils/ast';
 
 const RULE_NAME = 'no-sleep-in-unit-tests';
 
@@ -123,17 +123,6 @@ function isGlobalSetTimeout(callee: TSESTree.Node): boolean {
     TIMER_RECEIVERS.has(callee.object.name) &&
     staticPropertyName(callee) === 'setTimeout'
   );
-}
-
-/** The nearest enclosing function of `node`, or null at the top level. */
-function enclosingFunction(node: TSESTree.Node): TSESTree.Node | null {
-  // `parent` is null on the Program node at runtime, whatever the types say.
-  for (let current = node.parent; current != null; current = current.parent) {
-    if (isFunction(current) || current.type === AST_NODE_TYPES.FunctionDeclaration) {
-      return current;
-    }
-  }
-  return null;
 }
 
 /** True for the callback of a test (`it`, `test`) or of a suite (`describe`, `suite`, `context`). */
