@@ -11,8 +11,10 @@ type MessageIds = 'inlineValue';
  * object literal (`<XContext.Provider value={{...}}>`) allocates a fresh
  * reference every render, so every consumer re-renders on every parent render —
  * a hot subtree can re-render dozens of times a second for no reason. The value
- * must be a stable reference (`useMemo`/`useRef`), so this rule flags only the
- * inline-object shape.
+ * must be a stable reference (`useMemo`/`useCallback`/`useRef`), so this rule
+ * flags the inline shapes that always allocate: an object, an array, and an
+ * arrow or function expression. A call is left alone, since it may return a
+ * stable reference.
  *
  * A "context provider" is matched structurally, without type information:
  *  - `<Foo.Provider ...>` / `<FooContext.Provider ...>` — a JSX member element
@@ -22,8 +24,16 @@ type MessageIds = 'inlineValue';
  * Custom wrapper components (`<FooProvider value={...}>`) are intentionally NOT
  * matched: the value they forward is memoized at their single call site, and
  * matching every `*Provider`-named element would flag unrelated library
- * providers. Only `.tsx` files are scanned.
+ * providers. Any file with JSX is scanned (`.tsx`, `.jsx`, `.js`).
  */
+
+/** Expressions that build a new reference on every render. */
+const FRESH_EACH_RENDER: ReadonlySet<AST_NODE_TYPES> = new Set([
+  AST_NODE_TYPES.ObjectExpression,
+  AST_NODE_TYPES.ArrayExpression,
+  AST_NODE_TYPES.ArrowFunctionExpression,
+  AST_NODE_TYPES.FunctionExpression,
+]);
 
 /** True when the JSX element name denotes a React context provider. */
 function isContextProviderName(name: TSESTree.JSXTagNameExpression): boolean {
@@ -45,19 +55,16 @@ export const contextValueMustBeMemoizedRule = createRule<[], MessageIds>({
     type: 'problem',
     docs: {
       description:
-        'A context Provider `value` must not be an inline object literal — a fresh reference each render re-renders every consumer. Memoize it with `useMemo` and pass the stable reference.',
+        'A context Provider `value` must not be an inline object, array or function: a fresh reference each render re-renders every consumer. Memoize it with `useMemo` / `useCallback` and pass the stable reference.',
     },
     schema: [],
     messages: {
       inlineValue:
-        'A context Provider `value` is an inline object literal — a fresh reference each render re-renders every consumer. Memoize it with `useMemo` (or hold it in a `useRef`) and pass the stable reference.',
+        'A context Provider `value` is an inline object, array or function, so it is a fresh reference each render and re-renders every consumer. Memoize it with `useMemo` / `useCallback` (or hold it in a `useRef`) and pass the stable reference.',
     },
   },
   defaultOptions: [],
   create(context) {
-    if (!context.filename.endsWith('.tsx')) {
-      return {};
-    }
     return {
       JSXOpeningElement(node: TSESTree.JSXOpeningElement): void {
         if (!isContextProviderName(node.name)) {
@@ -69,7 +76,7 @@ export const contextValueMustBeMemoizedRule = createRule<[], MessageIds>({
             attr.name.type !== AST_NODE_TYPES.JSXIdentifier ||
             attr.name.name !== 'value' ||
             attr.value?.type !== AST_NODE_TYPES.JSXExpressionContainer ||
-            attr.value.expression.type !== AST_NODE_TYPES.ObjectExpression
+            !FRESH_EACH_RENDER.has(attr.value.expression.type)
           ) {
             continue;
           }
