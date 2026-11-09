@@ -22,7 +22,9 @@ type MessageIds = 'parallelizable' | 'useParallel';
  *   - a later statement that references an earlier statement's binding is a real
  *     data dependency → the run is skipped.
  * Emitted as a SUGGESTION only (never an autofix), because parallelizing also
- * changes rejection timing.
+ * changes rejection timing. The suggestion is withheld when the run carries a
+ * type annotation (`const a: Foo = await ...`) or a comment, which the
+ * one-line rewrite would drop; the report stays.
  */
 const MUTATION_PREFIXES: readonly string[] = [
   'set',
@@ -205,6 +207,19 @@ export const preferParallelAwaitsRule = createRule<RuleOptions, MessageIds>({
       const names = run.map((decl) => decl.name);
       const exprs = run.map((decl) => context.sourceCode.getText(decl.call));
       const replacement = `const [${names.join(', ')}] = await Promise.all([${exprs.join(', ')}]);`;
+      const range: [number, number] = [firstDecl.statement.range[0], lastDecl.statement.range[1]];
+      const annotated = run.some(
+        (decl) =>
+          decl.statement.declarations[0]?.id.type === AST_NODE_TYPES.Identifier &&
+          decl.statement.declarations[0].id.typeAnnotation !== undefined,
+      );
+      const commented = context.sourceCode
+        .getAllComments()
+        .some((comment) => comment.range[0] >= range[0] && comment.range[1] <= range[1]);
+      if (annotated || commented) {
+        context.report({ node: firstDecl.statement, messageId: 'parallelizable', data: { count: run.length } });
+        return;
+      }
       context.report({
         node: firstDecl.statement,
         messageId: 'parallelizable',
@@ -213,10 +228,7 @@ export const preferParallelAwaitsRule = createRule<RuleOptions, MessageIds>({
           {
             messageId: 'useParallel',
             fix: (fixer) =>
-              fixer.replaceTextRange(
-                [firstDecl.statement.range[0], lastDecl.statement.range[1]],
-                replacement,
-              ),
+              fixer.replaceTextRange(range, replacement),
           },
         ],
       });

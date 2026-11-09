@@ -42,7 +42,9 @@ async function loadHome() {
 ### Suggestion
 
 Reports offer an editor suggestion (never an autofix, since parallelizing also changes rejection timing) that
-rewrites the run into a single `const [a, b] = await Promise.all([...])`.
+rewrites the run into a single `const [a, b] = await Promise.all([...])`. When a statement in the run has a
+type annotation (`const a: Foo = await ...`) or the run contains a comment, the rewrite would drop it, so the
+report comes without a suggestion.
 
 ## What it does not flag
 
