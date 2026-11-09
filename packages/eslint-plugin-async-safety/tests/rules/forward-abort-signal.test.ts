@@ -24,8 +24,25 @@ ruleTester.run('forward-abort-signal', forwardAbortSignalRule, {
     {
       code: `async function all(signal: AbortSignal, urls: string[]) { await Promise.all(urls.map((u) => fetch(u, { signal }))); }`,
     },
+    // A process signal name is not an AbortSignal.
+    { code: `process.on('SIGTERM', async (signal: NodeJS.Signals) => { await server.close(); });` },
+    // Hooking the abort event is forwarding by hand.
+    { code: `async function run(signal: AbortSignal) { signal.addEventListener('abort', () => child.kill()); await child.done(); }` },
+    { code: `async function run(signal: AbortSignal) { signal.onabort = () => child.kill(); await child.done(); }` },
+    // Combined into a new signal and forwarded.
+    { code: `async function run(signal: AbortSignal) { await fetch('x', { signal: AbortSignal.any([signal, AbortSignal.timeout(5)]) }); }` },
   ],
   invalid: [
+    // An optional AbortSignal union is still an AbortSignal.
+    {
+      code: `async function run(signal: AbortSignal | undefined) { await work(); }`,
+      errors: [{ messageId: 'unforwardedSignal', data: { name: 'signal' } }],
+    },
+    // An untyped parameter named signal is still taken as one.
+    {
+      code: `async function run(signal) { await work(); }`,
+      errors: [{ messageId: 'unforwardedSignal', data: { name: 'signal' } }],
+    },
     // Awaits fetch but drops the signal.
     {
       code: `async function load(url: string, signal: AbortSignal) { return await fetch(url); }`,
