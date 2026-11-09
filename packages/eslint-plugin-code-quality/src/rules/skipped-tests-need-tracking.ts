@@ -15,7 +15,7 @@ export interface SkippedTestsNeedTrackingOptions {
 }
 
 type RuleOptions = [SkippedTestsNeedTrackingOptions];
-type MessageIds = 'needsTracking';
+type MessageIds = 'needsTracking' | 'addTodoMarker';
 
 /*
  * `.skip` / `.fixme` / `xit` / `xdescribe` are escape hatches that rot into
@@ -25,10 +25,18 @@ type MessageIds = 'needsTracking';
  * outright, so it can never legitimately appear with or without tracking.
  *
  * A skip is found in the AST, as a call, so the same text inside a string, a
- * template literal or a comment is not one. Only the tracking marker is looked
- * up in the source text: the lines of the lookback window are scanned as
- * written, so a marker in a trailing or preceding comment (or anywhere in the
- * window) is honoured exactly as a human reviewer would read it.
+ * template literal or a comment is not one. The tracking marker is looked up in
+ * COMMENTS only: a comment on the skip's line, or a comment that ends within
+ * `lookback` lines above it, together with the run of comments it belongs to
+ * (a multi-line `//` block counts as one). Code in the window never counts, so
+ * a `const BASE = 'http://localhost:3000'` above a skip is not a marker.
+ *
+ * A modifier anywhere in the runner's member chain skips it:
+ * `it.concurrent.skip(...)`, `it.skip.each([...])(...)`. Playwright's
+ * conditional form, `test.skip(browserName === 'webkit', 'reason')`, is a
+ * platform guard like a `node:test` computed `skip` and is not reported: the
+ * first argument is a condition rather than a test name, and no argument is
+ * the test body.
  *
  * `node:test` skips a test through its options (`test('x', { skip: true })`,
  * `{ todo: 'reason' }`) or its context (`t.skip()`, `t.todo()`). Only an
@@ -50,7 +58,7 @@ const NODE_TEST_RUNNERS = new Set(['test', 'it', 'describe', 'suite']);
 const NODE_TEST_SKIPS = new Set(['skip', 'todo']);
 
 const DEFAULT_MARKERS: readonly string[] = ['https?://\\S+', 'TODO\\(@?\\S+\\)'];
-const DEFAULT_LOOKBACK = 30;
+const DEFAULT_LOOKBACK = 3;
 
 const optionSchema: JSONSchema4 = {
   type: 'object',
@@ -78,20 +86,57 @@ function calleeName(callee: TSESTree.Node): string | null {
     : null;
 }
 
-/** The label of a skipping runner call (`it.skip(...)`, `xit(...)`), else null. */
+/**
+ * The label of a skipping runner call, else null: `xit(...)`, `it.skip(...)`,
+ * and a skip modifier anywhere in the chain (`it.concurrent.skip(...)`,
+ * `test.describe.fixme(...)`, `it.skip.each([...])`).
+ */
 function skipLabel(callee: TSESTree.Node): string | null {
   const name = calleeName(callee);
   if (name === null) {
     return null;
   }
-  if (SKIPPED_RUNNERS.has(name)) {
-    return `${name}(`;
+  if (callee.type === AST_NODE_TYPES.Identifier) {
+    return SKIPPED_RUNNERS.has(name) ? `${name}(` : null;
   }
-  if (callee.type !== AST_NODE_TYPES.MemberExpression || !SKIP_MODIFIERS.has(name)) {
+  let modifier: string | null = null;
+  let node: TSESTree.Node = callee;
+  while (node.type === AST_NODE_TYPES.MemberExpression) {
+    if (node.computed || node.property.type !== AST_NODE_TYPES.Identifier) {
+      return null;
+    }
+    if (SKIP_MODIFIERS.has(node.property.name)) {
+      modifier = node.property.name;
+    }
+    node = node.object;
+  }
+  if (node.type !== AST_NODE_TYPES.Identifier) {
     return null;
   }
-  const runner = calleeName(callee.object);
-  return runner !== null && SKIPPABLE_RUNNERS.has(runner) ? `.${name}(` : null;
+  if (modifier !== null && SKIPPABLE_RUNNERS.has(node.name)) {
+    return `.${modifier}(`;
+  }
+  return null;
+}
+
+function isFunctionNode(node: TSESTree.Node): boolean {
+  return node.type === AST_NODE_TYPES.ArrowFunctionExpression || node.type === AST_NODE_TYPES.FunctionExpression;
+}
+
+/**
+ * Playwright's conditional skip, `test.skip(condition, 'reason')`: the first
+ * argument is not a test name (string, template or `true`) and no argument is
+ * the test body. `test.skip()` with no argument skips unconditionally.
+ */
+function isConditionalModifierSkip(call: TSESTree.CallExpression): boolean {
+  const [first, ...rest] = call.arguments;
+  if (first === undefined || first.type === AST_NODE_TYPES.SpreadElement) {
+    return false;
+  }
+  const nameLike =
+    first.type === AST_NODE_TYPES.TemplateLiteral ||
+    (first.type === AST_NODE_TYPES.Literal && (typeof first.value === 'string' || first.value === true));
+  return !nameLike && !rest.some(isFunctionNode);
 }
 
 /** True for a call to a test runner, including a subtest (`t.test(...)`). */
@@ -169,10 +214,12 @@ export const skippedTestsNeedTrackingRule = createRule<RuleOptions, MessageIds>(
       description:
         'Skipped tests (`.skip` / `.fixme` / `xit` / `xdescribe`, and unconditional `node:test` `{ skip }` / `{ todo }` / `t.skip()`) must carry a tracking marker (an issue URL or `TODO(@owner)`) on or above the line, so the debt has an owner instead of rotting silently.',
     },
+    hasSuggestions: true,
     schema: [optionSchema],
     messages: {
       needsTracking:
-        'Skipped test `{{label}}` has no tracking marker. Add an issue URL or `TODO(@owner)` on the same line or above so the skip has an owner.',
+        'Skipped test `{{label}}` has no tracking marker. Add an issue URL or `TODO(@owner)` in a comment on the same line or just above so the skip has an owner.',
+      addTodoMarker: 'Add a `// TODO(@owner):` comment above the skip.',
     },
   },
   defaultOptions: [{ markers: [...DEFAULT_MARKERS], lookback: DEFAULT_LOOKBACK }],
@@ -180,23 +227,77 @@ export const skippedTestsNeedTrackingRule = createRule<RuleOptions, MessageIds>(
     const markerSources = options.markers ?? DEFAULT_MARKERS;
     const markers = markerSources.map((source) => new RegExp(source, 'u'));
     const lookback = options.lookback ?? DEFAULT_LOOKBACK;
-    const lines = context.sourceCode.lines;
+    const sourceCode = context.sourceCode;
+    const comments = sourceCode.getAllComments();
+    const commentsByEndLine = new Map<number, TSESTree.Comment[]>();
+    for (const comment of comments) {
+      const list = commentsByEndLine.get(comment.loc.end.line) ?? [];
+      list.push(comment);
+      commentsByEndLine.set(comment.loc.end.line, list);
+    }
 
-    function hasTrackingMarker(fromLine: number, toLine: number): boolean {
-      const window = lines.slice(fromLine, toLine + 1).join('\n');
-      return markers.some((marker) => marker.test(window));
+    function hasMarker(comment: TSESTree.Comment): boolean {
+      return markers.some((marker) => marker.test(comment.value));
     }
 
     /**
-     * Report `label` on `node` unless a marker sits on the line `node` ends on
-     * or in the lookback window above it.
+     * A marker in a comment on `line` (1-based), or in a comment ending within
+     * `lookback` lines above it, or anywhere in the run of adjacent comments
+     * such a comment belongs to.
      */
-    function check(node: TSESTree.Node, label: string): void {
-      const index = node.loc.end.line - 1;
-      if (hasTrackingMarker(Math.max(0, index - lookback), index)) {
+    function hasTrackingMarker(line: number): boolean {
+      const onLine = comments.some((comment) => comment.loc.start.line <= line && comment.loc.end.line >= line);
+      if (onLine && comments.some((comment) => comment.loc.start.line <= line && comment.loc.end.line >= line && hasMarker(comment))) {
+        return true;
+      }
+      for (let end = line - 1; end >= Math.max(1, line - lookback); end -= 1) {
+        let run = commentsByEndLine.get(end);
+        while (run !== undefined && run.length > 0) {
+          if (run.some(hasMarker)) {
+            return true;
+          }
+          const startLine = Math.min(...run.map((comment) => comment.loc.start.line));
+          run = commentsByEndLine.get(startLine - 1);
+        }
+      }
+      return false;
+    }
+
+    /** A skip reason given as text (`{ skip: 'https://...' }`, `t.skip('TODO(@a)')`) may carry the marker. */
+    function reasonHasMarker(reason: TSESTree.Node): boolean {
+      const text =
+        reason.type === AST_NODE_TYPES.Literal && typeof reason.value === 'string'
+          ? reason.value
+          : reason.type === AST_NODE_TYPES.TemplateLiteral
+            ? reason.quasis.map((quasi) => quasi.value.cooked ?? '').join('')
+            : null;
+      return text !== null && markers.some((marker) => marker.test(text));
+    }
+
+    /**
+     * Report `label` on `node` unless a comment marker sits on the line `node`
+     * ends on or in the lookback window above it. The suggestion inserts a
+     * `TODO(@owner)` line above the skip for the author to complete.
+     */
+    function check(node: TSESTree.Node, label: string, reason?: TSESTree.Node): void {
+      if (hasTrackingMarker(node.loc.end.line) || (reason !== undefined && reasonHasMarker(reason))) {
         return;
       }
-      context.report({ node, messageId: 'needsTracking', data: { label } });
+      const startLine = node.loc.start.line;
+      const lineText = sourceCode.lines[startLine - 1] ?? '';
+      const indent = /^\s*/u.exec(lineText)?.[0] ?? '';
+      const lineStart = sourceCode.getIndexFromLoc({ line: startLine, column: 0 });
+      context.report({
+        node,
+        messageId: 'needsTracking',
+        data: { label },
+        suggest: [
+          {
+            messageId: 'addTodoMarker',
+            fix: (fixer) => fixer.insertTextBeforeRange([lineStart, lineStart], `${indent}// TODO(@owner): link the tracking issue\n`),
+          },
+        ],
+      });
     }
 
     return {
@@ -212,7 +313,7 @@ export const skippedTestsNeedTrackingRule = createRule<RuleOptions, MessageIds>(
               }
               const key = propertyKey(property);
               if (key !== null && NODE_TEST_SKIPS.has(key) && isUnconditionalSkip(property.value)) {
-                check(property, `{ ${key} }`);
+                check(property, `{ ${key} }`, property.value);
               }
             }
           }
@@ -220,6 +321,11 @@ export const skippedTestsNeedTrackingRule = createRule<RuleOptions, MessageIds>(
         const callee = node.callee;
         const label = skipLabel(callee);
         if (label !== null) {
+          // Only a direct `X.skip(...)` call can be Playwright's conditional form; `it.skip.each([...])` cannot.
+          const direct = SKIP_MODIFIERS.has(calleeName(callee) ?? '');
+          if (label.startsWith('.') && direct && isConditionalModifierSkip(node)) {
+            return;
+          }
           check(callee, label);
           return;
         }
@@ -233,7 +339,12 @@ export const skippedTestsNeedTrackingRule = createRule<RuleOptions, MessageIds>(
           return;
         }
         if (unconditionalContextName(node) === callee.object.name) {
-          check(callee, `${callee.object.name}.${callee.property.name}(`);
+          const reason = node.arguments[0];
+          check(
+            callee,
+            `${callee.object.name}.${callee.property.name}(`,
+            reason?.type === AST_NODE_TYPES.SpreadElement ? undefined : reason,
+          );
         }
       },
     };
