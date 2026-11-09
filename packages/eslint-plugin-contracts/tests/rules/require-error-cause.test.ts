@@ -55,26 +55,48 @@ ruleTester.run('require-error-cause', requireErrorCauseRule, {
       errors: [{ messageId: 'missingCause' }],
       output: `try { work(); } catch (err) { throw new Error('failed', { cause: err }); }`,
     },
+    // A custom constructor whose signature is unknown gets a suggestion, not an autofix.
+    {
+      code: `try { run(); } catch (err) { throw new AppError('E_RUN', 'run failed'); }`,
+      filename: FILE,
+      errors: [{ messageId: 'missingCause', suggestions: [{ messageId: 'addCause', output: `try { run(); } catch (err) { throw new AppError('E_RUN', 'run failed', { cause: err }); }` }] }],
+      output: null,
+    },
+    // A constructor listed in autofixConstructors is fixed.
+    {
+      code: `try { run(); } catch (err) { throw new AppError('run failed'); }`,
+      filename: FILE,
+      options: [{ autofixConstructors: ['Error', 'AppError'] }],
+      errors: [{ messageId: 'missingCause' }],
+      output: `try { run(); } catch (err) { throw new AppError('run failed', { cause: err }); }`,
+    },
+    // Built-in subclasses keep the autofix.
+    {
+      code: `try { work(); } catch (err) { throw new TypeError('bad input'); }`,
+      filename: FILE,
+      errors: [{ messageId: 'missingCause' }],
+      output: `try { work(); } catch (err) { throw new TypeError('bad input', { cause: err }); }`,
+    },
     // Existing non-empty options object: merge cause in.
     {
       code: `try { work(); } catch (err) { throw new HttpError('failed', { status: 500 }); }`,
       filename: FILE,
-      errors: [{ messageId: 'missingCause' }],
-      output: `try { work(); } catch (err) { throw new HttpError('failed', { status: 500, cause: err }); }`,
+      errors: [{ messageId: 'missingCause', suggestions: [{ messageId: 'addCause', output: `try { work(); } catch (err) { throw new HttpError('failed', { status: 500, cause: err }); }` }] }],
+      output: null,
     },
     // Empty options object: fill it.
     {
       code: `try { work(); } catch (err) { throw new ValidationError('bad', {}); }`,
       filename: FILE,
-      errors: [{ messageId: 'missingCause' }],
-      output: `try { work(); } catch (err) { throw new ValidationError('bad', { cause: err }); }`,
+      errors: [{ messageId: 'missingCause', suggestions: [{ messageId: 'addCause', output: `try { work(); } catch (err) { throw new ValidationError('bad', { cause: err }); }` }] }],
+      output: null,
     },
     // Member-expression constructor.
     {
       code: `try { work(); } catch (err) { throw new errors.AppError('failed'); }`,
       filename: FILE,
-      errors: [{ messageId: 'missingCause' }],
-      output: `try { work(); } catch (err) { throw new errors.AppError('failed', { cause: err }); }`,
+      errors: [{ messageId: 'missingCause', suggestions: [{ messageId: 'addCause', output: `try { work(); } catch (err) { throw new errors.AppError('failed', { cause: err }); }` }] }],
+      output: null,
     },
     // Zero-argument constructor: reported, but declined for autofix (no positional message to preserve).
     {

@@ -4,14 +4,40 @@ import { createRule } from '../createRule';
 
 const RULE_NAME = 'require-error-cause';
 
-type MessageIds = 'missingCause';
+type MessageIds = 'missingCause' | 'addCause';
+
+export interface RequireErrorCauseOptions {
+  /**
+   * Constructor names whose options argument takes `cause` in the last
+   * position, so attaching it is an autofix. Other error-like constructors get
+   * a suggestion instead, because appending an argument to a constructor that
+   * does not take options is a type error, or silently drops the cause in JS.
+   */
+  readonly autofixConstructors?: readonly string[];
+}
+
+type RuleOptions = [RequireErrorCauseOptions];
+
+/** Built-in constructors whose last argument is `{ cause }`. */
+const BUILTIN_ERRORS: readonly string[] = [
+  'Error',
+  'TypeError',
+  'RangeError',
+  'ReferenceError',
+  'SyntaxError',
+  'EvalError',
+  'URIError',
+];
 
 /*
  * Inside a `catch (err)` block, re-throwing a NEW error without `{ cause: err }`
  * severs the chain to the original failure: the stack that reaches the logger
  * points only at the re-throw site, and the underlying error is gone. This rule
  * flags `throw new SomeError(...)` in a catch when no argument carries a `cause`
- * property, and autofixes by attaching `{ cause: <binding> }`.
+ * property. For the built-in errors (and any constructor listed in
+ * `autofixConstructors`) it autofixes by attaching `{ cause: <binding> }`; for
+ * any other `*Error` / `*Exception` it offers the same edit as a suggestion,
+ * since a custom constructor may not take an options argument there.
  *
  * SCOPE — deliberately conservative to stay false-positive-free:
  *   - Only NewExpressions whose constructor's simple name ends in `Error` or
@@ -110,7 +136,7 @@ function buildFix(
   return (fixer) => fixer.insertTextAfter(last, `, { cause: ${binding} }`);
 }
 
-export const requireErrorCauseRule = createRule<[], MessageIds>({
+export const requireErrorCauseRule = createRule<RuleOptions, MessageIds>({
   name: RULE_NAME,
   meta: {
     type: 'problem',
@@ -119,14 +145,25 @@ export const requireErrorCauseRule = createRule<[], MessageIds>({
         'Require re-thrown errors inside a `catch` to forward the caught error as `{ cause }`. A `throw new SomeError(...)` that omits the cause severs the chain to the original failure.',
     },
     fixable: 'code',
-    schema: [],
+    hasSuggestions: true,
+    schema: [
+      {
+        type: 'object',
+        additionalProperties: false,
+        properties: {
+          autofixConstructors: { type: 'array', items: { type: 'string', minLength: 1 }, uniqueItems: true },
+        },
+      },
+    ],
     messages: {
       missingCause:
         'Re-throwing inside `catch` without `{ cause: {{binding}} }` drops the original error. Pass `{ cause: {{binding}} }` to `new {{ctor}}(...)` so the chain is preserved.',
+      addCause: 'Attach `{ cause: {{binding}} }` (check that `{{ctor}}` accepts an options argument here).',
     },
   },
-  defaultOptions: [],
-  create(context) {
+  defaultOptions: [{ autofixConstructors: [...BUILTIN_ERRORS] }],
+  create(context, [options]) {
+    const autofixConstructors = new Set(options.autofixConstructors ?? BUILTIN_ERRORS);
     // Nearest enclosing catch binding: the identifier name, or null when the
     // catch has no usable single-identifier binding (`catch {}` / destructured).
     const catchBindings: (string | null)[] = [];
@@ -158,12 +195,18 @@ export const requireErrorCauseRule = createRule<[], MessageIds>({
           return;
         }
         const fix = buildFix(arg, binding);
-        context.report({
-          node: arg,
-          messageId: 'missingCause',
-          data: { binding, ctor },
-          ...(fix ? { fix } : {}),
-        });
+        if (fix === null) {
+          context.report({ node: arg, messageId: 'missingCause', data: { binding, ctor } });
+        } else if (autofixConstructors.has(ctor)) {
+          context.report({ node: arg, messageId: 'missingCause', data: { binding, ctor }, fix });
+        } else {
+          context.report({
+            node: arg,
+            messageId: 'missingCause',
+            data: { binding, ctor },
+            suggest: [{ messageId: 'addCause', data: { binding, ctor }, fix }],
+          });
+        }
       },
     };
   },
