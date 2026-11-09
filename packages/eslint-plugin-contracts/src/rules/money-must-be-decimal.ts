@@ -1,4 +1,4 @@
-import { AST_NODE_TYPES, type TSESTree } from '@typescript-eslint/utils';
+import { AST_NODE_TYPES, type TSESLint, type TSESTree } from '@typescript-eslint/utils';
 import type { JSONSchema4 } from '@typescript-eslint/utils/json-schema';
 
 import { createRule } from '../createRule';
@@ -18,6 +18,21 @@ export interface MoneyMustBeDecimalOptions {
    * field matching one of these is not reported. Empty by default.
    */
   readonly minorUnitPatterns?: readonly string[];
+  /**
+   * Name segments that mark a count rather than money (`totalPages`,
+   * `totalCount`, `priceIndex`). A money-named field with one of these words
+   * is not reported. Matched case-insensitively against whole camelCase,
+   * snake_case or kebab-case words.
+   */
+  readonly counterWords?: readonly string[];
+  /** Also check `z.number()` under a money-named key in a `z.object({...})`. On by default. */
+  readonly checkZod?: boolean;
+  /** Zod namespace identifiers (`z`, or a renamed import). */
+  readonly zodIdentifiers?: readonly string[];
+  /** Also check interface and type-literal members (`interface Invoice { amount: number }`). Off by default. */
+  readonly checkTypeMembers?: boolean;
+  /** Also check function parameters (`function pay(amount: number)`). Off by default. */
+  readonly checkParameters?: boolean;
 }
 
 type RuleOptions = [MoneyMustBeDecimalOptions];
@@ -36,10 +51,15 @@ type MessageIds = 'moneyMustBeDecimal';
  *   - Only an explicit `: number` annotation (TSNumberKeyword) is flagged.
  *     Untyped declarations and numeric-literal initializers are NOT flagged
  *     (those catch loop counters/accumulators like `let total = 0`).
- *   - Only class properties (PropertyDefinition) and annotated variable
- *     declarators (VariableDeclarator) are covered. Interface / type-literal
- *     members (TSPropertySignature) are intentionally excluded so non-money
- *     `amount: number` type members (progress, fixtures) do not regress.
+ *   - Class properties (PropertyDefinition), annotated variable declarators
+ *     (VariableDeclarator) and `z.number()` under a money-named key of a
+ *     `z.object({...})` are covered by default. Interface / type-literal
+ *     members and function parameters are opt-in (`checkTypeMembers`,
+ *     `checkParameters`) so non-money `amount: number` type members (progress,
+ *     fixtures) do not regress for projects that have not asked for them.
+ *   - A name with a counter word (`totalPages`, `totalCount`, `priceIndex`) is
+ *     a count, not money. A bare `total` on a pagination-shaped class or type
+ *     (`PageMetaDto`, `PaginatedResult`) is the item count and is skipped too.
  */
 const DEFAULT_DECIMAL_TYPE = 'Decimal';
 
@@ -52,6 +72,35 @@ const DEFAULT_FIELD_PATTERNS: readonly string[] = [
 ];
 
 const DEFAULT_ALLOWED_FILES: readonly string[] = [];
+
+const DEFAULT_COUNTER_WORDS: readonly string[] = [
+  'count',
+  'counts',
+  'pages',
+  'page',
+  'items',
+  'rows',
+  'records',
+  'results',
+  'index',
+  'idx',
+  'hits',
+  'num',
+  'number',
+];
+
+/** A container name that says the type describes a page of results. */
+const PAGINATION_CONTAINER = /(?:page|paginat|pager|cursor)/iu;
+
+/** camelCase / PascalCase / snake_case / kebab-case words, lower-cased. */
+function nameWords(name: string): string[] {
+  return name
+    .replace(/([a-z0-9])([A-Z])/gu, '$1 $2')
+    .replace(/([A-Z]+)([A-Z][a-z])/gu, '$1 $2')
+    .split(/[\s_\-$]+/u)
+    .filter((word) => word !== '')
+    .map((word) => word.toLowerCase());
+}
 
 /*
  * Payment APIs such as Stripe carry money as an integer count of minor units
@@ -82,6 +131,11 @@ const optionSchema: JSONSchema4 = {
       items: { type: 'string', minLength: 1 },
       uniqueItems: true,
     },
+    counterWords: { type: 'array', items: { type: 'string', minLength: 1 }, uniqueItems: true },
+    checkZod: { type: 'boolean' },
+    zodIdentifiers: { type: 'array', items: { type: 'string', minLength: 1 }, uniqueItems: true },
+    checkTypeMembers: { type: 'boolean' },
+    checkParameters: { type: 'boolean' },
   },
 };
 
@@ -109,12 +163,53 @@ function staticName(node: TSESTree.Node): string | undefined {
   if (node.type === AST_NODE_TYPES.Identifier) {
     return node.name;
   }
+  if (node.type === AST_NODE_TYPES.Literal && typeof node.value === 'string') {
+    return node.value;
+  }
   return undefined;
 }
 
-/** True when the annotation node directly resolves to the primitive `number`. */
+/** Name of the class, interface or type alias a member belongs to, if any. */
+function containerName(node: TSESTree.Node): string | null {
+  for (let current: TSESTree.Node | undefined = node.parent; current; current = current.parent) {
+    if (
+      (current.type === AST_NODE_TYPES.ClassDeclaration || current.type === AST_NODE_TYPES.ClassExpression) &&
+      current.id !== null
+    ) {
+      return current.id.name;
+    }
+    if (current.type === AST_NODE_TYPES.TSInterfaceDeclaration || current.type === AST_NODE_TYPES.TSTypeAliasDeclaration) {
+      return current.id.name;
+    }
+    if (current.type === AST_NODE_TYPES.VariableDeclarator && current.id.type === AST_NODE_TYPES.Identifier) {
+      return current.id.name;
+    }
+  }
+  return null;
+}
+
+const NULLISH_TYPES: ReadonlySet<AST_NODE_TYPES> = new Set([
+  AST_NODE_TYPES.TSNullKeyword,
+  AST_NODE_TYPES.TSUndefinedKeyword,
+]);
+
+/**
+ * True when the annotation is the primitive `number`, alone or made optional
+ * with `null` / `undefined` (`number | null`).
+ */
 function isNumberAnnotation(annotation: TSESTree.TSTypeAnnotation | undefined): boolean {
-  return annotation?.typeAnnotation.type === AST_NODE_TYPES.TSNumberKeyword;
+  const type = annotation?.typeAnnotation;
+  if (type === undefined) {
+    return false;
+  }
+  if (type.type === AST_NODE_TYPES.TSNumberKeyword) {
+    return true;
+  }
+  return (
+    type.type === AST_NODE_TYPES.TSUnionType &&
+    type.types.some((member) => member.type === AST_NODE_TYPES.TSNumberKeyword) &&
+    type.types.every((member) => member.type === AST_NODE_TYPES.TSNumberKeyword || NULLISH_TYPES.has(member.type))
+  );
 }
 
 export const moneyMustBeDecimalRule = createRule<RuleOptions, MessageIds>({
@@ -137,6 +232,11 @@ export const moneyMustBeDecimalRule = createRule<RuleOptions, MessageIds>({
       fieldPatterns: [...DEFAULT_FIELD_PATTERNS],
       allowedFiles: [],
       minorUnitPatterns: [],
+      counterWords: [...DEFAULT_COUNTER_WORDS],
+      checkZod: true,
+      zodIdentifiers: ['z'],
+      checkTypeMembers: false,
+      checkParameters: false,
     },
   ],
   create(context, [options]) {
@@ -153,16 +253,104 @@ export const moneyMustBeDecimalRule = createRule<RuleOptions, MessageIds>({
     const minorUnitPattern =
       minorUnitPatterns.length > 0 ? new RegExp(`(${minorUnitPatterns.join('|')})`, 'i') : null;
 
-    /** A money-named field that is not declared as a minor-unit integer. */
-    function isDecimalMoneyName(name: string): boolean {
-      return moneyPattern.test(name) && !(minorUnitPattern?.test(name) ?? false);
+    const counterWords = new Set((options.counterWords ?? DEFAULT_COUNTER_WORDS).map((word) => word.toLowerCase()));
+    const zodIdentifiers = new Set(options.zodIdentifiers ?? ['z']);
+
+    /**
+     * A money-named field that is not a minor-unit integer, not a count
+     * (`totalPages`), and not the bare `total` of a pagination-shaped container.
+     */
+    function isDecimalMoneyName(name: string, node: TSESTree.Node): boolean {
+      if (!moneyPattern.test(name) || (minorUnitPattern?.test(name) ?? false)) {
+        return false;
+      }
+      const words = nameWords(name);
+      if (words.some((word) => counterWords.has(word))) {
+        return false;
+      }
+      if (words.length === 1 && words[0] === 'total') {
+        const container = containerName(node);
+        if (container !== null && PAGINATION_CONTAINER.test(container)) {
+          return false;
+        }
+      }
+      return true;
     }
 
     function report(node: TSESTree.Node): void {
       context.report({ node, messageId: 'moneyMustBeDecimal', data: { decimalType } });
     }
 
+    /** `z.number()`, possibly chained (`z.number().positive()`, `.nullable()`). */
+    function isZodNumber(node: TSESTree.Node): boolean {
+      let current: TSESTree.Node = node;
+      while (current.type === AST_NODE_TYPES.CallExpression && current.callee.type === AST_NODE_TYPES.MemberExpression) {
+        const callee = current.callee;
+        if (
+          callee.object.type === AST_NODE_TYPES.Identifier &&
+          zodIdentifiers.has(callee.object.name) &&
+          callee.property.type === AST_NODE_TYPES.Identifier
+        ) {
+          return callee.property.name === 'number';
+        }
+        current = callee.object;
+      }
+      return false;
+    }
+
+    function isZodObjectCall(node: TSESTree.Node | undefined): boolean {
+      return (
+        node?.type === AST_NODE_TYPES.CallExpression &&
+        node.callee.type === AST_NODE_TYPES.MemberExpression &&
+        node.callee.object.type === AST_NODE_TYPES.Identifier &&
+        zodIdentifiers.has(node.callee.object.name) &&
+        node.callee.property.type === AST_NODE_TYPES.Identifier &&
+        (node.callee.property.name === 'object' || node.callee.property.name === 'strictObject')
+      );
+    }
+
+    function checkParams(params: readonly TSESTree.Parameter[]): void {
+      for (const raw of params) {
+        const param = raw.type === AST_NODE_TYPES.AssignmentPattern ? raw.left : raw;
+        if (param.type === AST_NODE_TYPES.Identifier && isNumberAnnotation(param.typeAnnotation) && isDecimalMoneyName(param.name, param)) {
+          report(param);
+        }
+      }
+    }
+
+    const optional: TSESLint.RuleListener = {};
+    if (options.checkTypeMembers === true) {
+      // `interface Invoice { amount: number }` / `type T = { price: number }`.
+      optional.TSPropertySignature = (node: TSESTree.TSPropertySignature): void => {
+        const name = node.computed ? undefined : staticName(node.key);
+        if (name !== undefined && isNumberAnnotation(node.typeAnnotation) && isDecimalMoneyName(name, node)) {
+          report(node);
+        }
+      };
+    }
+    if (options.checkParameters === true) {
+      optional.FunctionDeclaration = (node: TSESTree.FunctionDeclaration): void => checkParams(node.params);
+      optional.FunctionExpression = (node: TSESTree.FunctionExpression): void => checkParams(node.params);
+      optional.ArrowFunctionExpression = (node: TSESTree.ArrowFunctionExpression): void => checkParams(node.params);
+    }
+    if (options.checkZod !== false) {
+      // `z.object({ amount: z.number() })`.
+      optional.Property = (node: TSESTree.Property): void => {
+        if (node.computed || !isZodObjectCall(node.parent.parent) || node.parent.parent?.type !== AST_NODE_TYPES.CallExpression) {
+          return;
+        }
+        if (node.parent.parent.arguments[0] !== node.parent) {
+          return;
+        }
+        const name = staticName(node.key);
+        if (name !== undefined && isZodNumber(node.value) && isDecimalMoneyName(name, node)) {
+          report(node);
+        }
+      };
+    }
+
     return {
+      ...optional,
       // `class Invoice { total: number }`: class field explicitly typed number.
       PropertyDefinition(node): void {
         if (node.computed) {
@@ -171,7 +359,7 @@ export const moneyMustBeDecimalRule = createRule<RuleOptions, MessageIds>({
         const name = staticName(node.key);
         if (
           name !== undefined &&
-          isDecimalMoneyName(name) &&
+          isDecimalMoneyName(name, node) &&
           isNumberAnnotation(node.typeAnnotation)
         ) {
           report(node);
@@ -183,7 +371,7 @@ export const moneyMustBeDecimalRule = createRule<RuleOptions, MessageIds>({
           return;
         }
         const name = node.id.name;
-        if (isDecimalMoneyName(name) && isNumberAnnotation(node.id.typeAnnotation)) {
+        if (isDecimalMoneyName(name, node) && isNumberAnnotation(node.id.typeAnnotation)) {
           report(node);
         }
       },
