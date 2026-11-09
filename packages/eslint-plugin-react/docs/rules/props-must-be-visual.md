@@ -18,7 +18,8 @@ strength meter must receive it), so it is intentionally **not** on the denylist.
 
 Members of any `*Props` interface or object type-literal alias whose name matches a `denyPropNames`
 entry. Entries are matched as **case-insensitive regular expressions**, so the defaults mix anchored
-names (`^userId$`) and substrings (`token` matches `resetToken`). The rule keys off the `*Props`
+names (`^userId$`) and end-anchored suffixes (`token$` matches `resetToken`, not a design `tokens`
+list or a `tokenCount`; `secret$` matches `clientSecret`, not `showSecretField`). The rule keys off the `*Props`
 naming convention and is layout-independent.
 
 ```ts bad reports=2
@@ -47,7 +48,7 @@ interface LoginFormProps {
 
 | Option | Type | Default | Meaning |
 | --- | --- | --- | --- |
-| `denyPropNames` | `string[]` | `['^userId$', '^userIds$', '^currentUser', '^sessionId$', 'token', 'jwt', 'secret', 'apiKey', 'credential']` | Case-insensitive regex patterns for disallowed prop names. |
+| `denyPropNames` | `string[]` | `['^userId$', '^userIds$', '^currentUser', '^sessionId$', 'token$', 'jwt', 'secret$', 'apiKey', 'credential']` | Case-insensitive regex patterns for disallowed prop names. |
 
 A malformed pattern raises an actionable config error naming the bad entry, rather than an opaque
 `SyntaxError` that aborts the whole lint run.
