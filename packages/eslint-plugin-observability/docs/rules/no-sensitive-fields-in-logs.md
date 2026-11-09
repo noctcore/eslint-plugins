@@ -14,7 +14,7 @@ request by months. This rule catches the most common shape — a variable, prope
 whose **name** matches a sensitive-field denylist appearing inside a logger call.
 
 It reads **names, never values**, so it is a heuristic. It still ships at `error`: a miss puts a
-credential in a long-lived log sink, while a false positive costs a rename.
+credential in a long-lived log sink, while a false positive costs a rename or a `redact()` call.
 Tests that log a secret on purpose (to prove a redaction boundary works) should turn the rule off for
 those files in config.
 
@@ -37,9 +37,14 @@ logger.error('auth failed', { userId, reason: 'bad-credentials' });
 logger.info('session', { sessionId: user.sessionId });
 ```
 
-Wrapping the value in a call does not help: `{ password: redact(password) }` is still reported,
-twice, because the key and the argument are both named `password`. The rule has no notion of a
-redaction helper. Omit the field and log an identifier for the subject instead.
+A call to a redactor is a boundary. The rule does not look inside `redact(...)` or `mask(...)` (set
+the list with `redactors`), and an object key whose value is a redactor call is not reported:
+
+```ts good
+// the value is redacted, so neither the key nor the argument is reported
+logger.info('login', { token: redact(token) });
+logger.info('login', { password: mask(user.password) });
+```
 
 Matching is **name-segment aware**. A single-word denyName (`token`) matches a camelCase or
 snake_case segment (`accessToken`, `access_token`) but **not** a longer word that merely contains it
@@ -58,18 +63,30 @@ logger.info('password reset email sent');
 
 - A longer word that merely contains a denyName (`tokenizer`, `tokenize`): matching is by name
   segment, as described above.
-- Sensitive names outside a logger call (`save({ password })`). Logger calls are `console`,
-  `logger` or `log` with `info`, `warn`, `error` or `debug`.
+- Names that read as a flag, a count or a timestamp about the field rather than the field itself:
+  a leading `is`, `has`, `should`, `can`, `did`, `was`, `needs` or `show` segment, or a trailing
+  `count`, `length`, `size`, `ttl`, `at`, `in`, `expires`, `expiry`, `consent`, `enabled` or
+  `required` segment (`hasPassword`, `tokenCount`, `passwordLength`, `tokenExpiresAt`,
+  `cookieConsent`).
+- Names listed in `allowNames`.
+- Sensitive names outside a logger call (`save({ password })`). A logger call is a name from
+  `loggers` with a method from `methods`; the defaults cover `console.log`, Nest's
+  `this.logger.log` / `verbose` / `fatal` and pino's `trace` / `fatal`.
 
 ## Options
 
 | Option | Type | Default | Meaning |
 | --- | --- | --- | --- |
 | `denyNames` | `string[]` | `['password', 'token', 'secret', 'authorization', 'cookie', 'apiKey', 'ssn']` | Field names to treat as sensitive (case-insensitive, segment-aware). |
+| `redactors` | `string[]` | `['redact', 'mask']` | Called names (`redact(x)`, `utils.redact(x)`) whose arguments are not inspected. |
+| `allowNames` | `string[]` | `[]` | Exact names never reported (`csrfToken`). |
+| `loggers` | `string[]` | `['console', 'logger', 'log']` | Logger object names to scan. |
+| `methods` | `string[]` | `['info', 'warn', 'error', 'debug', 'log', 'trace', 'fatal', 'verbose']` | Method names that make a call on a logger a log call. |
 
 ```js
 'noctcore-observability/no-sensitive-fields-in-logs': ['error', {
   denyNames: ['password', 'token', 'secret', 'authorization', 'cookie', 'apiKey', 'ssn', 'iban'],
+  redactors: ['redact', 'mask', 'scrub'],
 }]
 ```
 
