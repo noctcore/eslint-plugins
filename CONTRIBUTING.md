@@ -321,6 +321,10 @@ The body becomes the package's `CHANGELOG.md` entry verbatim, through `@changese
 so write it for a consumer reading the changelog, and always say whether a project that spreads
 `recommended` as-is will see new errors.
 
+CI enforces this: the `changeset status` job (`.github/workflows/changeset.yml`) fails a pull request
+that changes a package without a changeset. A change that should release nothing, such as tests or
+docs inside a package, says so with `bun run changeset --empty`.
+
 What the history says each bump means here (`git log -- .changeset`):
 
 - **minor**: a new rule, whether it lands in `recommended` at `error` (`no-unguarded-web-storage`,
