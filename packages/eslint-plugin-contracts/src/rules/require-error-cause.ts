@@ -151,7 +151,13 @@ export const requireErrorCauseRule = createRule<RuleOptions, MessageIds>({
         type: 'object',
         additionalProperties: false,
         properties: {
-          autofixConstructors: { type: 'array', items: { type: 'string', minLength: 1 }, uniqueItems: true },
+          autofixConstructors: {
+            type: 'array',
+            items: { type: 'string', minLength: 1 },
+            uniqueItems: true,
+            description:
+              'Constructors whose last argument takes { cause }, so the edit is applied by --fix. Setting it replaces the default.',
+          },
         },
       },
     ],
