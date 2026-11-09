@@ -39,8 +39,19 @@ ruleTester.run('no-bare-date-now', noBareDateNowRule, {
       filename: 'src/request.timing.ts',
       options,
     },
+    // Test files fake the clock instead; exempt under the default options.
+    { code: `it('x', () => { const d = new Date(); });`, filename: 'src/a.test.ts' },
+    { code: `const t = Date.now();`, filename: 'src/__tests__/token.ts' },
+    // The default still allows the clock util.
+    { code: `export const nowMs = () => Date.now();`, filename: 'src/lib/clock.ts' },
   ],
   invalid: [
+    // Default options still report production code.
+    { code: `const t = Date.now();`, filename: 'src/lib/token.ts', errors: [{ messageId: 'dateNow' }] },
+    // Date() called as a function, and reads through the global object.
+    { code: `const s = Date();`, filename: 'src/lib/token.ts', options, errors: [{ messageId: 'dateCall' }] },
+    { code: `const t = globalThis.Date.now();`, filename: 'src/lib/token.ts', options, errors: [{ messageId: 'dateNow' }] },
+    { code: `const d = new window.Date();`, filename: 'src/lib/token.ts', options, errors: [{ messageId: 'newDate' }] },
     {
       code: `const t = Date.now();`,
       filename: 'src/lib/token.ts',
