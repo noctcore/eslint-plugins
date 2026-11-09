@@ -57,16 +57,6 @@ appending one is then a type error, or silently drops the cause in JS
 A zero-argument `new SomeError()` is **reported but not autofixed** — inserting an options object as
 the first argument could clobber a positional message the rule cannot see.
 
-### Options
-
-| Option | Type | Default | Meaning |
-| --- | --- | --- | --- |
-| `autofixConstructors` | `string[]` | the built-in error names | Constructors whose last argument takes `{ cause }`, so the edit is applied by `--fix`. Setting it replaces the default. |
-
-```js
-'noctcore-contracts/require-error-cause': ['error', { autofixConstructors: ['Error', 'TypeError', 'AppError'] }]
-```
-
 ## What it does not flag
 
 Deliberately conservative:
@@ -80,6 +70,16 @@ Deliberately conservative:
 - Any `cause` property (whatever its value), and any spread the rule cannot see through, counts as
   "has a cause" and suppresses the report — a hand-written cause is never second-guessed.
 - A bare re-throw of the caught error (`throw err`).
+
+## Options
+
+| Option | Type | Default | Meaning |
+| --- | --- | --- | --- |
+| `autofixConstructors` | `string[]` | the built-in error names | Constructors whose last argument takes `{ cause }`, so the edit is applied by `--fix`. Setting it replaces the default. |
+
+```js
+'noctcore-contracts/require-error-cause': ['error', { autofixConstructors: ['Error', 'TypeError', 'AppError'] }]
+```
 
 ## When not to use it
 
