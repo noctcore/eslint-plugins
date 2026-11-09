@@ -7,6 +7,8 @@ const RULE_NAME = 'zod-schema-naming';
 
 export interface ZodSchemaNamingOptions {
   readonly roleSuffixes?: readonly string[];
+  /** Zod namespace identifiers (`z`, or a renamed import such as `zod`). */
+  readonly zodIdentifiers?: readonly string[];
 }
 
 type RuleOptions = [ZodSchemaNamingOptions];
@@ -36,6 +38,7 @@ const optionSchema: JSONSchema4 = {
       items: { type: 'string' },
       uniqueItems: true,
     },
+    zodIdentifiers: { type: 'array', items: { type: 'string', minLength: 1 }, uniqueItems: true },
   },
 };
 
@@ -46,7 +49,10 @@ function hasRoleSuffix(name: string, suffixes: readonly string[]): boolean {
 /*
  * Walk an expression down its call/member chain to the root identifier so
  * `z.object({...})`, `z.union([...])`, `z.string().min(1)` etc. all resolve to
- * the root `z`. Anything not rooted at `z` is not treated as a zod schema.
+ * the root `z`. A chain is a zod schema when its root is a zod namespace
+ * (`zodIdentifiers`, default `z`), a const in this file that is itself a zod
+ * schema (`const Base = z.object(...)`; `Base.extend({...})`), or an identifier
+ * already named like a schema (`BaseSchema.extend({...})`, imported or not).
  */
 function rootIdentifierName(node: TSESTree.Node | null | undefined): string | null {
   let current: TSESTree.Node | null | undefined = node;
@@ -83,13 +89,25 @@ export const zodSchemaNamingRule = createRule<RuleOptions, MessageIds>({
         'Schema `{{name}}` has no sibling `export type {{base}} = z.infer<typeof {{name}}>`. Export the inferred type instead of hand-authoring a duplicate.',
     },
   },
-  defaultOptions: [{ roleSuffixes: [] }],
+  defaultOptions: [{ roleSuffixes: [], zodIdentifiers: ['z'] }],
   create(context, [options]) {
     const roleSuffixes = options.roleSuffixes ?? DEFAULT_ROLE_SUFFIXES;
+    const zodIdentifiers = new Set(options.zodIdentifiers ?? ['z']);
+    const zodBindings = new Set<string>();
+
+    function isZodRooted(init: TSESTree.Node): boolean {
+      const root = rootIdentifierName(init);
+      return root !== null && (zodIdentifiers.has(root) || zodBindings.has(root) || SCHEMA_NAME.test(root));
+    }
     const schemas: { node: TSESTree.Identifier; name: string }[] = [];
     const exportedTypes = new Set<string>();
 
     return {
+      VariableDeclarator(node): void {
+        if (node.id.type === 'Identifier' && node.init && isZodRooted(node.init)) {
+          zodBindings.add(node.id.name);
+        }
+      },
       ExportNamedDeclaration(node): void {
         const decl = node.declaration;
         if (!decl) return;
@@ -98,7 +116,7 @@ export const zodSchemaNamingRule = createRule<RuleOptions, MessageIds>({
             if (
               d.id.type === 'Identifier' &&
               d.init &&
-              rootIdentifierName(d.init) === 'z'
+              isZodRooted(d.init)
             ) {
               if (hasRoleSuffix(d.id.name, roleSuffixes)) continue;
               if (!SCHEMA_NAME.test(d.id.name)) {

@@ -38,8 +38,29 @@ ruleTester.run('zod-schema-naming', zodSchemaNamingRule, {
       filename: FILE,
       options: roleOptions,
     },
+    // A non-zod chain rooted at an ordinary identifier is still ignored.
+    { code: `export const handler = router.get('/x').use(auth);`, filename: FILE },
   ],
   invalid: [
+    // A renamed zod import, configured.
+    {
+      code: `import { z as zod } from 'zod';\nexport const task = zod.object({ id: zod.string() });`,
+      filename: FILE,
+      options: [{ zodIdentifiers: ['zod'] }],
+      errors: [{ messageId: 'schemaNaming', data: { name: 'task' } }],
+    },
+    // Extending a local schema const.
+    {
+      code: `import { z } from 'zod';\nconst Base = z.object({ id: z.string() });\nexport const withName = Base.extend({ name: z.string() });`,
+      filename: FILE,
+      errors: [{ messageId: 'schemaNaming', data: { name: 'withName' } }],
+    },
+    // Extending an imported schema.
+    {
+      code: `import { BaseSchema } from './base';\nexport const withName = BaseSchema.extend({});`,
+      filename: FILE,
+      errors: [{ messageId: 'schemaNaming', data: { name: 'withName' } }],
+    },
     // Schema const not suffixed `Schema`.
     {
       code: `import { z } from 'zod';\nexport const Task = z.object({});`,
