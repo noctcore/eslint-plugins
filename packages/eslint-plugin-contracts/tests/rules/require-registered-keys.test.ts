@@ -43,8 +43,41 @@ ruleTester.run('require-registered-keys', requireRegisteredKeysRule, {
       filename: FILE,
       options,
     },
+    // A one-segment sink matches only a bare call, never a method of that name.
+    {
+      code: `cache.set('user-profile', value);`,
+      filename: FILE,
+      options: [{ sinks: [{ callee: 'set', argIndex: 0 }] }],
+    },
+    // A suffix must end at the method: redis.set does not cover redis.settings.
+    {
+      code: `this.redis.settings('user-profile');`,
+      filename: FILE,
+      options: [{ sinks: [{ callee: 'redis.set', argIndex: 0 }] }],
+    },
   ],
   invalid: [
+    // A NestJS service sink rooted at this.
+    {
+      code: `class S { save(v) { return this.redis.set('user-profile', v); } }`,
+      filename: FILE,
+      options: [{ sinks: [{ callee: 'redis.set', argIndex: 0 }] }],
+      errors: [{ messageId: 'unregisteredKey', data: { callee: 'redis.set', value: "'user-profile'", registryHint: '' } }],
+    },
+    // A sink path may name this explicitly.
+    {
+      code: `class S { save(v) { return this.store.set('theme', v); } }`,
+      filename: FILE,
+      options: [{ sinks: [{ callee: 'this.store.set', argIndex: 0 }] }],
+      errors: [{ messageId: 'unregisteredKey' }],
+    },
+    // A dotted suffix match through a longer chain.
+    {
+      code: `window.localStorage.getItem('user-profile');`,
+      filename: FILE,
+      options,
+      errors: [{ messageId: 'unregisteredKey' }],
+    },
     // Raw string key into a configured storage sink.
     {
       code: `localStorage.getItem('user-profile');`,

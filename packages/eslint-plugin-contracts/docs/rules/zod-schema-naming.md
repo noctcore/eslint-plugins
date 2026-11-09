@@ -14,8 +14,11 @@ the schema it is supposed to mirror.
 
 ## What it flags
 
-For every `export const` whose initializer is rooted at the `z` identifier (`z.object(...)`,
-`z.string().min(1)`, `z.union([...])`, …):
+For every `export const` whose initializer is a zod schema chain (`z.object(...)`,
+`z.string().min(1)`, `z.union([...])`, …). A chain counts when its root is a zod namespace
+(`zodIdentifiers`, default `z`), a const in the same file that is itself a zod schema
+(`const Base = z.object(...)`, then `Base.extend({...})`), or an identifier already named like a
+schema (`BaseSchema.extend({...})`, imported or not):
 
 - the const name must match `^[A-Z][A-Za-z0-9]*Schema$` — otherwise `schemaNaming`;
 - a correctly-named `FooSchema` must have a sibling `export type Foo` (a `type` alias or
@@ -45,6 +48,7 @@ export type Task = z.infer<typeof TaskSchema>;
 | Option | Type | Default | Meaning |
 | --- | --- | --- | --- |
 | `roleSuffixes` | `string[]` | `[]` | Const-name suffixes that opt a schema **out** of the `*Schema` rule (their naming is owned by [`wire-message-naming`](./wire-message-naming.md)). |
+| `zodIdentifiers` | `string[]` | `['z']` | Zod namespace identifiers, for a renamed import (`import { z as zod }`). |
 
 With the default empty list the base convention applies to every exported zod schema. Codebases that
 model wire messages as `*Event` / `*Command` / `*Query` discriminated-union members pass those

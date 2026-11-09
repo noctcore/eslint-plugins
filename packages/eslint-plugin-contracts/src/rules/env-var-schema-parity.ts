@@ -1,4 +1,4 @@
-import { readFileSync } from 'node:fs';
+import { readFileSync, statSync } from 'node:fs';
 import path from 'node:path';
 
 import { AST_NODE_TYPES, type TSESTree } from '@typescript-eslint/utils';
@@ -31,8 +31,15 @@ type MessageIds = 'undeclaredEnvVar';
  * ever suppresses a report (never invents one). If the schema cannot be read the
  * rule goes inert rather than flagging every access.
  *
- * Only STATIC accesses are policed (`process.env.FOO`, `import.meta.env.FOO`).
- * Computed (`process.env[dynamic]`) and destructured reads are left alone.
+ * Only STATIC accesses are policed: `process.env.FOO`, `import.meta.env.FOO`,
+ * and the keys of a destructure (`const { FOO } = process.env`). Computed
+ * access (`process.env[dynamic]`) and a rest element are left alone.
+ *
+ * Keys the runtime defines are never reported: Vite's `MODE`, `DEV`, `PROD`,
+ * `SSR` and `BASE_URL`, and `NODE_ENV`.
+ *
+ * The schema is re-read when its mtime moves, so an editor session sees a key
+ * added to `.env.example` without restarting the ESLint server.
  */
 const optionSchema: JSONSchema4 = {
   type: 'object',
@@ -42,8 +49,10 @@ const optionSchema: JSONSchema4 = {
   },
 };
 
-// Resolved schema path -> declared key set (null = unreadable, rule stays inert).
-const schemaCache = new Map<string, ReadonlySet<string> | null>();
+const BUILTIN_KEYS: ReadonlySet<string> = new Set(['MODE', 'DEV', 'PROD', 'SSR', 'BASE_URL', 'NODE_ENV']);
+
+// Resolved schema path -> declared key set at an mtime (keys null = unreadable, rule stays inert).
+const schemaCache = new Map<string, { readonly mtimeMs: number; readonly keys: ReadonlySet<string> | null }>();
 
 const DOTENV_KEY = /^\s*(?:export\s+)?([A-Za-z_][A-Za-z0-9_]*)\s*=/gm;
 const OBJECT_KEY = /["'`]?([A-Za-z_][A-Za-z0-9_]*)["'`]?\s*:/g;
@@ -63,9 +72,16 @@ function parseDeclaredKeys(source: string): ReadonlySet<string> {
 /** Read + cache the declared key set for a schema path; null when unreadable. */
 function loadSchema(cwd: string, schema: string): ReadonlySet<string> | null {
   const resolved = path.isAbsolute(schema) ? schema : path.resolve(cwd, schema);
+  let mtimeMs: number;
+  try {
+    mtimeMs = statSync(resolved).mtimeMs;
+  } catch {
+    schemaCache.delete(resolved);
+    return null;
+  }
   const cached = schemaCache.get(resolved);
-  if (cached !== undefined) {
-    return cached;
+  if (cached !== undefined && cached.mtimeMs === mtimeMs) {
+    return cached.keys;
   }
   let keys: ReadonlySet<string> | null;
   try {
@@ -73,7 +89,7 @@ function loadSchema(cwd: string, schema: string): ReadonlySet<string> | null {
   } catch {
     keys = null;
   }
-  schemaCache.set(resolved, keys);
+  schemaCache.set(resolved, { mtimeMs, keys });
   return keys;
 }
 
@@ -128,25 +144,35 @@ export const envVarSchemaParityRule = createRule<RuleOptions, MessageIds>({
       return {};
     }
 
-    function check(node: TSESTree.MemberExpression): void {
-      if (node.computed || node.property.type !== AST_NODE_TYPES.Identifier) {
-        return;
-      }
-      const name = node.property.name;
-      if (!declared!.has(name)) {
-        context.report({
-          node: node.property,
-          messageId: 'undeclaredEnvVar',
-          data: { name, schema },
-        });
+    function checkName(node: TSESTree.Node, name: string): void {
+      if (!BUILTIN_KEYS.has(name) && !declared!.has(name)) {
+        context.report({ node, messageId: 'undeclaredEnvVar', data: { name, schema } });
       }
     }
 
     return {
       MemberExpression(node): void {
         // `<env>.FOO` where the object is `process.env` or `import.meta.env`.
-        if (isProcessEnv(node.object) || isImportMetaEnv(node.object)) {
-          check(node);
+        if (
+          (isProcessEnv(node.object) || isImportMetaEnv(node.object)) &&
+          !node.computed &&
+          node.property.type === AST_NODE_TYPES.Identifier
+        ) {
+          checkName(node.property, node.property.name);
+        }
+      },
+      // `const { FOO, BAR: bar } = process.env`.
+      VariableDeclarator(node): void {
+        if (node.id.type !== AST_NODE_TYPES.ObjectPattern || node.init === null) {
+          return;
+        }
+        if (!isProcessEnv(node.init) && !isImportMetaEnv(node.init)) {
+          return;
+        }
+        for (const property of node.id.properties) {
+          if (property.type === AST_NODE_TYPES.Property && !property.computed && property.key.type === AST_NODE_TYPES.Identifier) {
+            checkName(property.key, property.key.name);
+          }
         }
       },
     };

@@ -16,8 +16,8 @@ declaration in lockstep.
 
 ## What it flags
 
-A static `process.env.FOO` or `import.meta.env.FOO` access whose key `FOO` is not declared in the
-configured schema file:
+A static `process.env.FOO` or `import.meta.env.FOO` access, or a destructured key
+(`const { FOO } = process.env`), whose key `FOO` is not declared in the configured schema file:
 
 ```ts prose reason="the rule reads the schema file named in its options from disk"
 // schema (.env.example) declares DATABASE_URL, PORT, NODE_ENV
@@ -34,7 +34,8 @@ const port = import.meta.env.PORT;
 ## What it does not flag
 
 - Computed reads such as `process.env[dynamicKey]`: only static `.FOO` accesses are policed.
-- Destructured reads (`const { FOO } = process.env`).
+- Keys the runtime defines: Vite's `MODE`, `DEV`, `PROD`, `SSR`, `BASE_URL`, and `NODE_ENV`.
+- A rest element in a destructure (`const { ...rest } = process.env`).
 - Anything at all when `schema` is unset, or when the schema file cannot be read: the rule goes inert
   rather than flagging every access.
 
@@ -52,8 +53,9 @@ files](https://noctcore.github.io/eslint-plugins/filesystem-rules/).
 | --- | --- | --- | --- |
 | `schema` | `string` | — | Path to the env declaration source (`.env.example` or a zod-env module). Relative paths resolve against the ESLint working directory. |
 
-**Inert until configured.** With no `schema` the rule reports nothing. The schema is read once per
-resolved path and cached for the process. The parser is format-agnostic and permissive: it unions
+**Inert until configured.** With no `schema` the rule reports nothing. The schema is cached per
+resolved path and re-read when its mtime changes, so an editor session sees a newly declared key
+without restarting the ESLint server. The parser is format-agnostic and permissive: it unions
 dotenv keys (`FOO=...`) with object-property keys (`FOO: z.string()`, `'FOO': ...`), so it accepts
 both a `.env.example` and a zod-env module — and over-collection only ever suppresses a report, never
 invents one. If the schema cannot be read, the rule goes inert rather than flagging every access.

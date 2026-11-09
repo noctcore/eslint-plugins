@@ -14,11 +14,19 @@ with no money fields and lights up the moment a money-named field is introduced 
 
 ## What it flags
 
-A field whose name matches the money pattern **and** is explicitly annotated `: number`, in the two
-positions that carry real precision risk:
+A field whose name matches the money pattern **and** is explicitly annotated `: number` (alone, or
+with `| null` / `| undefined`), in the positions that carry real precision risk:
 
-- class properties — `class Invoice { total: number }`
-- annotated variable declarators — `const amount: number = …`
+- class properties: `class Invoice { total: number }`
+- annotated variable declarators: `const amount: number = …`
+- a money-named key typed `z.number()` in a `z.object({...})` (turn off with `checkZod: false`)
+- opt-in: interface and type-literal members (`checkTypeMembers: true`) and function parameters
+  (`checkParameters: true`)
+
+A name with a counter word is a count, not money: `totalPages`, `totalCount`, `priceIndex`,
+`total_items` (see `counterWords`). A bare `total` on a pagination-shaped class or type (its name
+contains `Page`, `Paginat`, `Pager` or `Cursor`, as in `PageMetaDto`) is the item count and is
+skipped too.
 
 ```ts bad reports=2
 class Invoice { total: number; }
@@ -35,9 +43,11 @@ interface Payment { amount: number; }   // type member, out of scope
 
 Conservative on purpose. Untyped declarations and numeric-literal initializers (`let total = 0`) are
 **not** flagged — those are usually counters/accumulators. Interface and type-literal members
-(`{ amount: number }`) are **out of scope** so non-money type members do not regress.
+(`{ amount: number }`) and function parameters are **opt-in** so non-money type members do not
+regress for projects that have not asked for them.
 
-- Object-literal properties (`const x = { total: 5 }`).
+- Object-literal properties (`const x = { total: 5 }`), except a key of a `z.object({...})`.
+- Counts and pagination totals: `class PageMetaDto { total: number; totalPages: number }`.
 - Fields matching `minorUnitPatterns`, and every field in a file listed in `allowedFiles`.
 
 ## Options
@@ -48,6 +58,11 @@ Conservative on purpose. Untyped declarations and numeric-literal initializers (
 | `fieldPatterns` | `string[]` | `['amount', 'price', 'cost', 'total', 'balance']` | Case-insensitive regex fragments identifying money-named fields (OR-combined). |
 | `allowedFiles` | `string[]` | `[]` | Path-suffix allowlist of files skipped entirely (e.g. `apps/api/src/legacy/totals.ts`). |
 | `minorUnitPatterns` | `string[]` | `[]` | Case-insensitive regex fragments naming fields that hold integer minor units on purpose and are therefore not reported. Checked before `fieldPatterns`. |
+| `counterWords` | `string[]` | `['count', 'counts', 'pages', 'page', 'items', 'rows', 'records', 'results', 'index', 'idx', 'hits', 'num', 'number']` | Whole name words (camelCase, snake_case or kebab-case, case-insensitive) that mark a count. A money-named field with one of them is not reported. |
+| `checkZod` | `boolean` | `true` | Check `z.number()` under a money-named key of `z.object({...})`. |
+| `zodIdentifiers` | `string[]` | `['z']` | Zod namespace identifiers, for a renamed import. |
+| `checkTypeMembers` | `boolean` | `false` | Also check interface and type-literal members. |
+| `checkParameters` | `boolean` | `false` | Also check function parameters. |
 
 ```js
 'noctcore-contracts/money-must-be-decimal': ['error', {

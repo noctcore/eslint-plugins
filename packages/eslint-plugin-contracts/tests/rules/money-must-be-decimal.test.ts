@@ -47,8 +47,46 @@ ruleTester.run('money-must-be-decimal', moneyMustBeDecimalRule, {
       code: 'class Charge { amountCents: number; totalInCents: number; }',
       options: [{ minorUnitPatterns: ['cents$'] }],
     },
+    // Counts and pagination totals are not money.
+    { code: 'class PageMetaDto { total: number; totalPages: number; }' },
+    { code: 'const totalCount: number = rows.length;' },
+    { code: 'class Search { priceIndex: number; total_items: number; }' },
+    { code: 'interface PaginatedResult { total: number }', options: [{ checkTypeMembers: true }] },
+    // A count under zod too.
+    { code: 'const Page = z.object({ total: z.number(), totalPages: z.number() });' },
+    // Not under z.object, or zod checks turned off.
+    { code: 'const config = { amount: z.number() };' },
+    { code: 'const Invoice = z.object({ amount: z.number() });', options: [{ checkZod: false }] },
+    // Parameters and type members stay opt-in.
+    { code: 'function pay(amount: number, price: number | null) {}' },
   ],
   invalid: [
+    // A money key typed z.number() in a schema.
+    {
+      code: 'const Invoice = z.object({ amount: z.number(), note: z.string() });',
+      errors: [{ messageId: 'moneyMustBeDecimal' }],
+    },
+    {
+      code: 'const Invoice = v.object({ grandTotal: v.number().positive() });',
+      options: [{ zodIdentifiers: ['v'] }],
+      errors: [{ messageId: 'moneyMustBeDecimal' }],
+    },
+    // Opt-in: interface members and parameters.
+    {
+      code: 'interface Invoice { amount: number }',
+      options: [{ checkTypeMembers: true }],
+      errors: [{ messageId: 'moneyMustBeDecimal' }],
+    },
+    {
+      code: 'function pay(amount: number, price: number | null, count: number) {}',
+      options: [{ checkParameters: true }],
+      errors: [{ messageId: 'moneyMustBeDecimal' }, { messageId: 'moneyMustBeDecimal' }],
+    },
+    // An optional number is still a number.
+    {
+      code: 'class Invoice { discountAmount: number | undefined; }',
+      errors: [{ messageId: 'moneyMustBeDecimal' }],
+    },
     // The canonical case: a class property named like money, typed number.
     {
       code: 'class Invoice { total: number; }',

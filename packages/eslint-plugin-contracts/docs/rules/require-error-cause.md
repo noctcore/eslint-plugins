@@ -3,7 +3,7 @@
 > Re-throwing inside a `catch` without `{ cause }` severs the chain to the original error. 🔧
 
 <!-- begin generated rule header -->
-✅ In `recommended` at `error` · 🔧 Fixable with `--fix` · 💭 Type information: not needed
+✅ In `recommended` at `error` · 🔧 Fixable with `--fix` · 💡 Offers editor suggestions · 💭 Type information: not needed
 <!-- end generated rule header -->
 
 ## Why
@@ -32,7 +32,7 @@ scope there. Nested `try/catch` uses the nearest binding.
 // drops the cause: autofixes to `new Error('failed', { cause: err })`
 try { work(); } catch (err) { throw new Error('failed'); }
 
-// merges into an existing options object
+// a custom error: reported with a suggestion, not an autofix
 try { work(); } catch (err) { throw new HttpError('failed', { status: 500 }); }
 ```
 
@@ -43,7 +43,12 @@ try { work(); } catch (err) { throw err; }
 
 ### Fix
 
-Autofix attaches `{ cause: <binding> }`:
+For the built-in errors (`Error`, `TypeError`, `RangeError`, `ReferenceError`, `SyntaxError`,
+`EvalError`, `URIError`) and any constructor listed in `autofixConstructors`, an autofix attaches
+`{ cause: <binding> }`. For any other `*Error` / `*Exception` the same edit is offered as a
+suggestion: a custom constructor may not take an options argument in its last position, and
+appending one is then a type error, or silently drops the cause in JS
+(`new AppError('E_RUN', 'run failed')` would become a three-argument call). The edit:
 
 - one argument (`new Error('msg')`) → appends a new options object;
 - an existing options object → merges `cause` in;
@@ -65,6 +70,16 @@ Deliberately conservative:
 - Any `cause` property (whatever its value), and any spread the rule cannot see through, counts as
   "has a cause" and suppresses the report — a hand-written cause is never second-guessed.
 - A bare re-throw of the caught error (`throw err`).
+
+## Options
+
+| Option | Type | Default | Meaning |
+| --- | --- | --- | --- |
+| `autofixConstructors` | `string[]` | the built-in error names | Constructors whose last argument takes `{ cause }`, so the edit is applied by `--fix`. Setting it replaces the default. |
+
+```js
+'noctcore-contracts/require-error-cause': ['error', { autofixConstructors: ['Error', 'TypeError', 'AppError'] }]
+```
 
 ## When not to use it
 

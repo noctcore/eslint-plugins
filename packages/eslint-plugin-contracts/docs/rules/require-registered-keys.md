@@ -35,9 +35,11 @@ emitter.on(TASK_DONE, handler);
 Only string literals are flagged. An already-imported identifier, a template literal, or any computed
 expression is left alone — those are not the raw-string smell.
 
-`callee` is matched against the call's dotted identifier path (`localStorage.getItem`, `emitter.on`).
-A callee that is computed or not a plain identifier chain (`this.emitter.on`, `obj[k].on`, `a().b`)
-cannot be matched and is skipped.
+`callee` is matched against the call's dotted path (`localStorage.getItem`, `emitter.on`,
+`this.redis.set`). A `callee` with two or more segments also matches as a dotted suffix, so
+`redis.set` covers `this.redis.set(...)` in a NestJS service and `localStorage.getItem` covers
+`window.localStorage.getItem(...)`. A one-segment `callee` (`emit`) matches only a bare call. A path
+with a computed or call link (`obj[k].on`, `a().b`) cannot be matched and is skipped.
 
 Calls to callees not listed in `sinks` (`sessionStorage.getItem` when only `localStorage.getItem` is
 configured) are not policed.
