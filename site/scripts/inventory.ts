@@ -39,6 +39,7 @@ export const PLUGIN_SHORT_NAMES = [
   'rsc',
   'llm',
   'nestjs',
+  'query',
 ] as const;
 
 export const LINT_META = 'lint-meta-rules';
