@@ -1,4 +1,4 @@
-import { fileMatchesAnyGlob, toPosixPath } from '@noctcore/eslint-utils';
+import { allowInAliasDescription, fileMatchesAnyGlob, resolveAllowIn, toPosixPath } from '@noctcore/eslint-utils';
 import { AST_NODE_TYPES, type TSESLint, type TSESTree } from '@typescript-eslint/utils';
 import type { JSONSchema4 } from '@typescript-eslint/utils/json-schema';
 
@@ -15,6 +15,8 @@ export interface MoneyMustBeDecimalOptions {
    * Files to skip entirely, as globs (`**\/legacy/**`). A plain path is a path
    * suffix matched at a directory boundary (`apps/api/src/legacy/totals.ts`).
    */
+  readonly allowIn?: readonly string[];
+  /** @deprecated Use `allowIn`. */
   readonly allowedFiles?: readonly string[];
   /**
    * Regex fragments (case-insensitive) naming fields that hold an integer count
@@ -125,12 +127,18 @@ const optionSchema: JSONSchema4 = {
       uniqueItems: true,
       minItems: 1,
     },
-    allowedFiles: {
+    allowIn: {
       type: 'array',
       items: { type: 'string' },
       uniqueItems: true,
       description:
         'Files to skip entirely, as globs. A plain path is a path suffix matched at a directory boundary.',
+    },
+    allowedFiles: {
+      type: 'array',
+      items: { type: 'string' },
+      uniqueItems: true,
+      description: allowInAliasDescription('allowedFiles'),
     },
     minorUnitPatterns: {
       type: 'array',
@@ -229,7 +237,6 @@ export const moneyMustBeDecimalRule = createRule<RuleOptions, MessageIds>({
     {
       decimalType: DEFAULT_DECIMAL_TYPE,
       fieldPatterns: [...DEFAULT_FIELD_PATTERNS],
-      allowedFiles: [],
       minorUnitPatterns: [],
       counterWords: [...DEFAULT_COUNTER_WORDS],
       checkZod: true,
@@ -240,7 +247,7 @@ export const moneyMustBeDecimalRule = createRule<RuleOptions, MessageIds>({
   ],
   create(context, [options]) {
     const decimalType = options.decimalType ?? DEFAULT_DECIMAL_TYPE;
-    const allowedFiles = (options.allowedFiles ?? DEFAULT_ALLOWED_FILES).map(toAllowGlob);
+    const allowedFiles = resolveAllowIn(options, ['allowedFiles'], DEFAULT_ALLOWED_FILES).map(toAllowGlob);
 
     if (fileMatchesAnyGlob(context.filename, allowedFiles, context.cwd)) {
       return {};

@@ -17,10 +17,12 @@ export {
 } from './ast';
 export { createFileCache, type FileCache } from './fileCache';
 export {
+  allowInAliasDescription,
   fileMatchesAnyGlob,
   fileScopeCandidates,
   findRepoRoot,
   relativeInside,
+  resolveAllowIn,
   ROOT_MARKERS,
 } from './fileScope';
 export { globToRegExp, matchesAnyGlob, toPosixPath } from './glob';

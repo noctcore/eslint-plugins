@@ -13,6 +13,12 @@ ruleTester.run('no-direct-process-env', noDirectProcessEnvRule, {
       filename: workspacePath('apps', 'server', 'src', 'env.ts'),
       options: [{ allowedFiles: ['apps/server/**'] }],
     },
+    // The same exemption under the standard `allowIn` name (`allowedFiles` is its deprecated alias).
+    {
+      code: 'const url = process.env.DATABASE_URL;',
+      filename: workspacePath('apps', 'server', 'src', 'env.ts'),
+      options: [{ allowIn: ['apps/server/**'] }],
+    },
     {
       code: "const port = config.get('PORT');",
       filename: 'apps/web/src/lib/runtime.ts',

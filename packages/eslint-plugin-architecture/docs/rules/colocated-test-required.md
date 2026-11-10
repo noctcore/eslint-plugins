@@ -34,7 +34,7 @@ Directory listings are cached for the lint run, so a folder full of gated files 
 ## What it does not flag
 
 - Anything, until `include` is configured: with no globs the rule never fires.
-- Files that do not match `include`, and files matched by `ignore`.
+- Files that do not match `include`, and files matched by `allowIn`.
 - A test file that itself matches `include`: it is never asked to test itself.
 - A gated file with either a `.test.*` or a `.spec.*` sibling.
 
@@ -51,12 +51,13 @@ files](https://noctcore.github.io/eslint-plugins/filesystem-rules/).
 | Option | Type | Default | Meaning |
 | --- | --- | --- | --- |
 | `include` | `string[]` | `[]` | Globs of source files that must have a colocated test. **Empty = the rule is off.** |
-| `ignore` | `string[]` | `[]` | Globs of files to exempt even when they match `include`. |
+| `allowIn` | `string[]` | `[]` | Globs of files to exempt even when they match `include`. |
+| `ignore` | `string[]` | (none) | Deprecated alias of `allowIn`, kept through 1.x. When both are set, their globs are combined. |
 
 ```js
 'noctcore-architecture/colocated-test-required': ['error', {
   include: ['**/use*.ts', '**/*.service.ts', '**/*.reducer.ts'],
-  ignore: ['**/*.d.ts'],
+  allowIn: ['**/*.d.ts'],
 }]
 ```
 

@@ -4,7 +4,13 @@ import path from 'node:path';
 
 import { afterAll, describe, expect, it } from 'vitest';
 
-import { fileMatchesAnyGlob, fileScopeCandidates, findRepoRoot, relativeInside } from '../src/fileScope';
+import {
+  fileMatchesAnyGlob,
+  fileScopeCandidates,
+  findRepoRoot,
+  relativeInside,
+  resolveAllowIn,
+} from '../src/fileScope';
 import { toPosixPath } from '../src/glob';
 
 describe('relativeInside', () => {
@@ -80,5 +86,37 @@ describe('workspace root resolution', () => {
   it('lists the absolute, cwd-relative and root-relative spellings once each', () => {
     expect(fileScopeCandidates(file, pkg)).toEqual([toPosixPath(file), 'src/env.ts', 'packages/api/src/env.ts']);
     expect(fileScopeCandidates(file, root)).toEqual([toPosixPath(file), 'packages/api/src/env.ts']);
+  });
+});
+
+describe('resolveAllowIn', () => {
+  const defaults = ['**/scripts/**'];
+
+  it('returns the defaults when neither allowIn nor an alias is set', () => {
+    expect(resolveAllowIn({}, ['allowedFiles'], defaults)).toBe(defaults);
+  });
+
+  it('reads allowIn', () => {
+    expect(resolveAllowIn({ allowIn: ['a/**'] }, ['allowedFiles'], defaults)).toEqual(['a/**']);
+  });
+
+  it('reads a deprecated alias', () => {
+    expect(resolveAllowIn({ allowedFiles: ['b/**'] }, ['allowedFiles'], defaults)).toEqual(['b/**']);
+  });
+
+  it('combines allowIn and an alias, without duplicates', () => {
+    expect(resolveAllowIn({ allowIn: ['a/**', 'b/**'], ignore: ['b/**', 'c/**'] }, ['ignore'], defaults)).toEqual([
+      'a/**',
+      'b/**',
+      'c/**',
+    ]);
+  });
+
+  it('treats an empty allowIn as set, so it exempts nothing', () => {
+    expect(resolveAllowIn({ allowIn: [] }, ['allowedFiles'], defaults)).toEqual([]);
+  });
+
+  it('ignores keys that are not listed as aliases', () => {
+    expect(resolveAllowIn({ include: ['x/**'] }, ['ignore'], defaults)).toBe(defaults);
   });
 });

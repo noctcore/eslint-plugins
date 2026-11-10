@@ -1,3 +1,4 @@
+import { allowInAliasDescription, resolveAllowIn } from '@noctcore/eslint-utils';
 import { readdirSync } from 'node:fs';
 import path from 'node:path';
 
@@ -10,6 +11,8 @@ const RULE_NAME = 'colocated-test-required';
 
 export interface ColocatedTestRequiredOptions {
   readonly include?: readonly string[];
+  readonly allowIn?: readonly string[];
+  /** @deprecated Use `allowIn`. */
   readonly ignore?: readonly string[];
 }
 
@@ -40,8 +43,15 @@ const optionSchema: JSONSchema4 = {
   type: 'object',
   additionalProperties: false,
   properties: {
-    include: { type: 'array', items: { type: 'string' }, uniqueItems: true },
-    ignore: { type: 'array', items: { type: 'string' }, uniqueItems: true },
+    include: {
+      type: 'array', items: { type: 'string' }, uniqueItems: true,
+      description: 'Globs of source files that must have a colocated test. Empty, the default, turns the rule off.',
+    },
+    allowIn: {
+      type: 'array', items: { type: 'string' }, uniqueItems: true,
+      description: 'Globs of files exempt even when they match `include`.',
+    },
+    ignore: { type: 'array', items: { type: 'string' }, uniqueItems: true, description: allowInAliasDescription('ignore') },
   },
 };
 
@@ -93,10 +103,10 @@ export const colocatedTestRequiredRule = createRule<RuleOptions, MessageIds>({
         'Source file `{{basename}}` has no colocated test. Add a sibling `{{stem}}.test.*` (or `.spec.*`) next to it.',
     },
   },
-  defaultOptions: [{ include: [], ignore: [] }],
+  defaultOptions: [{ include: [] }],
   create(context, [options]) {
     const include = options.include ?? DEFAULT_INCLUDE;
-    const ignore = options.ignore ?? DEFAULT_IGNORE;
+    const ignore = resolveAllowIn(options, ['ignore'], DEFAULT_IGNORE);
     const filename = context.filename;
 
     // Off unless configured; a file that is not gated (or is itself a test) exits early.

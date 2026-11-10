@@ -1,3 +1,4 @@
+import { allowInAliasDescription, resolveAllowIn } from '@noctcore/eslint-utils';
 import { AST_NODE_TYPES } from '@typescript-eslint/utils';
 import type { JSONSchema4 } from '@typescript-eslint/utils/json-schema';
 
@@ -16,6 +17,8 @@ const RULE_NAME = 'no-unscoped-prisma-outside-allowlist';
 
 export interface NoUnscopedPrismaOutsideAllowlistOptions {
   /** Globs of files allowed to use the unscoped client and the escape hatches. */
+  readonly allowIn?: readonly string[];
+  /** @deprecated Use `allowIn`. */
   readonly allowedFiles?: readonly string[];
   /** Regular expression source (case-insensitive) a Prisma receiver name must match. */
   readonly receiverPattern?: string;
@@ -45,7 +48,12 @@ const optionSchema: JSONSchema4 = {
   type: 'object',
   additionalProperties: false,
   properties: {
-    allowedFiles: nameListSchema,
+    allowIn: {
+      ...nameListSchema,
+      description:
+        'Globs of files allowed to use the unscoped client and the escape hatches. Default: seeds, migrations and isolation specs; setting it replaces the default.',
+    },
+    allowedFiles: { ...nameListSchema, description: allowInAliasDescription('allowedFiles') },
     receiverPattern: receiverPatternSchema,
     unscopedProperty: unscopedPropertySchema,
     escapeHatchFns: nameListSchema,
@@ -68,12 +76,11 @@ export const noUnscopedPrismaOutsideAllowlistRule = createRule<RuleOptions, Mess
   },
   defaultOptions: [
     {
-      allowedFiles: [...DEFAULT_SYSTEM_FILES],
       escapeHatchFns: [],
     },
   ],
   create(context, [options]) {
-    const allowedFiles = options.allowedFiles ?? DEFAULT_SYSTEM_FILES;
+    const allowedFiles = resolveAllowIn(options, ['allowedFiles'], DEFAULT_SYSTEM_FILES);
 
     if (isAllowlisted(context.filename, allowedFiles, context.cwd)) {
       return {};

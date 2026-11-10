@@ -1,3 +1,4 @@
+import { allowInAliasDescription, resolveAllowIn } from '@noctcore/eslint-utils';
 import { AST_NODE_TYPES, type TSESTree } from '@typescript-eslint/utils';
 import type { JSONSchema4 } from '@typescript-eslint/utils/json-schema';
 
@@ -7,6 +8,8 @@ import { getBasename, isIgnoredPath } from '../utils';
 const RULE_NAME = 'barrel-purity';
 
 export interface BarrelPurityOptions {
+  readonly allowIn?: readonly string[];
+  /** @deprecated Use `allowIn`. */
   readonly allow?: readonly string[];
 }
 
@@ -52,12 +55,11 @@ const optionSchema: JSONSchema4 = {
   type: 'object',
   additionalProperties: false,
   properties: {
-    allow: {
-      type: 'array',
-      items: { type: 'string' },
-      uniqueItems: true,
+    allowIn: {
+      type: 'array', items: { type: 'string' }, uniqueItems: true,
       description: 'Globs of barrel files to skip entirely.',
     },
+    allow: { type: 'array', items: { type: 'string' }, uniqueItems: true, description: allowInAliasDescription('allow') },
   },
 };
 
@@ -120,9 +122,9 @@ export const barrelPurityRule = createRule<RuleOptions, MessageIds>({
         'A barrel must contain only re-exports; found {{kind}}. Move it into a sibling module and re-export it from here.',
     },
   },
-  defaultOptions: [{ allow: [] }],
+  defaultOptions: [{}],
   create(context, [options]) {
-    const allow = options.allow ?? DEFAULT_ALLOW;
+    const allow = resolveAllowIn(options, ['allow'], DEFAULT_ALLOW);
     const filename = context.filename;
 
     if (!BARREL_BASENAME.test(getBasename(filename)) || isIgnoredPath(filename, allow, context.cwd)) {

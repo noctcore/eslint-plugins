@@ -38,6 +38,12 @@ ruleTester.run('index-must-reexport-default', indexMustReexportDefaultRule, {
       filename: CARD_INDEX,
       options: [{ ignorePaths: ['**/Card/**'] }],
     },
+    // The same exemption under the standard `allowIn` name (`ignorePaths` is its deprecated alias).
+    {
+      code: `export * from './Card.types';`,
+      filename: CARD_INDEX,
+      options: [{ allowIn: ['**/Card/**'] }],
+    },
   ],
   invalid: [
     {

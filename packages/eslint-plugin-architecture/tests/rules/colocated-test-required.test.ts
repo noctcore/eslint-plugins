@@ -43,6 +43,12 @@ ruleTester.run('colocated-test-required', colocatedTestRequiredRule, {
       filename: 'tests/fixtures/colocated/useUntested.ts',
       options: [{ include: ['**/use*.ts'], ignore: ['**/useUntested.ts'] }],
     },
+    // The same exemption under the standard `allowIn` name (`ignore` is its deprecated alias).
+    {
+      code: `export function useUntested() { return 2; }`,
+      filename: 'tests/fixtures/colocated/useUntested.ts',
+      options: [{ include: ['**/use*.ts'], allowIn: ['**/useUntested.ts'] }],
+    },
   ],
   invalid: [
     // Hook with no colocated test on disk.

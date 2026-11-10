@@ -133,3 +133,33 @@ export function fileMatchesAnyGlob(filename: string, globs: readonly string[], c
     return candidates.some((candidate) => regex.test(candidate));
   });
 }
+
+/**
+ * The globs of a file-exemption option, standardised on `allowIn`. Rules that
+ * shipped the option under another name (`allowedFiles`, `ignorePaths`,
+ * `ignore`, `allow`) keep that name as a deprecated alias through 1.x.
+ *
+ * When `allowIn` or any alias is set, the result is their union, so a config
+ * half-way through the rename keeps every glob. When none is set, `defaults`
+ * applies. Do not put `allowIn` or an alias in the rule's `defaultOptions`: the
+ * merged default would hide an alias the user did set.
+ */
+export function resolveAllowIn(
+  options: object,
+  aliases: readonly string[],
+  defaults: readonly string[],
+): readonly string[] {
+  const record = options as Readonly<Record<string, unknown>>;
+  const lists = ['allowIn', ...aliases]
+    .map((key) => record[key])
+    .filter((value): value is readonly string[] => Array.isArray(value));
+  if (lists.length === 0) {
+    return defaults;
+  }
+  return lists.length === 1 ? (lists[0] as readonly string[]) : [...new Set(lists.flat())];
+}
+
+/** Schema description suffix for a deprecated alias of `allowIn`. */
+export function allowInAliasDescription(alias: string): string {
+  return `Deprecated alias of \`allowIn\`, kept through 1.x. When both are set, the globs of \`${alias}\` and \`allowIn\` are combined.`;
+}

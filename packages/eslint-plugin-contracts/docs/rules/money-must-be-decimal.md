@@ -48,7 +48,7 @@ regress for projects that have not asked for them.
 
 - Object-literal properties (`const x = { total: 5 }`), except a key of a `z.object({...})`.
 - Counts and pagination totals: `class PageMetaDto { total: number; totalPages: number }`.
-- Fields matching `minorUnitPatterns`, and every field in a file listed in `allowedFiles`.
+- Fields matching `minorUnitPatterns`, and every field in a file listed in `allowIn`.
 
 ## Options
 
@@ -56,7 +56,8 @@ regress for projects that have not asked for them.
 | --- | --- | --- | --- |
 | `decimalType` | `string` | `'Decimal'` | Name of the money type to require; appears in the report message. |
 | `fieldPatterns` | `string[]` | `['amount', 'price', 'cost', 'total', 'balance']` | Case-insensitive regex fragments identifying money-named fields (OR-combined). |
-| `allowedFiles` | `string[]` | `[]` | Files skipped entirely, as globs (`**/legacy/**`). A plain path is a path suffix matched at a directory boundary (`apps/api/src/legacy/totals.ts`). |
+| `allowIn` | `string[]` | `[]` | Files skipped entirely, as globs (`**/legacy/**`). A plain path is a path suffix matched at a directory boundary (`apps/api/src/legacy/totals.ts`). |
+| `allowedFiles` | `string[]` | (none) | Deprecated alias of `allowIn`, kept through 1.x. When both are set, their globs are combined. |
 | `minorUnitPatterns` | `string[]` | `[]` | Case-insensitive regex fragments naming fields that hold integer minor units on purpose and are therefore not reported. Checked before `fieldPatterns`. |
 | `counterWords` | `string[]` | `['count', 'counts', 'pages', 'page', 'items', 'rows', 'records', 'results', 'index', 'idx', 'hits', 'num', 'number']` | Whole name words (camelCase, snake_case or kebab-case, case-insensitive) that mark a count. A money-named field with one of them is not reported. |
 | `checkZod` | `boolean` | `true` | Check `z.number()` under a money-named key of `z.object({...})`. |

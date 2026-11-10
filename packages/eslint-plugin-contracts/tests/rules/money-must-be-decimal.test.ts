@@ -28,6 +28,12 @@ ruleTester.run('money-must-be-decimal', moneyMustBeDecimalRule, {
       options: [{ allowedFiles: ['apps/api/src/legacy/legacy.service.ts'] }],
       filename: 'apps/api/src/legacy/legacy.service.ts',
     },
+    // The same exemption under the standard `allowIn` name (`allowedFiles` is its deprecated alias).
+    {
+      code: 'class Legacy { total: number; }',
+      options: [{ allowIn: ['apps/api/src/legacy/legacy.service.ts'] }],
+      filename: 'apps/api/src/legacy/legacy.service.ts',
+    },
     // A plain path still matches as a suffix of an absolute filename.
     {
       code: 'class Legacy { total: number; }',

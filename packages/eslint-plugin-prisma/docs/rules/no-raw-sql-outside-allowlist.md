@@ -46,7 +46,7 @@ const rows = await prisma.invoice.findMany({ where: { accountId } });
   `SELECT pg_advisory_xact_lock(${lockKey})`). `pg_advisory_xact_lock` does not match `LOCK`:
   keywords match as whole words, and `_` is a word character.
 - A keyword inside an interpolated value: `${fromDate}` is a bound parameter, not the text `FROM`.
-- Any raw SQL in an `allowedFiles` file, except the `*Unsafe` variants. Allowlisted files skip
+- Any raw SQL in an `allowIn` file, except the `*Unsafe` variants. Allowlisted files skip
   everything except the `*Unsafe` report.
 
 The carve-out is a floor, not a proof: a tableless statement can still call a SQL function that
@@ -57,7 +57,8 @@ reads a table. That is a reviewed-code problem; the rule exists so the obvious
 
 | Option | Type | Default | Meaning |
 | --- | --- | --- | --- |
-| `allowedFiles` | `string[]` (globs) | `['**/prisma/seed.ts', '**/*.seed.ts', '**/prisma/migrations/**', '**/*.isolation.spec.ts']` | Files allowed to run any raw SQL except the `*Unsafe` variants. Replaces the default list. |
+| `allowIn` | `string[]` (globs) | `['**/prisma/seed.ts', '**/*.seed.ts', '**/prisma/migrations/**', '**/*.isolation.spec.ts']` | Files allowed to run any raw SQL except the `*Unsafe` variants. Replaces the default list. |
+| `allowedFiles` | `string[]` | (none) | Deprecated alias of `allowIn`, kept through 1.x. When both are set, their globs are combined. |
 | `tableKeywords` | `string[]` | `['FROM', 'INTO', 'UPDATE', 'JOIN', 'TABLE', 'DELETE', 'MERGE', 'COPY', 'TRUNCATE', 'LOCK', 'ALTER', 'DROP']` | Whole-word, case-insensitive keywords that mark a literal chunk as table-touching. |
 
 Globs match the absolute path and the cwd- and workspace-root-relative paths, as described in
@@ -68,11 +69,11 @@ receiver options.
 
 ```js
 'noctcore-prisma/no-raw-sql-outside-allowlist': ['error', {
-  allowedFiles: ['**/prisma/seed.ts', '**/prisma/migrations/**', 'src/reports/**/*.sql.ts'],
+  allowIn: ['**/prisma/seed.ts', '**/prisma/migrations/**', 'src/reports/**/*.sql.ts'],
 }],
 ```
 
 ## When not to use it
 
 If your app is single-tenant and raw SQL is reviewed by other means, the `*Unsafe` half is still
-worth keeping; consider enabling the rule with a wide `allowedFiles` instead of turning it off.
+worth keeping; consider enabling the rule with a wide `allowIn` instead of turning it off.

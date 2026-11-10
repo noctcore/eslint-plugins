@@ -62,17 +62,18 @@ app.listen(3000);
 
 - Pure re-exports in every form shown in the `good` example, including an import whose bindings feed a
   specifier-only `export { a }` and `export default Card` of a binding by name.
-- Barrels whose path matches an `allow` glob.
+- Barrels whose path matches an `allowIn` glob.
 
 ## Options
 
 | Option | Type | Default | Meaning |
 | --- | --- | --- | --- |
-| `allow` | `string[]` | `[]` | Globs (supporting `**`, `*`, `?`) of barrel paths to exempt entirely. |
+| `allowIn` | `string[]` | `[]` | Globs (supporting `**`, `*`, `?`) of barrel paths to exempt entirely. |
+| `allow` | `string[]` | (none) | Deprecated alias of `allowIn`, kept through 1.x. When both are set, their globs are combined. |
 
 ```js
 'noctcore-architecture/barrel-purity': ['error', {
-  allow: ['**/legacy/**'],
+  allowIn: ['**/legacy/**'],
 }]
 ```
 
@@ -80,4 +81,4 @@ app.listen(3000);
 
 If you deliberately keep small helpers or feature flags inside a package's `index.ts`, this rule will
 fight you. Prefer moving them into a sibling module and re-exporting — but if you cannot, disable the
-rule for those paths via `allow`.
+rule for those paths via `allowIn`.

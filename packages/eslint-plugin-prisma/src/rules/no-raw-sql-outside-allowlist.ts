@@ -1,3 +1,4 @@
+import { allowInAliasDescription, resolveAllowIn } from '@noctcore/eslint-utils';
 import { AST_NODE_TYPES, type TSESTree } from '@typescript-eslint/utils';
 import type { JSONSchema4 } from '@typescript-eslint/utils/json-schema';
 
@@ -8,6 +9,8 @@ const RULE_NAME = 'no-raw-sql-outside-allowlist';
 
 export interface NoRawSqlOutsideAllowlistOptions {
   /** Globs of files allowed to run raw SQL that touches a table. */
+  readonly allowIn?: readonly string[];
+  /** @deprecated Use `allowIn`. */
   readonly allowedFiles?: readonly string[];
   /** SQL keywords (whole word, any case) that mark a literal chunk as table-touching. */
   readonly tableKeywords?: readonly string[];
@@ -79,10 +82,18 @@ const optionSchema: JSONSchema4 = {
   type: 'object',
   additionalProperties: false,
   properties: {
+    allowIn: {
+      type: 'array',
+      items: { type: 'string' },
+      uniqueItems: true,
+      description:
+        'Globs of files allowed to run raw SQL that touches a table. Default: seeds, migrations and isolation specs; setting it replaces the default.',
+    },
     allowedFiles: {
       type: 'array',
       items: { type: 'string' },
       uniqueItems: true,
+      description: allowInAliasDescription('allowedFiles'),
     },
     tableKeywords: {
       type: 'array',
@@ -149,14 +160,13 @@ export const noRawSqlOutsideAllowlistRule = createRule<RuleOptions, MessageIds>(
   },
   defaultOptions: [
     {
-      allowedFiles: [...DEFAULT_ALLOWED_FILES],
       tableKeywords: [...DEFAULT_TABLE_KEYWORDS],
     },
   ],
   create(context, [options]) {
     const allowlisted = isAllowlisted(
       context.filename,
-      options.allowedFiles ?? DEFAULT_ALLOWED_FILES,
+      resolveAllowIn(options, ['allowedFiles'], DEFAULT_ALLOWED_FILES),
       context.cwd,
     );
     const keywords = options.tableKeywords ?? DEFAULT_TABLE_KEYWORDS;
