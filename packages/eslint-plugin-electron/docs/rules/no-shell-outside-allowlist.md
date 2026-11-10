@@ -65,7 +65,7 @@ export async function openExternalSafely(url: string): Promise<void> {
 
 | Option | Type | Default | Meaning |
 | --- | --- | --- | --- |
-| `allowIn` | `string[]` (globs) | `[]` | Files that may use `shell`, matched against the forward-slashed filename. A leading `**/` matches any directory prefix. |
+| `allowIn` | `string[]` (globs) | `[]` | Files that may use `shell`, matched against the absolute path and the path relative to the working directory or workspace root, so `src/main/security.ts` and `**/main/security.ts` both work. |
 
 ```js
 'noctcore-electron/no-shell-outside-allowlist': ['error', { allowIn: ['**/src/main/external-links.ts'] }]

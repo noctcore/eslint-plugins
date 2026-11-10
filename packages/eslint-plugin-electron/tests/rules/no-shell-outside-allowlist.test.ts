@@ -1,4 +1,4 @@
-import { ruleTester } from '@noctcore/eslint-test-utils';
+import { ruleTester, workspacePath } from '@noctcore/eslint-test-utils';
 
 import { noShellOutsideAllowlistRule } from '../../src/rules/no-shell-outside-allowlist';
 
@@ -6,6 +6,13 @@ const ALLOW = [{ allowIn: ['**/src/main/security.ts'] }];
 
 ruleTester.run('no-shell-outside-allowlist', noShellOutsideAllowlistRule, {
   valid: [
+    // A repo-relative glob matches the absolute filename ESLint passes, read
+    // relative to the workspace root (or the working directory).
+    {
+      code: `import { shell } from 'electron';\nshell.openExternal(url);`,
+      filename: workspacePath('apps', 'server', 'src', 'env.ts'),
+      options: [{ allowIn: ['apps/server/**'] }],
+    },
     // The one module that owns it.
     { code: `import { shell } from 'electron';\nshell.openExternal(url);`, filename: 'apps/desktop/src/main/security.ts', options: ALLOW },
     { code: `import { app, BrowserWindow } from 'electron';`, filename: 'src/main/window.ts', options: ALLOW },
@@ -15,6 +22,14 @@ ruleTester.run('no-shell-outside-allowlist', noShellOutsideAllowlistRule, {
     { code: `import electron from 'electron';\nconst { app } = electron;`, filename: 'src/main/window.ts', options: ALLOW },
   ],
   invalid: [
+    // A repo-relative glob matches the absolute filename ESLint passes, read
+    // relative to the workspace root (or the working directory).
+    {
+      code: `import { shell } from 'electron';\nshell.openExternal(url);`,
+      filename: workspacePath('apps', 'web', 'src', 'env.ts'),
+      options: [{ allowIn: ['apps/server/**'] }],
+      errors: [{ messageId: 'shellOutsideAllowlist' }],
+    },
     {
       code: `import { app, shell } from 'electron';\nshell.openExternal(url);`,
       filename: 'apps/desktop/src/main/window.ts',
