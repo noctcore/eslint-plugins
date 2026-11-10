@@ -3,7 +3,7 @@
 > Every exported zod schema is a PascalCase const suffixed `Schema`, paired with a same-named inferred type.
 
 <!-- begin generated rule header -->
-✅ In `recommended` at `error` · 💭 Type information: not needed
+☑️ In `strict` at `error`, not in `recommended` · 💭 Type information: not needed
 <!-- end generated rule header -->
 
 ## Why

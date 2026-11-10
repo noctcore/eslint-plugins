@@ -3,7 +3,7 @@
 > A hook/query/mutation file may export only a handful of `use*` hooks before it should be split.
 
 <!-- begin generated rule header -->
-✅ In `recommended` at `error` · 💭 Type information: not needed
+☑️ In `strict` at `error`, not in `recommended` · 💭 Type information: not needed
 <!-- end generated rule header -->
 
 ## Why

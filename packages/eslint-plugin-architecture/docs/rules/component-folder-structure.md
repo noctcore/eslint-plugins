@@ -3,7 +3,7 @@
 > A component entry file must ship its full sibling set (hooks, types, story, test, barrel) on disk.
 
 <!-- begin generated rule header -->
-✅ In `recommended` at `error` · 💭 Type information: not needed
+☑️ In `strict` at `error`, not in `recommended` · 💭 Type information: not needed
 <!-- end generated rule header -->
 
 ## Why

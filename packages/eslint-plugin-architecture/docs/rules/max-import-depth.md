@@ -3,7 +3,7 @@
 > A relative import may not climb more than `max` parent levels (default 3). Autofixed to a path alias when one is configured.
 
 <!-- begin generated rule header -->
-✅ In `recommended` at `error` · 🔧 Fixable with `--fix` · 💭 Type information: not needed
+☑️ In `strict` at `error`, not in `recommended` · 🔧 Fixable with `--fix` · 💭 Type information: not needed
 <!-- end generated rule header -->
 
 ## Why

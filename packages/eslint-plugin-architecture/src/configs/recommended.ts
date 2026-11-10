@@ -6,14 +6,12 @@
  * would read as coverage the project does not have. The rules left out here
  * are listed in `tests/configs/recommended.test.ts`, and the README's
  * "Opt-in rules" block shows how to enable them.
+ *
+ * Every other rule here encodes a layout convention (file names, folder shape,
+ * feature boundaries, import depth), so they all sit in `strict` (`./strict.ts`)
+ * and this preset turns nothing on.
  */
 export const recommended = {
-  'noctcore-architecture/barrel-purity': 'error',
-  'noctcore-architecture/component-folder-structure': 'error',
-  'noctcore-architecture/filename-matches-export': 'error',
-  'noctcore-architecture/index-must-reexport-default': 'error',
-  'noctcore-architecture/max-import-depth': 'error',
-  'noctcore-architecture/no-cross-feature-imports': 'error',
   // Ships OFF: which files it governs and which category mixes they may keep
   // (a NestJS `.constants.ts` legitimately holds constants, types and enums) is
   // a per-codebase decision best made from measured counts. Enable it with

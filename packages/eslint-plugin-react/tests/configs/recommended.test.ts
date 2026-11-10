@@ -18,8 +18,20 @@ const OMITTED_FROM_PRESETS: readonly string[] = [
 type Preset = { name?: string; rules: Record<string, unknown> };
 type RuleMeta = { meta?: { docs?: { requiresOptions?: boolean } } };
 
+// The house rules only `strict` turns on; `src/configs/strict.ts` says why.
+const STRICT_ONLY: readonly string[] = [
+  'noctcore-react/component-props-naming',
+  'noctcore-react/max-hook-return-surface',
+  'noctcore-react/max-hooks-per-file',
+  'noctcore-react/max-props-per-component',
+  'noctcore-react/no-jsx-computation',
+  'noctcore-react/no-state-in-component-body',
+];
+
 describe('presets', () => {
   const presets = Object.entries(plugin.configs) as [string, Preset][];
+  const recommended = plugin.configs.recommended as Preset;
+  const strict = plugin.configs.strict as Preset;
 
   it('exports at least one preset', () => {
     expect(presets.length).toBeGreaterThan(0);
@@ -37,10 +49,19 @@ describe('presets', () => {
     expect(offenders).toEqual([]);
   });
 
-  it.each(presets)('%s configures or deliberately omits every rule', (_name, preset) => {
-    const configured = Object.keys(preset.rules).map((id) => id.slice(id.indexOf('/') + 1));
+  it('strict configures or deliberately omits every rule', () => {
+    const configured = Object.keys(strict.rules).map((id) => id.slice(id.indexOf('/') + 1));
     const accounted = [...configured, ...OMITTED_FROM_PRESETS].sort();
     expect(accounted).toEqual(Object.keys(plugin.rules).sort());
+  });
+
+  it('strict keeps every recommended entry at the same severity', () => {
+    expect(strict.rules).toMatchObject(recommended.rules);
+  });
+
+  it('recommended leaves out the house rules strict adds', () => {
+    expect(Object.keys(recommended.rules).filter((id) => STRICT_ONLY.includes(id))).toEqual([]);
+    expect(Object.keys(strict.rules).filter((id) => !(id in recommended.rules)).sort()).toEqual(STRICT_ONLY);
   });
 
   it('leaves out every rule that needs options', () => {
