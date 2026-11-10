@@ -182,15 +182,15 @@ code renderer accepts.
 `site/scripts/parity.test.ts` (run by `bun run test` through the site workspace, and by
 `bun test scripts` inside `site/`) checks three things across the whole repo: every exported rule
 has a doc, every doc belongs to an exported rule, and the inventory sees **exactly
-`EXPECTED_RULE_COUNT`** rules and docs. That constant is `98` as of this writing and it is
-deliberate: the set comparison alone passes if the inventory goes blind, so the number must be
-changed by hand, in the same commit that adds or removes a rule and its doc. If your branch is
-green everywhere except a test named "the inventory sees exactly 98 rules and 98 docs", this is
-why. Bump it.
+`EXPECTED_RULE_COUNT`** rules and docs. That constant is deliberate: the set comparison alone
+passes if the inventory goes blind, so the number must be changed by hand, in the same commit that
+adds or removes a rule and its doc. If your branch is green everywhere except a test named "the
+inventory sees exactly N rules and N docs", this is why. Bump it. When two branches each add a
+rule, the second to rebase conflicts on that line: keep main's number plus your own additions.
 
-The same file also lists by name the nine `lint-meta-rules` rules that live behind sub-entry
-points (`/i18n`, `/prisma`, `/resolved-config`, `/session`, `/trpc`). Adding one of those means
-adding it to that list too, and a new sub-entry point also goes in `LINT_META_SUBPATHS` in
+The same file also lists by name the `lint-meta-rules` rules that live behind sub-entry points
+(`/i18n`, `/prisma`, `/resolved-config`, `/session`, `/trpc`, `/typescript`). Adding one of those
+means adding it to that list too, and a new sub-entry point also goes in `LINT_META_SUBPATHS` in
 `site/scripts/inventory.ts`.
 
 ### Severity policy: `error` or `off`, never `warn`
