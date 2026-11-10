@@ -21,7 +21,7 @@ What each plugin is for, when it is a bad fit, and every rule with its options a
 
 ## Packages
 
-Eleven ESLint plugins, plus `@noctcore/lint-meta-rules` for whole-repo checks and
+Twelve ESLint plugins, plus `@noctcore/lint-meta-rules` for whole-repo checks and
 `@noctcore/eslint-utils`, the shared building block they are made with. Each plugin is versioned
 and installed on its own.
 
@@ -35,6 +35,7 @@ and installed on its own.
 | [`@noctcore/eslint-plugin-react`](./packages/eslint-plugin-react) | [![npm](https://img.shields.io/npm/v/@noctcore/eslint-plugin-react?label=)](https://www.npmjs.com/package/@noctcore/eslint-plugin-react) | React architecture and correctness (prop drilling, state colocation, memoized context, effect safety, guarded web storage) |
 | [`@noctcore/eslint-plugin-rsc`](./packages/eslint-plugin-rsc) | [![npm](https://img.shields.io/npm/v/@noctcore/eslint-plugin-rsc?label=)](https://www.npmjs.com/package/@noctcore/eslint-plugin-rsc) | React Server Components / App Router correctness (navigation errors that must not be swallowed) |
 | [`@noctcore/eslint-plugin-llm`](./packages/eslint-plugin-llm) | [![npm](https://img.shields.io/npm/v/@noctcore/eslint-plugin-llm?label=)](https://www.npmjs.com/package/@noctcore/eslint-plugin-llm) | LLM output treated as untrusted input before it reaches a sink |
+| [`@noctcore/eslint-plugin-nestjs`](./packages/eslint-plugin-nestjs) | [![npm](https://img.shields.io/npm/v/@noctcore/eslint-plugin-nestjs?label=)](https://www.npmjs.com/package/@noctcore/eslint-plugin-nestjs) | NestJS and BullMQ background work (queue jobs keyed against retries, shared queue and job names, schedules with a stated time zone) |
 | [`@noctcore/eslint-plugin-prisma`](./packages/eslint-plugin-prisma) | [![npm](https://img.shields.io/npm/v/@noctcore/eslint-plugin-prisma?label=)](https://www.npmjs.com/package/@noctcore/eslint-plugin-prisma) | Prisma tenancy, soft-delete and transaction guardrails (tenant-scope escape hatches, raw SQL, request-body writes, single-writer models, audit placement) |
 | [`@noctcore/eslint-plugin-architecture`](./packages/eslint-plugin-architecture) | [![npm](https://img.shields.io/npm/v/@noctcore/eslint-plugin-architecture?label=)](https://www.npmjs.com/package/@noctcore/eslint-plugin-architecture) | Module and folder shape (folder-per-component, barrels, feature boundaries, import depth, colocated tests) |
 | [`@noctcore/eslint-plugin-monorepo`](./packages/eslint-plugin-monorepo) | [![npm](https://img.shields.io/npm/v/@noctcore/eslint-plugin-monorepo?label=)](https://www.npmjs.com/package/@noctcore/eslint-plugin-monorepo) | Workspace package boundaries (barrel-only and exports-map-aware imports); needs your workspace scope |
@@ -83,6 +84,7 @@ stack you use:
 | `rsc` | You use the Next.js App Router / React Server Components |
 | `prisma` | You use Prisma (several rules need your tenant models; see its README) |
 | `llm` | You call an LLM SDK |
+| `nestjs` | You run BullMQ queues or `@nestjs/schedule` cron jobs |
 | `observability` | You log through a structured logger |
 | `architecture`, `monorepo` | You want folder and package boundaries enforced (`monorepo` needs your scope) |
 

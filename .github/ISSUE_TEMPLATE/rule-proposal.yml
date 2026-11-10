@@ -32,6 +32,7 @@ body:
         - eslint-plugin-prisma
         - eslint-plugin-rsc
         - eslint-plugin-llm
+        - eslint-plugin-nestjs
         - lint-meta-rules (whole-repo checks for the harness)
         - a new package
     validations:

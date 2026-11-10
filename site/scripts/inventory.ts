@@ -38,6 +38,7 @@ export const PLUGIN_SHORT_NAMES = [
   'prisma',
   'rsc',
   'llm',
+  'nestjs',
 ] as const;
 
 export const LINT_META = 'lint-meta-rules';
