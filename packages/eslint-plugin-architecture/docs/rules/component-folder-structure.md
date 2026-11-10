@@ -35,10 +35,30 @@ components/board/TaskCard/
   index.ts              ┘
 ```
 
+The report sits on the file's first line, so an editor does not underline the whole file.
+
+### A component outside its own folder (`requireOwnFolder`)
+
+With `requireOwnFolder: true`, a PascalCase `.tsx` under a feature that is **not** the entry file of
+its own folder is reported too: a sub-component dropped into another component's folder
+(`BulkActionBar/MoreMenu.tsx`) or a loose file at a feature root (`splash/SplashRain.tsx`). The
+message asks for the move to `<Name>/<Name>.tsx`, not for siblings, since the file has no folder of
+its own yet. Without the option these files are invisible to the rule, which is how they
+accumulate. It is off by default because it reports files the sibling check has always left alone.
+
+```text prose reason="the rule checks file placement on disk"
+components/splash/
+  SplashRain.tsx        ← reported with requireOwnFolder: not in its own folder
+  SplashScene/
+    SplashScene.tsx     ← entry file (sibling check)
+    SceneLayer.tsx      ← reported with requireOwnFolder: inside another component's folder
+```
+
 ## What it does not flag
 
 - Files that are not entry files: `task-card.tsx` (not PascalCase) or `Group/Widget.tsx` (basename
-  differs from its folder).
+  differs from its folder), unless `requireOwnFolder` is on. Sidecars (`Widget.stories.tsx`,
+  `Widget.test.tsx`) are never component files.
 - Entry files outside the `componentRoot` segment, such as `routes/Widget/Widget.tsx`.
 - Files matched by `ignorePaths`; the default `**/ui/**` keeps the lighter shadcn-style layout.
 - A component folder whose siblings cover whatever `requiredSiblings` is set to, even a trimmed set.
@@ -57,12 +77,14 @@ long-running editor server picks up an edit to it, because the rule re-reads it 
 | `componentRoot` | `string` | `'components'` | The directory segment the layout is anchored on. |
 | `requiredSiblings` | `string[]` | `['.hooks.ts', '.types.ts', '.stories.tsx', '.test.tsx', 'index.ts']` | The sibling set. An entry starting with `.` is a name-relative suffix (`.hooks.ts` → `<Name>.hooks.ts`); any other entry is a literal filename (`index.ts`). |
 | `ignorePaths` | `string[]` | `['**/ui/**']` | Globs (supporting `**`, `*`, `?`) of paths to skip. |
+| `requireOwnFolder` | `boolean` | `false` | Also report a component file under a feature that is not the entry file of its own folder. |
 
 ```js
 'noctcore-architecture/component-folder-structure': ['error', {
   componentRoot: 'components',
   requiredSiblings: ['.hooks.ts', '.types.ts', '.stories.tsx', '.test.tsx', 'index.ts'],
   ignorePaths: ['**/ui/**'],
+  requireOwnFolder: true,
 }]
 ```
 
