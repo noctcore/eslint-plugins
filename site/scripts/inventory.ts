@@ -40,6 +40,7 @@ export const PLUGIN_SHORT_NAMES = [
   'llm',
   'nestjs',
   'query',
+  'electron',
 ] as const;
 
 export const LINT_META = 'lint-meta-rules';
