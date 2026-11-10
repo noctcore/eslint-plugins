@@ -50,8 +50,24 @@ ruleTester.run('no-raw-sql-outside-allowlist', noRawSqlOutsideAllowlistRule, {
       filename: SERVICE,
       options: [{ tableKeywords: ['DELETE'] }],
     },
+    // `allowIn` names the files that may run table-touching SQL; the deprecated
+    // `allowedFiles` alias still works, and both lists are combined.
+    { code: 'const rows = await tx.$queryRaw`SELECT id FROM "Employee"`;', filename: SERVICE, options: [{ allowIn: ['**/foo/foo.service.ts'] }] },
+    { code: 'const rows = await tx.$queryRaw`SELECT id FROM "Employee"`;', filename: SERVICE, options: [{ allowedFiles: ['**/foo/foo.service.ts'] }] },
+    {
+      code: 'const rows = await tx.$queryRaw`SELECT id FROM "Employee"`;',
+      filename: SERVICE,
+      options: [{ allowIn: ['**/reports/**'], allowedFiles: ['**/foo/foo.service.ts'] }],
+    },
   ],
   invalid: [
+    // Setting `allowIn` replaces the default list.
+    {
+      code: 'const rows = await tx.$queryRaw`SELECT id FROM "Employee"`;',
+      filename: ISOLATION_SPEC,
+      options: [{ allowIn: ['**/reports/**'] }],
+      errors: [{ messageId: 'rawSqlTouchesTable', data: { keyword: 'FROM' } }],
+    },
     {
       // The motivating case: a report query reading a tenant table.
       code: 'const rows = await tx.$queryRaw`SELECT id, "firstName" FROM "Employee" WHERE "accountId" = ${accountId}`;',

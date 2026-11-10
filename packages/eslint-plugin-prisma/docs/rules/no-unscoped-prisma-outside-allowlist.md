@@ -18,7 +18,7 @@ its tests.
 
 ## What it flags
 
-Outside the files in `allowedFiles`:
+Outside the files in `allowIn`:
 
 - a `<receiver>.<unscopedProperty>` member access, where the receiver's name matches
   `receiverPattern` (`this.prisma.unscoped`, `prismaService.unscoped`);
@@ -45,7 +45,7 @@ await prisma.unscoped.invoice.createMany({ data: fixtures });
 ## What it does not flag
 
 The scoped client is never reported, and neither is a property named `unscoped` on a receiver that
-does not match `receiverPattern` (`this.cache.unscoped()`). Files in `allowedFiles` may use both the
+does not match `receiverPattern` (`this.cache.unscoped()`). Files in `allowIn` may use both the
 unscoped client and the escape hatches.
 
 Name and shape matching with no type information. It catches the direct member, the destructure and
@@ -56,7 +56,8 @@ Only RLS is a complete backstop.
 
 | Option | Type | Default | Meaning |
 | --- | --- | --- | --- |
-| `allowedFiles` | `string[]` (globs) | `['**/prisma/seed.ts', '**/*.seed.ts', '**/prisma/migrations/**', '**/*.isolation.spec.ts']` | Files allowed to use the unscoped client and the escape hatches. Replaces the default list. |
+| `allowIn` | `string[]` (globs) | `['**/prisma/seed.ts', '**/*.seed.ts', '**/prisma/migrations/**', '**/*.isolation.spec.ts']` | Files allowed to use the unscoped client and the escape hatches. Replaces the default list. |
+| `allowedFiles` | `string[]` | (none) | Deprecated alias of `allowIn`, kept through 1.x. When both are set, their globs are combined. |
 | `receiverPattern` | `string` (regex source) | `'prisma'` | An identifier or property name must match this (case-insensitive) to count as a Prisma client. |
 | `unscopedProperty` | `string` | `'unscoped'` | The member that exposes the unscoped client. |
 | `escapeHatchFns` | `string[]` | `[]` | Functions that run a callback outside the tenant scope. None by default: name yours. |
@@ -68,7 +69,7 @@ such as `packages/database/**` still matches when a task runner lints one packag
 
 ```js
 'noctcore-prisma/no-unscoped-prisma-outside-allowlist': ['error', {
-  allowedFiles: [
+  allowIn: [
     '**/prisma/seed.ts',
     '**/prisma/migrations/**',
     '**/*.isolation.spec.ts',

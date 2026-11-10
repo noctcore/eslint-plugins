@@ -41,7 +41,7 @@ export default [
     files: ['apps/api/src/**/*.ts'],
     rules: {
       'noctcore-prisma/no-unscoped-prisma-outside-allowlist': ['error', {
-        allowedFiles: ['**/prisma/seed.ts', '**/prisma/migrations/**', '**/common/database/prisma.service.ts'],
+        allowIn: ['**/prisma/seed.ts', '**/prisma/migrations/**', '**/common/database/prisma.service.ts'],
         escapeHatchFns: ['runWithoutTenantScope'],
       }],
       'noctcore-prisma/prisma-write-in-transaction': ['error', { clientProperties: ['client'] }],

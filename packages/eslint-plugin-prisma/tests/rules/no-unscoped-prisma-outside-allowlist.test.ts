@@ -51,6 +51,13 @@ ruleTester.run('no-unscoped-prisma-outside-allowlist', noUnscopedPrismaOutsideAl
       filename: 'apps/api/src/common/database/prisma.service.ts',
       options: [{ allowedFiles: ['**/common/database/prisma.service.ts'] }],
     },
+    // The same exemption under the standard `allowIn` name (`allowedFiles` is its deprecated alias).
+    {
+      // allowedFiles replaces the defaults, it does not extend them.
+      code: 'const rows = this.prisma.unscoped.account.findMany();',
+      filename: 'apps/api/src/common/database/prisma.service.ts',
+      options: [{ allowIn: ['**/common/database/prisma.service.ts'] }],
+    },
     {
       // The tenant-scoped client must NOT fire, even outside the allowlist.
       code: 'const rows = this.prisma.client.account.findMany();',
