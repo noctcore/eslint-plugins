@@ -1,0 +1,31 @@
+---
+title: "@noctcore/eslint-plugin-electron"
+description: "Electron main-process security: renderer isolation flags, IPC sender checks, and shell kept to one checked module."
+sidebar:
+  label: electron
+  order: 13
+---
+
+import QuickStart from '../../../components/QuickStart.astro';
+import RuleTable from '../../../components/RuleTable.astro';
+
+Electron main-process security: renderer isolation flags, IPC sender checks, and shell kept to one checked module.
+
+## What it solves
+
+An Electron renderer is a web page with a line into Node. The defaults keep that line narrow, and three kinds of edit widen it without anything failing: a `webPreferences` flag flipped for a debugging session, an IPC handler that acts on a message from any frame, and a `shell.openExternal` called with a URL nobody checked. Each works in development and becomes a path from web content to the operating system the day the app shows something it did not ship.
+
+## What it will yell at you about
+
+It will yell at you about **a `webPreferences` flag that turns off isolation** (`nodeIntegration: true`, `contextIsolation: false`, `sandbox: false` and the rest), the one rule `recommended` turns on. Two opt-in rules need a fact about your app: **IPC handlers that do not check their sender first** (name your guard in `guards`) and **`shell` used outside the module you list in `allowIn`**. **It is a bad fit** for flags set from variables, which the literal-only check does not see, and for handlers passed by name, which it does not follow.
+
+## Install and configure
+
+<QuickStart pkg="electron" />
+
+## Rules
+
+Each rule links to its page, with the options it takes and Incorrect and Correct examples. A good first
+read is [`webpreferences-locked`](/eslint-plugins/rules/electron/webpreferences-locked/).
+
+<RuleTable pkg="electron" />
