@@ -53,6 +53,20 @@ belong.
 Stateful hooks in a plain `.ts` file (`use-thing.ts`) are not gated either: only `.tsx` component
 files are checked.
 
+### Nested components and sidecars
+
+Every `.tsx` is checked, whatever folder it sits in: an entry file (`Widget/Widget.tsx`), a
+sub-component next to it (`Widget/WidgetRow.tsx`) and a loose file at a feature root alike. The rule
+does not read a folder layout, so there is no separate switch for nested components. That also means
+a story or a component test in `.tsx` is checked. When those may hold state, add their suffixes to
+`hookFileSuffixes`, which skips any file whose basename ends with an entry:
+
+```js
+'noctcore-react/no-state-in-component-body': ['error', {
+  hookFileSuffixes: ['.hooks.ts', '.stories.tsx', '.test.tsx'],
+}]
+```
+
 ## Options
 
 | Option | Type | Default | Meaning |
