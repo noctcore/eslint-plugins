@@ -8,6 +8,11 @@ describe('package export surface', () => {
     expect(RULE_IDS.sort()).toEqual(
       [
         'agents-doc-presence',
+        'pnpm-override-ledger',
+        'pnpm-hardening-settings',
+        'noctcore-packages-current',
+        'node-version-parity',
+        'banned-dependencies',
         'canonical-helpers-single-home',
         'dockerfile-base-image-digest-pin',
         'file-size-ratchet',
@@ -46,6 +51,11 @@ describe('package export surface', () => {
   test('every create* factory and countLines is exported by name', () => {
     const expected = [
       'createAgentsDocPresenceRule',
+      'createPnpmOverrideLedgerRule',
+      'createPnpmHardeningSettingsRule',
+      'createNoctcorePackagesCurrentRule',
+      'createNodeVersionParityRule',
+      'createBannedDependenciesRule',
       'createCanonicalHelpersSingleHomeRule',
       'createDockerfileBaseImageDigestPinRule',
       'createFileSizeRatchetRule',
