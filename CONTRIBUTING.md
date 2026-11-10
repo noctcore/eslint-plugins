@@ -81,6 +81,15 @@ as ❌ (see [Deprecating a rule](#deprecating-a-rule)). Whether a rule needs typ
 declared anywhere; the site detects it from the source (`getParserServices(context)` means
 required). Only one rule in the family needs types today, so think hard before adding a second.
 
+File exemptions are always called `allowIn`: an array of globs naming files the rule skips. Match
+them with `fileMatchesAnyGlob(context.filename, globs, context.cwd)` from `@noctcore/eslint-utils`,
+which tries the absolute path and the paths relative to the working directory and the workspace
+root, so `apps/server/**` and `**/server/**` both work. Read the option with
+`resolveAllowIn(options, aliases, defaults)` and keep `allowIn` out of `defaultOptions`. Rules that
+shipped another name (`allowedFiles`, `ignorePaths`, `ignore`, `allow`) keep it as a deprecated
+alias through 1.x, described with `allowInAliasDescription`. An option that turns a rule on for some
+files (`include`, `files`) is a scope, not an exemption, and keeps its own name.
+
 ### Generated README tables and doc headers
 
 `bun run docs:readmes` (`site/scripts/readmes.ts`) writes two things from the rules' source `meta`
