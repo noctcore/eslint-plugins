@@ -108,3 +108,49 @@ export function readSourceText(read: (rel: string) => string | null, rel: string
     return null;
   }
 }
+
+/** Default Dockerfile globs: `Dockerfile`, `Dockerfile.*` and `*.Dockerfile` at any depth, dot-directories included. */
+export const DEFAULT_DOCKERFILE_GLOBS: readonly string[] = anywhereGlobs([
+  'Dockerfile',
+  'Dockerfile.*',
+  '*.Dockerfile',
+]);
+
+/** Default workspace manifests: the root `package.json` and one level under `apps/`, `packages/` and `tools/`. */
+export const DEFAULT_MANIFEST_GLOBS: readonly string[] = [
+  'package.json',
+  'apps/*/package.json',
+  'packages/*/package.json',
+  'tools/*/package.json',
+];
+
+/** A plain JSON object (not an array, not null), or null. */
+export function asRecord(value: unknown): Record<string, unknown> | null {
+  return typeof value === 'object' && value !== null && !Array.isArray(value)
+    ? (value as Record<string, unknown>)
+    : null;
+}
+
+/** One manifest as read from the tree: its parsed object, or the reason it could not be parsed. */
+export type ManifestRead =
+  | { readonly file: string; readonly ok: true; readonly pkg: Record<string, unknown> }
+  | { readonly file: string; readonly ok: false; readonly reason: string };
+
+/** Every manifest the globs match (skipping `node_modules` and friends), parsed, in a stable order. */
+export function readManifests(
+  ctx: { glob(pattern: string): string[]; read(rel: string): string | null },
+  globs: readonly string[],
+): ManifestRead[] {
+  const out: ManifestRead[] = [];
+  for (const file of globFiles((p) => ctx.glob(p), globs, DEFAULT_SKIP_DIRS)) {
+    const text = readSourceText((rel) => ctx.read(rel), file);
+    if (text === null) continue;
+    try {
+      const pkg = asRecord(JSON.parse(text));
+      out.push(pkg === null ? { file, ok: false, reason: 'is not a JSON object' } : { file, ok: true, pkg });
+    } catch {
+      out.push({ file, ok: false, reason: 'is not valid JSON' });
+    }
+  }
+  return out;
+}

@@ -1,6 +1,6 @@
 import type { IMetaRule, IViolation } from '@noctcore/harness';
 
-import { DEFAULT_SKIP_DIRS, anywhereGlobs, globFiles } from './shared';
+import { DEFAULT_DOCKERFILE_GLOBS, DEFAULT_SKIP_DIRS, globFiles } from './shared';
 
 /**
  * Options for {@link createDockerfileBaseImageDigestPinRule}.
@@ -22,7 +22,6 @@ export interface DockerfileBaseImageDigestPinOptions {
 
 const RULE_ID = 'dockerfile-base-image-digest-pin';
 
-const DEFAULT_DOCKERFILE_GLOBS = anywhereGlobs(['Dockerfile', 'Dockerfile.*', '*.Dockerfile']);
 const FROM_LINE = /^\s*FROM\s+(?:--\S+\s+)*(\S+)(?:\s+AS\s+(\S+))?\s*$/iu;
 const ARG_DEFAULT = /^\s*ARG\s+(\w+)=(\S+)\s*$/iu;
 const DIGEST = /@sha256:[0-9a-f]{64}$/u;
