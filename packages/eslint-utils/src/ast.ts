@@ -122,6 +122,23 @@ export function calleePath(node: TSESTree.Node, options: CalleePathOptions = {})
 }
 
 /**
+ * The called name of a callee: `redact` for `redact(x)`, `mask` for
+ * `utils.mask(x)`, `this.a.mask(x)` and `make().mask(x)`. Null for computed
+ * access (`fns[name](x)`) and any other shape. Unlike `calleePath`, only the
+ * last segment is checked, so the receiver can be anything.
+ */
+export function calleeName(callee: TSESTree.Node): string | null {
+  if (callee.type === AST_NODE_TYPES.Identifier) {
+    return callee.name;
+  }
+  return callee.type === AST_NODE_TYPES.MemberExpression &&
+    !callee.computed &&
+    callee.property.type === AST_NODE_TYPES.Identifier
+    ? callee.property.name
+    : null;
+}
+
+/**
  * Root identifier of a test-runner callee: `it`, `test.concurrent`,
  * `describe.each(table)`, ``test.each`...` ``. Null when the chain does not end
  * at an identifier.

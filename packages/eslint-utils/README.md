@@ -39,6 +39,8 @@ AST:
 
 - `calleePath(node, { allowThis })`: dotted path of a callee (`client.http.get`), or null for any
   other shape; `allowThis` accepts `this.logger.info`.
+- `calleeName(callee)`: the called name only (`mask` for `utils.mask(x)`, `this.a.mask(x)` or
+  `make().mask(x)`), or null for computed access.
 - `runnerName(callee)`: root identifier of a test-runner call (`describe.each(t)(...)` gives
   `describe`).
 - `enclosingFunction(node)`, `isFunctionNode(node)` and the `FunctionNode` type.

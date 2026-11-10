@@ -1,5 +1,6 @@
 import {
   AST_NODE_TYPES,
+  calleeName,
   enclosingFunction,
   walkSome,
   type TSESLint,
@@ -158,7 +159,7 @@ function passesPathOn(parent: TSESTree.Node, child: TSESTree.Node): boolean {
     case AST_NODE_TYPES.TSSatisfiesExpression:
       return true;
     case AST_NODE_TYPES.CallExpression: {
-      const name = calledName(parent.callee);
+      const name = calleeName(parent.callee);
       return name !== null && PATH_PRESERVING.has(name) && parent.arguments.some((arg) => arg === child);
     }
     default:
@@ -210,28 +211,13 @@ function joinedValueNodes(
   return nodes;
 }
 
-/** The called name of `f(...)` or `x.f(...)`, for guard matching. */
-function calledName(callee: TSESTree.Node): string | null {
-  if (callee.type === AST_NODE_TYPES.Identifier) {
-    return callee.name;
-  }
-  if (
-    callee.type === AST_NODE_TYPES.MemberExpression &&
-    !callee.computed &&
-    callee.property.type === AST_NODE_TYPES.Identifier
-  ) {
-    return callee.property.name;
-  }
-  return null;
-}
-
 /** True when `call` tests one of the joined identifiers. */
 function testsJoinedValue(
   call: TSESTree.CallExpression,
   joined: ReadonlySet<TSESTree.Node>,
   guards: ReadonlySet<string>,
 ): boolean {
-  const name = calledName(call.callee);
+  const name = calleeName(call.callee);
   if (name === null) {
     return false;
   }
