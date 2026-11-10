@@ -1,3 +1,4 @@
+import { allowInAliasDescription, resolveAllowIn } from '@noctcore/eslint-utils';
 import path from 'node:path';
 
 import { AST_NODE_TYPES, type TSESTree } from '@typescript-eslint/utils';
@@ -9,6 +10,8 @@ import { getBasename, isIgnoredPath, isPascalCase, siblingExists } from '../util
 const RULE_NAME = 'index-must-reexport-default';
 
 export interface IndexMustReexportDefaultOptions {
+  readonly allowIn?: readonly string[];
+  /** @deprecated Use `allowIn`. */
   readonly ignorePaths?: readonly string[];
 }
 
@@ -31,7 +34,8 @@ const optionSchema: JSONSchema4 = {
   type: 'object',
   additionalProperties: false,
   properties: {
-    ignorePaths: { type: 'array', items: { type: 'string' }, uniqueItems: true },
+    allowIn: { type: 'array', items: { type: 'string' }, uniqueItems: true, description: 'Globs of `index.ts` files to skip.' },
+    ignorePaths: { type: 'array', items: { type: 'string' }, uniqueItems: true, description: allowInAliasDescription('ignorePaths') },
   },
 };
 
@@ -59,9 +63,9 @@ export const indexMustReexportDefaultRule = createRule<RuleOptions, MessageIds>(
         "`index.ts` must re-export the {{name}} default: `export { default as {{name}} } from './{{name}}'`.",
     },
   },
-  defaultOptions: [{ ignorePaths: [] }],
+  defaultOptions: [{}],
   create(context, [options]) {
-    const ignorePaths = options.ignorePaths ?? DEFAULT_IGNORE_PATHS;
+    const ignorePaths = resolveAllowIn(options, ['ignorePaths'], DEFAULT_IGNORE_PATHS);
     const filename = context.filename;
     if (getBasename(filename) !== 'index.ts' || isIgnoredPath(filename, ignorePaths, context.cwd)) {
       return {};

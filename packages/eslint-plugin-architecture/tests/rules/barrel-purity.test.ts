@@ -47,6 +47,12 @@ ruleTester.run('barrel-purity', barrelPurityRule, {
       filename: 'packages/legacy/index.ts',
       options: [{ allow: ['**/legacy/**'] }],
     },
+    // The same exemption under the standard `allowIn` name (`allow` is its deprecated alias).
+    {
+      code: `export const legacy = 1;`,
+      filename: 'packages/legacy/index.ts',
+      options: [{ allowIn: ['**/legacy/**'] }],
+    },
   ],
   invalid: [
     // A local const declaration in a barrel; the re-export beside it is not reported.

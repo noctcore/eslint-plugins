@@ -60,7 +60,7 @@ components/splash/
   differs from its folder), unless `requireOwnFolder` is on. Sidecars (`Widget.stories.tsx`,
   `Widget.test.tsx`) are never component files.
 - Entry files outside the `componentRoot` segment, such as `routes/Widget/Widget.tsx`.
-- Files matched by `ignorePaths`; the default `**/ui/**` keeps the lighter shadcn-style layout.
+- Files matched by `allowIn`; the default `**/ui/**` keeps the lighter shadcn-style layout.
 - A component folder whose siblings cover whatever `requiredSiblings` is set to, even a trimmed set.
 
 ### Edits to other files
@@ -76,14 +76,15 @@ long-running editor server picks up an edit to it, because the rule re-reads it 
 | --- | --- | --- | --- |
 | `componentRoot` | `string` | `'components'` | The directory segment the layout is anchored on. |
 | `requiredSiblings` | `string[]` | `['.hooks.ts', '.types.ts', '.stories.tsx', '.test.tsx', 'index.ts']` | The sibling set. An entry starting with `.` is a name-relative suffix (`.hooks.ts` → `<Name>.hooks.ts`); any other entry is a literal filename (`index.ts`). |
-| `ignorePaths` | `string[]` | `['**/ui/**']` | Globs (supporting `**`, `*`, `?`) of paths to skip. |
+| `allowIn` | `string[]` | `['**/ui/**']` | Globs (supporting `**`, `*`, `?`) of paths to skip. |
+| `ignorePaths` | `string[]` | (none) | Deprecated alias of `allowIn`, kept through 1.x. When both are set, their globs are combined. |
 | `requireOwnFolder` | `boolean` | `false` | Also report a component file under a feature that is not the entry file of its own folder. |
 
 ```js
 'noctcore-architecture/component-folder-structure': ['error', {
   componentRoot: 'components',
   requiredSiblings: ['.hooks.ts', '.types.ts', '.stories.tsx', '.test.tsx', 'index.ts'],
-  ignorePaths: ['**/ui/**'],
+  allowIn: ['**/ui/**'],
   requireOwnFolder: true,
 }]
 ```

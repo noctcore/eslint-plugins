@@ -31,6 +31,12 @@ ruleTester.run('filename-matches-export', filenameMatchesExportRule, {
       filename: 'src/helpers.ts',
       options: [{ ignore: ['**/helpers.ts'] }],
     },
+    // The same exemption under the standard `allowIn` name (`ignore` is its deprecated alias).
+    {
+      code: `export const formatDate = () => {};`,
+      filename: 'src/helpers.ts',
+      options: [{ allowIn: ['**/helpers.ts'] }],
+    },
     // A repo-relative ignore glob matches the absolute filename ESLint passes.
     {
       code: `export const formatDate = () => {};`,

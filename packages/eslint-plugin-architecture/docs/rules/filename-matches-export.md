@@ -61,7 +61,7 @@ reported without a suggestion.
 
 ## What it does not flag
 
-- `index` files and files matching an `ignore` glob.
+- `index` files and files matching an `allowIn` glob.
 - A file with no primary export: an anonymous default (`export default () => 1`), several named
   exports and no default, or no exports at all.
 - A pure re-export (`export { Foo } from './Foo'`), which has no local identity.
@@ -71,16 +71,17 @@ reported without a suggestion.
 
 | Option | Type | Default | Meaning |
 | --- | --- | --- | --- |
-| `ignore` | `string[]` | `[]` | Globs (supporting `**`, `*`, `?`) of files to skip. |
+| `allowIn` | `string[]` | `[]` | Globs (supporting `**`, `*`, `?`) of files to skip. |
+| `ignore` | `string[]` | (none) | Deprecated alias of `allowIn`, kept through 1.x. When both are set, their globs are combined. |
 
 ```js
 'noctcore-architecture/filename-matches-export': ['error', {
-  ignore: ['**/*.stories.tsx', '**/route.ts'],
+  allowIn: ['**/*.stories.tsx', '**/route.ts'],
 }]
 ```
 
 ## When not to use it
 
 If your files routinely export several unrelated symbols, or you use fixed conventional filenames
-(`route.ts`, `handler.ts`) that will never match their export, add them to `ignore` or leave the rule
+(`route.ts`, `handler.ts`) that will never match their export, add them to `allowIn` or leave the rule
 off.

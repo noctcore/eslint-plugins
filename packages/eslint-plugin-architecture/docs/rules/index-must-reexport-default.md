@@ -33,7 +33,7 @@ export * from './Card.types';             // ✗ (on its own — no default re-e
   `<Folder>.tsx` sibling on disk.
 - Files other than `index.ts`, such as `Card/Card.helpers.ts`.
 - A barrel that re-exports the default in either form, alongside any other re-exports.
-- Paths matched by `ignorePaths`.
+- Paths matched by `allowIn`.
 
 ### Edits to other files
 
@@ -46,11 +46,12 @@ long-running editor server picks up an edit to it, because the rule re-reads it 
 
 | Option | Type | Default | Meaning |
 | --- | --- | --- | --- |
-| `ignorePaths` | `string[]` | `[]` | Globs (supporting `**`, `*`, `?`) of paths to skip. |
+| `allowIn` | `string[]` | `[]` | Globs (supporting `**`, `*`, `?`) of paths to skip. |
+| `ignorePaths` | `string[]` | (none) | Deprecated alias of `allowIn`, kept through 1.x. When both are set, their globs are combined. |
 
 ```js
 'noctcore-architecture/index-must-reexport-default': ['error', {
-  ignorePaths: ['**/ui/**'],
+  allowIn: ['**/ui/**'],
 }]
 ```
 

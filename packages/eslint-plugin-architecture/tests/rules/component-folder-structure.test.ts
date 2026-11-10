@@ -90,6 +90,12 @@ ruleTester.run('component-folder-structure', componentFolderStructureRule, {
       filename: 'tests/fixtures/components/board/Widget/Widget.tsx',
       options: [{ ignorePaths: ['**/board/**'] }],
     },
+    // The same exemption under the standard `allowIn` name (`ignorePaths` is its deprecated alias).
+    {
+      code: COMPONENT,
+      filename: 'tests/fixtures/components/board/Widget/Widget.tsx',
+      options: [{ allowIn: ['**/board/**'] }],
+    },
   ],
   invalid: [
     // A component folder on disk that is missing its entire sibling set. The

@@ -1,3 +1,4 @@
+import { allowInAliasDescription, resolveAllowIn } from '@noctcore/eslint-utils';
 import path from 'node:path';
 
 import type { TSESTree } from '@typescript-eslint/utils';
@@ -18,6 +19,8 @@ const RULE_NAME = 'component-folder-structure';
 export interface ComponentFolderStructureOptions {
   readonly componentRoot?: string;
   readonly requiredSiblings?: readonly string[];
+  readonly allowIn?: readonly string[];
+  /** @deprecated Use `allowIn`. */
   readonly ignorePaths?: readonly string[];
   readonly requireOwnFolder?: boolean;
 }
@@ -71,7 +74,11 @@ const optionSchema: JSONSchema4 = {
   properties: {
     componentRoot: { type: 'string' },
     requiredSiblings: { type: 'array', items: { type: 'string' }, uniqueItems: true },
-    ignorePaths: { type: 'array', items: { type: 'string' }, uniqueItems: true },
+    allowIn: {
+      type: 'array', items: { type: 'string' }, uniqueItems: true,
+      description: 'Globs of files to skip. Default `["**/ui/**"]`; setting it replaces the default.',
+    },
+    ignorePaths: { type: 'array', items: { type: 'string' }, uniqueItems: true, description: allowInAliasDescription('ignorePaths') },
     requireOwnFolder: {
       type: 'boolean',
       description:
@@ -100,12 +107,11 @@ export const componentFolderStructureRule = createRule<RuleOptions, MessageIds>(
     {
       componentRoot: DEFAULT_COMPONENT_ROOT,
       requiredSiblings: [...DEFAULT_REQUIRED_SIBLINGS],
-      ignorePaths: [...DEFAULT_IGNORE_PATHS],
     },
   ],
   create(context, [options]) {
     const componentRoot = options.componentRoot ?? DEFAULT_COMPONENT_ROOT;
-    const ignorePaths = options.ignorePaths ?? DEFAULT_IGNORE_PATHS;
+    const ignorePaths = resolveAllowIn(options, ['ignorePaths'], DEFAULT_IGNORE_PATHS);
     const siblingTemplates = options.requiredSiblings ?? DEFAULT_REQUIRED_SIBLINGS;
     const filename = context.filename;
 

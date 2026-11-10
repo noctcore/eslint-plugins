@@ -1,3 +1,4 @@
+import { allowInAliasDescription, resolveAllowIn } from '@noctcore/eslint-utils';
 import path from 'node:path';
 
 import { AST_NODE_TYPES, type TSESLint, type TSESTree } from '@typescript-eslint/utils';
@@ -9,6 +10,8 @@ import { getBasename, isIgnoredPath } from '../utils';
 const RULE_NAME = 'filename-matches-export';
 
 export interface FilenameMatchesExportOptions {
+  readonly allowIn?: readonly string[];
+  /** @deprecated Use `allowIn`. */
   readonly ignore?: readonly string[];
 }
 
@@ -49,7 +52,8 @@ const optionSchema: JSONSchema4 = {
   type: 'object',
   additionalProperties: false,
   properties: {
-    ignore: { type: 'array', items: { type: 'string' }, uniqueItems: true },
+    allowIn: { type: 'array', items: { type: 'string' }, uniqueItems: true, description: 'Globs of files to skip.' },
+    ignore: { type: 'array', items: { type: 'string' }, uniqueItems: true, description: allowInAliasDescription('ignore') },
   },
 };
 
@@ -181,9 +185,9 @@ export const filenameMatchesExportRule = createRule<RuleOptions, MessageIds>({
       renameExport: 'Rename the export to `{{expected}}` to match the filename.',
     },
   },
-  defaultOptions: [{ ignore: [] }],
+  defaultOptions: [{}],
   create(context, [options]) {
-    const ignore = options.ignore ?? DEFAULT_IGNORE;
+    const ignore = resolveAllowIn(options, ['ignore'], DEFAULT_IGNORE);
     const filename = context.filename;
     const stem = stemOf(filename);
 
