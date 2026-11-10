@@ -1,4 +1,4 @@
-import { matchesAnyGlob } from '@noctcore/eslint-utils';
+import { fileMatchesAnyGlob } from '@noctcore/eslint-utils';
 import { AST_NODE_TYPES, type TSESTree } from '@typescript-eslint/utils';
 import type { JSONSchema4 } from '@typescript-eslint/utils/json-schema';
 
@@ -96,7 +96,7 @@ export const noDirectProcessEnvRule = createRule<RuleOptions, MessageIds>({
     const configModule = options.configModule ?? DEFAULT_CONFIG_MODULE;
     const allowedFiles = options.allowedFiles ?? DEFAULT_ALLOWED_FILES;
 
-    if (matchesAnyGlob(context.filename, allowedFiles)) {
+    if (fileMatchesAnyGlob(context.filename, allowedFiles, context.cwd)) {
       return {};
     }
 

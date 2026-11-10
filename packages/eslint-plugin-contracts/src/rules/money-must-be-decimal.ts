@@ -1,4 +1,4 @@
-import { matchesAnyGlob, toPosixPath } from '@noctcore/eslint-utils';
+import { fileMatchesAnyGlob, toPosixPath } from '@noctcore/eslint-utils';
 import { AST_NODE_TYPES, type TSESLint, type TSESTree } from '@typescript-eslint/utils';
 import type { JSONSchema4 } from '@typescript-eslint/utils/json-schema';
 
@@ -242,7 +242,7 @@ export const moneyMustBeDecimalRule = createRule<RuleOptions, MessageIds>({
     const decimalType = options.decimalType ?? DEFAULT_DECIMAL_TYPE;
     const allowedFiles = (options.allowedFiles ?? DEFAULT_ALLOWED_FILES).map(toAllowGlob);
 
-    if (matchesAnyGlob(context.filename, allowedFiles)) {
+    if (fileMatchesAnyGlob(context.filename, allowedFiles, context.cwd)) {
       return {};
     }
 
