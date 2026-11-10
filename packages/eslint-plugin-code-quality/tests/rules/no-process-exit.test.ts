@@ -1,4 +1,4 @@
-import { ruleTester } from '@noctcore/eslint-test-utils';
+import { ruleTester, workspacePath } from '@noctcore/eslint-test-utils';
 
 import { noProcessExitRule } from '../../src/rules/no-process-exit';
 
@@ -8,6 +8,13 @@ const options = [{ allowIn: ['**/scripts/**', '**/bin/**'] }] as const;
 
 ruleTester.run('no-process-exit', noProcessExitRule, {
   valid: [
+    // A repo-relative glob matches the absolute filename ESLint passes, read
+    // relative to the workspace root (or the working directory).
+    {
+      code: 'process.exit(1);',
+      filename: workspacePath('apps', 'server', 'src', 'env.ts'),
+      options: [{ allowIn: ['apps/server/**'] }],
+    },
     // Allowlisted CLI/bootstrap files may exit.
     {
       code: 'process.exit(1);',
@@ -32,6 +39,14 @@ ruleTester.run('no-process-exit', noProcessExitRule, {
     },
   ],
   invalid: [
+    // A repo-relative glob matches the absolute filename ESLint passes, read
+    // relative to the workspace root (or the working directory).
+    {
+      code: 'process.exit(1);',
+      filename: workspacePath('apps', 'web', 'src', 'env.ts'),
+      options: [{ allowIn: ['apps/server/**'] }],
+      errors: [{ messageId: 'processExit' }],
+    },
     {
       code: 'process.exit(1);',
       filename: 'src/lib/player.ts',

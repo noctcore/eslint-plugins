@@ -1,7 +1,7 @@
+import { fileMatchesAnyGlob } from '@noctcore/eslint-utils';
 import { AST_NODE_TYPES, type TSESTree } from '@typescript-eslint/utils';
 import type { JSONSchema4 } from '@typescript-eslint/utils/json-schema';
 
-import { matchesAny } from '../utils/allowMatch';
 import { createRule } from '../createRule';
 
 const RULE_NAME = 'no-bare-date-now';
@@ -94,7 +94,7 @@ export const noBareDateNowRule = createRule<RuleOptions, MessageIds>({
   create(context, [options]) {
     const allowIn = options.allowIn ?? DEFAULT_ALLOW_IN;
 
-    if (matchesAny(context.filename, allowIn)) {
+    if (fileMatchesAnyGlob(context.filename, allowIn, context.cwd)) {
       return {};
     }
 
