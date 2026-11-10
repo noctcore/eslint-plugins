@@ -90,23 +90,26 @@ Aliases work (`const ok = res.ok; if (!ok) throw ...`). A bare `if (res.status)`
 ## What it does not flag
 
 Purely syntactic, no type information. A response assigned later (`let res; res = await fetch(...)`),
-passed to another function, or returned from a wrapper that is not in `fetchFunctions` is not tracked.
+passed to another function, or returned from a wrapper that is not in `fetchCallees` is not tracked.
 A nested function that reuses the response's name is treated as the same binding. Clients whose
-`.json()` already throws on a bad status (ky, for example) do not belong in `fetchFunctions`.
+`.json()` already throws on a bad status (ky, for example) do not belong in `fetchCallees`.
 
 ## Options
 
 | Option | Type | Default | Meaning |
 | --- | --- | --- | --- |
-| `fetchFunctions` | `string[]` | `['fetch']` | Callees that return a `Response`: a bare name or a dotted path. |
+| `fetchCallees` | `(string \| object)[]` | `['fetch']` | Callees that return a `Response`: a bare name, a dotted path, or an object with `name` and `object`. Setting it replaces the default. |
+| `fetchFunctions` | `string[]` | (none) | Deprecated alias of `fetchCallees`, kept through 1.x. When both are set, the lists are combined. |
 
 List every name you want tracked, including `fetch` itself:
 
 ```js
 'noctcore-contracts/fetch-must-check-ok': ['error', {
-  fetchFunctions: ['fetch', 'globalThis.fetch', 'fetchWithRetry'],
+  fetchCallees: ['fetch', 'globalThis.fetch', 'fetchWithRetry'],
 }]
 ```
+
+The same `fetchCallees` list works for async-safety `require-fetch-timeout`, contracts `fetch-must-check-ok` and security `no-user-controlled-fetch-url`, so declare a wrapper once and pass it to all three. An entry is a string (`'http.fetchWithRetry'`: the last segment is the method, the rest the receiver as written) or an object (`{ object: 'axios', name: 'get', urlArgument: 0, urlProperty: 'url' }`).
 
 ## When not to use it
 

@@ -10,6 +10,9 @@ const FILE = 'src/api.ts';
  * report"; here every invalid case pins the exact count. Cases added in this
  * port follow the upstream ones.
  */
+// One wrapper list, declared once and passed to all three fetch rules.
+const FETCH_CALLEES = ['fetch', 'http.fetchWithCsrfRetry'];
+
 ruleTester.run('fetch-must-check-ok', fetchMustCheckOkRule, {
   valid: [
     // Allows a guard clause on res.ok.
@@ -360,6 +363,30 @@ ruleTester.run('fetch-must-check-ok', fetchMustCheckOkRule, {
         { messageId: 'missingOkCheck', line: 5, column: 25 },
         { messageId: 'missingOkCheck', line: 5, column: 45 },
       ],
+    },
+    {
+      // fetchCallees: the shared wrapper list.
+      code: `
+        async function load() {
+          const res = await http.fetchWithCsrfRetry('/api/users');
+          return res.json();
+        }
+      `,
+      filename: FILE,
+      options: [{ fetchCallees: FETCH_CALLEES }],
+      errors: [{ messageId: 'missingOkCheck', line: 4 }],
+    },
+    {
+      // The deprecated alias combines with fetchCallees.
+      code: `
+        async function load() {
+          const res = await fetchWithRetry('/api/users');
+          return res.json();
+        }
+      `,
+      filename: FILE,
+      options: [{ fetchCallees: FETCH_CALLEES, fetchFunctions: ['fetchWithRetry'] }],
+      errors: [{ messageId: 'missingOkCheck', line: 4 }],
     },
     {
       // fetchFunctions: a configured wrapper.
