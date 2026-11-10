@@ -1,3 +1,10 @@
+import {
+  isFunctionNode,
+  loggerCallMatcher,
+  loggerCallMethod,
+  type LoggerCallMatcher,
+  type LoggerCallOptions,
+} from '@noctcore/eslint-utils';
 import { AST_NODE_TYPES, ASTUtils, type TSESLint, type TSESTree } from '@typescript-eslint/utils';
 import type { JSONSchema4 } from '@typescript-eslint/utils/json-schema';
 
@@ -5,8 +12,15 @@ import { createRule } from '../createRule';
 
 const RULE_NAME = 'no-error-stringify';
 
-export interface NoErrorStringifyOptions {
+export interface NoErrorStringifyOptions extends LoggerCallOptions {
   readonly errorIdentifierNames?: readonly string[];
+  /**
+   * Check stringified errors inside a logger call's arguments too. Off by
+   * default: observability `no-error-detail-loss` owns that case and asks for
+   * the error object itself, where this rule's `error.message` advice would
+   * drop the stack it wants kept.
+   */
+  readonly checkLoggerArguments?: boolean;
 }
 
 type RuleOptions = [NoErrorStringifyOptions];
@@ -27,6 +41,12 @@ const DEFAULT_ERROR_NAMES: readonly string[] = ['error', 'err'];
  * `errorIdentifierNames` (default `error`, `err`). Short names like `e` and
  * `cause` count only when bound by a catch, so `sizes.map((e) => \`${e}px\`)`
  * is not an error.
+ *
+ * Inside a logger call's arguments (`logger.error(\`failed: ${err}\`)`) the rule
+ * is silent unless `checkLoggerArguments` is on: observability
+ * `no-error-detail-loss` covers that line and asks for the error object, which
+ * keeps the stack, so the two rules never give opposite advice on one line.
+ * `loggers` and `methods` take the same values as in that rule.
  */
 const optionSchema: JSONSchema4 = {
   type: 'object',
@@ -37,9 +57,43 @@ const optionSchema: JSONSchema4 = {
       items: { type: 'string' },
       uniqueItems: true,
       minItems: 1,
+      description: 'Identifier names that always hold an error, besides catch bindings. Default `["error", "err"]`.',
+    },
+    checkLoggerArguments: {
+      type: 'boolean',
+      description:
+        'Also report inside a logger call (`logger.error(`${err}`)`). Default false: observability `no-error-detail-loss` owns that case.',
+    },
+    loggers: {
+      type: 'array',
+      items: { type: 'string' },
+      description: 'Logger object names, as in observability `no-error-detail-loss`. Default `["console", "logger", "log"]`.',
+    },
+    methods: {
+      type: 'array',
+      items: { type: 'string' },
+      description: 'Log-level method names, as in observability `no-error-detail-loss`.',
     },
   },
 };
+
+/** True when `node` sits inside an argument of a logger call, without crossing a function. */
+function insideLoggerArgument(node: TSESTree.Node, matcher: LoggerCallMatcher): boolean {
+  let child: TSESTree.Node = node;
+  let current: TSESTree.Node | undefined = node.parent;
+  while (current != null && !isFunctionNode(current)) {
+    if (
+      current.type === AST_NODE_TYPES.CallExpression &&
+      current.arguments.includes(child as TSESTree.CallExpressionArgument) &&
+      loggerCallMethod(current, matcher) !== null
+    ) {
+      return true;
+    }
+    child = current;
+    current = current.parent;
+  }
+  return false;
+}
 
 /** True for the empty-string literal `''` / `""`. */
 function isEmptyStringLiteral(node: TSESTree.Node): boolean {
@@ -98,6 +152,7 @@ export const noErrorStringifyRule = createRule<RuleOptions, MessageIds>({
   defaultOptions: [{ errorIdentifierNames: [...DEFAULT_ERROR_NAMES] }],
   create(context, [options]) {
     const errorNames = new Set(options.errorIdentifierNames ?? DEFAULT_ERROR_NAMES);
+    const loggerArguments = options.checkLoggerArguments === true ? null : loggerCallMatcher(options);
 
     function isErrorIdentifier(node: TSESTree.Node): node is TSESTree.Identifier {
       if (node.type !== AST_NODE_TYPES.Identifier) {
@@ -115,6 +170,9 @@ export const noErrorStringifyRule = createRule<RuleOptions, MessageIds>({
      * `parenthesize` wraps it when it lands inside a larger expression.
      */
     function report(node: TSESTree.Node, name: string, replaced: TSESTree.Node, parenthesize: boolean): void {
+      if (loggerArguments !== null && insideLoggerArgument(node, loggerArguments)) {
+        return;
+      }
       const guarded = `${name} instanceof Error ? ${name}.message : String(${name})`;
       context.report({
         node,

@@ -24,7 +24,7 @@ Only the three unambiguous forms, and only when the operand holds an error: any 
 plus any identifier named in `errorIdentifierNames` (default `error`, `err`):
 
 ```ts bad reports=5
-logger.error(`request failed: ${error}`);
+const text = `request failed: ${error}`;
 const a = err.toString();
 const b = error + "";
 try { run(); } catch (e) { log("" + e); }
@@ -44,6 +44,11 @@ const m = `${error.message}`;
 - Bare `String(error)`, which the guarded extractor idiom relies on.
 - Member reads such as `` `${error.message}` `` or `error.stack`.
 - `x + ""` where `x` is not one of `errorIdentifierNames` (`count + ""`).
+- Anything inside a logger call's arguments (`logger.error(\`failed: ${err}\`)`), unless
+  `checkLoggerArguments` is on. Observability
+  [`no-error-detail-loss`](https://noctcore.github.io/eslint-plugins/rules/observability/no-error-detail-loss/)
+  owns that line and asks for the error object itself, which keeps the stack and cause; this rule's
+  `error.message` advice would drop them. `loggers` and `methods` take the same values as there.
 - Short names that a catch did not bind: `sizes.map((e) => \`${e}px\`)`, `` `because ${cause}` `` with a
   string parameter.
 
@@ -52,6 +57,9 @@ const m = `${error.message}`;
 | Option | Type | Default | Meaning |
 | --- | --- | --- | --- |
 | `errorIdentifierNames` | `string[]` | `['error', 'err']` | Identifier names treated as errors wherever they appear. Catch-bound names count without being listed. |
+| `checkLoggerArguments` | `boolean` | `false` | Also report inside a logger call's arguments. |
+| `loggers` | `string[]` | `['console', 'logger', 'log']` | Logger object names whose calls are skipped (a bare name or the last segment of `this.logger`). |
+| `methods` | `string[]` | `['info', 'warn', 'error', 'debug', 'log', 'trace', 'fatal', 'verbose']` | Log-level methods whose calls are skipped. |
 
 ```js
 'noctcore-contracts/no-error-stringify': ['error', { errorIdentifierNames: ['error', 'cause', 'failure'] }]
