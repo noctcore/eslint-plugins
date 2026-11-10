@@ -14,7 +14,6 @@ export const recommended = {
   'noctcore-contracts/no-direct-process-env': 'error',
   'noctcore-contracts/money-must-be-decimal': 'error',
   'noctcore-contracts/require-error-cause': 'error',
-  'noctcore-contracts/restrict-throw-to-taxonomy': 'error',
   'noctcore-contracts/schema-enum-field-consistency': 'error',
   'noctcore-contracts/fetch-must-check-ok': 'error',
   // Ships OFF: a conservative syntactic slice of a type-aware concern. It needs

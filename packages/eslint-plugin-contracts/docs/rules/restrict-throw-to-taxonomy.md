@@ -3,7 +3,7 @@
 > `throw` only members of your error taxonomy — never an ad hoc built-in nor a bare value.
 
 <!-- begin generated rule header -->
-✅ In `recommended` at `error` · 💭 Type information: not needed
+🔘 Opt-in: not in `recommended` · ⚙️ Needs options (see Options) · 💭 Type information: not needed
 <!-- end generated rule header -->
 
 ## Why
@@ -55,6 +55,10 @@ whether they resolve to an Error, and re-throwing a caught error is the most com
 The default `['Error']` is intentionally strict — it assumes a taxonomy rooted at `Error` and treats
 every other built-in as something you should opt into. Widen `allow` to match your project's error
 model on day one.
+
+The rule is not in `recommended`: with the default `['Error']`, every framework exception
+(`throw new NotFoundException()`) and every built-in other than `Error` reports, so it only means
+something once `allow` names your classes.
 
 ## When not to use it
 

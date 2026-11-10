@@ -13,6 +13,7 @@ function severityOf(entry: unknown): unknown {
 const OMITTED_FROM_PRESETS: readonly string[] = [
   'env-var-schema-parity',
   'require-registered-keys',
+  'restrict-throw-to-taxonomy',
   'translation-key-exists',
 ];
 
@@ -49,5 +50,9 @@ describe('presets', () => {
       .filter(([, rule]) => rule.meta?.docs?.requiresOptions === true)
       .map(([id]) => id);
     expect(OMITTED_FROM_PRESETS).toEqual(expect.arrayContaining(needsOptions));
+  });
+
+  it('leaves restrict-throw-to-taxonomy out until `allow` names the project errors', () => {
+    expect((plugin.configs.recommended as Preset).rules).not.toHaveProperty('noctcore-contracts/restrict-throw-to-taxonomy');
   });
 });
