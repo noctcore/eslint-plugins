@@ -348,6 +348,12 @@
   --nc-badge-edge: var(--sl-color-green);
 }
 
+:is(.nc-badge--strict, .pill-strict) {
+  --nc-badge-bg: var(--sl-color-blue-low);
+  --nc-badge-ink: var(--sl-color-blue-high);
+  --nc-badge-edge: var(--sl-color-blue);
+}
+
 :is(.nc-badge--off, .pill-off) {
   --nc-badge-ink: var(--sl-color-gray-2);
   --nc-badge-edge: var(--sl-color-gray-4);

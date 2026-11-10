@@ -1,4 +1,5 @@
 import { recommended } from './configs/recommended';
+import { strict } from './configs/strict';
 import { rules } from './rules';
 
 /** Flat-config namespace: rule ids are keyed `noctcore-code-quality/<rule>`. */
@@ -18,6 +19,13 @@ plugin.configs.recommended = {
   name: `${NAMESPACE}/recommended`,
   plugins: { [NAMESPACE]: plugin },
   rules: recommended,
+};
+
+// `recommended` plus the house rules: naming, folder shape and size caps.
+plugin.configs.strict = {
+  name: `${NAMESPACE}/strict`,
+  plugins: { [NAMESPACE]: plugin },
+  rules: strict,
 };
 
 export { rules };

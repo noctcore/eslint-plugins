@@ -82,6 +82,8 @@ const isPlugin = pkg.kind === 'eslint-plugin';
   isPlugin && (
     <p class="rule-table-legend">
       <strong>Preset</strong>: severity in <code>configs.recommended</code>.{' '}
+      <span class="pill pill-strict">strict</span> means the rule is on only in <code>configs.strict</code>, which
+      is <code>recommended</code> plus the house rules (naming, folder shape, size caps).{' '}
       <span class="pill pill-off">off</span> means the preset registers the rule switched off,{' '}
       <span class="pill pill-not-listed">not listed</span> means it leaves the rule out; both are{' '}
       <span class="nc-optin">opt-in</span>, so you turn the rule on yourself.{' '}

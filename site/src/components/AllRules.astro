@@ -17,13 +17,15 @@ const lintMeta = packages.filter((pkg) => pkg.kind === 'lint-meta');
 const pluginRules = rows.filter(({ pkg }) => pkg.kind === 'eslint-plugin');
 const onInPreset = pluginRules.filter(({ rule }) => rule.recommended === 'error').length;
 const registeredOff = pluginRules.filter(({ rule }) => rule.recommended === 'off').length;
-const optIn = pluginRules.filter(({ rule }) => rule.recommended === null).length;
+const onInStrict = pluginRules.filter(({ rule }) => rule.recommended !== 'error' && rule.strict === 'error').length;
+const optIn = pluginRules.filter(({ rule }) => rule.recommended === null && rule.strict !== 'error').length;
 const lintMetaCount = rows.length - pluginRules.length;
 const typed = rows.filter(({ rule }) => rule.typeInfo !== 'none');
 const typeLabel = { required: 'required', optional: 'optional', none: '' } as const;
 const stats = [
   ['Rules', total],
   ['On in recommended', onInPreset],
+  ['On in strict only', onInStrict],
   ['Opt-in', registeredOff + optIn],
   ['lint-meta', lintMetaCount],
   ['Autofix', rows.filter(({ rule }) => rule.fixable).length],
@@ -48,6 +50,7 @@ const namespaceOf = (pkg: (typeof packages)[number]) =>
 <p>
   {total} rules across {plugins.length} ESLint plugins and {lintMeta.length} lint-meta catalog. Of the{' '}
   {pluginRules.length} ESLint rules, {onInPreset} are switched on by a <code>recommended</code> preset,{' '}
+  {onInStrict} more only by a <code>strict</code> preset (the house rules),{' '}
   {registeredOff} ship registered but <code>off</code>, and {optIn} are left out of every preset and enabled one
   by one. The {lintMetaCount} lint-meta rules run under{' '}
   <a href={href('packages/lint-meta-rules/')}><code>@noctcore/harness</code></a>, not ESLint.{' '}
@@ -112,6 +115,8 @@ const namespaceOf = (pkg: (typeof packages)[number]) =>
 </div>
 <p class="rule-table-legend">
   <strong>Preset</strong>: the rule's severity in its package's <code>configs.recommended</code>.{' '}
+  <span class="pill pill-strict">strict</span> is on only in <code>configs.strict</code>, the package's
+  <code>recommended</code> plus its house rules.{' '}
   <span class="pill pill-error">error</span> is on. <span class="pill pill-off">off</span> (registered, switched off)
   and <span class="pill pill-not-listed">not listed</span> (left out) are both <span class="nc-optin">opt-in</span>:
   you turn the rule on yourself. <span class="nc-badge nc-badge--options">needs options</span> means it does nothing

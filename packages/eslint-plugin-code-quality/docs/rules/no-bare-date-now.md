@@ -3,7 +3,7 @@
 > Read wall-clock time through a mockable `clock` util, not bare `Date.now()` / `new Date()`.
 
 <!-- begin generated rule header -->
-✅ In `recommended` at `error` · 💭 Type information: not needed
+☑️ In `strict` at `error`, not in `recommended` · 💭 Type information: not needed
 <!-- end generated rule header -->
 
 ## Why

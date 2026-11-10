@@ -3,7 +3,7 @@
 > A barrel (an `index.*` file with an `export … from` re-export) must contain only re-exports, never local declarations, side effects, or default-exported values.
 
 <!-- begin generated rule header -->
-✅ In `recommended` at `error` · 💭 Type information: not needed
+☑️ In `strict` at `error`, not in `recommended` · 💭 Type information: not needed
 <!-- end generated rule header -->
 
 ## Why

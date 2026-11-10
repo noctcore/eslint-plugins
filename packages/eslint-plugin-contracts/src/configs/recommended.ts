@@ -6,10 +6,11 @@
  * would read as coverage the project does not have. The rules left out here
  * are listed in `tests/configs/recommended.test.ts`, and the README's
  * "Opt-in rules" block shows how to enable them.
+ *
+ * The naming conventions (`zod-schema-naming`, `wire-message-naming`) are in
+ * `strict` (`./strict.ts`), not here.
  */
 export const recommended = {
-  'noctcore-contracts/zod-schema-naming': 'error',
-  'noctcore-contracts/wire-message-naming': 'error',
   'noctcore-contracts/no-error-stringify': 'error',
   'noctcore-contracts/no-direct-process-env': 'error',
   'noctcore-contracts/money-must-be-decimal': 'error',

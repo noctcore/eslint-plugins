@@ -10,7 +10,7 @@ type MessageIds = 'preferEarlyReturn';
 export const preferEarlyReturnRule = createRule<[], MessageIds>({
   name: RULE_NAME,
   meta: {
-    type: 'problem',
+    type: 'suggestion',
     docs: {
       description:
         'Prefer guard clauses (early return) over wrapping the whole function body in a multi-statement `if` without an `else`.',

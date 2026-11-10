@@ -27,7 +27,9 @@ time rather than in one sitting.
 
 ## 1. Enable the preset and read the damage
 
-Add the presets and run ESLint once. Do not fix anything yet.
+Add the presets and run ESLint once. Do not fix anything yet. Both rules are house conventions, so
+they are in each plugin's `strict` preset (`recommended` plus the house rules), not in
+`recommended`; the snippets on this page spread `strict`.
 
 ```js
 // eslint.config.js
@@ -36,8 +38,8 @@ import contracts from '@noctcore/eslint-plugin-contracts';
 
 export default [
   // ...your existing config
-  architecture.configs.recommended,
-  contracts.configs.recommended,
+  architecture.configs.strict,
+  contracts.configs.strict,
 ];
 ```
 
@@ -97,8 +99,8 @@ import architecture from '@noctcore/eslint-plugin-architecture';
 import contracts from '@noctcore/eslint-plugin-contracts';
 
 export default [
-  architecture.configs.recommended,
-  contracts.configs.recommended,
+  architecture.configs.strict,
+  contracts.configs.strict,
   {
     // Deferred, not abandoned. Each line is a preset rule this repo does not
     // pass yet. Counted 2026-09-22.
@@ -129,8 +131,8 @@ import architecture from '@noctcore/eslint-plugin-architecture';
 import contracts from '@noctcore/eslint-plugin-contracts';
 
 export default [
-  architecture.configs.recommended,
-  contracts.configs.recommended,
+  architecture.configs.strict,
+  contracts.configs.strict,
   {
     rules: {
       'noctcore-architecture/filename-matches-export': 'off', // 417 hits
@@ -192,8 +194,8 @@ import architecture from '@noctcore/eslint-plugin-architecture';
 import contracts from '@noctcore/eslint-plugin-contracts';
 
 export default [
-  architecture.configs.recommended,
-  contracts.configs.recommended,
+  architecture.configs.strict,
+  contracts.configs.strict,
   // filename-matches-export: adopted everywhere, back in the preset.
   {
     rules: {

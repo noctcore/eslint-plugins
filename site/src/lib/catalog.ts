@@ -45,8 +45,14 @@ export function codeSpans(text: string): { part: string; code: boolean }[] {
   return text.split('`').map((part, i) => ({ part, code: i % 2 === 1 }));
 }
 
-export function presetLabel(severity: string | null): 'error' | 'off' | 'not listed' {
-  return severity === 'error' ? 'error' : severity === 'off' ? 'off' : 'not listed';
+/** The preset column's state: on in `recommended`, on in `strict` only, registered off, or left out. */
+export function presetLabel(rule: {
+  recommended: string | null;
+  strict?: string | null;
+}): 'error' | 'strict' | 'off' | 'not listed' {
+  if (rule.recommended === 'error') return 'error';
+  if (rule.strict === 'error') return 'strict';
+  return rule.recommended === 'off' ? 'off' : 'not listed';
 }
 
 /**

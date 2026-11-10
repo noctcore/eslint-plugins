@@ -74,6 +74,11 @@ export default [
 If your config already sets the parser for those files (through `typescript-eslint`'s configs, for
 example), spreading the preset alongside it is enough.
 
+`recommended` holds the rules that need no project knowledge. architecture, code-quality, contracts
+and react also export `configs.strict`: `recommended` plus the house rules (naming schemes, folder
+shape, size caps), which hold in a codebase that follows the same conventions and report widely in
+one that does not. Spread `strict` in place of `recommended` to take them.
+
 ## Where to start
 
 Start with the three plugins that fit almost any TypeScript codebase, then add the ones for the

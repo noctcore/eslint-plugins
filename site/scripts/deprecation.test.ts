@@ -51,6 +51,7 @@ function fixtureRule(name: string, overrides: Partial<RuleEntry> = {}): RuleEntr
     id: `${NAMESPACE}/${name}`,
     description: `Fixture rule \`${name}\`.`,
     recommended: null,
+    strict: null,
     fixable: false,
     hasSuggestions: false,
     typeInfo: 'none',
@@ -214,6 +215,7 @@ describe('deprecation guards', () => {
   test('a deprecated rule in a preset, a dangling replacement and a missing header all fail', () => {
     const broken = fixtureRule('broken', {
       recommended: 'off',
+      strict: 'off',
       deprecated: true,
       replacedBy: ['noctcore-fixture/gone', 'noctcore-fixture/old-rule'],
     });
@@ -223,6 +225,7 @@ describe('deprecation guards', () => {
     ]));
     expect(problems).toEqual([
       "noctcore-fixture/broken is deprecated but its package's recommended preset lists it (off)",
+      "noctcore-fixture/broken is deprecated but its package's strict preset lists it (off)",
       'noctcore-fixture/broken is replaced by noctcore-fixture/gone, which is not a rule in this repo',
       'noctcore-fixture/broken is replaced by noctcore-fixture/old-rule, which is deprecated too',
       'noctcore-fixture/broken is deprecated but its doc has no generated deprecation header',

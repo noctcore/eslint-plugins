@@ -59,6 +59,11 @@ export interface RuleEntry {
   readonly description: string;
   /** Severity in the `recommended` preset, or null when the preset does not list it. */
   readonly recommended: string | null;
+  /**
+   * Severity in the `strict` preset (recommended plus the house rules), or null
+   * when the package has no `strict` preset or it does not list the rule.
+   */
+  readonly strict: string | null;
   readonly fixable: boolean;
   readonly hasSuggestions: boolean;
   readonly typeInfo: TypeInfo;
@@ -251,18 +256,21 @@ async function loadPlugin(short: string, from: InventorySource): Promise<Package
   const mod = await importEntry(dir, 'index', from);
   const plugin = mod.default as {
     rules: Record<string, RuleModuleLike>;
-    configs: { recommended?: { rules?: Record<string, unknown> } };
+    configs: { recommended?: { rules?: Record<string, unknown> }; strict?: { rules?: Record<string, unknown> } };
   };
   const namespace = `noctcore-${short}`;
   const preset = plugin.configs.recommended?.rules ?? {};
+  const strictPreset = plugin.configs.strict?.rules ?? {};
+  const severityOf = (entry: unknown): string | null =>
+    entry === undefined ? null : String(Array.isArray(entry) ? entry[0] : entry);
   const rules = Object.entries(plugin.rules).map(([name, rule]): RuleEntry => {
     const id = `${namespace}/${name}`;
-    const severity = preset[id];
     return {
       name,
       id,
       description: rule.meta?.docs?.description ?? '',
-      recommended: severity === undefined ? null : String(Array.isArray(severity) ? severity[0] : severity),
+      recommended: severityOf(preset[id]),
+      strict: severityOf(strictPreset[id]),
       fixable: Boolean(rule.meta?.fixable),
       hasSuggestions: Boolean(rule.meta?.hasSuggestions),
       typeInfo: detectTypeInfo(dir, name),
@@ -290,6 +298,7 @@ function metaRuleEntry(rule: MetaRuleLike, factory: string, entry: string): Rule
     id: rule.id,
     description: rule.description,
     recommended: null,
+    strict: null,
     fixable: false,
     hasSuggestions: false,
     typeInfo: 'none',

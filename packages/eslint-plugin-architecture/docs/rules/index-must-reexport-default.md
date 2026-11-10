@@ -3,7 +3,7 @@
 > A component folder's `index.ts` must re-export the sibling default named after the folder.
 
 <!-- begin generated rule header -->
-✅ In `recommended` at `error` · 💭 Type information: not needed
+☑️ In `strict` at `error`, not in `recommended` · 💭 Type information: not needed
 <!-- end generated rule header -->
 
 ## Why

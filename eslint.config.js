@@ -43,19 +43,20 @@ export default [
     ...eslintPlugin.configs['tests-recommended'],
   },
 
-  // The repo's own rules, from each plugin's `recommended` preset.
-  { files: SOURCE, ...codeQuality.configs.recommended },
-  { files: SOURCE, ...contracts.configs.recommended },
+  // The repo's own rules: `strict` where a plugin has one (recommended plus the
+  // house rules), `recommended` elsewhere.
+  { files: SOURCE, ...codeQuality.configs.strict },
+  { files: SOURCE, ...contracts.configs.strict },
   { files: SOURCE, ...asyncSafety.configs.recommended },
   { files: SOURCE, ...security.configs.recommended },
-  { files: SOURCE, ...architecture.configs.recommended },
+  { files: SOURCE, ...architecture.configs.strict },
   {
     files: SOURCE,
     rules: {
       // House naming conventions this repo does not follow: rule files are named
       // after the rule id, not the exported `<camelCase>Rule` binding.
       'noctcore-architecture/filename-matches-export': 'off',
-      // Style, not correctness, and proposed for removal from `recommended`.
+      // A style preference this repo does not follow.
       'noctcore-code-quality/prefer-early-return': 'off',
     },
   },

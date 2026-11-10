@@ -22,11 +22,12 @@
  * `prefer-web-first-page-assertions` is omitted because it only means something
  * in Playwright specs: elsewhere `page.url()` can be a Puppeteer page or a CMS
  * record, where no retrying matcher exists. Enable it for the spec files.
+ *
+ * `prefer-early-return` (style) and `no-bare-date-now` (asks for a project
+ * clock seam) are in `strict` (`./strict.ts`), not here.
  */
 export const recommended = {
-  'noctcore-code-quality/prefer-early-return': 'error',
   'noctcore-code-quality/no-process-exit': 'error',
-  'noctcore-code-quality/no-bare-date-now': 'error',
   'noctcore-code-quality/no-historical-comments': 'error',
   'noctcore-code-quality/no-narration-comments': 'error',
   'noctcore-code-quality/no-pr-reference-comments': 'error',

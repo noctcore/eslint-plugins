@@ -3,7 +3,7 @@
 > Keep JSX declarative — lift computation to a const above the return or into the hook.
 
 <!-- begin generated rule header -->
-✅ In `recommended` at `error` · 💭 Type information: not needed
+☑️ In `strict` at `error`, not in `recommended` · 💭 Type information: not needed
 <!-- end generated rule header -->
 
 ## Why
