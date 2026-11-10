@@ -42,6 +42,42 @@ ruleTester.run('no-shared-mutable-module-state', noSharedMutableModuleStateRule,
       filename: 'src/client/widget.ts',
       options: INCLUDE,
     },
+    // A class that is not exported is not an entry point.
+    {
+      code: `let cache = {}; class Local { set(k, v) { cache[k] = v; } }`,
+      filename: SERVER,
+      options: INCLUDE,
+    },
+    // The constructor runs at wiring time, not per request.
+    {
+      code: `let instances = 0; export class Service { constructor() { instances++; } }`,
+      filename: SERVER,
+      options: INCLUDE,
+    },
+    // Instance state on a provider is not a module binding.
+    {
+      code: `export class CacheService { private readonly cache = new Map(); set(k: string, v: unknown) { this.cache.set(k, v); } }`,
+      filename: SERVER,
+      options: INCLUDE,
+    },
+    // Lazy init inside a method is the singleton idiom.
+    {
+      code: `let client; export class Db { get() { client ??= connect(); return client; } }`,
+      filename: SERVER,
+      options: INCLUDE,
+    },
+    // A method only reading a module const.
+    {
+      code: `const LIMITS = { max: 10 }; export class Q { max() { return LIMITS.max; } }`,
+      filename: SERVER,
+      options: INCLUDE,
+    },
+    // An abstract method has no body.
+    {
+      code: `let n = 0; export abstract class Base { abstract run(): void; }`,
+      filename: SERVER,
+      options: INCLUDE,
+    },
     // Written inside an exported-but-non-async, non-handler function.
     {
       code: `let count = 0; export function tally() { count++; }`,
@@ -56,6 +92,71 @@ ruleTester.run('no-shared-mutable-module-state', noSharedMutableModuleStateRule,
     },
   ],
   invalid: [
+    // A method of an exported class, the NestJS service shape.
+    {
+      code: `let cache = {}; export class S { set(k, v) { cache[k] = v; } }`,
+      filename: SERVER,
+      options: INCLUDE,
+      errors: [{ messageId: 'sharedMutableState', data: { name: 'cache', fn: 'S.set' } }],
+    },
+    {
+      code: `import { Injectable } from '@nestjs/common';
+const seen = new Set<string>();
+let lastTenant: string | undefined;
+@Injectable()
+export class TenantService {
+  async remember(tenantId: string) {
+    lastTenant = tenantId;
+    seen.add(tenantId);
+  }
+}`,
+      filename: SERVER,
+      options: INCLUDE,
+      errors: [
+        { messageId: 'sharedMutableState', data: { name: 'lastTenant', fn: 'TenantService.remember' } },
+        { messageId: 'sharedMutableState', data: { name: 'seen', fn: 'TenantService.remember' } },
+      ],
+    },
+    // A class exported by a later statement.
+    {
+      code: `let count = 0; class Counter { bump() { count++; } } export { Counter };`,
+      filename: SERVER,
+      options: INCLUDE,
+      errors: [{ messageId: 'sharedMutableState', data: { name: 'count', fn: 'Counter.bump' } }],
+    },
+    // A default-exported class, a class expression, an arrow property and a private method.
+    {
+      code: `let n = 0; export default class { run() { n++; } }`,
+      filename: SERVER,
+      options: INCLUDE,
+      errors: [{ messageId: 'sharedMutableState', data: { name: 'n', fn: 'default export.run' } }],
+    },
+    {
+      code: `const log = []; export const Svc = class { handle = () => { log.push(1); }; };`,
+      filename: SERVER,
+      options: INCLUDE,
+      errors: [{ messageId: 'sharedMutableState', data: { name: 'log', fn: 'Svc.handle' } }],
+    },
+    {
+      code: `let n = 0; export class Svc { #bump() { n++; } run() { this.#bump(); } }`,
+      filename: SERVER,
+      options: INCLUDE,
+      errors: [{ messageId: 'sharedMutableState', data: { name: 'n', fn: 'Svc.#bump' } }],
+    },
+    // A write in a callback inside a method.
+    {
+      code: `const queue = []; export class Worker { start(items) { items.forEach((i) => queue.push(i)); } }`,
+      filename: SERVER,
+      options: INCLUDE,
+      errors: [{ messageId: 'sharedMutableState', data: { name: 'queue', fn: 'Worker.start' } }],
+    },
+    // An async function exported by a later statement.
+    {
+      code: `let hits = 0; async function GET() { hits++; } export { GET };`,
+      filename: SERVER,
+      options: INCLUDE,
+      errors: [{ messageId: 'sharedMutableState', data: { name: 'hits', fn: 'GET' } }],
+    },
     // Reassigned module `let` inside an exported async function.
     {
       code: `let count = 0; export async function GET() { count += 1; }`,

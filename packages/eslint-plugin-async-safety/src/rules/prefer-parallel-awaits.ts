@@ -1,7 +1,12 @@
-import { AST_NODE_TYPES, type TSESTree } from '@typescript-eslint/utils';
+import {
+  AST_NODE_TYPES,
+  forEachDescendant,
+  walkSome,
+  type TSESTree,
+  type VisitorKeys,
+} from '@noctcore/eslint-utils';
 
 import { createRule } from '../createRule';
-import { walk } from '../utils';
 
 const RULE_NAME = 'prefer-parallel-awaits';
 
@@ -101,34 +106,29 @@ function looksLikeMutation(name: string): boolean {
 }
 
 /** A single flat call whose subtree hides no other call/await/assignment. */
-function isSimpleReadCall(call: TSESTree.CallExpression): boolean {
+function isSimpleReadCall(call: TSESTree.CallExpression, keys: VisitorKeys): boolean {
   const name = calleeLastName(call.callee);
   if (name === null || looksLikeMutation(name)) {
     return false;
   }
-  let clean = true;
-  walk(call, (node) => {
-    if (node === call || !clean) {
-      return;
-    }
-    if (
-      node.type === AST_NODE_TYPES.CallExpression ||
-      node.type === AST_NODE_TYPES.NewExpression ||
-      node.type === AST_NODE_TYPES.AwaitExpression ||
-      node.type === AST_NODE_TYPES.AssignmentExpression ||
-      node.type === AST_NODE_TYPES.UpdateExpression ||
-      node.type === AST_NODE_TYPES.TaggedTemplateExpression
-    ) {
-      clean = false;
-    }
-  });
-  return clean;
+  return !walkSome(
+    call,
+    keys,
+    (node) =>
+      node !== call &&
+      (node.type === AST_NODE_TYPES.CallExpression ||
+        node.type === AST_NODE_TYPES.NewExpression ||
+        node.type === AST_NODE_TYPES.AwaitExpression ||
+        node.type === AST_NODE_TYPES.AssignmentExpression ||
+        node.type === AST_NODE_TYPES.UpdateExpression ||
+        node.type === AST_NODE_TYPES.TaggedTemplateExpression),
+  );
 }
 
 /** Identifier names referenced anywhere in a node (over-broad on purpose — bias to skip). */
-function referencedNames(node: TSESTree.Node): Set<string> {
+function referencedNames(node: TSESTree.Node, keys: VisitorKeys): Set<string> {
   const names = new Set<string>();
-  walk(node, (inner) => {
+  forEachDescendant(node, keys, (inner) => {
     if (inner.type === AST_NODE_TYPES.Identifier) {
       names.add(inner.name);
     }
@@ -184,10 +184,10 @@ export const preferParallelAwaitsRule = createRule<RuleOptions, MessageIds>({
     function isParallelizable(run: readonly AwaitDecl[]): boolean {
       const introduced = new Set<string>();
       for (const decl of run) {
-        if (!isSimpleReadCall(decl.call)) {
+        if (!isSimpleReadCall(decl.call, context.sourceCode.visitorKeys)) {
           return false;
         }
-        const used = referencedNames(decl.call);
+        const used = referencedNames(decl.call, context.sourceCode.visitorKeys);
         for (const name of introduced) {
           if (used.has(name)) {
             return false; // data dependency on an earlier await.

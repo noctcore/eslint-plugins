@@ -1,7 +1,6 @@
-import { AST_NODE_TYPES, type TSESLint, type TSESTree } from '@typescript-eslint/utils';
+import { AST_NODE_TYPES, forEachDescendant, type TSESLint, type TSESTree } from '@noctcore/eslint-utils';
 
 import { createRule } from '../createRule';
-import { walk } from '../utils';
 
 const RULE_NAME = 'no-concurrent-shared-mutation';
 
@@ -172,7 +171,7 @@ export const noConcurrentSharedMutationRule = createRule<RuleOptions, MessageIds
     }
 
     function checkCallback(callback: AsyncCallback): void {
-      walk(callback, (node) => {
+      forEachDescendant(callback, context.sourceCode.visitorKeys, (node) => {
         if (node.type !== AST_NODE_TYPES.AssignmentExpression || node.left.type !== AST_NODE_TYPES.Identifier) {
           return;
         }
@@ -196,7 +195,7 @@ export const noConcurrentSharedMutationRule = createRule<RuleOptions, MessageIds
         if (arg === undefined || arg.type === AST_NODE_TYPES.SpreadElement) {
           return;
         }
-        walk(arg, (inner) => {
+        forEachDescendant(arg, context.sourceCode.visitorKeys, (inner) => {
           const callback = asyncIterationCallback(inner);
           if (callback !== null) {
             checkCallback(callback);
