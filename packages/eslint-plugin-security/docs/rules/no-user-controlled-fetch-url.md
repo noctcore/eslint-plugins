@@ -71,7 +71,7 @@ protocol-relative.
 
 | Option | Type | Default | Meaning |
 | --- | --- | --- | --- |
-| `fetchCallees` | `CalleeSpec[]` | `fetch`, `axios.{get,post,put,patch,delete,head,options}` | Call shapes that issue a request. Setting this replaces the defaults. |
+| `fetchCallees` | `(string \| CalleeSpec)[]` | `fetch`, `axios.{get,post,put,patch,delete,head,options}` | Call shapes that issue a request. Setting this replaces the defaults. |
 | `trustedOrigins` | `string[]` | `[]` | Expressions (source text) that are a fixed-origin URL. `name()` matches any call to `name`. |
 | `sanitizers` | `string[]` | `[]` | Functions whose result is a safe same-origin path. |
 | `trustedPaths` | `string[]` | `[]` | Expressions (source text) that hold a safe same-origin path, e.g. an imported constant. |
@@ -88,13 +88,15 @@ Cover your own HTTP client. The list replaces the defaults, so repeat `fetch` if
 ```js
 'noctcore-security/no-user-controlled-fetch-url': ['error', {
   fetchCallees: [
-    { name: 'fetch' },
-    { object: 'this.http', name: 'get' },
+    'fetch',
+    'this.http.get',
     { object: 'ky', name: 'post' },
     { object: 'client', name: 'request', urlArgument: 1 }, // client.request('GET', url)
   ],
 }],
 ```
+
+The same `fetchCallees` list works for async-safety `require-fetch-timeout`, contracts `fetch-must-check-ok` and security `no-user-controlled-fetch-url`, so declare a wrapper once and pass it to all three. An entry is a string (`'http.fetchWithRetry'`: the last segment is the method, the rest the receiver as written) or an object (`{ object: 'axios', name: 'get', urlArgument: 0, urlProperty: 'url' }`). The object form is needed only when the URL is not the first argument or sits in a property other than `href`.
 
 ### `trustedOrigins`, `trustedPaths`, `sanitizers`
 

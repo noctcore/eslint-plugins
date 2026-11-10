@@ -14,8 +14,10 @@ import {
   calleeSpecSchema,
   hasFixedOrigin,
   matchCallee,
+  normalizeCallees,
   normalizeTrust,
   trustSchemaProperties,
+  type UrlCalleeEntry,
   type UrlCalleeSpec,
   type UrlTrustOptions,
   urlArgumentOf,
@@ -24,8 +26,12 @@ import {
 const RULE_NAME = 'no-user-controlled-fetch-url';
 
 export interface NoUserControlledFetchUrlOptions extends UrlTrustOptions {
-  /** Call shapes that issue an HTTP request. Replaces the defaults when set. */
-  readonly fetchCallees?: readonly UrlCalleeSpec[];
+  /**
+   * Call shapes that issue an HTTP request: a string (`'http.fetchWithRetry'`)
+   * or an object. Replaces the defaults when set. The same list works for
+   * async-safety `require-fetch-timeout` and contracts `fetch-must-check-ok`.
+   */
+  readonly fetchCallees?: readonly UrlCalleeEntry[];
 }
 
 type RuleOptions = [NoUserControlledFetchUrlOptions];
@@ -42,7 +48,12 @@ const optionSchema: JSONSchema4 = {
   type: 'object',
   additionalProperties: false,
   properties: {
-    fetchCallees: { type: 'array', items: calleeSpecSchema },
+    fetchCallees: {
+      type: 'array',
+      items: calleeSpecSchema,
+      description:
+        'Call shapes that issue an HTTP request: a string such as `http.fetchWithRetry`, or an object with `name`, `object`, `urlArgument` and `urlProperty`. Replaces the defaults (`fetch` and the `axios` methods).',
+    },
     ...trustSchemaProperties,
   },
 };
@@ -65,7 +76,7 @@ export const noUserControlledFetchUrlRule = createRule<RuleOptions, MessageIds>(
     { fetchCallees: DEFAULT_FETCH_CALLEES, trustedOrigins: [], sanitizers: [], trustedPaths: [] },
   ],
   create(context, [options]) {
-    const callees = options.fetchCallees ?? DEFAULT_FETCH_CALLEES;
+    const callees = normalizeCallees(options.fetchCallees ?? DEFAULT_FETCH_CALLEES);
     const trust = normalizeTrust(options);
     const sourceCode = context.sourceCode;
 

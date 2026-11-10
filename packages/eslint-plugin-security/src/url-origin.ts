@@ -5,6 +5,13 @@
  * Extended here with const resolution, `+` concatenation, `new URL(...)`, and the
  * configurable trusted-origin / sanitizer / trusted-path vocabulary.
  */
+import {
+  fetchCalleeEntrySchema,
+  matchFetchCallee,
+  normalizeFetchCallees,
+  type FetchCalleeEntry,
+  type FetchCalleeSpec,
+} from '@noctcore/eslint-utils';
 import { AST_NODE_TYPES, type TSESLint, type TSESTree } from '@typescript-eslint/utils';
 import type { JSONSchema4 } from '@typescript-eslint/utils/json-schema';
 
@@ -19,12 +26,10 @@ import type { JSONSchema4 } from '@typescript-eslint/utils/json-schema';
  * (default `href`), and an object without one is not a URL at all: TanStack
  * Router's `redirect({ to: '/dashboard' })` names a route, not a location.
  */
-export interface UrlCalleeSpec {
-  readonly name: string;
-  readonly object?: string;
-  readonly urlArgument?: number | 'last';
-  readonly urlProperty?: string;
-}
+export type UrlCalleeSpec = FetchCalleeSpec;
+
+/** A callee option entry: a string (`'axios.get'`) or a {@link UrlCalleeSpec}. */
+export type UrlCalleeEntry = FetchCalleeEntry;
 
 const DEFAULT_URL_PROPERTY = 'href';
 
@@ -48,19 +53,12 @@ export interface UrlTrustOptions {
   readonly trustedPaths?: readonly string[];
 }
 
-export const calleeSpecSchema: JSONSchema4 = {
-  type: 'object',
-  additionalProperties: false,
-  required: ['name'],
-  properties: {
-    name: { type: 'string' },
-    object: { type: 'string' },
-    urlArgument: {
-      oneOf: [{ type: 'integer', minimum: 0 }, { type: 'string', enum: ['last'] }],
-    },
-    urlProperty: { type: 'string' },
-  },
-};
+// The callee vocabulary is shared with the other plugins' fetch rules through
+// @noctcore/eslint-utils, so one `fetchCallees` list works for all of them.
+export const calleeSpecSchema: JSONSchema4 = fetchCalleeEntrySchema;
+
+/** Normalise callee entries to their object form once per rule run. */
+export const normalizeCallees: (entries: readonly UrlCalleeEntry[]) => UrlCalleeSpec[] = normalizeFetchCallees;
 
 export const trustSchemaProperties: Record<string, JSONSchema4> = {
   trustedOrigins: { type: 'array', items: { type: 'string' }, uniqueItems: true },
@@ -140,22 +138,7 @@ export function matchCallee(
   specs: readonly UrlCalleeSpec[],
   sourceCode: Readonly<TSESLint.SourceCode>,
 ): UrlCalleeSpec | undefined {
-  const callee = node.callee;
-  if (callee.type === AST_NODE_TYPES.Identifier) {
-    return specs.find((spec) => spec.object === undefined && spec.name === callee.name);
-  }
-  if (
-    callee.type !== AST_NODE_TYPES.MemberExpression ||
-    callee.computed ||
-    callee.property.type !== AST_NODE_TYPES.Identifier
-  ) {
-    return undefined;
-  }
-  const method = callee.property.name;
-  const receiver = squash(sourceCode.getText(callee.object));
-  return specs.find(
-    (spec) => spec.object !== undefined && spec.name === method && squash(spec.object) === receiver,
-  );
+  return matchFetchCallee(node, specs, sourceCode);
 }
 
 type Part =

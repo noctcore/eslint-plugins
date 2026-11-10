@@ -2,6 +2,9 @@ import { ruleTester } from '@noctcore/eslint-test-utils';
 
 import { requireFetchTimeoutRule } from '../../src/rules/require-fetch-timeout';
 
+// One wrapper list, declared once and passed to all three fetch rules.
+const FETCH_CALLEES = ['fetch', 'http.fetchWithCsrfRetry'];
+
 ruleTester.run('require-fetch-timeout', requireFetchTimeoutRule, {
   valid: [
     // A signal is present.
@@ -28,8 +31,41 @@ ruleTester.run('require-fetch-timeout', requireFetchTimeoutRule, {
     // A configured wrapper called with an opaque config identifier.
     { code: `axios(config);`, options: [{ callees: ['axios'] }] },
     { code: `undici.request('https://x', { signal });`, options: [{ callees: ['undici.request'] }] },
+    // The standard option name, and the deprecated alias combined with it.
+    { code: `got(url);`, options: [{ fetchCallees: ['got'] }] },
+    {
+      code: `undici.request('https://x', { signal }); got('https://y', { timeout: 1 });`,
+      options: [{ fetchCallees: ['undici.request'], callees: ['got'] }],
+    },
   ],
   invalid: [
+    {
+      code: `http.fetchWithCsrfRetry('/api/users');`,
+      options: [{ fetchCallees: FETCH_CALLEES }],
+      errors: [
+        {
+          messageId: 'missingTimeout',
+          suggestions: [
+            {
+              messageId: 'addTimeout',
+              output: `http.fetchWithCsrfRetry('/api/users', { signal: AbortSignal.timeout(10000) });`,
+            },
+          ],
+        },
+      ],
+    },
+    {
+      code: `got('https://y');`,
+      options: [{ fetchCallees: ['undici.request'], callees: ['got'] }],
+      errors: [
+        {
+          messageId: 'missingTimeout',
+          suggestions: [
+            { messageId: 'addTimeout', output: `got('https://y', { signal: AbortSignal.timeout(10000) });` },
+          ],
+        },
+      ],
+    },
     // Bare string URL, no options — suggestion appends an options object.
     {
       code: `fetch('https://api.example.com');`,

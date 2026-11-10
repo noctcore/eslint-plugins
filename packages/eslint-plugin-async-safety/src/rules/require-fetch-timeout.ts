@@ -1,12 +1,26 @@
+import {
+  fetchCalleesSchema,
+  fetchCalleeText,
+  matchFetchCallee,
+  normalizeFetchCallees,
+  type FetchCalleeEntry,
+} from '@noctcore/eslint-utils';
 import { AST_NODE_TYPES, type TSESLint, type TSESTree } from '@typescript-eslint/utils';
 import type { JSONSchema4 } from '@typescript-eslint/utils/json-schema';
 
 import { createRule } from '../createRule';
-import { calleeText } from '../utils';
 
 const RULE_NAME = 'require-fetch-timeout';
 
 export interface RequireFetchTimeoutOptions {
+  /**
+   * Wrappers that issue an HTTP request, besides the global `fetch`: a string
+   * (`'undici.request'`) or an object (`{ object: 'axios', name: 'get' }`). The
+   * same list works for contracts `fetch-must-check-ok` and security
+   * `no-user-controlled-fetch-url`.
+   */
+  readonly fetchCallees?: readonly FetchCalleeEntry[];
+  /** @deprecated Use `fetchCallees`. */
   readonly callees?: readonly string[];
   readonly defaultTimeoutMs?: number;
 }
@@ -44,8 +58,21 @@ const optionSchema: JSONSchema4 = {
   type: 'object',
   additionalProperties: false,
   properties: {
-    callees: { type: 'array', items: { type: 'string' }, uniqueItems: true },
-    defaultTimeoutMs: { type: 'integer', minimum: 1 },
+    fetchCallees: fetchCalleesSchema(
+      'Wrappers that issue an HTTP request, besides the global `fetch`: a string such as `undici.request`, or an object with `name` and `object`.',
+    ),
+    callees: {
+      type: 'array',
+      items: { type: 'string' },
+      uniqueItems: true,
+      description:
+        'Deprecated alias of `fetchCallees`, kept through 1.x. When both are set, the two lists are combined.',
+    },
+    defaultTimeoutMs: {
+      type: 'integer',
+      minimum: 1,
+      description: 'The timeout the suggestion inserts, in milliseconds. Default 10000.',
+    },
   },
 };
 
@@ -127,17 +154,19 @@ export const requireFetchTimeoutRule = createRule<RuleOptions, MessageIds>({
       addTimeout: 'Add `signal: AbortSignal.timeout({{ms}})`.',
     },
   },
-  defaultOptions: [{ callees: [], defaultTimeoutMs: DEFAULT_TIMEOUT_MS }],
+  defaultOptions: [{ defaultTimeoutMs: DEFAULT_TIMEOUT_MS }],
   create(context, [options]) {
     const timeoutMs = options.defaultTimeoutMs ?? DEFAULT_TIMEOUT_MS;
-    const matched = new Set<string>(['fetch', ...(options.callees ?? [])]);
+    const callees = normalizeFetchCallees(['fetch', ...(options.fetchCallees ?? []), ...(options.callees ?? [])]);
+    const sourceCode = context.sourceCode;
 
     return {
       CallExpression(node: TSESTree.CallExpression): void {
-        const name = calleeText(node.callee);
-        if (name === null || !matched.has(name)) {
+        const spec = matchFetchCallee(node, callees, sourceCode);
+        if (spec === undefined) {
           return;
         }
+        const name = fetchCalleeText(spec);
         const args = node.arguments;
         // Any spread argument makes the argument list opaque — cannot verify.
         if (args.some((arg) => arg.type === AST_NODE_TYPES.SpreadElement)) {

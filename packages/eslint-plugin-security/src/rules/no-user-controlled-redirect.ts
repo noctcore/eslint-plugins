@@ -15,8 +15,10 @@ import {
   calleeSpecSchema,
   hasFixedOrigin,
   matchCallee,
+  normalizeCallees,
   normalizeTrust,
   trustSchemaProperties,
+  type UrlCalleeEntry,
   type UrlCalleeSpec,
   type UrlTrustOptions,
   urlArgumentOf,
@@ -26,7 +28,7 @@ const RULE_NAME = 'no-user-controlled-redirect';
 
 export interface NoUserControlledRedirectOptions extends UrlTrustOptions {
   /** Call shapes that redirect. Replaces the defaults when set. */
-  readonly redirectCallees?: readonly UrlCalleeSpec[];
+  readonly redirectCallees?: readonly UrlCalleeEntry[];
 }
 
 type RuleOptions = [NoUserControlledRedirectOptions];
@@ -47,7 +49,12 @@ const optionSchema: JSONSchema4 = {
   type: 'object',
   additionalProperties: false,
   properties: {
-    redirectCallees: { type: 'array', items: calleeSpecSchema },
+    redirectCallees: {
+      type: 'array',
+      items: calleeSpecSchema,
+      description:
+        'Call shapes that redirect: a string such as `res.redirect`, or an object with `name`, `object`, `urlArgument` and `urlProperty`. Replaces the defaults.',
+    },
     ...trustSchemaProperties,
   },
 };
@@ -75,7 +82,7 @@ export const noUserControlledRedirectRule = createRule<RuleOptions, MessageIds>(
     },
   ],
   create(context, [options]) {
-    const callees = options.redirectCallees ?? DEFAULT_REDIRECT_CALLEES;
+    const callees = normalizeCallees(options.redirectCallees ?? DEFAULT_REDIRECT_CALLEES);
     const trust = normalizeTrust(options);
     const sourceCode = context.sourceCode;
 

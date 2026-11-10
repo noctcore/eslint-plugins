@@ -27,7 +27,14 @@
  * SOFTWARE.
  */
 
-import { calleePath, type VisitorKeys, walkSome } from '@noctcore/eslint-utils';
+import {
+  fetchCalleesSchema,
+  matchFetchCallee,
+  normalizeFetchCallees,
+  type FetchCalleeEntry,
+  type VisitorKeys,
+  walkSome,
+} from '@noctcore/eslint-utils';
 import { AST_NODE_TYPES, type TSESTree } from '@typescript-eslint/utils';
 import type { JSONSchema4 } from '@typescript-eslint/utils/json-schema';
 
@@ -37,9 +44,14 @@ export const RULE_NAME = 'fetch-must-check-ok';
 
 export interface FetchMustCheckOkOptions {
   /**
-   * Callees whose result is a `Response`: a bare name (`fetch`) or a dotted path
-   * (`globalThis.fetch`, `http.fetchWithRetry`). Default `['fetch']`.
+   * Callees whose result is a `Response`: a string, bare (`fetch`) or dotted
+   * (`globalThis.fetch`, `http.fetchWithRetry`), or an object
+   * (`{ object: 'http', name: 'get' }`). Default `['fetch']`. The same list works
+   * for async-safety `require-fetch-timeout` and security
+   * `no-user-controlled-fetch-url`.
    */
+  readonly fetchCallees?: readonly FetchCalleeEntry[];
+  /** @deprecated Use `fetchCallees`. */
   readonly fetchFunctions?: readonly string[];
 }
 
@@ -50,10 +62,15 @@ const optionSchema: JSONSchema4 = {
   type: 'object',
   additionalProperties: false,
   properties: {
+    fetchCallees: fetchCalleesSchema(
+      'Callees whose result is a `Response`: a string such as `http.fetchWithRetry`, or an object with `name` and `object`. Default `["fetch"]`; setting it replaces the default.',
+    ),
     fetchFunctions: {
       type: 'array',
       items: { type: 'string', minLength: 1 },
       uniqueItems: true,
+      description:
+        'Deprecated alias of `fetchCallees`, kept through 1.x. When both are set, the two lists are combined.',
     },
   },
 };
@@ -823,9 +840,13 @@ export const fetchMustCheckOkRule = createRule<RuleOptions, MessageIds>({
         '`fetch` resolves on 4xx/5xx too, so `.json()` here can parse an error body as data. Check `response.ok` (or compare the status) and leave early before reading the body.',
     },
   },
-  defaultOptions: [{ fetchFunctions: ['fetch'] }],
+  defaultOptions: [{}],
   create(context, [options]) {
-    const fetchFunctions = new Set(options.fetchFunctions ?? ['fetch']);
+    const configured =
+      options.fetchCallees === undefined && options.fetchFunctions === undefined
+        ? ['fetch']
+        : [...(options.fetchCallees ?? []), ...(options.fetchFunctions ?? [])];
+    const fetchCallees = normalizeFetchCallees(configured);
     const keys: VisitorKeys = context.sourceCode.visitorKeys;
 
     function reportUnprotected(root: TSESTree.Node, name: string): void {
@@ -840,9 +861,7 @@ export const fetchMustCheckOkRule = createRule<RuleOptions, MessageIds>({
 
     return {
       CallExpression(node): void {
-        const path = calleePath(node.callee);
-
-        if (path === null || !fetchFunctions.has(path)) {
+        if (matchFetchCallee(node, fetchCallees, context.sourceCode) === undefined) {
           return;
         }
 
