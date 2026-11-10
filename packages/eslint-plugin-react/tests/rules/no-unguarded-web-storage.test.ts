@@ -1,4 +1,4 @@
-import { ruleTester } from '@noctcore/eslint-test-utils';
+import { ruleTester, workspacePath } from '@noctcore/eslint-test-utils';
 
 import { noUnguardedWebStorageRule } from '../../src/rules/no-unguarded-web-storage';
 
@@ -206,8 +206,34 @@ function withStorage(sessionStorage) {
       filename: 'src/electron/store.ts',
       options: [{ allowIn: ['**/electron/**'] }],
     },
+    // A repo-relative allowIn glob matches the absolute filename ESLint passes.
+    {
+      code: `localStorage.setItem('theme', 'dark');`,
+      filename: workspacePath('apps', 'desktop', 'store.ts'),
+      options: [{ allowIn: ['apps/desktop/**'] }],
+    },
   ],
   invalid: [
+    {
+      code: `localStorage.setItem('theme', 'dark');`,
+      filename: workspacePath('apps', 'web', 'store.ts'),
+      options: [{ allowIn: ['apps/desktop/**'] }],
+      errors: [
+        {
+          messageId: 'unguarded',
+          suggestions: [
+            {
+              messageId: 'wrapInTry',
+              output: `try {
+  localStorage.setItem('theme', 'dark');
+} catch {
+  // Storage is unavailable or full. Fall back to the default.
+}`,
+            },
+          ],
+        },
+      ],
+    },
     // A callback defined inside a try runs after the try has ended: a listener,
     // a timer, a then-callback, an async IIFE past its await.
     {

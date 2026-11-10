@@ -1,9 +1,14 @@
-import { calleePath, isFunctionNode, unwrapTypeWrappers, type FunctionNode } from '@noctcore/eslint-utils';
+import {
+  calleePath,
+  fileMatchesAnyGlob,
+  isFunctionNode,
+  unwrapTypeWrappers,
+  type FunctionNode,
+} from '@noctcore/eslint-utils';
 import { AST_NODE_TYPES, type TSESTree } from '@typescript-eslint/utils';
 import type { JSONSchema4 } from '@typescript-eslint/utils/json-schema';
 
 import { createRule } from '../createRule';
-import { matchesAny } from '../utils';
 
 const RULE_NAME = 'no-unguarded-web-storage';
 
@@ -230,7 +235,7 @@ export const noUnguardedWebStorageRule = createRule<RuleOptions, MessageIds>({
   create(context, [options]) {
     const allowIn = options.allowIn ?? DEFAULT_ALLOW_IN;
 
-    if (matchesAny(context.filename, allowIn)) {
+    if (fileMatchesAnyGlob(context.filename, allowIn, context.cwd)) {
       return {};
     }
 
