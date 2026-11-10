@@ -1,6 +1,6 @@
 # `noctcore-async-safety/no-shared-mutable-module-state`
 
-> A module-scoped mutable binding written from an exported async/handler function is shared across concurrent requests.
+> A module-scoped mutable binding written from an exported async/handler function or an exported class method is shared across concurrent requests.
 
 <!-- begin generated rule header -->
 🔘 Opt-in: not in `recommended` · ⚙️ Needs options (see Options) · 💭 Type information: not needed
@@ -16,7 +16,8 @@ races that never appear in single-request local testing.
 ## What it flags
 
 Only when the file matches an `include` glob (see Options — the rule is **off by default**), a write to a
-module-scoped mutable binding performed inside an **exported async function** or a **handler-named export**:
+module-scoped mutable binding performed inside an **exported async function**, a **handler-named export**, or
+any **method of an exported class**:
 
 - a module-level `let`/`var` reassigned (`x = …`, `x += …`, `x++`); or
 - a module-level mutable container `const` (`[]`, `{}`, `new Map()`/`Set()`/`WeakMap()`/`WeakSet()`) mutated
@@ -40,13 +41,46 @@ export async function GET() {
 }
 ```
 
+### Class methods
+
+In a DI framework one instance of a provider serves every request (a NestJS `@Injectable()` is a
+singleton by default), so every method of an exported class is an entry point, `async` or not. The
+constructor is skipped: it runs once, when the provider is wired. A declaration exported by a later
+`export { Name }` or `export default Name` counts like an inline export.
+
+```ts bad filename=src/server/tenant.service.ts options={"include":["**/server/**"]}
+const seen = new Set<string>();
+
+@Injectable()
+export class TenantService {
+  remember(tenantId: string) {
+    seen.add(tenantId);
+  }
+}
+```
+
+```ts good filename=src/server/tenant.service.ts options={"include":["**/server/**"]}
+@Injectable()
+export class TenantService {
+  private readonly seen = new Set<string>();
+
+  remember(tenantId: string) {
+    this.seen.add(tenantId);
+  }
+}
+```
+
+Moving the state onto the instance makes the sharing visible in the class, which is where a reader
+looks for it; whether the provider should hold it at all is still your call.
+
 ## What it does not flag
 
 - Anything, until `include` is set, and any file outside the `include` globs.
 - The lazy-initialization idioms `x ??= …` and `x ||= …` (the common singleton/memoization pattern), and
   names in `allow`.
-- A write inside a non-exported helper, or inside an exported function that is neither `async` nor
-  handler-named.
+- A write inside a non-exported helper or class, or inside an exported function that is neither `async`
+  nor handler-named.
+- `this.x` instance state on a class, which is not a module binding, and writes in a constructor.
 - A module-level `const` that is only read.
 
 ## Options

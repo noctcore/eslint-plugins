@@ -17,8 +17,12 @@ type MessageIds = 'sharedMutableState';
 /*
  * On a server, module scope is shared by every concurrent request. A module-level
  * `let` (or a mutable container `const c = []` / `new Map()`) written from inside
- * an EXPORTED async function or route handler is cross-request contamination:
- * request B sees state left by request A.
+ * an EXPORTED async function or route handler, or from any method of an
+ * exported class (a DI singleton such as a NestJS provider serves every request
+ * from one instance), is cross-request contamination: request B sees state left
+ * by request A. A later `export { name }` / `export default name` exports a
+ * declaration too. `this.x` instance state is not a module binding and is not
+ * checked.
  *
  * OPT-IN by design: with no `include` glob (the default) the rule is inert, so a
  * legit client-side module cache is never touched. Point `include` at server
@@ -69,8 +73,18 @@ const optionSchema: JSONSchema4 = {
   type: 'object',
   additionalProperties: false,
   properties: {
-    include: { type: 'array', items: { type: 'string' }, uniqueItems: true },
-    allow: { type: 'array', items: { type: 'string' }, uniqueItems: true },
+    include: {
+      type: 'array',
+      items: { type: 'string' },
+      uniqueItems: true,
+      description: 'Globs of the server files to check; with none the rule checks nothing.',
+    },
+    allow: {
+      type: 'array',
+      items: { type: 'string' },
+      uniqueItems: true,
+      description: 'Module binding names that are intentional shared state (a singleton, a memo).',
+    },
   },
 };
 
@@ -179,6 +193,71 @@ function enclosingExportedFn(
   return undefined;
 }
 
+/** Names a module exports by a separate statement: `export { a, b as c }`, `export default a`. */
+function namesExportedLater(program: TSESTree.Program): Set<string> {
+  const names = new Set<string>();
+  for (const statement of program.body) {
+    if (
+      statement.type === AST_NODE_TYPES.ExportNamedDeclaration &&
+      statement.declaration === null &&
+      statement.source === null
+    ) {
+      for (const specifier of statement.specifiers) {
+        if (specifier.local.type === AST_NODE_TYPES.Identifier) {
+          names.add(specifier.local.name);
+        }
+      }
+    } else if (
+      statement.type === AST_NODE_TYPES.ExportDefaultDeclaration &&
+      statement.declaration.type === AST_NODE_TYPES.Identifier
+    ) {
+      names.add(statement.declaration.name);
+    }
+  }
+  return names;
+}
+
+/** The static name of a class member key (`set`, `'set'`), else null. */
+function memberName(member: TSESTree.MethodDefinition | TSESTree.PropertyDefinition): string | null {
+  if (member.key.type === AST_NODE_TYPES.PrivateIdentifier) {
+    return `#${member.key.name}`;
+  }
+  if (!member.computed && member.key.type === AST_NODE_TYPES.Identifier) {
+    return member.key.name;
+  }
+  return member.key.type === AST_NODE_TYPES.Literal ? String(member.key.value) : null;
+}
+
+/**
+ * Every method of an exported class is an entry point, async or not: in a DI
+ * framework (a NestJS `@Injectable()`) one instance serves every request, so a
+ * module binding written from any of its methods is shared. The constructor
+ * runs at wiring time and is skipped, as are static blocks.
+ */
+function addClassMethods(
+  cls: TSESTree.ClassDeclaration | TSESTree.ClassExpression,
+  fallbackName: string | null,
+  add: (fn: AnyFunction, name: string) => void,
+): void {
+  const className = cls.id?.name ?? fallbackName ?? 'default export';
+  for (const member of cls.body.body) {
+    if (member.type === AST_NODE_TYPES.MethodDefinition) {
+      // A constructor runs at wiring time; an abstract or overload signature has no body.
+      if (member.kind === 'constructor' || member.value.type !== AST_NODE_TYPES.FunctionExpression) {
+        continue;
+      }
+      add(member.value, `${className}.${memberName(member) ?? '[computed]'}`);
+    } else if (
+      member.type === AST_NODE_TYPES.PropertyDefinition &&
+      member.value !== null &&
+      (member.value.type === AST_NODE_TYPES.ArrowFunctionExpression ||
+        member.value.type === AST_NODE_TYPES.FunctionExpression)
+    ) {
+      add(member.value, `${className}.${memberName(member) ?? '[computed]'}`);
+    }
+  }
+}
+
 function collectExportedFns(program: TSESTree.Program): Map<AnyFunction, string | null> {
   const result = new Map<AnyFunction, string | null>();
   const addFn = (fn: AnyFunction, name: string | null): void => {
@@ -186,24 +265,35 @@ function collectExportedFns(program: TSESTree.Program): Map<AnyFunction, string 
       result.set(fn, name);
     }
   };
-
-  for (const statement of program.body) {
-    if (statement.type === AST_NODE_TYPES.ExportNamedDeclaration && statement.declaration) {
-      const decl = statement.declaration;
-      if (decl.type === AST_NODE_TYPES.FunctionDeclaration) {
-        addFn(decl, decl.id ? decl.id.name : null);
-      } else if (decl.type === AST_NODE_TYPES.VariableDeclaration) {
-        for (const d of decl.declarations) {
-          if (
-            d.id.type === AST_NODE_TYPES.Identifier &&
-            d.init &&
-            (d.init.type === AST_NODE_TYPES.ArrowFunctionExpression ||
-              d.init.type === AST_NODE_TYPES.FunctionExpression)
-          ) {
-            addFn(d.init, d.id.name);
-          }
+  const addMethod = (fn: AnyFunction, name: string): void => {
+    result.set(fn, name);
+  };
+  const addDeclaration = (decl: TSESTree.Node): void => {
+    if (decl.type === AST_NODE_TYPES.FunctionDeclaration) {
+      addFn(decl, decl.id ? decl.id.name : null);
+    } else if (decl.type === AST_NODE_TYPES.ClassDeclaration) {
+      addClassMethods(decl, null, addMethod);
+    } else if (decl.type === AST_NODE_TYPES.VariableDeclaration) {
+      for (const d of decl.declarations) {
+        if (d.id.type !== AST_NODE_TYPES.Identifier || !d.init) {
+          continue;
+        }
+        if (
+          d.init.type === AST_NODE_TYPES.ArrowFunctionExpression ||
+          d.init.type === AST_NODE_TYPES.FunctionExpression
+        ) {
+          addFn(d.init, d.id.name);
+        } else if (d.init.type === AST_NODE_TYPES.ClassExpression) {
+          addClassMethods(d.init, d.id.name, addMethod);
         }
       }
+    }
+  };
+
+  const laterNames = namesExportedLater(program);
+  for (const statement of program.body) {
+    if (statement.type === AST_NODE_TYPES.ExportNamedDeclaration && statement.declaration) {
+      addDeclaration(statement.declaration);
     } else if (statement.type === AST_NODE_TYPES.ExportDefaultDeclaration) {
       const decl = statement.declaration;
       if (
@@ -212,10 +302,34 @@ function collectExportedFns(program: TSESTree.Program): Map<AnyFunction, string 
         decl.type === AST_NODE_TYPES.FunctionExpression
       ) {
         addFn(decl, decl.type === AST_NODE_TYPES.FunctionDeclaration && decl.id ? decl.id.name : null);
+      } else if (
+        decl.type === AST_NODE_TYPES.ClassDeclaration ||
+        decl.type === AST_NODE_TYPES.ClassExpression
+      ) {
+        addClassMethods(decl, null, addMethod);
       }
+    } else if (laterNames.size > 0 && isDeclaredAs(statement, laterNames)) {
+      addDeclaration(statement);
     }
   }
   return result;
+}
+
+/** True when a top-level declaration declares one of `names` (exported by a later statement). */
+function isDeclaredAs(statement: TSESTree.ProgramStatement, names: ReadonlySet<string>): boolean {
+  if (
+    (statement.type === AST_NODE_TYPES.FunctionDeclaration ||
+      statement.type === AST_NODE_TYPES.ClassDeclaration) &&
+    statement.id !== null
+  ) {
+    return names.has(statement.id.name);
+  }
+  return (
+    statement.type === AST_NODE_TYPES.VariableDeclaration &&
+    statement.declarations.some(
+      (d) => d.id.type === AST_NODE_TYPES.Identifier && names.has(d.id.name),
+    )
+  );
 }
 
 export const noSharedMutableModuleStateRule = createRule<RuleOptions, MessageIds>({
@@ -224,7 +338,7 @@ export const noSharedMutableModuleStateRule = createRule<RuleOptions, MessageIds
     type: 'problem',
     docs: {
       description:
-        'A module-scoped mutable binding written inside an exported async/handler function is shared across concurrent requests. Opt in per file via `include`.',
+        'A module-scoped mutable binding written inside an exported async/handler function or an exported class method is shared across concurrent requests. Opt in per file via `include`.',
       requiresOptions: true,
     },
     schema: [optionSchema],
