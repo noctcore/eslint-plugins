@@ -4,6 +4,12 @@ import { noLeakyRaceTimeoutRule } from '../../src/rules/no-leaky-race-timeout';
 
 ruleTester.run('no-leaky-race-timeout', noLeakyRaceTimeoutRule, {
   valid: [
+    // A race at module scope (top-level await), cleared after the race.
+    {
+      code: `let timer;
+await Promise.race([work, new Promise((_, reject) => { timer = setTimeout(reject, 1000); })]);
+clearTimeout(timer);`,
+    },
     // No timer in the race at all.
     { code: `async function f(a, b) { return await Promise.race([a, b]); }` },
     { code: `async function f(a) { return await Promise.race([a, new Promise((r) => emitter.once('x', r))]); }` },
@@ -133,6 +139,13 @@ ruleTester.run('no-leaky-race-timeout', noLeakyRaceTimeoutRule, {
     },
   ],
   invalid: [
+    // A race at module scope, cleared only before the race starts.
+    {
+      code: `let timer;
+clearTimeout(timer);
+await Promise.race([work, new Promise((_, reject) => { timer = setTimeout(reject, 1000); })]);`,
+      errors: [{ messageId: 'unclearedHandle' }],
+    },
     // The two-line form: the timeout promise is built first and raced by name.
     {
       code: `async function f(work) { const timeout = new Promise((_, r) => setTimeout(r, 1000)); return Promise.race([work, timeout]); }`,

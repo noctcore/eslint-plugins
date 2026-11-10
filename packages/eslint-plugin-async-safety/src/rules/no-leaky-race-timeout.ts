@@ -1,7 +1,16 @@
-import { AST_NODE_TYPES, ASTUtils, type TSESLint, type TSESTree } from '@typescript-eslint/utils';
+import {
+  AST_NODE_TYPES,
+  enclosingFunction,
+  forEachDescendant,
+  isFunctionNode,
+  type FunctionNode,
+  type TSESLint,
+  type TSESTree,
+} from '@noctcore/eslint-utils';
+import { ASTUtils } from '@typescript-eslint/utils';
 
 import { createRule } from '../createRule';
-import { calleeText, walk } from '../utils';
+import { calleeText } from '../utils';
 
 const RULE_NAME = 'no-leaky-race-timeout';
 
@@ -54,33 +63,13 @@ const CLEAR_CALLEES: ReadonlySet<string> = new Set([
   'window.clearInterval',
 ]);
 
-type FunctionNode =
-  | TSESTree.FunctionDeclaration
-  | TSESTree.FunctionExpression
-  | TSESTree.ArrowFunctionExpression;
-
-function isFunction(node: TSESTree.Node): node is FunctionNode {
-  return (
-    node.type === AST_NODE_TYPES.FunctionDeclaration ||
-    node.type === AST_NODE_TYPES.FunctionExpression ||
-    node.type === AST_NODE_TYPES.ArrowFunctionExpression
-  );
-}
-
-/** The nearest function enclosing `node`, or the Program. */
-function enclosingFunction(node: TSESTree.Node): FunctionNode | TSESTree.Program {
-  let current = node.parent;
-  while (current !== undefined) {
-    if (isFunction(current) || current.type === AST_NODE_TYPES.Program) {
-      return current;
-    }
-    current = current.parent;
-  }
-  throw new Error('unreachable: every node sits under a Program');
-}
-
 function contains(outer: TSESTree.Node, inner: TSESTree.Node): boolean {
   return outer.range[0] <= inner.range[0] && inner.range[1] <= outer.range[1];
+}
+
+/** True when `inner` sits in function `fn`, where a null `fn` is module scope (holds everything). */
+function inFunction(fn: FunctionNode | null, inner: TSESTree.Node): boolean {
+  return fn === null || contains(fn, inner);
 }
 
 /** Climb past type-only wrappers (`setTimeout(...) as unknown as number`, `x!`). */
@@ -169,13 +158,13 @@ function isCleared(variable: TSESLint.Scope.Variable, race: TSESTree.CallExpress
   const raceFunction = enclosingFunction(race);
   const declaration = variable.defs[0]?.node;
   // A handle owned by an outer scope can be cleared from anywhere; flow is not ours to judge.
-  if (declaration === undefined || !contains(raceFunction, declaration)) {
+  if (declaration === undefined || !inFunction(raceFunction, declaration)) {
     return true;
   }
   return clears.some(
     (clear) =>
       contains(race, clear) ||
-      (contains(raceFunction, clear) &&
+      (inFunction(raceFunction, clear) &&
         // After the race, or inside a callback (`const stop = () => clearTimeout(t)`)
         // that may run after it: either way the rule cannot prove a leak.
         (clear.range[0] >= race.range[1] || enclosingFunction(clear) !== raceFunction)),
@@ -208,7 +197,7 @@ function promiseExecutor(node: TSESTree.Node | null): FunctionNode | null {
     return null;
   }
   const executor = node.arguments[0];
-  return executor !== undefined && isFunction(executor) ? executor : null;
+  return executor !== undefined && isFunctionNode(executor) ? executor : null;
 }
 
 /**
@@ -261,7 +250,7 @@ export const noLeakyRaceTimeoutRule = createRule<RuleOptions, MessageIds>({
     const sourceCode = context.sourceCode;
 
     function checkExecutor(executor: FunctionNode, race: TSESTree.CallExpression): void {
-      walk(executor.body, (node) => {
+      forEachDescendant(executor.body, sourceCode.visitorKeys, (node) => {
         if (
           node.type !== AST_NODE_TYPES.CallExpression ||
           !TIMER_CALLEES.has(calleeText(node.callee) ?? '') ||

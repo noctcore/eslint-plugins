@@ -1,7 +1,7 @@
-import { AST_NODE_TYPES, type TSESTree } from '@typescript-eslint/utils';
+import { AST_NODE_TYPES, walkSome, type TSESTree, type VisitorKeys } from '@noctcore/eslint-utils';
 
 import { createRule } from '../createRule';
-import { calleeText, walk } from '../utils';
+import { calleeText } from '../utils';
 
 const RULE_NAME = 'forward-abort-signal';
 
@@ -32,18 +32,19 @@ type MessageIds = 'unforwardedSignal';
  */
 
 /** The type mentions `AbortSignal` anywhere (`AbortSignal`, `AbortSignal | undefined`, `globalThis.AbortSignal`). */
-function mentionsAbortSignal(type: TSESTree.Node): boolean {
-  let found = false;
-  walk(type, (node) => {
-    if (node.type === AST_NODE_TYPES.Identifier && node.name === 'AbortSignal') {
-      found = true;
-    }
-  });
-  return found;
+function mentionsAbortSignal(type: TSESTree.Node, keys: VisitorKeys): boolean {
+  return walkSome(
+    type,
+    keys,
+    (node) => node.type === AST_NODE_TYPES.Identifier && node.name === 'AbortSignal',
+  );
 }
 
 /** Collect the local binding names of any AbortSignal-shaped parameters. */
-function signalBindingNames(params: readonly TSESTree.Parameter[]): {
+function signalBindingNames(
+  params: readonly TSESTree.Parameter[],
+  keys: VisitorKeys,
+): {
   names: Set<string>;
   reportNode: TSESTree.Node | null;
 } {
@@ -62,7 +63,7 @@ function signalBindingNames(params: readonly TSESTree.Parameter[]): {
     }
     if (param.type === AST_NODE_TYPES.Identifier) {
       const annotation = param.typeAnnotation?.typeAnnotation;
-      const typedAbortSignal = annotation !== undefined && mentionsAbortSignal(annotation);
+      const typedAbortSignal = annotation !== undefined && mentionsAbortSignal(annotation, keys);
       const untypedSignalName = annotation === undefined && param.name === 'signal';
       if (untypedSignalName || typedAbortSignal) {
         consider(param.name, param);
@@ -93,24 +94,15 @@ function signalBindingNames(params: readonly TSESTree.Parameter[]): {
 }
 
 /** The function body contains an awaited call or a direct `fetch(...)` call. */
-function hasCancellableWork(fn: TSESTree.Node): boolean {
-  let found = false;
-  walk(fn, (node) => {
-    if (found) {
-      return;
-    }
-    if (
-      node.type === AST_NODE_TYPES.AwaitExpression &&
-      node.argument.type === AST_NODE_TYPES.CallExpression
-    ) {
-      found = true;
-      return;
-    }
-    if (node.type === AST_NODE_TYPES.CallExpression && calleeText(node.callee) === 'fetch') {
-      found = true;
-    }
-  });
-  return found;
+function hasCancellableWork(fn: TSESTree.Node, keys: VisitorKeys): boolean {
+  return walkSome(
+    fn,
+    keys,
+    (node) =>
+      (node.type === AST_NODE_TYPES.AwaitExpression &&
+        node.argument.type === AST_NODE_TYPES.CallExpression) ||
+      (node.type === AST_NODE_TYPES.CallExpression && calleeText(node.callee) === 'fetch'),
+  );
 }
 
 const HAND_WIRED_MEMBERS: ReadonlySet<string> = new Set(['addEventListener', 'onabort']);
@@ -149,11 +141,11 @@ export const forwardAbortSignalRule = createRule<RuleOptions, MessageIds>({
   defaultOptions: [],
   create(context) {
     function check(fn: TSESTree.FunctionDeclaration | TSESTree.FunctionExpression | TSESTree.ArrowFunctionExpression): void {
-      const { names, reportNode } = signalBindingNames(fn.params);
+      const { names, reportNode } = signalBindingNames(fn.params, context.sourceCode.visitorKeys);
       if (names.size === 0 || reportNode === null) {
         return;
       }
-      if (!hasCancellableWork(fn)) {
+      if (!hasCancellableWork(fn, context.sourceCode.visitorKeys)) {
         return;
       }
 
