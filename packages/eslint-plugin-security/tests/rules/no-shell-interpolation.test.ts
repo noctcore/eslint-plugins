@@ -21,6 +21,28 @@ ruleTester.run('no-shell-interpolation', noShellInterpolationRule, {
     { code: 'spawn(`cmd ${x}`, [], { shell: false });', filename: TS },
     // Not a shell runner.
     { code: 'render(`hi ${name}`);', filename: TS },
+    // Statically off shell values.
+    { code: 'spawn(`cmd ${x}`, [], { shell: undefined });', filename: TS },
+    { code: "spawn(`cmd ${x}`, [], { shell: '' });", filename: TS },
+    // A promisified runner with a static command, or an array-args runner without a shell.
+    {
+      code: "import { exec } from 'node:child_process'; import { promisify } from 'node:util'; const execAsync = promisify(exec); await execAsync('git status');",
+      filename: TS,
+    },
+    {
+      code: "import { execFile } from 'node:child_process'; import { promisify } from 'node:util'; const run = promisify(execFile); await run('git', ['checkout', branch]);",
+      filename: TS,
+    },
+    // promisify of something that is not a child_process runner.
+    {
+      code: "import { promisify } from 'node:util'; const readAsync = promisify(readFile); await readAsync(`${dir}/a.txt`);",
+      filename: TS,
+    },
+    // A shadowing parameter is not the promisified binding.
+    {
+      code: "const execAsync = promisify(exec); function f(execAsync) { return execAsync(`x ${y}`); }",
+      filename: TS,
+    },
   ],
   invalid: [
     // exec with an interpolated template.
@@ -61,6 +83,40 @@ ruleTester.run('no-shell-interpolation', noShellInterpolationRule, {
     // execFile with shell:true is no longer safe.
     {
       code: 'execFile(`cmd ${x}`, [], { shell: true });',
+      filename: TS,
+      errors: [{ messageId: 'shellInterpolation' }],
+    },
+    // A promisified exec, the usual async form.
+    {
+      code: "import { exec } from 'node:child_process'; import { promisify } from 'node:util'; const execAsync = promisify(exec); export async function checkout(b: string) { await execAsync(`git checkout ${b}`); }",
+      filename: TS,
+      errors: [{ messageId: 'shellInterpolation', data: { callee: 'execAsync' } }],
+    },
+    // util.promisify on a child_process member.
+    {
+      code: "import * as cp from 'node:child_process'; import util from 'node:util'; const sh = util.promisify(cp.exec); sh('ls ' + dir);",
+      filename: TS,
+      errors: [{ messageId: 'shellInterpolation' }],
+    },
+    // A promisified execFile with a shell option.
+    {
+      code: "const run = promisify(execFile); run(`git ${b}`, { shell: true });",
+      filename: TS,
+      errors: [{ messageId: 'shellInterpolation' }],
+    },
+    // A shell decided at run time is a shell on some machine (Windows here).
+    {
+      code: "spawn(`git ${b}`, { shell: process.platform === 'win32' });",
+      filename: TS,
+      errors: [{ messageId: 'shellInterpolation' }],
+    },
+    {
+      code: 'spawnSync(`git ${b}`, [], { shell });',
+      filename: TS,
+      errors: [{ messageId: 'shellInterpolation' }],
+    },
+    {
+      code: "execFile(`git ${b}`, [], { shell: useShell as boolean });",
       filename: TS,
       errors: [{ messageId: 'shellInterpolation' }],
     },
