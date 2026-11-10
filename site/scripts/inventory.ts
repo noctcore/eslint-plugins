@@ -41,6 +41,7 @@ export const PLUGIN_SHORT_NAMES = [
   'nestjs',
   'query',
   'electron',
+  'dates',
 ] as const;
 
 export const LINT_META = 'lint-meta-rules';
