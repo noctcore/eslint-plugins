@@ -47,6 +47,7 @@ Each entry in `rules`:
 | `description`    | The rule's `meta.docs.description`.                                                           |
 | `url`            | The rule's page on this site, the same URL as its `meta.docs.url`.                            |
 | `recommended`    | `error` or `off` in the package's `recommended` preset; `null` when the preset leaves it out, and for lint-meta rules. |
+| `strict`         | `error` or `off` in the package's `strict` preset (`recommended` plus the house rules); `null` when the package has no `strict` preset, the preset leaves it out, and for lint-meta rules. |
 | `fixable`        | Whether the rule has an autofix.                                                              |
 | `hasSuggestions` | Whether the rule offers suggestions.                                                          |
 | `typeInfo`       | `required`, `optional` or `none`: whether the rule needs a type-checked program.              |

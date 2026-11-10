@@ -101,6 +101,23 @@ export default [
 If your config already sets the parser for those files (through `typescript-eslint`'s configs, for
 example), spreading the preset alongside it is enough.
 
+### `strict`: recommended plus the house rules
+
+architecture, code-quality, contracts and react also export `configs.strict`: everything in
+`recommended`, plus the house rules (naming schemes, folder shape, size caps). A house rule holds in a
+codebase that follows the same convention and reports widely in one that does not, so it is one
+spread away instead of on by default. Spread `strict` in place of `recommended` to take them all;
+architecture's `recommended` is empty, because every architecture rule is a layout convention.
+
+```js
+export default [
+  { ...react.configs.strict, files: ['**/*.{ts,tsx}'], languageOptions: { parser: tsParser } },
+];
+```
+
+Each package page lists which of its rules are `strict` only. Before 1.0 these rules were in
+`recommended`; to keep linting as before after upgrading, spread `strict`.
+
 ## 3. Turn on the rules that need your project's knowledge
 
 Some rules cannot do anything useful until they know something about your codebase: your workspace
