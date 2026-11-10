@@ -229,7 +229,7 @@ export const tenantScopedTablesRequireWhereRule = createRule<RuleOptions, Messag
     },
   ],
   create(context, [options]) {
-    if (isAllowlisted(context.filename, options.allowIn ?? DEFAULT_ALLOW_IN)) {
+    if (isAllowlisted(context.filename, options.allowIn ?? DEFAULT_ALLOW_IN, context.cwd)) {
       return {};
     }
 

@@ -377,7 +377,7 @@ export const softDeletableTablesRequireDeletedAtRule = createRule<RuleOptions, M
     },
   ],
   create(context, [options]) {
-    if (isAllowlisted(context.filename, options.allowIn ?? DEFAULT_ALLOW_IN)) {
+    if (isAllowlisted(context.filename, options.allowIn ?? DEFAULT_ALLOW_IN, context.cwd)) {
       return {};
     }
 
@@ -385,7 +385,7 @@ export const softDeletableTablesRequireDeletedAtRule = createRule<RuleOptions, M
     // globs match it. Empty for most files, which then pay nothing per call.
     const exemptFunctions = new Set(
       (options.allowInFunctions ?? DEFAULT_ALLOW_IN_FUNCTIONS)
-        .filter((entry) => isAllowlisted(context.filename, entry.files))
+        .filter((entry) => isAllowlisted(context.filename, entry.files, context.cwd))
         .flatMap((entry) => entry.functions),
     );
 

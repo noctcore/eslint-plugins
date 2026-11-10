@@ -98,7 +98,7 @@ long-running editor server picks up an edit to it, because the rule re-reads it 
 | --- | --- | --- |
 | `restrictions` | `[]` | The fences. Each is independent: the owner of one fence is outside every other. |
 | `restrictions[].models` | required | Prisma delegate accessors the fence guards (`invoice`, not `Invoice`). |
-| `restrictions[].allowedFiles` | required | Globs of the files that may write. Nothing is implicit: list the owner, its repository, their specs, and your seeds and migrations. Matched against the absolute and the workspace-root-relative path. |
+| `restrictions[].allowedFiles` | required | Globs of the files that may write. Nothing is implicit: list the owner, its repository, their specs, and your seeds and migrations. Matched against the absolute path and the cwd- and workspace-root-relative paths. |
 | `restrictions[].fields` | omitted | Scope the fence to these columns. Omitted, every write to the model is fenced. |
 | `restrictions[].relations` | `[]` | Relation keys added to the schema-derived ones. |
 | `restrictions[].owner` | `'the files allowed to write it'` | Who owns the writes, named in every message. |

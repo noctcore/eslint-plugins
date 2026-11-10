@@ -74,7 +74,7 @@ tenant column in it; spell the tenant field inline. A client laundered through a
 | `receiverPattern` | `string` (regex source) | `'prisma'` | A name matching this (case-insensitive) is a Prisma client, when resolving a local bound to the unscoped client. |
 | `unscopedProperty` | `string` | `'unscoped'` | The member that exposes the unscoped client. |
 
-Globs are matched against the file's absolute path and its workspace-root-relative path, like the
+Globs are matched against the file's absolute path and its cwd- and workspace-root-relative paths, like the
 other rules in this plugin.
 
 Keep `tenantModels` in step with the extension's model map mechanically. `reconcileTenantRegistry`

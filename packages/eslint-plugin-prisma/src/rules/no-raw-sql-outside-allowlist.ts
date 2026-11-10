@@ -157,6 +157,7 @@ export const noRawSqlOutsideAllowlistRule = createRule<RuleOptions, MessageIds>(
     const allowlisted = isAllowlisted(
       context.filename,
       options.allowedFiles ?? DEFAULT_ALLOWED_FILES,
+      context.cwd,
     );
     const keywords = options.tableKeywords ?? DEFAULT_TABLE_KEYWORDS;
     // Keywords are escaped so a configured entry is always a literal word, and

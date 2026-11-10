@@ -60,7 +60,7 @@ reads a table. That is a reviewed-code problem; the rule exists so the obvious
 | `allowedFiles` | `string[]` (globs) | `['**/prisma/seed.ts', '**/*.seed.ts', '**/prisma/migrations/**', '**/*.isolation.spec.ts']` | Files allowed to run any raw SQL except the `*Unsafe` variants. Replaces the default list. |
 | `tableKeywords` | `string[]` | `['FROM', 'INTO', 'UPDATE', 'JOIN', 'TABLE', 'DELETE', 'MERGE', 'COPY', 'TRUNCATE', 'LOCK', 'ALTER', 'DROP']` | Whole-word, case-insensitive keywords that mark a literal chunk as table-touching. |
 
-Globs match the absolute path and the workspace-root-relative path, as described in
+Globs match the absolute path and the cwd- and workspace-root-relative paths, as described in
 [`no-unscoped-prisma-outside-allowlist`](./no-unscoped-prisma-outside-allowlist.md#options).
 
 The rule keys on Prisma's `$`-prefixed raw method names rather than on the receiver, so it takes no
