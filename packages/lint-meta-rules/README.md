@@ -30,7 +30,8 @@ bun add -D @noctcore/harness @noctcore/lint-meta-rules   # or npm i -D / pnpm ad
 ```
 
 The `/i18n`, `/resolved-config` and `/prisma` entry points also need the optional peer `eslint`, and
-`/i18n` needs `@typescript-eslint/parser` (see [Rules](#rules)).
+`/i18n` needs `@typescript-eslint/parser`; `/typescript` needs the optional peer `typescript` (see
+[Rules](#rules)).
 
 ## Run with the harness
 
@@ -78,11 +79,13 @@ create one instance per area, each with its own `id`.
 | [`banned-dependencies`](https://noctcore.github.io/eslint-plugins/rules/lint-meta-rules/banned-dependencies/) | Workspace manifests must not declare a banned dependency. | `createBannedDependenciesRule` | `@noctcore/lint-meta-rules` | `supply-chain` | yes |
 | [`canonical-helpers-single-home`](https://noctcore.github.io/eslint-plugins/rules/lint-meta-rules/canonical-helpers-single-home/) | Pure helpers must live in one canonical home (flag the same exported symbol appearing in multiple homes). | `createCanonicalHelpersSingleHomeRule` | `@noctcore/lint-meta-rules` | `source-text` | yes |
 | [`dockerfile-base-image-digest-pin`](https://noctcore.github.io/eslint-plugins/rules/lint-meta-rules/dockerfile-base-image-digest-pin/) | Dockerfile FROM base images must be pinned by `@sha256:` digest (scratch and earlier build stages exempt). | `createDockerfileBaseImageDigestPinRule` | `@noctcore/lint-meta-rules` | `ci` | yes |
+| [`eslint-override-paths-exist`](https://noctcore.github.io/eslint-plugins/rules/lint-meta-rules/eslint-override-paths-exist/) | Paths written in an ESLint flat config `files` or `ignores` entry (and the directory a `files` glob starts in) must exist, so a moved folder cannot leave an override that applies to nothing. | `createEslintOverridePathsExistRule` | `@noctcore/lint-meta-rules` | `config` | yes |
 | [`file-size-ratchet`](https://noctcore.github.io/eslint-plugins/rules/lint-meta-rules/file-size-ratchet/) | Source files stay at or under 400 raw lines. Today's offenders are grandfathered by .nightcore/lint-meta/baselines/file-size-ratchet.json; a new/grown offender fails, and a stale/shrunk baseline entry demands tightening. | `createFileSizeRatchetRule` | `@noctcore/lint-meta-rules` | `source-text` | yes |
 | [`github-actions-least-privilege-permissions`](https://noctcore.github.io/eslint-plugins/rules/lint-meta-rules/github-actions-least-privilege-permissions/) | GitHub Actions workflows declare a read-only top-level `permissions:` (no `write-all`/`read-all`, no `<scope>: write`); writes go on the job that needs them. | `createGithubActionsLeastPrivilegePermissionsRule` | `@noctcore/lint-meta-rules` | `ci` | yes |
 | [`github-actions-no-template-injection`](https://noctcore.github.io/eslint-plugins/rules/lint-meta-rules/github-actions-no-template-injection/) | GitHub Actions `run:` and github-script bodies never expand attacker-controllable `${{ }}` context (issue/PR titles, comments, branch names); pass it through `env:` instead. | `createGithubActionsNoTemplateInjectionRule` | `@noctcore/lint-meta-rules` | `ci` | yes |
 | [`github-actions-runner-pinned`](https://noctcore.github.io/eslint-plugins/rules/lint-meta-rules/github-actions-runner-pinned/) | GitHub Actions jobs must run on a pinned runner image (for example ubuntu-24.04), never a *-latest label. | `createGithubActionsRunnerPinnedRule` | `@noctcore/lint-meta-rules` | `ci` | yes |
 | [`github-actions-sha-pinned`](https://noctcore.github.io/eslint-plugins/rules/lint-meta-rules/github-actions-sha-pinned/) | GitHub Actions `uses:` refs must be pinned to a 40-character commit SHA with a `# vN` comment (local ./ actions exempt). | `createGithubActionsShaPinnedRule` | `@noctcore/lint-meta-rules` | `ci` | yes |
+| [`github-actions-timeout-required`](https://noctcore.github.io/eslint-plugins/rules/lint-meta-rules/github-actions-timeout-required/) | GitHub Actions jobs must declare a job-level timeout-minutes (reusable-workflow calls are exempt). | `createGithubActionsTimeoutRequiredRule` | `@noctcore/lint-meta-rules` | `ci` | yes |
 | [`layer-rank`](https://noctcore.github.io/eslint-plugins/rules/lint-meta-rules/layer-rank/) | Fixed dependency direction by rank: a module imports only strictly-lower-ranked &lt;scope&gt; packages (equal/upward forbidden). | `createLayerRankRule` | `@noctcore/lint-meta-rules` | `source-text` | yes |
 | [`no-cloned-component-folders`](https://noctcore.github.io/eslint-plugins/rules/lint-meta-rules/no-cloned-component-folders/) | A component folder name may exist under only ONE feature. Shared surfaces are hoisted; divergent ones get a divergent name. Today’s clones are frozen in a shrinking allowlist. | `createNoClonedComponentFoldersRule` | `@noctcore/lint-meta-rules` | `source-text` | yes |
 | [`no-warn-severity`](https://noctcore.github.io/eslint-plugins/rules/lint-meta-rules/no-warn-severity/) | ESLint severity is 'error' or 'off', never 'warn'. A rule that matters is an error; a failure is fixed, not silenced. | `createNoWarnSeverityRule` | `@noctcore/lint-meta-rules` | `config` | yes |
@@ -96,6 +99,7 @@ create one instance per area, each with its own `id`.
 | [`test-runner-segregation`](https://noctcore.github.io/eslint-plugins/rules/lint-meta-rules/test-runner-segregation/) | Bun-side packages use 'bun:test'; foreign-side packages use 'vitest'. Never mix runners. | `createTestRunnerSegregationRule` | `@noctcore/lint-meta-rules` | `testing` | yes |
 | [`test-sibling-enforcement`](https://noctcore.github.io/eslint-plugins/rules/lint-meta-rules/test-sibling-enforcement/) | Every source file matched by `include` must have a colocated sibling test. Pure helpers must ship a test. | `createTestSiblingEnforcementRule` | `@noctcore/lint-meta-rules` | `source-text` | yes |
 | [`test-workspace-enrollment`](https://noctcore.github.io/eslint-plugins/rules/lint-meta-rules/test-workspace-enrollment/) | Every candidate package with test files must be enumerated in the root 'test:node' script. | `createTestWorkspaceEnrollmentRule` | `@noctcore/lint-meta-rules` | `testing` | yes |
+| [`tsconfig-include-paths-exist`](https://noctcore.github.io/eslint-plugins/rules/lint-meta-rules/tsconfig-include-paths-exist/) | Every literal path in a tsconfig `include` or `files` (and the directory a glob entry starts in) must exist, so a renamed folder cannot drop out of type checking in silence. | `createTsconfigIncludePathsExistRule` | `@noctcore/lint-meta-rules` | `config` | yes |
 | [`ui-primitive-shape`](https://noctcore.github.io/eslint-plugins/rules/lint-meta-rules/ui-primitive-shape/) | A folder primitive under the ui root must ship its proof siblings (test, stories); a flat primitive must not carry sibling proof files at the root. | `createUiPrimitiveShapeRule` | `@noctcore/lint-meta-rules` | `source-text` | yes |
 | [`workspace-graph-parity`](https://noctcore.github.io/eslint-plugins/rules/lint-meta-rules/workspace-graph-parity/) | Imported &lt;scope&gt;/* specifiers must be declared workspace:* deps, and tsconfig references must mirror those deps. | `createWorkspaceGraphParityRule` | `@noctcore/lint-meta-rules` | `config` | yes |
 | [`translation-dead-keys`](https://noctcore.github.io/eslint-plugins/rules/lint-meta-rules/translation-dead-keys/) | Every translation catalog key must be reachable from the source: named by a translation call, or spelled by some string in the code. | `createTranslationDeadKeysRule` | `@noctcore/lint-meta-rules/i18n` | `source-text` | yes |
@@ -107,6 +111,9 @@ create one instance per area, each with its own `id`.
 | [`session-landing-declared`](https://noctcore.github.io/eslint-plugins/rules/lint-meta-rules/session-landing-declared/) | Every file that opens a door into a session must declare where it leaves the caller, and a door whose landing demands a return shape (the one that carries the principal kind to the client) must have it. | `createSessionLandingDeclaredRule` | `@noctcore/lint-meta-rules/session` | `source-text` | yes |
 | [`session-mint-callers`](https://noctcore.github.io/eslint-plugins/rules/lint-meta-rules/session-mint-callers/) | The method that mints a session may only be called from allowlisted files; a new sign-in entry point must route through the gate in front of it so the gate cannot be bypassed. | `createSessionMintCallersRule` | `@noctcore/lint-meta-rules/session` | `source-text` | yes |
 | [`idempotency-key-parity`](https://noctcore.github.io/eslint-plugins/rules/lint-meta-rules/idempotency-key-parity/) | Procedures carrying the idempotency middleware must have a client caller that sends an idempotency key, or no client caller at all. | `createIdempotencyKeyParityRule` | `@noctcore/lint-meta-rules/trpc` | `source-text` | yes |
+| [`no-inline-lint-disable`](https://noctcore.github.io/eslint-plugins/rules/lint-meta-rules/no-inline-lint-disable/) | Hand-written source must not carry inline eslint-disable directives; a deliberate exception belongs in a scoped config override. | `createNoInlineLintDisableRule` | `@noctcore/lint-meta-rules/typescript` | `source-text` | yes |
+| [`no-ts-ignore`](https://noctcore.github.io/eslint-plugins/rules/lint-meta-rules/no-ts-ignore/) | Hand-written source must not suppress TypeScript errors with @ts-ignore (or @ts-expect-error unless allowed). | `createNoTsIgnoreRule` | `@noctcore/lint-meta-rules/typescript` | `source-text` | yes |
+| [`test-file-matches-runner-include`](https://noctcore.github.io/eslint-plugins/rules/lint-meta-rules/test-file-matches-runner-include/) | Every test file must match the include patterns of a test runner that covers its directory, so a test that never runs cannot pass as coverage. | `createTestFileMatchesRunnerIncludeRule` | `@noctcore/lint-meta-rules/typescript` | `testing` | yes |
 <!-- end generated rules -->
 
 Every factory is callable with no arguments (all options default), so `createAllRules()` and
@@ -145,3 +152,11 @@ contract.
 Cross-tree checks between tRPC routers and the clients that call them. The decorator shape defaults to
 `nestjs-trpc`'s; the rule is inert until you name the middleware and the two trees. Not in
 `RULE_FACTORIES`.
+
+### `@noctcore/lint-meta-rules/typescript`
+
+Checks that read JS and TS through the TypeScript parser: the inline `eslint-disable` and
+`@ts-ignore` bans, which must tell a real comment from the same text in a string, a template, a
+regex or JSX, and the test-runner include check, which reads Vitest, Jest and Playwright configs.
+They need the optional peer `typescript`, which the main entry never loads, so they are not in
+`RULE_FACTORIES`. Unlike the other sub-entries they work with no options.
