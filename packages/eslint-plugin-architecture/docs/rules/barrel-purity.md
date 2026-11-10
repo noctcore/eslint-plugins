@@ -1,6 +1,6 @@
 # `noctcore-architecture/barrel-purity`
 
-> A barrel (`index.ts` / `index.tsx`) must contain only re-exports — never local declarations, side effects, or default-exported values.
+> A barrel (an `index.*` file with an `export … from` re-export) must contain only re-exports, never local declarations, side effects, or default-exported values.
 
 <!-- begin generated rule header -->
 ✅ In `recommended` at `error` · 💭 Type information: not needed
@@ -15,8 +15,9 @@ folder now silently pulls that behavior in, and the folder no longer has a clean
 
 ## What it flags
 
-Only `index.ts` / `index.tsx` (and the other index extensions) are inspected. Each top-level
-statement that is not a pure re-export is reported.
+Only `index.ts` / `index.tsx` (and the other index extensions) are inspected, and only once the file
+re-exports from another module with `export … from` or `export * from`. Each top-level statement in
+such a barrel that is not a pure re-export is reported.
 
 ```ts good filename=src/components/Card/index.ts
 export { Card } from './Card';          // named re-export
@@ -31,6 +32,7 @@ export default Card;                    // re-export of a binding by name
 ```
 
 ```ts bad reports=7 filename=src/components/Card/index.ts
+export { Card } from './Card';          // makes the file a barrel; not reported
 export const helper = 1;                // local declaration
 export function build() {}              // local declaration
 export type T = string;                 // local declaration
@@ -46,6 +48,18 @@ An import that carries bindings is allowed because it feeds a re-export; a speci
 ## What it does not flag
 
 - Any file that is not an `index` barrel: a `helper.ts` full of logic is none of this rule's business.
+- An `index.*` file with no `export … from`, such as a server or package entry point. Its name says
+  nothing about it being a barrel, so it is left alone. That includes a file that only exports
+  bindings it imported (`import { rules } from './rules'; export { rules }`), which is how a plugin
+  entry point hands out its parts:
+
+```ts good filename=src/index.ts relocation
+import { createServer } from './server';
+
+const app = createServer();
+app.listen(3000);
+```
+
 - Pure re-exports in every form shown in the `good` example, including an import whose bindings feed a
   specifier-only `export { a }` and `export default Card` of a binding by name.
 - Barrels whose path matches an `allow` glob.
