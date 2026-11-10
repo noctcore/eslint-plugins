@@ -1,4 +1,4 @@
-import { AST_NODE_TYPES, type TSESTree } from '@typescript-eslint/utils';
+import { AST_NODE_TYPES, calleeName, isNode, type TSESTree } from '@noctcore/eslint-utils';
 import type { JSONSchema4 } from '@typescript-eslint/utils/json-schema';
 
 import { createRule } from '../createRule';
@@ -93,22 +93,6 @@ function isMetadataName(name: string): boolean {
   return FLAG_PREFIXES.has(segs[0] ?? '') || METADATA_SUFFIXES.has(segs[segs.length - 1] ?? '');
 }
 
-/** The called name of a call: `redact(x)` gives `redact`, `utils.mask(x)` gives `mask`. */
-function calleeName(node: TSESTree.CallExpression): string | undefined {
-  const callee = node.callee;
-  if (callee.type === AST_NODE_TYPES.Identifier) {
-    return callee.name;
-  }
-  if (
-    callee.type === AST_NODE_TYPES.MemberExpression &&
-    !callee.computed &&
-    callee.property.type === AST_NODE_TYPES.Identifier
-  ) {
-    return callee.property.name;
-  }
-  return undefined;
-}
-
 const optionSchema: JSONSchema4 = {
   type: 'object',
   additionalProperties: false,
@@ -116,14 +100,17 @@ const optionSchema: JSONSchema4 = {
     denyNames: {
       type: 'array',
       items: { type: 'string' },
+      description: 'Field names to treat as sensitive (case-insensitive, segment-aware); replaces the default denylist.',
     },
     redactors: {
       type: 'array',
       items: { type: 'string' },
+      description: 'Function names whose call output is safe to log; the walk does not enter their arguments.',
     },
     allowNames: {
       type: 'array',
       items: { type: 'string' },
+      description: 'Exact names never reported, even when they match the denylist.',
     },
     ...loggerCallOptionProperties,
   },
@@ -165,13 +152,15 @@ export const noSensitiveFieldsInLogsRule = createRule<RuleOptions, MessageIds>({
       if (node.type !== AST_NODE_TYPES.CallExpression) {
         return false;
       }
-      const name = calleeName(node);
-      return name !== undefined && redactors.has(name);
+      const name = calleeName(node.callee);
+      return name !== null && redactors.has(name);
     };
 
+    const keys = context.sourceCode.visitorKeys;
+
     /**
-     * Descent over an argument subtree, skipping the `parent` back-edge, redactor
-     * calls, and any object property whose value is a redactor call.
+     * Descent over an argument subtree along the parser's visitor keys, pruning
+     * redactor calls and any object property whose value is a redactor call.
      */
     function walk(node: TSESTree.Node, visit: (n: TSESTree.Node) => void): void {
       if (isRedactorCall(node)) {
@@ -181,19 +170,16 @@ export const noSensitiveFieldsInLogsRule = createRule<RuleOptions, MessageIds>({
         return;
       }
       visit(node);
-      for (const key of Object.keys(node)) {
-        if (key === 'parent') {
-          continue;
-        }
-        const value = (node as unknown as Record<string, unknown>)[key];
+      for (const key of keys[node.type] ?? []) {
+        const value: unknown = Reflect.get(node, key);
         if (Array.isArray(value)) {
           for (const child of value) {
-            if (child && typeof (child as { type?: unknown }).type === 'string') {
-              walk(child as TSESTree.Node, visit);
+            if (isNode(child)) {
+              walk(child, visit);
             }
           }
-        } else if (value && typeof (value as { type?: unknown }).type === 'string') {
-          walk(value as TSESTree.Node, visit);
+        } else if (isNode(value)) {
+          walk(value, visit);
         }
       }
     }

@@ -1,4 +1,4 @@
-import { AST_NODE_TYPES, type TSESTree } from '@typescript-eslint/utils';
+import { AST_NODE_TYPES, walkSome, type TSESTree, type VisitorKeys } from '@noctcore/eslint-utils';
 
 import type { JSONSchema4 } from '@typescript-eslint/utils/json-schema';
 
@@ -47,37 +47,13 @@ const optionSchema: JSONSchema4 = {
 function containsLoggerCall(
   block: TSESTree.BlockStatement,
   matcher: LoggerCallMatcher,
+  keys: VisitorKeys,
 ): boolean {
-  let found = false;
-  function walk(node: TSESTree.Node): void {
-    if (found) {
-      return;
-    }
-    if (
-      node.type === AST_NODE_TYPES.CallExpression &&
-      loggerCallMethod(node, matcher) !== null
-    ) {
-      found = true;
-      return;
-    }
-    for (const key of Object.keys(node)) {
-      if (key === 'parent') {
-        continue;
-      }
-      const value = (node as unknown as Record<string, unknown>)[key];
-      if (Array.isArray(value)) {
-        for (const child of value) {
-          if (child && typeof (child as { type?: unknown }).type === 'string') {
-            walk(child as TSESTree.Node);
-          }
-        }
-      } else if (value && typeof (value as { type?: unknown }).type === 'string') {
-        walk(value as TSESTree.Node);
-      }
-    }
-  }
-  walk(block);
-  return found;
+  return walkSome(
+    block,
+    keys,
+    (node) => node.type === AST_NODE_TYPES.CallExpression && loggerCallMethod(node, matcher) !== null,
+  );
 }
 
 /**
@@ -135,7 +111,7 @@ export const noErrorDetailLossRule = createRule<RuleOptions, MessageIds>({
         if (node.param === null || node.param.type !== AST_NODE_TYPES.Identifier) {
           return;
         }
-        if (!containsLoggerCall(node.body, matcher)) {
+        if (!containsLoggerCall(node.body, matcher, context.sourceCode.visitorKeys)) {
           return;
         }
 
