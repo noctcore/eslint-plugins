@@ -23,9 +23,18 @@ Peer dependencies: `eslint` 9 or 10 and `typescript` 5 or 6.
 
 File scope:
 
-- `matchesAnyGlob(filename, globs)`: true when the path (backslashes normalised to `/`) matches any
-  glob. Supports `**` (a leading `**/` also matches zero directories), `*`, `?` and `{a,b}`
-  alternation with wildcards and nesting inside. Use it for an `allowIn` option.
+- `fileMatchesAnyGlob(context.filename, globs, context.cwd)`: the matcher for file-scope options
+  such as `allowIn`. A glob is tried against the absolute path, the path relative to `cwd` and the
+  path relative to the workspace root (`findRepoRoot`), so a repo-relative `apps/server/**` works
+  like a flat-config `files` glob and `**/server/**` works from anywhere. A leading `./` is
+  ignored. `fileScopeCandidates(filename, cwd)` lists those spellings.
+- `findRepoRoot(dir)`: the nearest ancestor holding a lockfile, `pnpm-workspace.yaml` or `.git`
+  (`ROOT_MARKERS`), cached per directory. `relativeInside(file, dir)` is the string-only relative
+  path, null outside `dir`, and treats Windows drive letters without regard to case.
+- `matchesAnyGlob(path, globs)`: true when the path (backslashes normalised to `/`) matches any
+  glob, anchored at both ends. Supports `**` (a leading `**/` also matches zero directories), `*`,
+  `?` and `{a,b}` alternation with wildcards and nesting inside. Use it for globs over module
+  specifiers or names; use `fileMatchesAnyGlob` for the linted file.
 - `globToRegExp(glob)`: the compiled, cached RegExp behind it. `toPosixPath(path)` normalises
   separators.
 
