@@ -66,6 +66,7 @@ export default defineConfig({
               ['prisma', 'Prisma'],
               ['rsc', 'RSC'],
               ['llm', 'LLM'],
+              ['nestjs', 'NestJS'],
               ['lint-meta-rules', 'lint-meta rules'],
             ].map(([directory, label]) => ({
               label,

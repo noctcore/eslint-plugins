@@ -55,7 +55,7 @@ single quotes, trailing commas, prose wrapped near 100 columns.
 
 ## How a rule is put together
 
-Take `packages/eslint-plugin-security` as the model; all ten ESLint plugins have the same shape.
+Take `packages/eslint-plugin-security` as the model; all twelve ESLint plugins have the same shape.
 
 | Piece | Where | Notes |
 | --- | --- | --- |
