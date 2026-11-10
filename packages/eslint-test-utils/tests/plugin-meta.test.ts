@@ -24,6 +24,7 @@ import nestjs from '../../eslint-plugin-nestjs/src/index';
 import monorepo from '../../eslint-plugin-monorepo/src/index';
 import observability from '../../eslint-plugin-observability/src/index';
 import prisma from '../../eslint-plugin-prisma/src/index';
+import query from '../../eslint-plugin-query/src/index';
 import react from '../../eslint-plugin-react/src/index';
 import rsc from '../../eslint-plugin-rsc/src/index';
 import security from '../../eslint-plugin-security/src/index';
@@ -42,6 +43,7 @@ const PLUGINS: Record<string, MetaPlugin> = {
   nestjs,
   observability,
   prisma,
+  query,
   react,
   rsc,
   security,
