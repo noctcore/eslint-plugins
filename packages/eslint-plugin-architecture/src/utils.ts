@@ -1,7 +1,7 @@
 import { existsSync, readdirSync } from 'node:fs';
 import path from 'node:path';
 
-import { matchesAnyGlob } from '@noctcore/eslint-utils';
+import { fileMatchesAnyGlob } from '@noctcore/eslint-utils';
 
 /*
  * Framework-agnostic path helpers for the folder-per-component architecture
@@ -89,12 +89,12 @@ export function getFeatureName(filename: string, root: string): string | null {
   return feature !== undefined && feature.length > 0 ? feature : null;
 }
 
-/** True when the file (forward-slashed) matches one of the ignore globs. */
-export function isIgnoredPath(filename: string, ignorePaths: readonly string[]): boolean {
-  if (ignorePaths.length === 0) {
-    return false;
-  }
-  return matchesAnyGlob(toPosix(filename), ignorePaths);
+/**
+ * True when the file matches one of the globs, tried against its absolute path
+ * and its path relative to `cwd` and the workspace root.
+ */
+export function isIgnoredPath(filename: string, ignorePaths: readonly string[], cwd?: string): boolean {
+  return fileMatchesAnyGlob(filename, ignorePaths, cwd);
 }
 
 /** True when `sibling` exists on disk in `dir`. Wrapper kept for testability. */

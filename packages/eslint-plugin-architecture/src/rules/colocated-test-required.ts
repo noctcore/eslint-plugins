@@ -100,11 +100,11 @@ export const colocatedTestRequiredRule = createRule<RuleOptions, MessageIds>({
     const filename = context.filename;
 
     // Off unless configured; a file that is not gated (or is itself a test) exits early.
-    if (include.length === 0 || !isIgnoredPath(filename, include)) {
+    if (include.length === 0 || !isIgnoredPath(filename, include, context.cwd)) {
       return {};
     }
     const basename = getBasename(filename);
-    if (TEST_SIBLING.test(basename) || isIgnoredPath(filename, ignore)) {
+    if (TEST_SIBLING.test(basename) || isIgnoredPath(filename, ignore, context.cwd)) {
       return {};
     }
 

@@ -1,6 +1,5 @@
-import path from 'node:path';
 
-import { globToRegExp, matchesAnyGlob, toPosixPath } from '@noctcore/eslint-utils';
+import { fileMatchesAnyGlob, globToRegExp, toPosixPath } from '@noctcore/eslint-utils';
 import { AST_NODE_TYPES, type TSESTree } from '@typescript-eslint/utils';
 import type { JSONSchema4 } from '@typescript-eslint/utils/json-schema';
 
@@ -184,10 +183,10 @@ export const noRestrictedImportsLayeredRule = createRule<RuleOptions, MessageIds
   create(context, [options]) {
     const sets = options.bans ?? {};
     // Layer globs read like flat-config `files`: relative to the working
-    // directory. The absolute path is tried too, so `**/`-anchored globs work.
-    const candidatesForFile = [path.relative(context.cwd, context.filename), context.filename];
+    // directory (or the workspace root). The absolute path is tried too, so
+    // `**/`-anchored globs work.
     const matchesFile = (globs: readonly string[]): boolean =>
-      candidatesForFile.some((candidate) => matchesAnyGlob(candidate, globs));
+      fileMatchesAnyGlob(context.filename, globs, context.cwd);
     const active: ActiveBan[] = [];
     const seenSets = new Set<string>();
     for (const layer of options.layers ?? []) {
