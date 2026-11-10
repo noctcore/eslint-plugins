@@ -18,6 +18,10 @@
  *   module the project mocks, which is its own.
  * - `typed-mock-over-double-cast`: some targets are too wide to `Pick` from
  *   (an ORM client, a framework request), and only the project can list them.
+ *
+ * `prefer-web-first-page-assertions` is omitted because it only means something
+ * in Playwright specs: elsewhere `page.url()` can be a Puppeteer page or a CMS
+ * record, where no retrying matcher exists. Enable it for the spec files.
  */
 export const recommended = {
   'noctcore-code-quality/prefer-early-return': 'error',

@@ -17,6 +17,7 @@ const OMITTED_FROM_PRESETS: readonly string[] = [
   'no-sleep-in-unit-tests',
   'no-real-clock-in-unit-tests',
   'typed-mock-over-double-cast',
+  'prefer-web-first-page-assertions',
 ];
 
 type Preset = { name?: string; rules: Record<string, unknown> };
