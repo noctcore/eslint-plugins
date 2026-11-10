@@ -1,3 +1,4 @@
+import { matchesAnyGlob, toPosixPath } from '@noctcore/eslint-utils';
 import { AST_NODE_TYPES, type TSESLint, type TSESTree } from '@typescript-eslint/utils';
 import type { JSONSchema4 } from '@typescript-eslint/utils/json-schema';
 
@@ -10,7 +11,10 @@ export interface MoneyMustBeDecimalOptions {
   readonly decimalType?: string;
   /** Regex fragments (case-insensitive) identifying money-named fields. */
   readonly fieldPatterns?: readonly string[];
-  /** Path-suffix allowlist of files to skip entirely. */
+  /**
+   * Files to skip entirely, as globs (`**\/legacy/**`). A plain path is a path
+   * suffix matched at a directory boundary (`apps/api/src/legacy/totals.ts`).
+   */
   readonly allowedFiles?: readonly string[];
   /**
    * Regex fragments (case-insensitive) naming fields that hold an integer count
@@ -125,6 +129,8 @@ const optionSchema: JSONSchema4 = {
       type: 'array',
       items: { type: 'string' },
       uniqueItems: true,
+      description:
+        'Files to skip entirely, as globs. A plain path is a path suffix matched at a directory boundary.',
     },
     minorUnitPatterns: {
       type: 'array',
@@ -139,23 +145,16 @@ const optionSchema: JSONSchema4 = {
   },
 };
 
-/** Forward-slash form of a filename so suffix matching is OS-independent. */
-function toForwardSlash(filename: string): string {
-  return filename.split('\\').join('/');
-}
-
 /**
- * True when the file is covered by one of the allowlist entries. An entry
- * matches when the (forward-slashed) filename ends with it, so callers can pass
- * a path suffix like `apps/api/src/legacy/totals.ts`. An empty list allowlists
- * nothing (the rule stays active everywhere).
+ * An `allowedFiles` entry as a glob. A plain path keeps its old meaning, a path
+ * suffix (`apps/api/src/legacy/totals.ts` matches wherever the repo sits), by
+ * gaining a leading `**\/`; it now matches at a directory boundary, so
+ * `totals.ts` no longer matches `subtotals.ts`. An entry that already starts
+ * with `**\/` or `/` is used as written.
  */
-function isAllowedFile(filename: string, patterns: readonly string[]): boolean {
-  if (patterns.length === 0) {
-    return false;
-  }
-  const normalized = toForwardSlash(filename);
-  return patterns.some((pattern) => normalized.endsWith(toForwardSlash(pattern)));
+function toAllowGlob(entry: string): string {
+  const posix = toPosixPath(entry);
+  return posix.startsWith('**/') || posix.startsWith('/') ? posix : `**/${posix}`;
 }
 
 /** The plain string name of a property/identifier key, or undefined if computed/dynamic. */
@@ -241,9 +240,9 @@ export const moneyMustBeDecimalRule = createRule<RuleOptions, MessageIds>({
   ],
   create(context, [options]) {
     const decimalType = options.decimalType ?? DEFAULT_DECIMAL_TYPE;
-    const allowedFiles = options.allowedFiles ?? DEFAULT_ALLOWED_FILES;
+    const allowedFiles = (options.allowedFiles ?? DEFAULT_ALLOWED_FILES).map(toAllowGlob);
 
-    if (isAllowedFile(context.filename, allowedFiles)) {
+    if (matchesAnyGlob(context.filename, allowedFiles)) {
       return {};
     }
 

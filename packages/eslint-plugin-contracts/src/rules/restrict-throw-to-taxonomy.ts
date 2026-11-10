@@ -37,6 +37,7 @@ const optionSchema: JSONSchema4 = {
       type: 'array',
       items: { type: 'string' },
       uniqueItems: true,
+      description: 'Constructor names permitted as throw targets: your base errors and any built-ins you raise.',
     },
   },
 };
@@ -74,6 +75,9 @@ export const restrictThrowToTaxonomyRule = createRule<RuleOptions, MessageIds>({
     docs: {
       description:
         'Restrict `throw` to an approved error taxonomy. Flags throwing a non-allowlisted error class and throwing a non-Error value (string, object, number, ...).',
+      // Without `allow` naming the project's error classes, every framework
+      // exception and built-in (`NotFoundException`, `TypeError`) reports.
+      requiresOptions: true,
     },
     schema: [optionSchema],
     messages: {
