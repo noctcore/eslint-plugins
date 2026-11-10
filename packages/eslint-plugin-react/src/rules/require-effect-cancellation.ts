@@ -1,3 +1,4 @@
+import { forEachDescendant, walkSome, type VisitorKeys } from '@noctcore/eslint-utils';
 import { AST_NODE_TYPES, type TSESTree } from '@typescript-eslint/utils';
 
 import { createRule } from '../createRule';
@@ -16,7 +17,8 @@ type MessageIds = 'missingCancellation';
  * This rule flags exactly that shape — an `await` (or a `.then(cb)`) inside a
  * `useEffect` / `useLayoutEffect` callback, followed by a `setState`/`dispatch`
  * — and ONLY when the effect has no cancellation guard: no `AbortController`, no
- * `cancelled`/`isMounted`-style flag, no cleanup `return`. It is intentionally
+ * `cancelled`/`isMounted`-style flag, no cleanup `return` that sets a flag or
+ * cancels. A cleanup that only clears a timer or removes a listener is not one. It is intentionally
  * conservative (any recognisable guard silences it) so a real finding is almost
  * always genuine. Not autofixed.
  */
@@ -28,38 +30,13 @@ const EFFECT_NAMES = new Set(['useEffect', 'useLayoutEffect']);
 
 type EffectFn = TSESTree.ArrowFunctionExpression | TSESTree.FunctionExpression;
 
-function isNode(value: unknown): value is TSESTree.Node {
-  return (
-    typeof value === 'object' &&
-    value !== null &&
-    typeof (value as { type?: unknown }).type === 'string'
-  );
-}
-
-/** All descendant nodes of `root` (inclusive), never crossing the `parent` back-edge. */
-function descendants(root: TSESTree.Node): TSESTree.Node[] {
+/** Every node in the subtree of `root` (inclusive), in source order. */
+function nodesIn(root: TSESTree.Node, keys: VisitorKeys): TSESTree.Node[] {
   const out: TSESTree.Node[] = [];
-  const stack: TSESTree.Node[] = [root];
-  while (stack.length > 0) {
-    const node = stack.pop() as TSESTree.Node;
+  forEachDescendant(root, keys, (node) => {
     out.push(node);
-    for (const key of Object.keys(node)) {
-      if (key === 'parent') {
-        continue;
-      }
-      const value = (node as unknown as Record<string, unknown>)[key];
-      if (Array.isArray(value)) {
-        for (const child of value) {
-          if (isNode(child)) {
-            stack.push(child);
-          }
-        }
-      } else if (isNode(value)) {
-        stack.push(value);
-      }
-    }
-  }
-  return out;
+  });
+  return out.sort((a, b) => a.range[0] - b.range[0]);
 }
 
 function isUseEffectCallee(callee: TSESTree.Node): boolean {
@@ -77,7 +54,11 @@ function isUseEffectCallee(callee: TSESTree.Node): boolean {
 type SetterPredicate = (node: TSESTree.Node) => node is TSESTree.CallExpression;
 
 /** The setter call inside a `.then(cb)` callback, or null. */
-function thenCallbackSetter(node: TSESTree.Node, isSetterCall: SetterPredicate): TSESTree.CallExpression | null {
+function thenCallbackSetter(
+  node: TSESTree.Node,
+  isSetterCall: SetterPredicate,
+  keys: VisitorKeys,
+): TSESTree.CallExpression | null {
   if (node.type !== AST_NODE_TYPES.CallExpression) {
     return null;
   }
@@ -95,7 +76,7 @@ function thenCallbackSetter(node: TSESTree.Node, isSetterCall: SetterPredicate):
       arg.type === AST_NODE_TYPES.ArrowFunctionExpression ||
       arg.type === AST_NODE_TYPES.FunctionExpression
     ) {
-      const inner = descendants(arg).find(isSetterCall);
+      const inner = nodesIn(arg, keys).find(isSetterCall);
       if (inner) {
         return inner;
       }
@@ -104,8 +85,44 @@ function thenCallbackSetter(node: TSESTree.Node, isSetterCall: SetterPredicate):
   return null;
 }
 
+const CANCEL_CALL_RE = /^(abort|cancel|dispose|ignore)/i;
+
+/**
+ * True when a returned cleanup can stop the pending update: it sets something
+ * (`cancelled = true`, `mounted.current = false`) or calls an abort or cancel
+ * method. A cleanup that only clears a timer or removes a listener
+ * (`return () => clearInterval(id)`) is unrelated to the async step. A returned
+ * value the rule cannot see into (`return unsubscribe`) still counts.
+ */
+function isCancellingCleanup(returned: TSESTree.Expression, keys: VisitorKeys): boolean {
+  if (
+    returned.type !== AST_NODE_TYPES.ArrowFunctionExpression &&
+    returned.type !== AST_NODE_TYPES.FunctionExpression
+  ) {
+    return true;
+  }
+  return walkSome(returned.body, keys, (node) => {
+    if (node.type === AST_NODE_TYPES.AssignmentExpression) {
+      return true;
+    }
+    if (node.type !== AST_NODE_TYPES.CallExpression) {
+      return false;
+    }
+    const callee = node.callee;
+    const name =
+      callee.type === AST_NODE_TYPES.Identifier
+        ? callee.name
+        : callee.type === AST_NODE_TYPES.MemberExpression &&
+            !callee.computed &&
+            callee.property.type === AST_NODE_TYPES.Identifier
+          ? callee.property.name
+          : '';
+    return CANCEL_CALL_RE.test(name);
+  });
+}
+
 /** True when the effect carries any recognisable cancellation guard. */
-function isGuarded(effectFn: EffectFn, nodes: readonly TSESTree.Node[]): boolean {
+function isGuarded(effectFn: EffectFn, nodes: readonly TSESTree.Node[], keys: VisitorKeys): boolean {
   // AbortController / AbortSignal usage.
   const hasAbort = nodes.some(
     (node) =>
@@ -122,10 +139,13 @@ function isGuarded(effectFn: EffectFn, nodes: readonly TSESTree.Node[]): boolean
     return true;
   }
 
-  // A cleanup function returned at the effect's top level.
+  // A cleanup returned at the effect's top level that can stop the update.
   if (effectFn.body.type === AST_NODE_TYPES.BlockStatement) {
     const hasCleanup = effectFn.body.body.some(
-      (stmt) => stmt.type === AST_NODE_TYPES.ReturnStatement && stmt.argument !== null,
+      (stmt) =>
+        stmt.type === AST_NODE_TYPES.ReturnStatement &&
+        stmt.argument !== null &&
+        isCancellingCleanup(stmt.argument, keys),
     );
     if (hasCleanup) {
       return true;
@@ -156,9 +176,10 @@ function isGuarded(effectFn: EffectFn, nodes: readonly TSESTree.Node[]): boolean
   return nodes.some(
     (node) =>
       node.type === AST_NODE_TYPES.IfStatement &&
-      descendants(node.test).some(
-        (inner) =>
-          inner.type === AST_NODE_TYPES.Identifier && CANCEL_FLAG_RE.test(inner.name),
+      walkSome(
+        node.test,
+        keys,
+        (inner) => inner.type === AST_NODE_TYPES.Identifier && CANCEL_FLAG_RE.test(inner.name),
       ),
   );
 }
@@ -203,7 +224,8 @@ export const requireEffectCancellationRule = createRule<[], MessageIds>({
           return;
         }
 
-        const nodes = descendants(effectFn);
+        const keys = context.sourceCode.visitorKeys;
+        const nodes = nodesIn(effectFn, keys);
         const setterCalls = nodes.filter(isSetterCall);
         if (setterCalls.length === 0) {
           return;
@@ -221,7 +243,7 @@ export const requireEffectCancellationRule = createRule<[], MessageIds>({
         // `.then(cb)` shape: a setter inside a then-callback.
         if (!offender) {
           for (const candidate of nodes) {
-            const setter = thenCallbackSetter(candidate, isSetterCall);
+            const setter = thenCallbackSetter(candidate, isSetterCall, keys);
             if (setter) {
               offender = setter;
               break;
@@ -229,7 +251,7 @@ export const requireEffectCancellationRule = createRule<[], MessageIds>({
           }
         }
 
-        if (!offender || isGuarded(effectFn, nodes)) {
+        if (!offender || isGuarded(effectFn, nodes, keys)) {
           return;
         }
 
