@@ -44,6 +44,23 @@ export default [
 ];
 ```
 
+### Test files only
+
+`configs.tests` holds the test-discipline rules of `recommended` (`no-focused-tests`,
+`skipped-tests-need-tracking`, `no-vacuous-expect`, `no-conditional-expect`,
+`no-swallowed-assertion`, `fake-timers-must-be-restored`, `no-real-network-in-unit-tests`) with
+`files` already set to `**/*.{test,spec}.*` and `**/__tests__/**` in every JS and TS extension, so
+the test rules need no hand-written globs. Spread it where you turn the test rules on one by one
+today; it changes nothing for a config that already spreads `recommended`, which runs the same rules
+on every file.
+
+```js
+// eslint.config.js
+export default [
+  { ...codeQuality.configs.tests, languageOptions: { parser: tsParser } },
+];
+```
+
 ## Strict preset
 
 `configs.strict` is `recommended` plus the house rules: `no-bare-date-now`, `prefer-early-return`. A house rule holds in a codebase

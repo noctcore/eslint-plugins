@@ -1,3 +1,4 @@
+import { ESLint } from 'eslint';
 import { describe, expect, it } from 'vitest';
 import plugin from '../../src/index';
 
@@ -70,5 +71,46 @@ describe('presets', () => {
       .filter(([, rule]) => rule.meta?.docs?.requiresOptions === true)
       .map(([id]) => id);
     expect(OMITTED_FROM_PRESETS).toEqual(expect.arrayContaining(needsOptions));
+  });
+});
+
+describe('tests preset', () => {
+  type ScopedPreset = Preset & { files?: string[] };
+  const recommended = plugin.configs.recommended as Preset;
+  const tests = plugin.configs.tests as ScopedPreset;
+
+  it('is scoped to test files', () => {
+    expect(tests.files).toEqual([
+      '**/*.{test,spec}.{ts,tsx,mts,cts,js,jsx,mjs,cjs}',
+      '**/__tests__/**/*.{ts,tsx,mts,cts,js,jsx,mjs,cjs}',
+    ]);
+  });
+
+  it('holds only recommended rules, at the recommended severity', () => {
+    expect(recommended.rules).toMatchObject(tests.rules);
+  });
+
+  it('holds every test-runner rule recommended turns on, and no comment or process rule', () => {
+    expect(Object.keys(tests.rules).sort()).toEqual(
+      [
+        'noctcore-code-quality/fake-timers-must-be-restored',
+        'noctcore-code-quality/no-conditional-expect',
+        'noctcore-code-quality/no-focused-tests',
+        'noctcore-code-quality/no-real-network-in-unit-tests',
+        'noctcore-code-quality/no-swallowed-assertion',
+        'noctcore-code-quality/no-vacuous-expect',
+        'noctcore-code-quality/skipped-tests-need-tracking',
+      ].sort(),
+    );
+  });
+
+  it('applies to test files and not to source files when spread as-is', async () => {
+    const eslint = new ESLint({ overrideConfigFile: true, overrideConfig: [tests as never] });
+    const onTest = (await eslint.calculateConfigForFile('src/clock.test.ts')) as { rules?: object } | undefined;
+    const onNested = (await eslint.calculateConfigForFile('src/__tests__/clock.ts')) as { rules?: object } | undefined;
+    const onSource = (await eslint.calculateConfigForFile('src/clock.ts')) as { rules?: object } | undefined;
+    expect(Object.keys(onTest?.rules ?? {})).toContain('noctcore-code-quality/no-focused-tests');
+    expect(Object.keys(onNested?.rules ?? {})).toContain('noctcore-code-quality/no-focused-tests');
+    expect(onSource?.rules ?? {}).not.toHaveProperty('noctcore-code-quality/no-focused-tests');
   });
 });

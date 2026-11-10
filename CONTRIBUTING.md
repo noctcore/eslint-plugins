@@ -277,6 +277,13 @@ error. Remove a deprecated rule only in the release its `availableUntil` names, 
 it has shipped deprecated in at least one minor. Removing it also means deleting its doc,
 lowering `EXPECTED_RULE_COUNT` and a changeset that says so loudly.
 
+### No new single-rule packages
+
+`llm` and `rsc` hold one rule each and stay as they are: maintained, released with the rest, and
+not merged into a new package. Do not add another package for a single rule. A new rule goes into
+the existing package whose domain fits best, and a new package starts only with several rules and
+a consumer ready to use them (owner decision, 2026-11-10).
+
 ### What makes a rule acceptable here
 
 The plugins earn their place by catching what generic linters and TypeScript cannot see, at a
