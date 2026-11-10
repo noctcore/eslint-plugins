@@ -1,0 +1,31 @@
+---
+title: "@noctcore/eslint-plugin-query"
+description: "TanStack Query and tRPC cache correctness: invalidations that reach infinite queries, mutation callbacks that survive a remount, handled mutation errors."
+sidebar:
+  label: query
+  order: 12
+---
+
+import QuickStart from '../../../components/QuickStart.astro';
+import RuleTable from '../../../components/RuleTable.astro';
+
+TanStack Query and tRPC cache correctness: invalidations that reach infinite queries, mutation callbacks that survive a remount, handled mutation errors.
+
+## What it solves
+
+The client cache fails in ways that pass type checks and unit tests that mock the client. An invalidation keyed with tRPC's input-less `queryKey()` stops reaching a list the day it moves to `useInfiniteQuery`. A `mutate(vars, { onSuccess })` fired from an effect loses its callback when StrictMode or a route change detaches the observer, and the screen waits forever. A mutation with nothing listening for its error fails without anyone noticing.
+
+## What it will yell at you about
+
+It will yell at you about **tRPC invalidations through an input-less `queryKey()`** (with an autofix to `pathKey()`) and **per-call mutation callbacks inside `useEffect`**, both on in `recommended`. **Mutations with no error handling anywhere** is opt-in, because a global `MutationCache({ onError })` handles errors where the rule cannot see. **It is a bad fit** for tRPC's classic `utils.x.invalidate()` integration, where the first rule has nothing to check.
+
+## Install and configure
+
+<QuickStart pkg="query" />
+
+## Rules
+
+Each rule links to its page, with the options it takes and Incorrect and Correct examples. A good first
+read is [`trpc-invalidate-with-path-key`](/eslint-plugins/rules/query/trpc-invalidate-with-path-key/).
+
+<RuleTable pkg="query" />

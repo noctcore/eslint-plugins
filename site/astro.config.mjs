@@ -67,6 +67,7 @@ export default defineConfig({
               ['rsc', 'RSC'],
               ['llm', 'LLM'],
               ['nestjs', 'NestJS'],
+              ['query', 'Query'],
               ['lint-meta-rules', 'lint-meta rules'],
             ].map(([directory, label]) => ({
               label,
