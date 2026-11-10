@@ -5,6 +5,7 @@ import { filenameMatchesExportRule } from './filename-matches-export';
 import { indexMustReexportDefaultRule } from './index-must-reexport-default';
 import { maxImportDepthRule } from './max-import-depth';
 import { noCrossFeatureImportsRule } from './no-cross-feature-imports';
+import { noRestrictedImportsLayeredRule } from './no-restricted-imports-layered';
 import { singleSemanticModuleRule } from './single-semantic-module';
 
 /** Every rule this plugin exposes, keyed by its (unprefixed) rule id. */
@@ -16,5 +17,6 @@ export const rules = {
   'index-must-reexport-default': indexMustReexportDefaultRule,
   'max-import-depth': maxImportDepthRule,
   'no-cross-feature-imports': noCrossFeatureImportsRule,
+  'no-restricted-imports-layered': noRestrictedImportsLayeredRule,
   'single-semantic-module': singleSemanticModuleRule,
 };

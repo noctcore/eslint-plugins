@@ -34,6 +34,33 @@ ruleTester.run('component-folder-structure', componentFolderStructureRule, {
       code: COMPONENT,
       filename: 'apps/web/src/components/ui/Button/Button.tsx',
     },
+    // requireOwnFolder leaves alone sidecars, kebab-case files, ignored paths and
+    // files outside the component root, and an entry file with its full set.
+    {
+      code: COMPONENT,
+      filename: 'apps/web/src/components/board/Group/Widget.stories.tsx',
+      options: [{ requireOwnFolder: true }],
+    },
+    {
+      code: COMPONENT,
+      filename: 'apps/web/src/components/board/task-card.tsx',
+      options: [{ requireOwnFolder: true }],
+    },
+    {
+      code: COMPONENT,
+      filename: 'apps/web/src/components/ui/Button.tsx',
+      options: [{ requireOwnFolder: true }],
+    },
+    {
+      code: COMPONENT,
+      filename: 'apps/web/src/routes/Widget.tsx',
+      options: [{ requireOwnFolder: true }],
+    },
+    {
+      code: COMPONENT,
+      filename: 'tests/fixtures/components/board/Complete/Complete.tsx',
+      options: [{ requireOwnFolder: true }],
+    },
     // A component file outside the component root is not gated.
     {
       code: COMPONENT,
@@ -65,11 +92,44 @@ ruleTester.run('component-folder-structure', componentFolderStructureRule, {
     },
   ],
   invalid: [
-    // A component folder on disk that is missing its entire sibling set.
+    // A component folder on disk that is missing its entire sibling set. The
+    // report sits on the first line, not the whole file.
+    {
+      code: `${COMPONENT}\nexport const other = 1;`,
+      filename: 'tests/fixtures/components/board/Widget/Widget.tsx',
+      errors: [
+        { messageId: 'missingSiblings', line: 1, column: 1, endLine: 1, endColumn: COMPONENT.length + 1 },
+      ],
+    },
+    // requireOwnFolder: a sub-component in another component's folder, a loose
+    // file at a feature root, and a file in a plain sub-folder.
     {
       code: COMPONENT,
-      filename: 'tests/fixtures/components/board/Widget/Widget.tsx',
-      errors: [{ messageId: 'missingSiblings' }],
+      filename: 'apps/web/src/components/board/Group/Widget.tsx',
+      options: [{ requireOwnFolder: true }],
+      errors: [
+        {
+          messageId: 'notInOwnFolder',
+          data: {
+            name: 'Widget',
+            required: 'Widget.hooks.ts, Widget.types.ts, Widget.stories.tsx, Widget.test.tsx, index.ts',
+          },
+          line: 1,
+          column: 1,
+        },
+      ],
+    },
+    {
+      code: COMPONENT,
+      filename: 'apps/web/src/components/splash/SplashRain.tsx',
+      options: [{ requireOwnFolder: true }],
+      errors: [{ messageId: 'notInOwnFolder' }],
+    },
+    {
+      code: COMPONENT,
+      filename: 'apps/web/src/components/onboarding/steps/WelcomeStep.tsx',
+      options: [{ requireOwnFolder: true, requiredSiblings: ['.test.tsx'] }],
+      errors: [{ messageId: 'notInOwnFolder', data: { name: 'WelcomeStep', required: 'WelcomeStep.test.tsx' } }],
     },
     // A nested component folder on disk is also gated by the sibling set.
     {

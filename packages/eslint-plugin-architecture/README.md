@@ -52,8 +52,8 @@ ESLint against real file paths, not virtual sources.
 
 ## Opt-in rules
 
-Two rules ship `off` because they are opinions many good codebases do not share. Turn them on
-explicitly:
+Two rules ship `off` because they are opinions many good codebases do not share, and two do nothing
+until you configure them. Turn them on explicitly:
 
 ```js
 // eslint.config.js
@@ -66,6 +66,11 @@ export default [
       // Does nothing until `include` names the files that need a colocated test.
       'noctcore-architecture/colocated-test-required': ['error', { include: ['src/**/*.{ts,tsx}'] }],
       'noctcore-architecture/single-semantic-module': 'error',
+      // Does nothing until `bans` and `layers` say which imports are banned where.
+      'noctcore-architecture/no-restricted-imports-layered': ['error', {
+        bans: { noFeatures: [{ modules: ['@/features', '**/features'] }] },
+        layers: [{ files: ['src/lib/**'], bans: ['noFeatures'] }],
+      }],
     },
   },
 ];
@@ -87,6 +92,7 @@ export default [
 | [`index-must-reexport-default`](https://noctcore.github.io/eslint-plugins/rules/architecture/index-must-reexport-default/) | A component folder's `index.ts` must re-export the component default (`export { default as <Name> } from './<Name>'`). | ✅ |  |  |  |  |
 | [`max-import-depth`](https://noctcore.github.io/eslint-plugins/rules/architecture/max-import-depth/) | A relative import may not climb more than `max` parent levels (default 3). Autofixed to a path alias when one is configured. | ✅ |  | 🔧 |  |  |
 | [`no-cross-feature-imports`](https://noctcore.github.io/eslint-plugins/rules/architecture/no-cross-feature-imports/) | A file in one feature may not import runtime code from another feature. Move shared code to a shared module or a shared feature. | ✅ |  |  |  |  |
+| [`no-restricted-imports-layered`](https://noctcore.github.io/eslint-plugins/rules/architecture/no-restricted-imports-layered/) | Import bans declared once as named sets and assigned to file layers, merged per file instead of overridden, covering static imports, re-exports and dynamic `import()`. | 🔘 | ⚙️ |  |  |  |
 | [`single-semantic-module`](https://noctcore.github.io/eslint-plugins/rules/architecture/single-semantic-module/) | Require each module to export only one semantic concern (types, constants, functions, classes, components, hooks, schemas or enums). | 🔘 |  |  |  |  |
 <!-- end generated rules -->
 

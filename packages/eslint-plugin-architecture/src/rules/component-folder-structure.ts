@@ -1,5 +1,6 @@
 import path from 'node:path';
 
+import type { TSESTree } from '@typescript-eslint/utils';
 import type { JSONSchema4 } from '@typescript-eslint/utils/json-schema';
 
 import { createRule } from '../createRule';
@@ -7,6 +8,7 @@ import {
   getComponentName,
   getFeatureName,
   isComponentEntryFile,
+  isComponentFileName,
   isIgnoredPath,
   readDirSafe,
 } from '../utils';
@@ -17,10 +19,11 @@ export interface ComponentFolderStructureOptions {
   readonly componentRoot?: string;
   readonly requiredSiblings?: readonly string[];
   readonly ignorePaths?: readonly string[];
+  readonly requireOwnFolder?: boolean;
 }
 
 type RuleOptions = [ComponentFolderStructureOptions];
-type MessageIds = 'missingSiblings';
+type MessageIds = 'missingSiblings' | 'notInOwnFolder';
 
 /*
  * A component entry file (`<Name>/<Name>.tsx` anywhere under
@@ -37,6 +40,15 @@ type MessageIds = 'missingSiblings';
  * (`.hooks.ts` -> `<Name>.hooks.ts`); any other entry is a literal filename
  * (`index.ts`). This lets the required set travel with each component's name
  * while still allowing fixed barrels.
+ *
+ * With `requireOwnFolder`, a component file under `<componentRoot>/<feature>/`
+ * that is not an entry file is reported too: a sub-component dropped into
+ * another component's folder (`BulkActionBar/MoreMenu.tsx`) or a loose `.tsx`
+ * at a feature root (`splash/SplashRain.tsx`). Without it those files are
+ * invisible to the rule, which is how they accumulate. Off by default, since it
+ * reports files the sibling check has always left alone.
+ *
+ * Reports sit on the first line, so an editor does not underline the whole file.
  */
 const DEFAULT_COMPONENT_ROOT = 'components';
 const DEFAULT_IGNORE_PATHS: readonly string[] = ['**/ui/**'];
@@ -60,6 +72,11 @@ const optionSchema: JSONSchema4 = {
     componentRoot: { type: 'string' },
     requiredSiblings: { type: 'array', items: { type: 'string' }, uniqueItems: true },
     ignorePaths: { type: 'array', items: { type: 'string' }, uniqueItems: true },
+    requireOwnFolder: {
+      type: 'boolean',
+      description:
+        'Also report a component file under a feature that is not the entry file of its own folder (a sub-component in another component folder, a loose file at the feature root). Default false.',
+    },
   },
 };
 
@@ -75,6 +92,8 @@ export const componentFolderStructureRule = createRule<RuleOptions, MessageIds>(
     messages: {
       missingSiblings:
         'Component `{{name}}` is missing sibling file(s): {{missing}}. Every component folder must carry its hooks, types, stories, test, and index barrel.',
+      notInOwnFolder:
+        'Component `{{name}}` is not in its own folder. Move it to `{{name}}/{{name}}.tsx` alongside its sibling set ({{required}}).',
     },
   },
   defaultOptions: [
@@ -90,7 +109,9 @@ export const componentFolderStructureRule = createRule<RuleOptions, MessageIds>(
     const siblingTemplates = options.requiredSiblings ?? DEFAULT_REQUIRED_SIBLINGS;
     const filename = context.filename;
 
-    if (!isComponentEntryFile(filename) || isIgnoredPath(filename, ignorePaths)) {
+    const isEntry = isComponentEntryFile(filename);
+    const isLoose = !isEntry && options.requireOwnFolder === true && isComponentFileName(filename);
+    if ((!isEntry && !isLoose) || isIgnoredPath(filename, ignorePaths)) {
       return {};
     }
     if (getFeatureName(filename, componentRoot) === null) {
@@ -98,21 +119,38 @@ export const componentFolderStructureRule = createRule<RuleOptions, MessageIds>(
     }
 
     const name = getComponentName(filename);
-    const dir = path.dirname(filename);
     const required = siblingTemplates.map((template) => resolveSibling(template, name));
+    const firstLine = (): TSESTree.SourceLocation => ({
+      start: { line: 1, column: 0 },
+      end: { line: 1, column: context.sourceCode.lines[0]?.length ?? 0 },
+    });
+
+    // A component outside its own folder has no sibling set to check yet: the
+    // fix is the move, so report that instead of listing siblings as missing.
+    if (isLoose) {
+      return {
+        Program(): void {
+          context.report({
+            loc: firstLine(),
+            messageId: 'notInOwnFolder',
+            data: { name, required: required.join(', ') },
+          });
+        },
+      };
+    }
 
     // Read the component directory once and test against the resulting set,
     // rather than a synchronous `existsSync` per required sibling. A
     // missing/unreadable dir yields an empty set, so every sibling is reported
     // missing.
-    const present = readDirSafe(dir);
+    const present = readDirSafe(path.dirname(filename));
     const missing = required.filter((sibling) => !present.has(sibling));
 
     return {
-      Program(node): void {
+      Program(): void {
         if (missing.length > 0) {
           context.report({
-            node,
+            loc: firstLine(),
             messageId: 'missingSiblings',
             data: { name, missing: missing.join(', ') },
           });
