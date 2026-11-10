@@ -15,6 +15,16 @@ export {
   type FunctionNode,
   type VisitorKeys,
 } from './ast';
+export {
+  fetchCalleeEntrySchema,
+  fetchCalleesSchema,
+  fetchCalleeText,
+  matchFetchCallee,
+  normalizeFetchCallees,
+  toFetchCalleeSpec,
+  type FetchCalleeEntry,
+  type FetchCalleeSpec,
+} from './fetchCallee';
 export { createFileCache, type FileCache } from './fileCache';
 export {
   allowInAliasDescription,
