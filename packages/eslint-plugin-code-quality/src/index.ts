@@ -1,5 +1,6 @@
 import { recommended } from './configs/recommended';
 import { strict } from './configs/strict';
+import { TEST_FILES, tests } from './configs/tests';
 import { rules } from './rules';
 
 /** Flat-config namespace: rule ids are keyed `noctcore-code-quality/<rule>`. */
@@ -26,6 +27,15 @@ plugin.configs.strict = {
   name: `${NAMESPACE}/strict`,
   plugins: { [NAMESPACE]: plugin },
   rules: strict,
+};
+
+// The test-discipline rules alone, scoped to test files with `files` set, so a
+// consumer does not hand-write test globs for them.
+plugin.configs.tests = {
+  name: `${NAMESPACE}/tests`,
+  files: [...TEST_FILES],
+  plugins: { [NAMESPACE]: plugin },
+  rules: tests,
 };
 
 export { rules };
