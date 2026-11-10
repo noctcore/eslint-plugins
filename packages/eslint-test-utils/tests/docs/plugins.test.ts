@@ -16,6 +16,7 @@ import asyncSafety from '../../../eslint-plugin-async-safety/src/index';
 import codeQuality from '../../../eslint-plugin-code-quality/src/index';
 import contracts from '../../../eslint-plugin-contracts/src/index';
 import llm from '../../../eslint-plugin-llm/src/index';
+import nestjs from '../../../eslint-plugin-nestjs/src/index';
 import monorepo from '../../../eslint-plugin-monorepo/src/index';
 import observability from '../../../eslint-plugin-observability/src/index';
 import prisma from '../../../eslint-plugin-prisma/src/index';
@@ -33,6 +34,7 @@ const PLUGINS: Record<string, { readonly plugin: DocPlugin; readonly status: Doc
   contracts: { plugin: contracts, status: 'executed' },
   llm: { plugin: llm, status: 'executed' },
   monorepo: { plugin: monorepo, status: 'executed' },
+  nestjs: { plugin: nestjs, status: 'executed' },
   observability: { plugin: observability, status: 'executed' },
   prisma: { plugin: prisma, status: 'executed' },
   react: { plugin: react, status: 'executed' },
