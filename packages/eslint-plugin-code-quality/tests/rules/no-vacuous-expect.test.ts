@@ -27,6 +27,10 @@ ruleTester.run('no-vacuous-expect', noVacuousExpectRule, {
       `,
     },
     { code: "test('asserts', () => { expect(result).toBeDefined(); assert.equal(result.id, 1); });" },
+    // A deeper chain rooted at `assert` matches `^assert` by its full dotted path.
+    { code: "test('asserts', () => { expect(result).toBeDefined(); assert.strict.equal(result.id, 1); });" },
+    // A member call on a call result is matched as `.name`, so supertest's `.expect` counts.
+    { code: "test('responds', async () => { expect(app).toBeDefined(); await request(app).get('/health').expect(200); });" },
     { code: "test('helper', () => { expect(user).toBeTruthy(); expectValidUser(user); });" },
     // Negated tautology always fails; it is broken, not vacuous.
     { code: "it('x', () => { expect(1).not.toBe(1); });" },

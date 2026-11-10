@@ -163,7 +163,7 @@ it('refuses', async () => {
 | `throwMatchers` | `string[]` | `["toThrow", "toThrowError", "toThrowErrorMatchingSnapshot", "toThrowErrorMatchingInlineSnapshot"]` | Matchers that assert a throw or a rejection. A name ending in `MatchingSnapshot` or `MatchingInlineSnapshot` is always a message check. |
 | `allowMessageOnly` | `boolean` | `false` | Report only the argless form. For adopting the rule in two steps. |
 | `trustErrorInstances` | `boolean` | `true` | Count an error instance argument as pinning the class. Set `false` under Jest, whose `toThrow(new X('m'))` and `.rejects.toEqual(new X('m'))` compare only the message. |
-| `assertionHelpers` | `string[]` (regex sources) | `[]` | Helpers that pin the error class, such as `expectRejectsDomainError(promise, {...})`. A call on the same subject in the same test accepts a message-only assertion. Matched against `name` or `obj.name`. |
+| `assertionHelpers` | `string[]` (regex sources) | `[]` | Helpers that pin the error class, such as `expectRejectsDomainError(promise, {...})`. A call on the same subject in the same test accepts a message-only assertion. Matched against `name`, the dotted path of a member chain rooted at an identifier (`helpers.errors.expectRejects`), or `.name` for any other member. |
 
 ```js
 'noctcore-code-quality/no-message-only-throw-assertion': ['error', {

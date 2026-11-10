@@ -8,7 +8,7 @@ import { AST_NODE_TYPES, type TSESTree } from '@typescript-eslint/utils';
 import type { JSONSchema4 } from '@typescript-eslint/utils/json-schema';
 
 import { createRule } from '../createRule';
-import { runnerName } from '../utils/ast';
+import { calleeMatchText, runnerName } from '../utils/ast';
 
 const RULE_NAME = 'no-vacuous-expect';
 
@@ -22,8 +22,8 @@ export interface NoVacuousExpectOptions {
    * Regex sources (compiled with the `u` flag) for callees that also count as
    * an assertion, so a test that pairs a weak `expect` with `assert.equal(...)`
    * or a custom `expectValidUser(...)` helper is not reported. Matched against
-   * `name` for a bare call, `obj.name` for a member call on an identifier and
-   * `.name` for any other member call.
+   * `name` for a bare call, the dotted path for a member chain rooted at an
+   * identifier (`assert.strict.equal`) and `.name` for any other member call.
    */
   readonly assertionCallees?: readonly string[];
   /**
@@ -211,22 +211,6 @@ function isPresenceMatcher(matcher: string, expected: TSESTree.Node | undefined)
   );
 }
 
-/** `name`, `obj.name` or `.name` for a callee, used to match `assertionCallees`. */
-function calleePath(callee: TSESTree.Expression): string | null {
-  if (callee.type === AST_NODE_TYPES.Identifier) {
-    return callee.name;
-  }
-  if (
-    callee.type === AST_NODE_TYPES.MemberExpression &&
-    !callee.computed &&
-    callee.property.type === AST_NODE_TYPES.Identifier
-  ) {
-    const owner = callee.object.type === AST_NODE_TYPES.Identifier ? callee.object.name : '';
-    return `${owner}.${callee.property.name}`;
-  }
-  return null;
-}
-
 function isTestCallback(node: TestCallback): boolean {
   const parent = node.parent;
   if (parent.type !== AST_NODE_TYPES.CallExpression || parent.arguments[1] !== node) {
@@ -400,7 +384,7 @@ export const noVacuousExpectRule = createRule<RuleOptions, MessageIds>({
         const frame = stack.at(-1);
         const call = matcherCall(node);
         if (call === null) {
-          const path = calleePath(node.callee);
+          const path = calleeMatchText(node.callee);
           if (frame !== undefined && path !== null && assertionCallees.some((re) => re.test(path))) {
             frame.assertions += 1;
           }

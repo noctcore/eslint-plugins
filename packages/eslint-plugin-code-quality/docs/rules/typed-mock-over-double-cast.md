@@ -94,7 +94,7 @@ beforeEach(() => {
 
 | Option | Type | Default | Meaning |
 | --- | --- | --- | --- |
-| `mockFactories` | `string[]` | `["jest.fn", "vi.fn"]` | Callees that create a mock function, as `name` or `obj.name`. |
+| `mockFactories` | `string[]` | `["jest.fn", "vi.fn"]` | Callees that create a mock function, as `name` or a dotted path (`vi.fn`, `testing.mocks.fn`). |
 | `allowTargets` | `string[]` (globs) | `[]` | Cast targets that may be double-cast, matched against the type name (`PrismaService`, `Prisma.TransactionClient`) and the full type text (`Parameters<Guard['canActivate']>[0]`). For types too wide to `Pick` from. |
 
 ```js

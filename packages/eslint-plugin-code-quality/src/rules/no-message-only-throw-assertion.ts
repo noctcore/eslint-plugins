@@ -2,7 +2,7 @@ import { AST_NODE_TYPES, ASTUtils, type TSESTree } from '@typescript-eslint/util
 import type { JSONSchema4 } from '@typescript-eslint/utils/json-schema';
 
 import { createRule } from '../createRule';
-import { isSelfOrAncestor, runnerName, unwrapTypeWrappers } from '../utils/ast';
+import { calleeMatchText, isSelfOrAncestor, runnerName, unwrapTypeWrappers } from '../utils/ast';
 
 const RULE_NAME = 'no-message-only-throw-assertion';
 
@@ -24,8 +24,9 @@ export interface NoMessageOnlyThrowAssertionOptions {
    * Regex sources (compiled with the `u` flag) for assertion helpers that pin
    * the error class, such as `expectRejectsDomainError(promise, {...})`. A
    * message-only assertion is accepted when a matching helper is called on the
-   * same subject in the same test. Matched against `name` for a bare call and
-   * `obj.name` for a member call on an identifier.
+   * same subject in the same test. Matched against `name` for a bare call, the
+   * dotted path for a member chain rooted at an identifier (`helpers.errors.expectRejects`)
+   * and `.name` for any other member call.
    */
   readonly assertionHelpers?: readonly string[];
 }
@@ -158,22 +159,6 @@ function matcherChain(node: TSESTree.CallExpression): MatcherChain | null {
     return null;
   }
   return { root: current, matcher: callee.property.name, negated, rejects };
-}
-
-/** `name` or `obj.name` for a callee, used to match `assertionHelpers`. */
-function calleePath(callee: TSESTree.Expression): string | null {
-  if (callee.type === AST_NODE_TYPES.Identifier) {
-    return callee.name;
-  }
-  if (
-    callee.type === AST_NODE_TYPES.MemberExpression &&
-    !callee.computed &&
-    callee.property.type === AST_NODE_TYPES.Identifier
-  ) {
-    const owner = callee.object.type === AST_NODE_TYPES.Identifier ? callee.object.name : '';
-    return `${owner}.${callee.property.name}`;
-  }
-  return null;
 }
 
 function isTestCallback(node: FunctionNode): boolean {
@@ -416,7 +401,7 @@ export const noMessageOnlyThrowAssertionRule = createRule<RuleOptions, MessageId
         }
         const chain = matcherChain(node);
         if (chain === null) {
-          const path = calleePath(node.callee);
+          const path = calleeMatchText(node.callee);
           const subject = textOf(node.arguments[0]);
           if (path !== null && subject !== null && assertionHelpers.some((re) => re.test(path))) {
             pin(frame, subject, node);
