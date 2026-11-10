@@ -98,7 +98,9 @@ async function registryLatest(
   name: string,
 ): Promise<string | null> {
   try {
-    const url = `${registryUrl.replace(/\/+$/u, '')}/${name.replace('/', '%2f')}/latest`;
+    let base = registryUrl;
+    while (base.endsWith('/')) base = base.slice(0, -1);
+    const url = `${base}/${name.replaceAll('/', '%2f')}/latest`;
     const response = await fetch(url, {
       headers: { accept: 'application/json' },
       signal: AbortSignal.timeout(timeoutMs),
