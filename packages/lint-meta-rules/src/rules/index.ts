@@ -4,11 +4,13 @@ import { createAgentsDocPresenceRule } from './agents-doc-presence';
 import { createBannedDependenciesRule } from './banned-dependencies';
 import { createCanonicalHelpersSingleHomeRule } from './canonical-helpers-single-home';
 import { createDockerfileBaseImageDigestPinRule } from './dockerfile-base-image-digest-pin';
+import { createEslintOverridePathsExistRule } from './eslint-override-paths-exist';
 import { createFileSizeRatchetRule } from './file-size-ratchet';
 import { createGithubActionsLeastPrivilegePermissionsRule } from './github-actions-least-privilege-permissions';
 import { createGithubActionsNoTemplateInjectionRule } from './github-actions-no-template-injection';
 import { createGithubActionsRunnerPinnedRule } from './github-actions-runner-pinned';
 import { createGithubActionsShaPinnedRule } from './github-actions-sha-pinned';
+import { createGithubActionsTimeoutRequiredRule } from './github-actions-timeout-required';
 import { createLayerRankRule } from './layer-rank';
 import { createNoClonedComponentFoldersRule } from './no-cloned-component-folders';
 import { createNoWarnSeverityRule } from './no-warn-severity';
@@ -22,6 +24,7 @@ import { createServiceImageDigestPinRule } from './service-image-digest-pin';
 import { createTestRunnerSegregationRule } from './test-runner-segregation';
 import { createTestSiblingEnforcementRule } from './test-sibling-enforcement';
 import { createTestWorkspaceEnrollmentRule } from './test-workspace-enrollment';
+import { createTsconfigIncludePathsExistRule } from './tsconfig-include-paths-exist';
 import { createUiPrimitiveShapeRule } from './ui-primitive-shape';
 import { createWorkspaceGraphParityRule } from './workspace-graph-parity';
 
@@ -33,6 +36,8 @@ export { createCanonicalHelpersSingleHomeRule } from './canonical-helpers-single
 export type { CanonicalHelpersSingleHomeOptions } from './canonical-helpers-single-home';
 export { createDockerfileBaseImageDigestPinRule } from './dockerfile-base-image-digest-pin';
 export type { DockerfileBaseImageDigestPinOptions } from './dockerfile-base-image-digest-pin';
+export { createEslintOverridePathsExistRule } from './eslint-override-paths-exist';
+export type { EslintOverridePathsExistOptions } from './eslint-override-paths-exist';
 export { createFileSizeRatchetRule } from './file-size-ratchet';
 export type { FileSizeRatchetOptions } from './file-size-ratchet';
 export { createGithubActionsLeastPrivilegePermissionsRule } from './github-actions-least-privilege-permissions';
@@ -43,6 +48,8 @@ export { createGithubActionsRunnerPinnedRule } from './github-actions-runner-pin
 export type { GithubActionsRunnerPinnedOptions } from './github-actions-runner-pinned';
 export { createGithubActionsShaPinnedRule } from './github-actions-sha-pinned';
 export type { GithubActionsShaPinnedOptions } from './github-actions-sha-pinned';
+export { createGithubActionsTimeoutRequiredRule } from './github-actions-timeout-required';
+export type { GithubActionsTimeoutRequiredOptions } from './github-actions-timeout-required';
 export { createLayerRankRule } from './layer-rank';
 export type { LayerRankOptions } from './layer-rank';
 export { createNoClonedComponentFoldersRule } from './no-cloned-component-folders';
@@ -69,6 +76,8 @@ export { createTestSiblingEnforcementRule } from './test-sibling-enforcement';
 export type { TestSiblingEnforcementOptions } from './test-sibling-enforcement';
 export { createTestWorkspaceEnrollmentRule } from './test-workspace-enrollment';
 export type { TestWorkspaceEnrollmentOptions } from './test-workspace-enrollment';
+export { createTsconfigIncludePathsExistRule } from './tsconfig-include-paths-exist';
+export type { TsconfigIncludePathsExistOptions } from './tsconfig-include-paths-exist';
 export { createUiPrimitiveShapeRule } from './ui-primitive-shape';
 export type { UiPrimitiveShapeOptions } from './ui-primitive-shape';
 export { createWorkspaceGraphParityRule } from './workspace-graph-parity';
@@ -93,11 +102,13 @@ export const RULE_FACTORIES = {
   'banned-dependencies': createBannedDependenciesRule,
   'canonical-helpers-single-home': createCanonicalHelpersSingleHomeRule,
   'dockerfile-base-image-digest-pin': createDockerfileBaseImageDigestPinRule,
+  'eslint-override-paths-exist': createEslintOverridePathsExistRule,
   'file-size-ratchet': createFileSizeRatchetRule,
   'github-actions-least-privilege-permissions': createGithubActionsLeastPrivilegePermissionsRule,
   'github-actions-no-template-injection': createGithubActionsNoTemplateInjectionRule,
   'github-actions-runner-pinned': createGithubActionsRunnerPinnedRule,
   'github-actions-sha-pinned': createGithubActionsShaPinnedRule,
+  'github-actions-timeout-required': createGithubActionsTimeoutRequiredRule,
   'layer-rank': createLayerRankRule,
   'no-cloned-component-folders': createNoClonedComponentFoldersRule,
   'no-warn-severity': createNoWarnSeverityRule,
@@ -111,6 +122,7 @@ export const RULE_FACTORIES = {
   'test-runner-segregation': createTestRunnerSegregationRule,
   'test-sibling-enforcement': createTestSiblingEnforcementRule,
   'test-workspace-enrollment': createTestWorkspaceEnrollmentRule,
+  'tsconfig-include-paths-exist': createTsconfigIncludePathsExistRule,
   'ui-primitive-shape': createUiPrimitiveShapeRule,
   'workspace-graph-parity': createWorkspaceGraphParityRule,
 } as const;

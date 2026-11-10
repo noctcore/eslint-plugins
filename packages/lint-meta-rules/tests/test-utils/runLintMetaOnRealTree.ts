@@ -10,13 +10,15 @@ import type * as ResolvedConfigRules from '../../src/resolved-config';
 import type * as Rules from '../../src/rules';
 import type * as SessionRules from '../../src/session';
 import type * as TrpcRules from '../../src/trpc';
+import type * as TypescriptRules from '../../src/typescript';
 
 type Factories = typeof Rules &
   typeof I18nRules &
   typeof PrismaRules &
   typeof ResolvedConfigRules &
   typeof SessionRules &
-  typeof TrpcRules;
+  typeof TrpcRules &
+  typeof TypescriptRules;
 
 /** A rule factory exported by this package (any entry point), by name. */
 export type RuleFactoryName = {
@@ -69,6 +71,9 @@ const SUBPATH_ENTRIES: Partial<Record<RuleFactoryName, string>> = {
   createSessionLandingDeclaredRule: 'session',
   createSessionMintCallersRule: 'session',
   createIdempotencyKeyParityRule: 'trpc',
+  createNoInlineLintDisableRule: 'typescript',
+  createNoTsIgnoreRule: 'typescript',
+  createTestFileMatchesRunnerIncludeRule: 'typescript',
 };
 
 function entryFor(factory: RuleFactoryName, runtime: 'bun' | 'node-eslint9'): string {

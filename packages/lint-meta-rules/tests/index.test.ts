@@ -8,6 +8,9 @@ describe('package export surface', () => {
     expect(RULE_IDS.sort()).toEqual(
       [
         'agents-doc-presence',
+        'eslint-override-paths-exist',
+        'github-actions-timeout-required',
+        'tsconfig-include-paths-exist',
         'pnpm-override-ledger',
         'pnpm-hardening-settings',
         'noctcore-packages-current',
@@ -51,6 +54,9 @@ describe('package export surface', () => {
   test('every create* factory and countLines is exported by name', () => {
     const expected = [
       'createAgentsDocPresenceRule',
+      'createEslintOverridePathsExistRule',
+      'createGithubActionsTimeoutRequiredRule',
+      'createTsconfigIncludePathsExistRule',
       'createPnpmOverrideLedgerRule',
       'createPnpmHardeningSettingsRule',
       'createNoctcorePackagesCurrentRule',
@@ -125,12 +131,29 @@ describe('sub-path entry points', () => {
     }
   });
 
+  test('typescript exports its factories, and the main entry does not', async () => {
+    const typescript = await import('../src/typescript');
+    const manifest = (await import('../package.json')).default as {
+      peerDependenciesMeta: Record<string, { optional?: boolean }>;
+    };
+    for (const name of [
+      'createNoInlineLintDisableRule',
+      'createNoTsIgnoreRule',
+      'createTestFileMatchesRunnerIncludeRule',
+    ]) {
+      expect(typeof (typescript as Record<string, unknown>)[name]).toBe('function');
+      expect((pkg as Record<string, unknown>)[name]).toBeUndefined();
+    }
+    // The parser loads only through this entry, so the peer stays optional.
+    expect(manifest.peerDependenciesMeta['typescript']?.optional).toBe(true);
+  });
+
   test('package.json exports every entry the build emits', async () => {
     const manifest = (await import('../package.json')).default as {
       exports: Record<string, unknown>;
       scripts: { build: string };
     };
-    for (const entry of ['i18n', 'prisma', 'resolved-config', 'session', 'trpc']) {
+    for (const entry of ['i18n', 'prisma', 'resolved-config', 'session', 'trpc', 'typescript']) {
       // One `types` per condition: a CommonJS consumer must get the `.d.cts`
       // declarations that describe the `.cjs` file, not the ESM ones.
       expect(manifest.exports[`./${entry}`]).toEqual({

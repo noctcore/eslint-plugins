@@ -40,3 +40,8 @@ createTestSiblingEnforcementRule(options?: TestSiblingEnforcementOptions): IMeta
 
 If you colocate tests loosely or centralize them in a `__tests__` tree, retune `include`/`testExtensions`
 or skip the rule.
+
+This rule only checks that the test file exists, not that anything runs it: a sibling named
+`.utils.test.ts` under a runner that includes only `*.test.tsx` passes here and never executes.
+Pair it with [`test-file-matches-runner-include`](./test-file-matches-runner-include.md), which
+reports a test file no runner collects.
