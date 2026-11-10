@@ -15,6 +15,7 @@ import architecture from '../../../eslint-plugin-architecture/src/index';
 import asyncSafety from '../../../eslint-plugin-async-safety/src/index';
 import codeQuality from '../../../eslint-plugin-code-quality/src/index';
 import contracts from '../../../eslint-plugin-contracts/src/index';
+import electron from '../../../eslint-plugin-electron/src/index';
 import llm from '../../../eslint-plugin-llm/src/index';
 import nestjs from '../../../eslint-plugin-nestjs/src/index';
 import monorepo from '../../../eslint-plugin-monorepo/src/index';
@@ -33,6 +34,7 @@ const PLUGINS: Record<string, { readonly plugin: DocPlugin; readonly status: Doc
   'async-safety': { plugin: asyncSafety, status: 'executed' },
   'code-quality': { plugin: codeQuality, status: 'executed' },
   contracts: { plugin: contracts, status: 'executed' },
+  electron: { plugin: electron, status: 'executed' },
   llm: { plugin: llm, status: 'executed' },
   monorepo: { plugin: monorepo, status: 'executed' },
   nestjs: { plugin: nestjs, status: 'executed' },

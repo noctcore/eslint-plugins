@@ -68,6 +68,7 @@ export default defineConfig({
               ['llm', 'LLM'],
               ['nestjs', 'NestJS'],
               ['query', 'Query'],
+              ['electron', 'Electron'],
               ['lint-meta-rules', 'lint-meta rules'],
             ].map(([directory, label]) => ({
               label,

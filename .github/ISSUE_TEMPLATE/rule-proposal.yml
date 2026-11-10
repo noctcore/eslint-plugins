@@ -34,6 +34,7 @@ body:
         - eslint-plugin-llm
         - eslint-plugin-nestjs
         - eslint-plugin-query
+        - eslint-plugin-electron
         - lint-meta-rules (whole-repo checks for the harness)
         - a new package
     validations:
