@@ -1,4 +1,9 @@
-import { enclosingFunction, type FunctionNode as FnNode } from '@noctcore/eslint-utils';
+import {
+  enclosingFunction,
+  walkSome,
+  type FunctionNode as FnNode,
+  type VisitorKeys,
+} from '@noctcore/eslint-utils';
 import { AST_NODE_TYPES, type TSESTree } from '@typescript-eslint/utils';
 import type { JSONSchema4 } from '@typescript-eslint/utils/json-schema';
 
@@ -77,46 +82,14 @@ function isJsxExpression(node: TSESTree.Node | null | undefined): boolean {
   }
 }
 
-/** All descendant nodes of `root` (inclusive), never crossing the `parent` back-edge. */
-function descendants(root: TSESTree.Node): TSESTree.Node[] {
-  const out: TSESTree.Node[] = [];
-  const stack: TSESTree.Node[] = [root];
-  while (stack.length > 0) {
-    const node = stack.pop() as TSESTree.Node;
-    out.push(node);
-    for (const key of Object.keys(node)) {
-      if (key === 'parent') {
-        continue;
-      }
-      const value = (node as unknown as Record<string, unknown>)[key];
-      if (Array.isArray(value)) {
-        for (const child of value) {
-          if (isNode(child)) {
-            stack.push(child);
-          }
-        }
-      } else if (isNode(value)) {
-        stack.push(value);
-      }
-    }
-  }
-  return out;
-}
-
-function isNode(value: unknown): value is TSESTree.Node {
-  return (
-    typeof value === 'object' &&
-    value !== null &&
-    typeof (value as { type?: unknown }).type === 'string'
-  );
-}
-
 /** True when `fn`'s own body returns JSX (not counting returns in nested functions). */
-function functionReturnsJsx(fn: FnNode): boolean {
+function functionReturnsJsx(fn: FnNode, keys: VisitorKeys): boolean {
   if (fn.body.type !== AST_NODE_TYPES.BlockStatement) {
     return isJsxExpression(fn.body);
   }
-  return descendants(fn.body).some(
+  return walkSome(
+    fn.body,
+    keys,
     (node) =>
       node.type === AST_NODE_TYPES.ReturnStatement &&
       enclosingFunction(node) === fn &&
@@ -240,7 +213,7 @@ export const componentPropsNamingRule = createRule<RuleOptions, MessageIds>({
         return;
       }
       const typeRef = firstParamTypeRef(fn);
-      if (typeRef === null || !functionReturnsJsx(fn)) {
+      if (typeRef === null || !functionReturnsJsx(fn, context.sourceCode.visitorKeys)) {
         return;
       }
       if (typeRef.name === expectedName(componentName)) {
