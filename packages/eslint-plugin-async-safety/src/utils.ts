@@ -4,10 +4,6 @@
  * these helpers are the AST plumbing that makes that possible.
  */
 
-// Callee paths and glob matching are shared with the other plugins through
-// @noctcore/eslint-utils; re-exported under the names these rules already use.
-export {
-  calleePath as calleeText,
-  globToRegExp,
-  matchesAnyGlob,
-} from '@noctcore/eslint-utils';
+// Callee paths are shared with the other plugins through @noctcore/eslint-utils;
+// re-exported under the name these rules already use.
+export { calleePath as calleeText } from '@noctcore/eslint-utils';

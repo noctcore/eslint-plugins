@@ -1,4 +1,4 @@
-import { ruleTester } from '@noctcore/eslint-test-utils';
+import { ruleTester, workspacePath } from '@noctcore/eslint-test-utils';
 
 import { noSharedMutableModuleStateRule } from '../../src/rules/no-shared-mutable-module-state';
 
@@ -92,6 +92,13 @@ ruleTester.run('no-shared-mutable-module-state', noSharedMutableModuleStateRule,
     },
   ],
   invalid: [
+    // A repo-relative include glob selects the absolute filename ESLint passes.
+    {
+      code: `let cache = {}; export class S { set(k, v) { cache[k] = v; } }`,
+      filename: workspacePath('apps', 'server', 'cache.ts'),
+      options: [{ include: ['apps/server/**'] }],
+      errors: [{ messageId: 'sharedMutableState', data: { name: 'cache', fn: 'S.set' } }],
+    },
     // A method of an exported class, the NestJS service shape.
     {
       code: `let cache = {}; export class S { set(k, v) { cache[k] = v; } }`,

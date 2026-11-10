@@ -90,8 +90,9 @@ looks for it; whether the provider should hold it at all is still your call.
 | `include` | `string[]` (globs) | `[]` | Glob patterns for server files to arm the rule on. Empty = the rule does nothing. |
 | `allow` | `string[]` | `[]` | Binding names to exempt (intentional singletons / process-wide caches). |
 
-Globs support `**` (any run including `/`), `*` (any run except `/`), `?`, and a leading `**/` that also matches
-zero leading segments.
+Globs support `**` (any run including `/`), `*` (any run except `/`), `?`, `{a,b}`, and a leading `**/` that
+also matches zero leading segments. They are matched against the file's absolute path and its path
+relative to the working directory and to the workspace root (the nearest ancestor holding a lockfile, `pnpm-workspace.yaml` or `.git`), so `apps/api/**` and `**/server/**` both work.
 
 ```js
 'noctcore-async-safety/no-shared-mutable-module-state': [
