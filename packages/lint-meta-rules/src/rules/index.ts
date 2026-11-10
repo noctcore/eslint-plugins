@@ -1,6 +1,7 @@
 import type { IMetaRule } from '@noctcore/harness';
 
 import { createAgentsDocPresenceRule } from './agents-doc-presence';
+import { createBannedDependenciesRule } from './banned-dependencies';
 import { createCanonicalHelpersSingleHomeRule } from './canonical-helpers-single-home';
 import { createDockerfileBaseImageDigestPinRule } from './dockerfile-base-image-digest-pin';
 import { createFileSizeRatchetRule } from './file-size-ratchet';
@@ -11,7 +12,11 @@ import { createGithubActionsShaPinnedRule } from './github-actions-sha-pinned';
 import { createLayerRankRule } from './layer-rank';
 import { createNoClonedComponentFoldersRule } from './no-cloned-component-folders';
 import { createNoWarnSeverityRule } from './no-warn-severity';
+import { createNoctcorePackagesCurrentRule } from './noctcore-packages-current';
+import { createNodeVersionParityRule } from './node-version-parity';
 import { createPackageShapeRule } from './package-shape';
+import { createPnpmHardeningSettingsRule } from './pnpm-hardening-settings';
+import { createPnpmOverrideLedgerRule } from './pnpm-override-ledger';
 import { createSecurityScannerVersionParityRule } from './security-scanner-version-parity';
 import { createServiceImageDigestPinRule } from './service-image-digest-pin';
 import { createTestRunnerSegregationRule } from './test-runner-segregation';
@@ -22,6 +27,8 @@ import { createWorkspaceGraphParityRule } from './workspace-graph-parity';
 
 export { createAgentsDocPresenceRule } from './agents-doc-presence';
 export type { AgentsDocPresenceOptions } from './agents-doc-presence';
+export { createBannedDependenciesRule } from './banned-dependencies';
+export type { BannedDependenciesOptions } from './banned-dependencies';
 export { createCanonicalHelpersSingleHomeRule } from './canonical-helpers-single-home';
 export type { CanonicalHelpersSingleHomeOptions } from './canonical-helpers-single-home';
 export { createDockerfileBaseImageDigestPinRule } from './dockerfile-base-image-digest-pin';
@@ -42,8 +49,16 @@ export { createNoClonedComponentFoldersRule } from './no-cloned-component-folder
 export type { NoClonedComponentFoldersOptions } from './no-cloned-component-folders';
 export { createNoWarnSeverityRule } from './no-warn-severity';
 export type { NoWarnSeverityOptions } from './no-warn-severity';
+export { createNoctcorePackagesCurrentRule } from './noctcore-packages-current';
+export type { NoctcorePackagesCurrentOptions } from './noctcore-packages-current';
+export { createNodeVersionParityRule } from './node-version-parity';
+export type { NodeVersionParityOptions } from './node-version-parity';
 export { createPackageShapeRule } from './package-shape';
 export type { PackageShapeOptions } from './package-shape';
+export { createPnpmHardeningSettingsRule } from './pnpm-hardening-settings';
+export type { PnpmHardeningSettingsOptions } from './pnpm-hardening-settings';
+export { createPnpmOverrideLedgerRule } from './pnpm-override-ledger';
+export type { PnpmOverrideLedgerOptions } from './pnpm-override-ledger';
 export { createSecurityScannerVersionParityRule } from './security-scanner-version-parity';
 export type { SecurityScannerVersionParityOptions } from './security-scanner-version-parity';
 export { createServiceImageDigestPinRule } from './service-image-digest-pin';
@@ -75,6 +90,7 @@ export { countLines } from './shared';
  */
 export const RULE_FACTORIES = {
   'agents-doc-presence': createAgentsDocPresenceRule,
+  'banned-dependencies': createBannedDependenciesRule,
   'canonical-helpers-single-home': createCanonicalHelpersSingleHomeRule,
   'dockerfile-base-image-digest-pin': createDockerfileBaseImageDigestPinRule,
   'file-size-ratchet': createFileSizeRatchetRule,
@@ -85,7 +101,11 @@ export const RULE_FACTORIES = {
   'layer-rank': createLayerRankRule,
   'no-cloned-component-folders': createNoClonedComponentFoldersRule,
   'no-warn-severity': createNoWarnSeverityRule,
+  'noctcore-packages-current': createNoctcorePackagesCurrentRule,
+  'node-version-parity': createNodeVersionParityRule,
   'package-shape': createPackageShapeRule,
+  'pnpm-hardening-settings': createPnpmHardeningSettingsRule,
+  'pnpm-override-ledger': createPnpmOverrideLedgerRule,
   'security-scanner-version-parity': createSecurityScannerVersionParityRule,
   'service-image-digest-pin': createServiceImageDigestPinRule,
   'test-runner-segregation': createTestRunnerSegregationRule,

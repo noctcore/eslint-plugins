@@ -68,6 +68,18 @@ export default [
     },
   },
   {
+    // The registry URL is the consumer's own option (a private registry), and
+    // the ledger rule's default clock is the one place behind its `now` option.
+    files: [
+      'packages/lint-meta-rules/src/rules/noctcore-packages-current.ts',
+      'packages/lint-meta-rules/src/rules/pnpm-override-ledger.ts',
+    ],
+    rules: {
+      'noctcore-security/no-user-controlled-fetch-url': 'off',
+      'noctcore-code-quality/no-bare-date-now': 'off',
+    },
+  },
+  {
     // Test infrastructure reads its own switches from the environment and wires
     // `it.only` into RuleTester by assignment, which focuses nothing.
     files: ['packages/eslint-test-utils/src/**/*.ts', 'scripts/**/*.ts'],
