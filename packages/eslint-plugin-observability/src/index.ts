@@ -3,7 +3,7 @@ import { rules } from './rules';
 
 /** Flat-config namespace: rule ids are keyed `noctcore-observability/<rule>`. */
 const NAMESPACE = 'noctcore-observability';
-const VERSION = '0.3.4';
+const VERSION = '1.0.0';
 
 const plugin = {
   meta: { name: '@noctcore/eslint-plugin-observability', version: VERSION },

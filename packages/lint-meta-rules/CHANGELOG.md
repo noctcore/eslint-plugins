@@ -1,5 +1,42 @@
 # @noctcore/lint-meta-rules
 
+## 1.0.0
+
+### Major Changes
+
+- [#185](https://github.com/noctcore/eslint-plugins/pull/185) [`3526608`](https://github.com/noctcore/eslint-plugins/commit/3526608ae7491e50ef7253055b97d5befd91571d) Thanks [@Shironex](https://github.com/Shironex)! - First stable release. These plugins are used by real projects and their presets follow the settled policy: `recommended` holds rules that are safe for any repo, and house conventions moved to `strict` in the plugins that have them (architecture, code-quality, contracts, react). From 1.0 on, a rule entering `recommended` or a rule's default becoming stricter is a major change, so a caret range on 1.x keeps getting fixes and new opt-in rules without surprise errors.
+  
+  Peer ranges stay at `eslint >=9.0.0 <11` and `typescript >=5.0.0 <7`. Renamed options and merged rules keep their old names as deprecated aliases through 1.x.
+
+### Minor Changes
+
+- [#172](https://github.com/noctcore/eslint-plugins/pull/172) [`b8ae43d`](https://github.com/noctcore/eslint-plugins/commit/b8ae43d4b19c8be34e3295aba3aaadbc1cf6e419) Thanks [@Shironex](https://github.com/Shironex)! - Six repo-hygiene rules:
+  
+  - `github-actions-timeout-required`: every workflow job that runs steps declares a job-level `timeout-minutes` (reusable-workflow calls are exempt).
+  - `eslint-override-paths-exist`: literal `files` and one-file `ignores` paths in an ESLint flat config, and the directory each `files` glob starts in, exist relative to that config.
+  - `tsconfig-include-paths-exist`: literal `include` and `files` entries in a tsconfig, and the directory each glob entry starts in, exist relative to that config.
+  - On the new `@noctcore/lint-meta-rules/typescript` entry point (optional peer `typescript`):
+    - `no-inline-lint-disable`: no inline `eslint-disable` directive in hand-written source, read through the TypeScript parser so strings, templates, regex literals and JSX text are never mistaken for comments; generated files are skipped, and `allowWithDescription` lets a reasoned directive through.
+    - `no-ts-ignore`: no `@ts-ignore` (and, unless `allowExpectError`, no `@ts-expect-error`) in any comment form tsc honours.
+    - `test-file-matches-runner-include`: every test file is collected by a Vitest, Jest, Bun or Playwright runner that covers its directory; configs the rule cannot read are left alone.
+
+- [#168](https://github.com/noctcore/eslint-plugins/pull/168) [`5b125be`](https://github.com/noctcore/eslint-plugins/commit/5b125be217976993caed9c70b56d1cf089fafaa1) Thanks [@Shironex](https://github.com/Shironex)! - Five supply-chain rules:
+  
+  - `noctcore-packages-current`: every installed `@noctcore/*` package (or another `scope`) is inside its declared range, so a caret on 0.x cannot hide a published minor. Offline by default; `checkRegistry: true` also compares each range with the registry's latest version, skipping an unreachable registry and ignoring a stale read right after a publish.
+  - `pnpm-hardening-settings`: `pnpm-workspace.yaml` keeps `strictDepBuilds`, `blockExoticSubdeps`, `engineStrict`, `trustPolicy: no-downgrade` and a minimum release age on, every `trustPolicyExclude` entry is exact and reasoned, and nothing overrides them in `.npmrc`, `package.json` or on a command line.
+  - `node-version-parity`: `.nvmrc`, the root `engines.node`, every `actions/setup-node` step and every Docker node base image agree on the Node major.
+  - `banned-dependencies`: no workspace manifest declares a package you named, with your reason in the message.
+  - `pnpm-override-ledger`: every pnpm override has a dated, reasoned ledger entry, a security pin targets its own first patched version, and the lockfile honours the override.
+
+### Patch Changes
+
+- [#155](https://github.com/noctcore/eslint-plugins/pull/155) [`4e1129f`](https://github.com/noctcore/eslint-plugins/commit/4e1129f70f9449f4feee9dca6228f2d6432393c5) Thanks [@Shironex](https://github.com/Shironex)! - Cap the peer ranges at what CI tests: `eslint >=9.0.0 <11` and `typescript >=5.0.0 <7` (lint-meta-rules declares only the eslint peer). typescript-eslint 8 refuses TypeScript 7, and no CI leg runs ESLint 11 yet; a range widens once a leg proves the next major.
+
+- [#80](https://github.com/noctcore/eslint-plugins/pull/80) [`6ef2434`](https://github.com/noctcore/eslint-plugins/commit/6ef2434bae1749d4d0ef5c8368cd8e762ba2a91c) Thanks [@Shironex](https://github.com/Shironex)! - Give CommonJS consumers their own type declarations. Each `exports` entry now has one `types` per condition: `import` resolves `index.d.ts` and `require` resolves `index.d.cts`, the file tsup already emitted. Before, a CommonJS TypeScript project got the ESM declarations for the `.cjs` build.
+- Updated dependencies [[`5370208`](https://github.com/noctcore/eslint-plugins/commit/5370208686ef812a0387e89ebb5a794adb6d7dd3), [`4e1129f`](https://github.com/noctcore/eslint-plugins/commit/4e1129f70f9449f4feee9dca6228f2d6432393c5), [`f66255f`](https://github.com/noctcore/eslint-plugins/commit/f66255f2c2b3b6de295a9159f9ec59bc345d49e3), [`14ba71c`](https://github.com/noctcore/eslint-plugins/commit/14ba71c5a23115e235edd441510ae7707e2aa9c5), [`e7d112d`](https://github.com/noctcore/eslint-plugins/commit/e7d112dedf552391ef20a267c52f7a4b02614baa), [`76b921c`](https://github.com/noctcore/eslint-plugins/commit/76b921c3796e7bf970447a4c2fcc6453a1418b38), [`fd98467`](https://github.com/noctcore/eslint-plugins/commit/fd98467ff4bb46d7cefc8d7619cc44a1d2b0edd3), [`6ef2434`](https://github.com/noctcore/eslint-plugins/commit/6ef2434bae1749d4d0ef5c8368cd8e762ba2a91c), [`663c5dd`](https://github.com/noctcore/eslint-plugins/commit/663c5ddb58c9b93449d2e673715f2f7133563a70), [`d5db997`](https://github.com/noctcore/eslint-plugins/commit/d5db99734ce3749efe6b7e1eebe1b342e45892d9), [`3326a8d`](https://github.com/noctcore/eslint-plugins/commit/3326a8da6abc3efb0a60ec9fe59e4cd5d04c245d), [`1f57e60`](https://github.com/noctcore/eslint-plugins/commit/1f57e6027007cd4956cc9a382c915c1371f2209e), [`65a5d38`](https://github.com/noctcore/eslint-plugins/commit/65a5d38d04029b10c464ec9c64cc4e13f52147f9), [`228e15e`](https://github.com/noctcore/eslint-plugins/commit/228e15ee0a74362572dc53c847609734c479abd7), [`a935769`](https://github.com/noctcore/eslint-plugins/commit/a935769c3895387adcdd7bdaddd8354c7f3559b5), [`e6bfa65`](https://github.com/noctcore/eslint-plugins/commit/e6bfa651c1e9ed13907f2388ce9cd2ea9622a80d), [`3526608`](https://github.com/noctcore/eslint-plugins/commit/3526608ae7491e50ef7253055b97d5befd91571d)]:
+  - @noctcore/eslint-plugin-contracts@1.0.0
+  - @noctcore/eslint-plugin-prisma@1.0.0
+
 ## 0.6.2
 
 ### Patch Changes

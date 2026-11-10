@@ -1,6 +1,6 @@
 {
   "name": "@noctcore/eslint-utils",
-  "version": "0.1.2",
+  "version": "0.2.0",
   "description": "Shared rule-creator and AST helpers for @noctcore ESLint plugins.",
   "license": "MIT",
   "type": "module",

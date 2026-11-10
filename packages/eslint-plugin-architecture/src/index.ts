@@ -4,7 +4,7 @@ import { rules } from './rules';
 
 /** Flat-config namespace: rule ids are keyed `noctcore-architecture/<rule>`. */
 const NAMESPACE = 'noctcore-architecture';
-const VERSION = '0.3.4';
+const VERSION = '1.0.0';
 
 const plugin = {
   meta: { name: '@noctcore/eslint-plugin-architecture', version: VERSION },

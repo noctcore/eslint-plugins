@@ -1,5 +1,47 @@
 # @noctcore/eslint-plugin-observability
 
+## 1.0.0
+
+### Major Changes
+
+- [#185](https://github.com/noctcore/eslint-plugins/pull/185) [`3526608`](https://github.com/noctcore/eslint-plugins/commit/3526608ae7491e50ef7253055b97d5befd91571d) Thanks [@Shironex](https://github.com/Shironex)! - First stable release. These plugins are used by real projects and their presets follow the settled policy: `recommended` holds rules that are safe for any repo, and house conventions moved to `strict` in the plugins that have them (architecture, code-quality, contracts, react). From 1.0 on, a rule entering `recommended` or a rule's default becoming stricter is a major change, so a caret range on 1.x keeps getting fixes and new opt-in rules without surprise errors.
+  
+  Peer ranges stay at `eslint >=9.0.0 <11` and `typescript >=5.0.0 <7`. Renamed options and merged rules keep their old names as deprecated aliases through 1.x.
+
+### Minor Changes
+
+- [#149](https://github.com/noctcore/eslint-plugins/pull/149) [`bd3f645`](https://github.com/noctcore/eslint-plugins/commit/bd3f645b92467a8b1eeb94faa057eaeff63c4e7b) Thanks [@Shironex](https://github.com/Shironex)! - Check the logger methods consumers actually call, and stop `no-sensitive-fields-in-logs` reporting its own advised `redact()` fix.
+  
+  **A project that spreads `recommended` can see new errors**, which is why this is a minor bump:
+  
+  - `structured-log-arguments`, `no-sensitive-fields-in-logs` and `no-error-detail-loss` take a new `methods` option. The default adds `log`, `trace`, `fatal` and `verbose` to `info`, `warn`, `error` and `debug`, so `console.log(...)`, Nest's `this.logger.log(...)` / `verbose(...)` / `fatal(...)` and pino's `trace(...)` / `fatal(...)` are now checked. Set `methods: ['info', 'warn', 'error', 'debug']` to keep the old scope.
+  - `no-sensitive-fields-in-logs` and `no-error-detail-loss` now read the `loggers` option (`structured-log-arguments` already did). Before, both used the default `console`, `logger`, `log` whatever you configured.
+  
+  **Reports less:**
+  
+  - `no-sensitive-fields-in-logs` treats a redactor call as a boundary: it does not look inside `redact(...)` or `mask(...)` (set the list with the new `redactors` option), and an object key whose value is a redactor call is not reported. `logger.info('login', { token: redact(token) })` is clean; before, it gave two errors.
+  - `no-sensitive-fields-in-logs` skips names that read as a flag, a count or a timestamp about the field (`hasPassword`, `isTokenValid`, `tokenCount`, `passwordLength`, `tokenExpiresAt`, `cookieConsent`). A new `allowNames` option lists exact names never reported.
+
+- [#106](https://github.com/noctcore/eslint-plugins/pull/106) [`65a5d38`](https://github.com/noctcore/eslint-plugins/commit/65a5d38d04029b10c464ec9c64cc4e13f52147f9) Thanks [@Shironex](https://github.com/Shironex)! - `recommended` now leaves out every rule that needs options to do anything, instead of listing it at `error` or `off` while it checks nothing. Removed entries: architecture `colocated-test-required`; async-safety `require-client-timeout` and `no-shared-mutable-module-state`; contracts `require-registered-keys`, `env-var-schema-parity` and `translation-key-exists`; monorepo `no-deep-package-imports` and `no-unexported-subpath-import` (its preset is now empty); observability `audit-pii-declared`.
+  
+  No lint result changes for a project that spreads `recommended`: without their options these rules reported nothing. A project that configures one of them by name keeps working unchanged. The README's "Opt-in rules" block shows how to enable each.
+
+### Patch Changes
+
+- [#155](https://github.com/noctcore/eslint-plugins/pull/155) [`4e1129f`](https://github.com/noctcore/eslint-plugins/commit/4e1129f70f9449f4feee9dca6228f2d6432393c5) Thanks [@Shironex](https://github.com/Shironex)! - Cap the peer ranges at what CI tests: `eslint >=9.0.0 <11` and `typescript >=5.0.0 <7` (lint-meta-rules declares only the eslint peer). typescript-eslint 8 refuses TypeScript 7, and no CI leg runs ESLint 11 yet; a range widens once a leg proves the next major.
+
+- [#80](https://github.com/noctcore/eslint-plugins/pull/80) [`6ef2434`](https://github.com/noctcore/eslint-plugins/commit/6ef2434bae1749d4d0ef5c8368cd8e762ba2a91c) Thanks [@Shironex](https://github.com/Shironex)! - Give CommonJS consumers their own type declarations. Each `exports` entry now has one `types` per condition: `import` resolves `index.d.ts` and `require` resolves `index.d.cts`, the file tsup already emitted. Before, a CommonJS TypeScript project got the ESM declarations for the `.cjs` build.
+
+- [#165](https://github.com/noctcore/eslint-plugins/pull/165) [`b957e4b`](https://github.com/noctcore/eslint-plugins/commit/b957e4bcf3e5d0723c620609056161bb77e168c9) Thanks [@Shironex](https://github.com/Shironex)! - Internal: use `calleeName` from `@noctcore/eslint-utils` instead of a private copy, and walk the parser's visitor keys instead of `Object.keys` in `no-sensitive-fields-in-logs` and `no-error-detail-loss`. No report changes. The `no-sensitive-fields-in-logs` options now carry schema descriptions.
+
+- [#106](https://github.com/noctcore/eslint-plugins/pull/106) [`1f57e60`](https://github.com/noctcore/eslint-plugins/commit/1f57e6027007cd4956cc9a382c915c1371f2209e) Thanks [@Shironex](https://github.com/Shironex)! - The `recommended` config object now has a `name` (`noctcore-<plugin>/recommended`), so the ESLint config inspector and config error messages show which block it is instead of an anonymous one. Nothing else about the preset changes.
+
+- [#156](https://github.com/noctcore/eslint-plugins/pull/156) [`e6bfa65`](https://github.com/noctcore/eslint-plugins/commit/e6bfa651c1e9ed13907f2388ce9cd2ea9622a80d) Thanks [@Shironex](https://github.com/Shironex)! - `@noctcore/eslint-utils` now holds the helpers the plugins had copied: `matchesAnyGlob` / `globToRegExp` / `toPosixPath`, `createFileCache` (an mtime-keyed file cache), `calleePath`, `runnerName`, `enclosingFunction` / `isFunctionNode`, `walkSome` / `forEachDescendant`, `isSelfOrAncestor`, `unwrapTypeWrappers`, `isStaticMemberAccess`, and the logger-call detection from the observability plugin. The plugins use them instead of their own copies.
+  
+  Rule behaviour is unchanged, with one widening of glob syntax: every file-scope option now takes `{a,b}` alternation with wildcards and nesting inside. Before, async-safety and architecture treated braces as literal characters, and react, code-quality and prisma treated wildcards inside braces as literal characters; no real path contains those, so only patterns that could never match before are affected.
+- Updated dependencies [[`5370208`](https://github.com/noctcore/eslint-plugins/commit/5370208686ef812a0387e89ebb5a794adb6d7dd3), [`4e1129f`](https://github.com/noctcore/eslint-plugins/commit/4e1129f70f9449f4feee9dca6228f2d6432393c5), [`6ef2434`](https://github.com/noctcore/eslint-plugins/commit/6ef2434bae1749d4d0ef5c8368cd8e762ba2a91c), [`bd8ee6a`](https://github.com/noctcore/eslint-plugins/commit/bd8ee6afedd488ed8f582c0d3d9293db44cca7a7), [`663c5dd`](https://github.com/noctcore/eslint-plugins/commit/663c5ddb58c9b93449d2e673715f2f7133563a70), [`a935769`](https://github.com/noctcore/eslint-plugins/commit/a935769c3895387adcdd7bdaddd8354c7f3559b5), [`e6bfa65`](https://github.com/noctcore/eslint-plugins/commit/e6bfa651c1e9ed13907f2388ce9cd2ea9622a80d)]:
+  - @noctcore/eslint-utils@0.2.0
+
 ## 0.3.4
 
 ### Patch Changes

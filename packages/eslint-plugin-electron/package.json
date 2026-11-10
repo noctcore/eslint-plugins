@@ -1,6 +1,6 @@
 {
   "name": "@noctcore/eslint-plugin-electron",
-  "version": "0.0.0",
+  "version": "0.1.0",
   "description": "Electron security rules: renderer isolation flags that must not be turned off, IPC handlers that check their sender first, and shell calls kept to one checked module.",
   "license": "MIT",
   "type": "module",
@@ -52,7 +52,7 @@
     "test": "vitest run"
   },
   "dependencies": {
-    "@noctcore/eslint-utils": "^0.1.2",
+    "@noctcore/eslint-utils": "^0.2.0",
     "@typescript-eslint/utils": "^8.72.1"
   },
   "peerDependencies": {

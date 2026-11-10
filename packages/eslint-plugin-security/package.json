@@ -1,6 +1,6 @@
 {
   "name": "@noctcore/eslint-plugin-security",
-  "version": "0.4.2",
+  "version": "1.0.0",
   "description": "Security ESLint rules: shell injection, path traversal, SSRF, open redirects, unsanitized HTML (XSS), timing-unsafe comparisons and server actions that bypass their action client.",
   "license": "MIT",
   "type": "module",
@@ -54,7 +54,7 @@
     "test": "vitest run"
   },
   "dependencies": {
-    "@noctcore/eslint-utils": "^0.1.2",
+    "@noctcore/eslint-utils": "^0.2.0",
     "@typescript-eslint/utils": "^8.72.1"
   },
   "peerDependencies": {
