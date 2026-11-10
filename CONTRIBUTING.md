@@ -353,8 +353,10 @@ What the history says each bump means here (`git log -- .changeset`):
   `error` and said so in its body. A new option with an inert default has gone out as a minor too.
 - **patch**: a false positive or false negative fixed, a crash fixed, a doc corrected, a changed
   `meta.version`. Nothing a consumer has to react to.
-- **major**: never used yet. Every package is `0.x`, and a breaking change has so far been a
-  minor with a loud changelog entry. Ask before you are the first.
+- **major**: a breaking change to a package at `1.x`, such as a rule entering `recommended` or a
+  rule's default becoming stricter. A package still at `0.x` keeps the old habit of a minor with a
+  loud changelog entry. The `version` field of each `packages/*/package.json` tells which case
+  applies. Ask before you ship a major.
 
 Releases are two-phase and automatic (`.github/workflows/release.yml`): merged changesets open a
 "Version Packages" PR, and merging that publishes to npm with provenance. You never bump a version
