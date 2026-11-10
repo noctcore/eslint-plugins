@@ -18,7 +18,8 @@ In a file whose basename ends with a `fileSuffixes` entry (default `.hooks.ts`, 
 `.mutations.ts`), when the number of **exported** `use*` hooks exceeds `max` (default **4**).
 Hooks exported via a specifier list (`export { useA, useB }`) and under aliases
 (`export { useA as helperA }`) still count by their local factory name, so aliasing cannot bypass
-the limit.
+the limit. The report sits on the first exported hook past the limit, the one to move out, rather
+than on the whole file.
 
 ```ts bad filename=src/board/Board.queries.ts
 // five exported hooks
