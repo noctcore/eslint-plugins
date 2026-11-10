@@ -1,5 +1,6 @@
 export { makeCreateRule, type NoctcoreRuleDocs } from './createRule';
 export {
+  calleeName,
   calleePath,
   enclosingFunction,
   forEachDescendant,

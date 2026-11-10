@@ -3,6 +3,7 @@ import { AST_NODE_TYPES, type TSESTree } from '@typescript-eslint/utils';
 import { describe, expect, it } from 'vitest';
 
 import {
+  calleeName,
   calleePath,
   enclosingFunction,
   forEachDescendant,
@@ -53,6 +54,20 @@ function firstOfType<T extends TSESTree.Node>(code: string, type: AST_NODE_TYPES
 function callee(code: string): TSESTree.Node {
   return firstOfType<TSESTree.CallExpression>(code, AST_NODE_TYPES.CallExpression).node.callee;
 }
+
+describe('calleeName', () => {
+  it.each([
+    ['redact(x)', 'redact'],
+    ['utils.mask(x)', 'mask'],
+    ['this.audit.mask(x)', 'mask'],
+    ['make().mask(x)', 'mask'],
+    ['a[b].mask(x)', 'mask'],
+    ['fns[name](x)', null],
+    ['(() => 1)()', null],
+  ])('%s gives %s', (code, expected) => {
+    expect(calleeName(callee(code))).toBe(expected);
+  });
+});
 
 describe('calleePath', () => {
   it.each([
