@@ -58,5 +58,5 @@ npm.
 
 ## Supported versions
 
-Only the latest release of each package. Every package is `0.x`; fixes ship forward, never as a
-backport.
+Only the latest release of each package, whether it is at `1.x` or still at `0.x`; fixes ship
+forward, never as a backport.
