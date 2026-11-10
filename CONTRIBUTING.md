@@ -347,14 +347,17 @@ docs inside a package, says so with `bun run changeset --empty`.
 
 What the history says each bump means here (`git log -- .changeset`):
 
-- **minor**: a new rule, whether it lands in `recommended` at `error` (`no-unguarded-web-storage`,
-  react 0.4.0, which can fail a consumer's build) or ships opt-in (`server-action-through-client`,
-  security). A preset severity change is also a minor: react 0.3.0 moved two rules from `warn` to
-  `error` and said so in its body. A new option with an inert default has gone out as a minor too.
+- **minor**: a new rule that ships opt-in (`server-action-through-client`, security), or a new option
+  with an inert default. In a package still at `0.x`, a new rule that lands in `recommended` at
+  `error` is also a minor (`no-unguarded-web-storage`, react 0.4.0, which can fail a consumer's
+  build), and so is a preset severity change: react 0.3.0 moved two rules from `warn` to `error` and
+  said so in its body. In a package at `1.x` those two are majors, see the next bullet.
 - **patch**: a false positive or false negative fixed, a crash fixed, a doc corrected, a changed
   `meta.version`. Nothing a consumer has to react to.
-- **major**: never used yet. Every package is `0.x`, and a breaking change has so far been a
-  minor with a loud changelog entry. Ask before you are the first.
+- **major**: a breaking change to a package at `1.x`, such as a rule entering `recommended` or a
+  rule's default becoming stricter. A package still at `0.x` keeps the old habit of a minor with a
+  loud changelog entry. The `version` field of each `packages/*/package.json` tells which case
+  applies. Ask before you ship a major.
 
 Releases are two-phase and automatic (`.github/workflows/release.yml`): merged changesets open a
 "Version Packages" PR, and merging that publishes to npm with provenance. You never bump a version
