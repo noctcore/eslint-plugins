@@ -52,15 +52,19 @@ export default [
   {
     files: SOURCE,
     rules: {
-      // Treats every `index.ts` as a barrel, so each plugin's entry point (which
-      // builds the plugin object) reports. Tracked as a rule issue; re-enable
-      // once the rule tells an entry point from a barrel.
-      'noctcore-architecture/barrel-purity': 'off',
       // House naming conventions this repo does not follow: rule files are named
       // after the rule id, not the exported `<camelCase>Rule` binding.
       'noctcore-architecture/filename-matches-export': 'off',
       // Style, not correctness, and proposed for removal from `recommended`.
       'noctcore-code-quality/prefer-early-return': 'off',
+    },
+  },
+  {
+    // Package entry points build the plugin object (or the rule catalog) and
+    // also re-export helpers for consumers' tooling; that mix is deliberate.
+    files: ['packages/*/src/index.ts', 'packages/lint-meta-rules/src/rules/index.ts'],
+    rules: {
+      'noctcore-architecture/barrel-purity': 'off',
     },
   },
   {

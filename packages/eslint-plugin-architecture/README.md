@@ -80,7 +80,7 @@ export default [
 
 | Rule | Description | Preset | ⚙️ | 🔧 | 💡 | 💭 |
 | --- | --- | :-: | :-: | :-: | :-: | :-: |
-| [`barrel-purity`](https://noctcore.github.io/eslint-plugins/rules/architecture/barrel-purity/) | A barrel (`index.ts` / `index.tsx`) must contain only re-exports — never local declarations, side effects, or default-exported values. | ✅ |  |  |  |  |
+| [`barrel-purity`](https://noctcore.github.io/eslint-plugins/rules/architecture/barrel-purity/) | A barrel (an `index.*` file with an `export … from` re-export) must contain only re-exports, never local declarations, side effects, or default-exported values. | ✅ |  |  |  |  |
 | [`colocated-test-required`](https://noctcore.github.io/eslint-plugins/rules/architecture/colocated-test-required/) | A source file matching an `include` glob must have a colocated `*.test.*` / `*.spec.*` sibling on disk. | 🔘 | ⚙️ |  |  |  |
 | [`component-folder-structure`](https://noctcore.github.io/eslint-plugins/rules/architecture/component-folder-structure/) | A component `<Name>/<Name>.tsx` under `<componentRoot>/<feature>/...` must have its sibling set (`.hooks.ts`, `.types.ts`, `.stories.tsx`, `.test.tsx`, `index.ts`) present on disk. | ✅ |  |  |  |  |
 | [`filename-matches-export`](https://noctcore.github.io/eslint-plugins/rules/architecture/filename-matches-export/) | A file's basename must match its primary export (a default export, or the sole named export). | ✅ |  |  | 💡 |  |

@@ -38,6 +38,12 @@ type MessageIds = 'impureBarrel';
  *   - `import './styles.css'`        (side-effect import)
  *   - any non-import/export statement (`const x = …`, a call expression, `if` …)
  */
+/*
+ * An `index.*` file is only treated as a barrel once it re-exports from another
+ * module (`export … from`, `export * from`). A server or package entry point
+ * (`const app = createServer(); app.listen()`) is also named `index.ts` and has
+ * no such re-export, so it is left alone.
+ */
 const DEFAULT_ALLOW: readonly string[] = [];
 
 const BARREL_BASENAME = /^index\.(ts|tsx|mts|cts|js|jsx|mjs|cjs)$/;
@@ -46,7 +52,12 @@ const optionSchema: JSONSchema4 = {
   type: 'object',
   additionalProperties: false,
   properties: {
-    allow: { type: 'array', items: { type: 'string' }, uniqueItems: true },
+    allow: {
+      type: 'array',
+      items: { type: 'string' },
+      uniqueItems: true,
+      description: 'Globs of barrel files to skip entirely.',
+    },
   },
 };
 
@@ -82,13 +93,26 @@ function impurityOf(stmt: TSESTree.ProgramStatement): string | null {
   }
 }
 
+/**
+ * True when the statement re-exports from another module: `export * from` or
+ * `export { a } from`. Exporting an imported binding (`import { rules } from
+ * './rules'; export { rules }`) does not count, since a plugin or package entry
+ * point does exactly that next to the code that builds it.
+ */
+function isSourcedReExport(stmt: TSESTree.ProgramStatement): boolean {
+  return (
+    stmt.type === AST_NODE_TYPES.ExportAllDeclaration ||
+    (stmt.type === AST_NODE_TYPES.ExportNamedDeclaration && stmt.source !== null)
+  );
+}
+
 export const barrelPurityRule = createRule<RuleOptions, MessageIds>({
   name: RULE_NAME,
   meta: {
     type: 'problem',
     docs: {
       description:
-        'A barrel (`index.ts` / `index.tsx`) must contain only re-exports — never local declarations, side effects, or default-exported values.',
+        'A barrel (an `index.*` file with an `export … from` re-export) must contain only re-exports, never local declarations, side effects, or default-exported values.',
     },
     schema: [optionSchema],
     messages: {
@@ -107,6 +131,9 @@ export const barrelPurityRule = createRule<RuleOptions, MessageIds>({
 
     return {
       Program(node): void {
+        if (!node.body.some(isSourcedReExport)) {
+          return;
+        }
         for (const stmt of node.body) {
           const kind = impurityOf(stmt);
           if (kind !== null) {
