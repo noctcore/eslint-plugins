@@ -35,6 +35,7 @@ body:
         - eslint-plugin-nestjs
         - eslint-plugin-query
         - eslint-plugin-electron
+        - eslint-plugin-dates
         - lint-meta-rules (whole-repo checks for the harness)
         - a new package
     validations:

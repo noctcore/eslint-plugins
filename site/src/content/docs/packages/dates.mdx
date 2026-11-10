@@ -1,0 +1,31 @@
+---
+title: "@noctcore/eslint-plugin-dates"
+description: "Calendar days read in one zone: local Date accessors, date-only parsing, and hand-rolled day arithmetic kept to one calendar module."
+sidebar:
+  label: dates
+  order: 14
+---
+
+import QuickStart from '../../../components/QuickStart.astro';
+import RuleTable from '../../../components/RuleTable.astro';
+
+Calendar days read in one zone: local Date accessors, date-only parsing, and hand-rolled day arithmetic kept to one calendar module.
+
+## What it solves
+
+A due date or a leave day is a calendar day, not an instant, and the `Date` API reads it in whatever zone the machine is in. The same row shows 31 March on a laptop in Warsaw and 30 March on a CI runner in UTC, so the bug passes every test on the machine that wrote it. The fix is one calendar module that answers every day question in the zone the product agreed on; these two rules keep the rest of the code going through it.
+
+## What it will yell at you about
+
+It will yell at you about **local `Date` accessors** (`getDate()`, `setHours()`), **`new Date('2026-03-31')`** and **`toISOString().slice(0, 10)`**, and, in the second rule, **hand-rolled day arithmetic** (`getUTC*`, `Date.UTC()`, `setMonth`, `24 * 60 * 60 * 1000`). Both rules are opt-in: name your calendar module in `allowIn` so it is the one file that may do this. **It is a bad fit** for code whose dates are all instants (log stamps, token expiries), and it matches methods by name, without types.
+
+## Install and configure
+
+<QuickStart pkg="dates" />
+
+## Rules
+
+Each rule links to its page, with the options it takes and Incorrect and Correct examples. A good first
+read is [`no-local-calendar-time`](/eslint-plugins/rules/dates/no-local-calendar-time/).
+
+<RuleTable pkg="dates" />

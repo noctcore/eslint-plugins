@@ -69,6 +69,7 @@ export default defineConfig({
               ['nestjs', 'NestJS'],
               ['query', 'Query'],
               ['electron', 'Electron'],
+              ['dates', 'Dates'],
               ['lint-meta-rules', 'lint-meta rules'],
             ].map(([directory, label]) => ({
               label,

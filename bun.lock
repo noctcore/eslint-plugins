@@ -99,6 +99,27 @@
         "typescript": ">=5.0.0 <7",
       },
     },
+    "packages/eslint-plugin-dates": {
+      "name": "@noctcore/eslint-plugin-dates",
+      "version": "0.0.0",
+      "dependencies": {
+        "@noctcore/eslint-utils": "^0.1.2",
+        "@typescript-eslint/utils": "^8.72.1",
+      },
+      "devDependencies": {
+        "@noctcore/eslint-test-utils": "workspace:*",
+        "@types/node": "^22.20.5",
+        "@typescript-eslint/parser": "^8.72.1",
+        "@typescript-eslint/rule-tester": "^8.72.1",
+        "tsup": "^9.0.0",
+        "typescript": "^5.6.0",
+        "vitest": "^5",
+      },
+      "peerDependencies": {
+        "eslint": ">=9.0.0 <11",
+        "typescript": ">=5.0.0 <7",
+      },
+    },
     "packages/eslint-plugin-electron": {
       "name": "@noctcore/eslint-plugin-electron",
       "version": "0.0.0",
@@ -703,6 +724,8 @@
     "@noctcore/eslint-plugin-code-quality": ["@noctcore/eslint-plugin-code-quality@workspace:packages/eslint-plugin-code-quality"],
 
     "@noctcore/eslint-plugin-contracts": ["@noctcore/eslint-plugin-contracts@workspace:packages/eslint-plugin-contracts"],
+
+    "@noctcore/eslint-plugin-dates": ["@noctcore/eslint-plugin-dates@workspace:packages/eslint-plugin-dates"],
 
     "@noctcore/eslint-plugin-electron": ["@noctcore/eslint-plugin-electron@workspace:packages/eslint-plugin-electron"],
 
