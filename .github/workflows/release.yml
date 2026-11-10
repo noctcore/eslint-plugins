@@ -65,12 +65,17 @@ jobs:
         env:
           NPM_CONFIG_PROVENANCE: 'true'
 
-      # changesets/action can't label the PR it opens. A failure here must not fail a run that
-      # may already have published, hence continue-on-error.
+      # changesets/action can't label the PR it opens. Its v2 output for the PR it created or
+      # updated is `pr-number` (there is no `pullRequestNumber` output), and it is only set on a
+      # versioning run, never on a publishing run. A failure here must not fail a run that may
+      # already have published, hence continue-on-error. The REST label and assignee endpoints
+      # work with the job's `pull-requests: write` permission.
       - name: Label and assign the Version Packages PR
-        if: steps.changesets.outputs.pullRequestNumber != ''
+        if: steps.changesets.outputs.pr-number != ''
         continue-on-error: true
-        run: gh pr edit "$PR_NUMBER" --repo "$GITHUB_REPOSITORY" --add-label release --add-assignee Shironex
+        run: |
+          gh api --method POST "repos/$GITHUB_REPOSITORY/issues/$PR_NUMBER/labels" -f 'labels[]=release' --silent
+          gh api --method POST "repos/$GITHUB_REPOSITORY/issues/$PR_NUMBER/assignees" -f 'assignees[]=Shironex' --silent
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          PR_NUMBER: ${{ steps.changesets.outputs.pullRequestNumber }}
+          PR_NUMBER: ${{ steps.changesets.outputs.pr-number }}
