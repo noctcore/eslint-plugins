@@ -1,5 +1,7 @@
-import { readFileSync, statSync } from 'node:fs';
+import { statSync } from 'node:fs';
 import path from 'node:path';
+
+import { createFileCache } from '@noctcore/eslint-utils';
 
 /**
  * Translation catalog loading for the i18n rules.
@@ -49,44 +51,48 @@ const NS_PLACEHOLDER = '{ns}';
 const SAFE_NAMESPACE = /^(?!\.{1,2}$)[^/\\\0]+$/u;
 
 interface IParsedFile {
-  readonly mtimeMs: number;
   /** Parsed JSON, or the reason it could not be parsed. */
   readonly value: { readonly ok: true; readonly json: unknown } | { readonly ok: false; readonly reason: string };
   /** Flattened catalogs of this file, keyed by `keyPath\0keySeparator`. */
   readonly flattened: Map<string, Catalog | null>;
 }
 
-// Absolute path -> parsed file. Re-read when the file's mtime moves, so an
-// editor session sees catalog edits without restarting the ESLint server.
-const fileCache = new Map<string, IParsedFile>();
+// Absolute path -> parsed file, keyed on path and mtime so an editor session
+// sees catalog edits without restarting the ESLint server. The flattened
+// catalogs live inside the entry, so they are dropped with it.
+const fileCache = createFileCache<IParsedFile>((text) => {
+  let value: IParsedFile['value'];
+  try {
+    value = { ok: true, json: JSON.parse(text) as unknown };
+  } catch (error) {
+    value = { ok: false, reason: error instanceof Error ? error.message : String(error) };
+  }
+  return { value, flattened: new Map() };
+});
 
 type FileRead =
   | { readonly kind: 'missing' }
   | { readonly kind: 'invalid'; readonly reason: string }
   | { readonly kind: 'ok'; readonly entry: IParsedFile };
 
-function readCatalogFile(absolute: string): FileRead {
-  let mtimeMs: number;
+/** True when `absolute` is a regular file, readable or not. */
+function isFile(absolute: string): boolean {
   try {
-    const stats = statSync(absolute);
-    if (!stats.isFile()) return { kind: 'missing' };
-    mtimeMs = stats.mtimeMs;
+    return statSync(absolute).isFile();
   } catch {
-    return { kind: 'missing' };
+    return false;
   }
-  const cached = fileCache.get(absolute);
-  if (cached !== undefined && cached.mtimeMs === mtimeMs) {
-    return cached.value.ok ? { kind: 'ok', entry: cached } : { kind: 'invalid', reason: cached.value.reason };
+}
+
+function readCatalogFile(absolute: string): FileRead {
+  const entry = fileCache.get(absolute);
+  if (entry === undefined) {
+    // The shared cache answers `undefined` for a missing file and for one it
+    // could not read. A catalog that exists but cannot be read is a broken
+    // configuration, not an absent namespace, so it stays loud.
+    return isFile(absolute) ? { kind: 'invalid', reason: 'the file cannot be read' } : { kind: 'missing' };
   }
-  let value: IParsedFile['value'];
-  try {
-    value = { ok: true, json: JSON.parse(readFileSync(absolute, 'utf8')) as unknown };
-  } catch (error) {
-    value = { ok: false, reason: error instanceof Error ? error.message : String(error) };
-  }
-  const entry: IParsedFile = { mtimeMs, value, flattened: new Map() };
-  fileCache.set(absolute, entry);
-  return value.ok ? { kind: 'ok', entry } : { kind: 'invalid', reason: value.reason };
+  return entry.value.ok ? { kind: 'ok', entry } : { kind: 'invalid', reason: entry.value.reason };
 }
 
 function isRecord(value: unknown): value is Record<string, unknown> {

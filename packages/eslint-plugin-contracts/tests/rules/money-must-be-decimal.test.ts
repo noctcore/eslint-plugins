@@ -28,6 +28,18 @@ ruleTester.run('money-must-be-decimal', moneyMustBeDecimalRule, {
       options: [{ allowedFiles: ['apps/api/src/legacy/legacy.service.ts'] }],
       filename: 'apps/api/src/legacy/legacy.service.ts',
     },
+    // A plain path still matches as a suffix of an absolute filename.
+    {
+      code: 'class Legacy { total: number; }',
+      options: [{ allowedFiles: ['apps/api/src/legacy/legacy.service.ts'] }],
+      filename: '/repo/apps/api/src/legacy/legacy.service.ts',
+    },
+    // A glob skips a whole directory.
+    {
+      code: 'class Legacy { total: number; }',
+      options: [{ allowedFiles: ['**/legacy/**'] }],
+      filename: '/repo/apps/api/src/legacy/totals.ts',
+    },
     // Custom fieldPatterns that do not match the field name leave it valid.
     {
       code: 'class Order { total: number; }',
@@ -61,6 +73,13 @@ ruleTester.run('money-must-be-decimal', moneyMustBeDecimalRule, {
     { code: 'function pay(amount: number, price: number | null) {}' },
   ],
   invalid: [
+    // An allowlist entry matches at a directory boundary, not inside a file name.
+    {
+      code: 'class Cart { total: number; }',
+      options: [{ allowedFiles: ['totals.ts'] }],
+      filename: '/repo/src/subtotals.ts',
+      errors: [{ messageId: 'moneyMustBeDecimal' }],
+    },
     // A money key typed z.number() in a schema.
     {
       code: 'const Invoice = z.object({ amount: z.number(), note: z.string() });',

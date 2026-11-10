@@ -1,4 +1,4 @@
-import { mkdtempSync, rmSync, utimesSync, writeFileSync } from 'node:fs';
+import { chmodSync, mkdtempSync, rmSync, utimesSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -290,5 +290,25 @@ describe('translation catalogs on a real, changing file', () => {
     writeFileSync(catalog, JSON.stringify({ hello: 'Hello', bye: 'Bye' }));
     utimesSync(catalog, new Date(2_000), new Date(2_000));
     expect(keysOf()).toEqual(['hello', 'bye']);
+  });
+
+  // chmod does not block reads on Windows or for root, so the case cannot be set up there.
+  const canMakeUnreadable = process.platform !== 'win32' && process.getuid?.() !== 0;
+
+  it.runIf(canMakeUnreadable)('reports a catalog that exists but cannot be read, instead of treating it as absent', () => {
+    const locked = path.join(dir, 'locked.json');
+    writeFileSync(locked, JSON.stringify({ hello: 'Hello' }));
+    chmodSync(locked, 0o000);
+    try {
+      const { catalogs, errors } = catalogsForNamespace('translation', [{ file: locked }], {
+        cwd: dir,
+        defaultNamespace: 'translation',
+        keySeparator: '.',
+      });
+      expect(catalogs).toEqual([]);
+      expect(errors).toEqual([`${locked}: the file cannot be read`]);
+    } finally {
+      chmodSync(locked, 0o600);
+    }
   });
 });
