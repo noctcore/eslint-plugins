@@ -5,7 +5,7 @@ import { rules } from './rules';
 
 /** Flat-config namespace: rule ids are keyed `noctcore-code-quality/<rule>`. */
 const NAMESPACE = 'noctcore-code-quality';
-const VERSION = '0.4.2';
+const VERSION = '1.0.0';
 
 const plugin = {
   meta: { name: '@noctcore/eslint-plugin-code-quality', version: VERSION },

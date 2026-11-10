@@ -1,6 +1,6 @@
 {
   "name": "@noctcore/eslint-plugin-llm",
-  "version": "0.1.2",
+  "version": "0.1.3",
   "description": "ESLint rules for code that calls LLM SDKs: model output treated as untrusted input before it reaches a dangerous sink.",
   "license": "MIT",
   "type": "module",
@@ -55,7 +55,7 @@
     "test": "vitest run"
   },
   "dependencies": {
-    "@noctcore/eslint-utils": "^0.1.2",
+    "@noctcore/eslint-utils": "^0.2.0",
     "@typescript-eslint/utils": "^8.72.1"
   },
   "peerDependencies": {
