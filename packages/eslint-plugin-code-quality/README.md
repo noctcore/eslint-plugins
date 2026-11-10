@@ -49,7 +49,8 @@ export default [
 Some rules are exported but left out of `recommended`. `interface-prefix-i` and
 `no-template-trim-empty-ternary` are house style, not correctness. The test-discipline rules in the
 second block need a per-project fact before they are precise, such as which files are unit tests,
-so each one takes its options from your project.
+so each one takes its options from your project. `prefer-web-first-page-assertions` only means
+something in Playwright specs, so the third block scopes it to them.
 
 ```js
 // eslint.config.js
@@ -79,6 +80,13 @@ export default [
       'noctcore-code-quality/typed-mock-over-double-cast': ['error', {
         allowTargets: ['PrismaService'],
       }],
+    },
+  },
+  {
+    files: ['e2e/**/*.spec.ts'],
+    languageOptions: { parser: tsParser },
+    rules: {
+      'noctcore-code-quality/prefer-web-first-page-assertions': 'error',
     },
   },
 ];
@@ -111,6 +119,7 @@ export default [
 | [`no-template-trim-empty-ternary`](https://noctcore.github.io/eslint-plugins/rules/code-quality/no-template-trim-empty-ternary/) | Disallow inline `<template>.trim() === '' ? fallback : <template>.trim()` patterns. Extract to a named utility so the expression is built once and is unit-testable in one place. | 🔘 |  |  |  |  |
 | [`no-vacuous-expect`](https://noctcore.github.io/eslint-plugins/rules/code-quality/no-vacuous-expect/) | Disallow vacuous expects (`typeof` checks, literal tautologies, a sole `toBeDefined`/`toBeTruthy`, a sole presence check on the render root): a test must assert behaviour that a real regression would break. | ✅ |  |  |  |  |
 | [`prefer-early-return`](https://noctcore.github.io/eslint-plugins/rules/code-quality/prefer-early-return/) | Prefer guard clauses (early return) over wrapping the whole function body in a multi-statement `if` without an `else`. | ✅ |  |  |  |  |
+| [`prefer-web-first-page-assertions`](https://noctcore.github.io/eslint-plugins/rules/code-quality/prefer-web-first-page-assertions/) | Disallow asserting on a one-shot Playwright page read (`expect(page.url())`, `expect(await page.title())`): the check runs once, possibly before the navigation lands. Use the retrying `toHaveURL` / `toHaveTitle`. | 🔘 |  |  | 💡 |  |
 | [`skipped-tests-need-tracking`](https://noctcore.github.io/eslint-plugins/rules/code-quality/skipped-tests-need-tracking/) | Skipped tests (`.skip` / `.fixme` / `xit` / `xdescribe`, and unconditional `node:test` `{ skip }` / `{ todo }` / `t.skip()`) must carry a tracking marker (an issue URL or `TODO(@owner)`) on or above the line, so the debt has an owner instead of rotting silently. | ✅ |  |  | 💡 |  |
 | [`typed-mock-over-double-cast`](https://noctcore.github.io/eslint-plugins/rules/code-quality/typed-mock-over-double-cast/) | Disallow an object literal of `jest.fn()` / `vi.fn()` mocks cast `as unknown as T`: the double cast switches type checking off, so a mock of a renamed or removed method keeps passing. | 🔘 |  |  |  |  |
 <!-- end generated rules -->

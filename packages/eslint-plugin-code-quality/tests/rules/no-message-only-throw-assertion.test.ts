@@ -94,6 +94,16 @@ ruleTester.run('no-message-only-throw-assertion', noMessageOnlyThrowAssertionRul
       `,
       options: [{ assertionHelpers: ['^expectRejectsDomainError$'] }],
     },
+    // A helper reached through a deeper namespace is matched by its full dotted path.
+    {
+      code: `
+        it('refuses', async () => {
+          await helpers.errors.expectRejectsDomainError(service.find(id), { type: NotFoundError });
+          await expect(service.find(id)).rejects.toThrow('Employee not found.');
+        });
+      `,
+      options: [{ assertionHelpers: ['^helpers\\.errors\\.expectRejectsDomainError$'] }],
+    },
     // allowMessageOnly keeps only the argless form in scope.
     {
       code: "it('refuses', () => { expect(() => toApiPath(url)).toThrow('Refusing a non-relative api path'); });",

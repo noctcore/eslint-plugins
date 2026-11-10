@@ -3,12 +3,12 @@ import type { JSONSchema4 } from '@typescript-eslint/utils/json-schema';
 
 import { createRule } from '../createRule';
 import { matchesAny } from '../utils/allowMatch';
-import { unwrapTypeWrappers, walkSome } from '../utils/ast';
+import { calleePath, unwrapTypeWrappers, walkSome } from '../utils/ast';
 
 const RULE_NAME = 'typed-mock-over-double-cast';
 
 export interface TypedMockOverDoubleCastOptions {
-  /** Callees that create a mock function (`jest.fn`, `vi.fn`), as `name` or `obj.name`. */
+  /** Callees that create a mock function (`jest.fn`, `vi.fn`), as `name` or a dotted path (`vi.fn`, `testing.mocks.fn`). */
   readonly mockFactories?: readonly string[];
   /**
    * Globs matched against the cast target: its type name (`PrismaService`,
@@ -38,22 +38,6 @@ const optionSchema: JSONSchema4 = {
     allowTargets: { type: 'array', items: { type: 'string', minLength: 1 }, uniqueItems: true },
   },
 };
-
-/** `name` or `obj.name` for a callee, else null. */
-function calleePath(callee: TSESTree.Expression): string | null {
-  if (callee.type === AST_NODE_TYPES.Identifier) {
-    return callee.name;
-  }
-  if (
-    callee.type === AST_NODE_TYPES.MemberExpression &&
-    !callee.computed &&
-    callee.property.type === AST_NODE_TYPES.Identifier &&
-    callee.object.type === AST_NODE_TYPES.Identifier
-  ) {
-    return `${callee.object.name}.${callee.property.name}`;
-  }
-  return null;
-}
 
 /** The dotted name of a type reference (`Prisma.TransactionClient`), else null. */
 function typeName(node: TSESTree.TypeNode): string | null {

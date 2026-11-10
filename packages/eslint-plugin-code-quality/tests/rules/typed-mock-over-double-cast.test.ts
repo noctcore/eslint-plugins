@@ -154,6 +154,12 @@ ruleTester.run('typed-mock-over-double-cast', typedMockOverDoubleCastRule, {
       options: [{ mockFactories: ['sinon.stub'] }],
       errors: [{ messageId: 'doubleCastMock' }],
     },
+    // A factory reached through a deeper namespace, matched by its dotted path.
+    {
+      code: 'const repo = { find: testing.mocks.fn() } as unknown as Repository;',
+      options: [{ mockFactories: ['testing.mocks.fn'] }],
+      errors: [{ messageId: 'doubleCastMock' }],
+    },
     // An allow glob for one type does not cover another.
     {
       code: 'const svc = { run: jest.fn() } as unknown as MailService;',

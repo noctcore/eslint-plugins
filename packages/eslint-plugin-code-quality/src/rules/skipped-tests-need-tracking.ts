@@ -2,7 +2,7 @@ import { AST_NODE_TYPES, type TSESTree } from '@typescript-eslint/utils';
 import type { JSONSchema4 } from '@typescript-eslint/utils/json-schema';
 
 import { createRule } from '../createRule';
-import { runnerName } from '../utils/ast';
+import { calleeName, runnerName } from '../utils/ast';
 
 const RULE_NAME = 'skipped-tests-need-tracking';
 
@@ -73,18 +73,6 @@ const optionSchema: JSONSchema4 = {
     lookback: { type: 'integer', minimum: 0 },
   },
 };
-
-/** Last name of a callee: `xit` for `xit`, `skip` for `it.skip`, else null. */
-function calleeName(callee: TSESTree.Node): string | null {
-  if (callee.type === AST_NODE_TYPES.Identifier) {
-    return callee.name;
-  }
-  return callee.type === AST_NODE_TYPES.MemberExpression &&
-    !callee.computed &&
-    callee.property.type === AST_NODE_TYPES.Identifier
-    ? callee.property.name
-    : null;
-}
 
 /**
  * The label of a skipping runner call, else null: `xit(...)`, `it.skip(...)`,

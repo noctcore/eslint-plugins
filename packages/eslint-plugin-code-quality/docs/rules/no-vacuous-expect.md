@@ -149,7 +149,7 @@ with a matcher that states the intent instead.
 | Option | Type | Default | Meaning |
 | --- | --- | --- | --- |
 | `weakMatchers` | `string[]` | `["toBeDefined", "toBeTruthy", "toBeFalsy", "not.toBeUndefined"]` | Matchers that cannot carry a test alone. Prefix `not.` for the negated form. |
-| `assertionCallees` | `string[]` (regex sources) | `["^assert", "^expect\\w", "\\.expect$"]` | Calls that also count as an assertion. Matched against `name`, `obj.name` (member on an identifier) or `.name` (any other member). |
+| `assertionCallees` | `string[]` (regex sources) | `["^assert", "^expect\\w", "\\.expect$"]` | Calls that also count as an assertion. Matched against `name`, the dotted path of a member chain rooted at an identifier (`assert.strict.equal`), or `.name` for any other member (`request(app).expect`). |
 | `renderRoots` | `string[]` | `["container", "baseElement"]` | Names of the render root, as a binding or a member (`view.container`). A sole presence check on one is reported. `[]` turns that check off. |
 
 `toBeUndefined`, `toBeNull` and `not.toBeNull` are not weak by default: each pins one specific

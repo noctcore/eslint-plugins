@@ -15,6 +15,7 @@ import { noSleepInUnitTestsRule } from './no-sleep-in-unit-tests';
 import { noSwallowedAssertionRule } from './no-swallowed-assertion';
 import { noTemplateTrimEmptyTernaryRule } from './no-template-trim-empty-ternary';
 import { preferEarlyReturnRule } from './prefer-early-return';
+import { preferWebFirstPageAssertionsRule } from './prefer-web-first-page-assertions';
 import { noVacuousExpectRule } from './no-vacuous-expect';
 import { skippedTestsNeedTrackingRule } from './skipped-tests-need-tracking';
 import { typedMockOverDoubleCastRule } from './typed-mock-over-double-cast';
@@ -43,4 +44,6 @@ export const rules = {
   'no-sleep-in-unit-tests': noSleepInUnitTestsRule,
   'no-real-clock-in-unit-tests': noRealClockInUnitTestsRule,
   'typed-mock-over-double-cast': typedMockOverDoubleCastRule,
+  // Available but omitted from `recommended` (Playwright specs only).
+  'prefer-web-first-page-assertions': preferWebFirstPageAssertionsRule,
 };
