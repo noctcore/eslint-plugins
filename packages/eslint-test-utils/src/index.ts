@@ -18,3 +18,4 @@ export type {
   RunPluginDocsOptions,
 } from './docExamples';
 export { eslintVersion, expectedEslintMajor, ruleTester } from './ruleTester';
+export { workspacePath } from './workspace';
