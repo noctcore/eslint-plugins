@@ -55,8 +55,8 @@ const sandboxDir = process.env.VERIFY_DIR;
 | `configModule` | `string` | `'@/config'` | Import path of the validated config module, named in the report message. |
 | `allowedFiles` | `string[]` (globs) | `['**/*.config.{ts,js,mjs,cjs,mts,cts}', '**/*.{spec,test}.{ts,tsx,mts,cts,js,jsx,mjs,cjs}', '**/scripts/**', '**/tools/**']` | Files permitted to read `process.env` directly. Passing it replaces the default list. |
 
-Globs support `*`, `**`, `?`, and `{a,b}` alternation; a leading `**/` matches any (or no) directory
-prefix, so patterns work against both relative and absolute filenames.
+Globs support `*`, `**`, `?`, and `{a,b}` alternation. They are matched against the file's absolute
+path and its path relative to the working directory and to the workspace root (the nearest ancestor holding a lockfile, `pnpm-workspace.yaml` or `.git`), so `apps/server/**` and `**/server/**` both work.
 
 ```js
 'noctcore-contracts/no-direct-process-env': ['error', {

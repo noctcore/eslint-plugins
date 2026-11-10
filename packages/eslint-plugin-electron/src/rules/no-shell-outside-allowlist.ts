@@ -1,4 +1,4 @@
-import { matchesAnyGlob } from '@noctcore/eslint-utils';
+import { fileMatchesAnyGlob } from '@noctcore/eslint-utils';
 import { AST_NODE_TYPES, type TSESTree } from '@typescript-eslint/utils';
 
 import { createRule } from '../createRule';
@@ -42,7 +42,7 @@ export const noShellOutsideAllowlistRule = createRule<RuleOptions, MessageIds>({
             items: { type: 'string' },
             uniqueItems: true,
             description:
-              'Globs of the files that may use `shell`, matched against the forward-slashed filename (a leading `**/` matches any prefix). Empty by default, so every use is reported.',
+              'Globs of the files that may use `shell`, matched against the absolute path and the path relative to the working directory or workspace root. Empty by default, so every use is reported.',
           },
         },
       },
@@ -54,7 +54,7 @@ export const noShellOutsideAllowlistRule = createRule<RuleOptions, MessageIds>({
   },
   defaultOptions: [{}],
   create(context, [options]) {
-    if (matchesAnyGlob(context.filename, options.allowIn ?? [])) return {};
+    if (fileMatchesAnyGlob(context.filename, options.allowIn ?? [], context.cwd)) return {};
 
     const report = (node: TSESTree.Node): void => {
       context.report({ node, messageId: 'shellOutsideAllowlist' });

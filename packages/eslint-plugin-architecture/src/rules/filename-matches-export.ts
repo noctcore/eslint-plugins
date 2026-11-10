@@ -187,7 +187,7 @@ export const filenameMatchesExportRule = createRule<RuleOptions, MessageIds>({
     const filename = context.filename;
     const stem = stemOf(filename);
 
-    if (stem === 'index' || isIgnoredPath(filename, ignore)) {
+    if (stem === 'index' || isIgnoredPath(filename, ignore, context.cwd)) {
       return {};
     }
 

@@ -111,7 +111,7 @@ export const componentFolderStructureRule = createRule<RuleOptions, MessageIds>(
 
     const isEntry = isComponentEntryFile(filename);
     const isLoose = !isEntry && options.requireOwnFolder === true && isComponentFileName(filename);
-    if ((!isEntry && !isLoose) || isIgnoredPath(filename, ignorePaths)) {
+    if ((!isEntry && !isLoose) || isIgnoredPath(filename, ignorePaths, context.cwd)) {
       return {};
     }
     if (getFeatureName(filename, componentRoot) === null) {

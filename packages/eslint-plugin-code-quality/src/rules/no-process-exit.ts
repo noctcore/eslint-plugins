@@ -1,8 +1,8 @@
+import { fileMatchesAnyGlob } from '@noctcore/eslint-utils';
 import { type TSESTree } from '@typescript-eslint/utils';
 import type { JSONSchema4 } from '@typescript-eslint/utils/json-schema';
 
 import { isStaticMemberAccess } from '../utils/ast';
-import { matchesAny } from '../utils/allowMatch';
 import { createRule } from '../createRule';
 
 const RULE_NAME = 'no-process-exit';
@@ -64,7 +64,7 @@ export const noProcessExitRule = createRule<RuleOptions, MessageIds>({
   create(context, [options]) {
     const allowIn = options.allowIn ?? DEFAULT_ALLOW_IN;
 
-    if (matchesAny(context.filename, allowIn)) {
+    if (fileMatchesAnyGlob(context.filename, allowIn, context.cwd)) {
       return {};
     }
 

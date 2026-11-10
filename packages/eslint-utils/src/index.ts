@@ -16,6 +16,13 @@ export {
   type VisitorKeys,
 } from './ast';
 export { createFileCache, type FileCache } from './fileCache';
+export {
+  fileMatchesAnyGlob,
+  fileScopeCandidates,
+  findRepoRoot,
+  relativeInside,
+  ROOT_MARKERS,
+} from './fileScope';
 export { globToRegExp, matchesAnyGlob, toPosixPath } from './glob';
 export {
   DEFAULT_LOGGERS,

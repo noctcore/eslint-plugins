@@ -50,8 +50,9 @@ main().catch(() => process.exit(1));
 | --- | --- | --- | --- |
 | `allowIn` | `string[]` (globs) | see below | File-path globs where `process.exit()` is allowed. |
 
-The globs are matched against the file path (a leading `**/` may match zero leading directories, so
-the same pattern works for absolute and project-relative paths). Default:
+The globs are matched against the file's absolute path and its path relative to the working directory and to the workspace root (the nearest ancestor holding a lockfile, `pnpm-workspace.yaml` or `.git`), so a
+repo-relative glob such as `apps/server/**` works like a flat-config `files` glob, and a leading `**/`
+(which may match zero leading directories) works from anywhere. Default:
 
 ```jsonc
 ["**/scripts/**", "**/bin/**", "**/cli/**", "**/*.config.{ts,js,mjs,cjs,cts,mts}"]

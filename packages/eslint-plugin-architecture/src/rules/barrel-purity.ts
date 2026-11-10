@@ -125,7 +125,7 @@ export const barrelPurityRule = createRule<RuleOptions, MessageIds>({
     const allow = options.allow ?? DEFAULT_ALLOW;
     const filename = context.filename;
 
-    if (!BARREL_BASENAME.test(getBasename(filename)) || isIgnoredPath(filename, allow)) {
+    if (!BARREL_BASENAME.test(getBasename(filename)) || isIgnoredPath(filename, allow, context.cwd)) {
       return {};
     }
 

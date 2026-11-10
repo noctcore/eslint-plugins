@@ -1,8 +1,8 @@
+import { fileMatchesAnyGlob } from '@noctcore/eslint-utils';
 import { AST_NODE_TYPES, type TSESLint, type TSESTree } from '@typescript-eslint/utils';
 import type { JSONSchema4 } from '@typescript-eslint/utils/json-schema';
 
 import { createRule } from '../createRule';
-import { matchesAnyGlob } from '../utils';
 
 const RULE_NAME = 'no-shared-mutable-module-state';
 
@@ -350,7 +350,7 @@ export const noSharedMutableModuleStateRule = createRule<RuleOptions, MessageIds
   defaultOptions: [{ include: [], allow: [] }],
   create(context, [options]) {
     const include = options.include ?? [];
-    if (!matchesAnyGlob(context.filename, include)) {
+    if (!fileMatchesAnyGlob(context.filename, include, context.cwd)) {
       return {};
     }
     const allow = new Set(options.allow ?? []);

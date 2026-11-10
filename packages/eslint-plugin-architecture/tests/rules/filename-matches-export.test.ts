@@ -1,4 +1,4 @@
-import { ruleTester } from '@noctcore/eslint-test-utils';
+import { ruleTester, workspacePath } from '@noctcore/eslint-test-utils';
 
 import { filenameMatchesExportRule } from '../../src/rules/filename-matches-export';
 
@@ -30,6 +30,12 @@ ruleTester.run('filename-matches-export', filenameMatchesExportRule, {
       code: `export const formatDate = () => {};`,
       filename: 'src/helpers.ts',
       options: [{ ignore: ['**/helpers.ts'] }],
+    },
+    // A repo-relative ignore glob matches the absolute filename ESLint passes.
+    {
+      code: `export const formatDate = () => {};`,
+      filename: workspacePath('src', 'lib', 'helpers.ts'),
+      options: [{ ignore: ['src/lib/**'] }],
     },
   ],
   invalid: [

@@ -75,7 +75,7 @@ export const noUnscopedPrismaOutsideAllowlistRule = createRule<RuleOptions, Mess
   create(context, [options]) {
     const allowedFiles = options.allowedFiles ?? DEFAULT_SYSTEM_FILES;
 
-    if (isAllowlisted(context.filename, allowedFiles)) {
+    if (isAllowlisted(context.filename, allowedFiles, context.cwd)) {
       return {};
     }
 

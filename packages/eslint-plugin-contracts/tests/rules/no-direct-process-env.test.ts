@@ -1,4 +1,4 @@
-import { ruleTester } from '@noctcore/eslint-test-utils';
+import { ruleTester, workspacePath } from '@noctcore/eslint-test-utils';
 
 import { noDirectProcessEnvRule } from '../../src/rules/no-direct-process-env';
 
@@ -6,6 +6,13 @@ const options = [{ allowedFiles: ['**/apps/server/**', '**/*.{spec,test}.{ts,tsx
 
 ruleTester.run('no-direct-process-env', noDirectProcessEnvRule, {
   valid: [
+    // A repo-relative glob matches the absolute filename ESLint passes, read
+    // relative to the workspace root (or the working directory).
+    {
+      code: 'const url = process.env.DATABASE_URL;',
+      filename: workspacePath('apps', 'server', 'src', 'env.ts'),
+      options: [{ allowedFiles: ['apps/server/**'] }],
+    },
     {
       code: "const port = config.get('PORT');",
       filename: 'apps/web/src/lib/runtime.ts',
@@ -43,6 +50,14 @@ ruleTester.run('no-direct-process-env', noDirectProcessEnvRule, {
     { code: 'const token = process.env.GITHUB_TOKEN;', filename: 'scripts/release.mjs' },
   ],
   invalid: [
+    // A repo-relative glob matches the absolute filename ESLint passes, read
+    // relative to the workspace root (or the working directory).
+    {
+      code: 'const url = process.env.DATABASE_URL;',
+      filename: workspacePath('apps', 'web', 'src', 'env.ts'),
+      options: [{ allowedFiles: ['apps/server/**'] }],
+      errors: [{ messageId: 'directProcessEnv' }],
+    },
     // Application code next to the allowlisted shapes is still checked.
     {
       code: 'const url = process.env.DATABASE_URL;',

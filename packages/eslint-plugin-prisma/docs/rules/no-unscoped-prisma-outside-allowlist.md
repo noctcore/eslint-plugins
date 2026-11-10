@@ -62,9 +62,9 @@ Only RLS is a complete backstop.
 | `escapeHatchFns` | `string[]` | `[]` | Functions that run a callback outside the tenant scope. None by default: name yours. |
 
 Each glob is matched against the file's absolute path and against its path relative to the
-workspace root (the nearest ancestor holding a lockfile, `pnpm-workspace.yaml` or `.git`). So a
-leading `**/` works from anywhere, and a root-anchored glob such as `packages/database/**` still
-matches when a task runner lints one package at a time. Globs support `*`, `**`, `?` and `{a,b}`.
+working directory and to the workspace root (the nearest ancestor holding a lockfile,
+`pnpm-workspace.yaml` or `.git`). So a leading `**/` works from anywhere, and a root-anchored glob
+such as `packages/database/**` still matches when a task runner lints one package at a time. Globs support `*`, `**`, `?` and `{a,b}`.
 
 ```js
 'noctcore-prisma/no-unscoped-prisma-outside-allowlist': ['error', {

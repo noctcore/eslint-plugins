@@ -32,12 +32,6 @@ export function isHookName(name: string | undefined): boolean {
   return name !== undefined && /^use[A-Z]/.test(name);
 }
 
-/**
- * True when `filename` matches at least one of the `allowIn` globs. The matcher
- * is shared with the other plugins through `@noctcore/eslint-utils`.
- */
-export { matchesAnyGlob as matchesAny } from '@noctcore/eslint-utils';
-
 const STATE_HOOKS: ReadonlySet<string> = new Set(['useState', 'useReducer']);
 
 /** `useState(...)` / `useReducer(...)`, also through a namespace (`React.useState`). */

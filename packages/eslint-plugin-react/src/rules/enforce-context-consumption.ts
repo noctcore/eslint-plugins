@@ -1,4 +1,4 @@
-import { matchesAnyGlob } from '@noctcore/eslint-utils';
+import { fileMatchesAnyGlob } from '@noctcore/eslint-utils';
 import { AST_NODE_TYPES, type TSESTree } from '@typescript-eslint/utils';
 import type { JSONSchema4 } from '@typescript-eslint/utils/json-schema';
 
@@ -134,7 +134,7 @@ export const enforceContextConsumptionRule = createRule<RuleOptions, MessageIds>
     // Prop name -> hook, for the contexts that apply to this file. The first entry wins.
     const providedBy = new Map<string, string>();
     for (const entry of options.contexts ?? []) {
-      if (!matchesAnyGlob(context.filename, entry.files)) {
+      if (!fileMatchesAnyGlob(context.filename, entry.files, context.cwd)) {
         continue;
       }
       for (const prop of entry.providedProps) {

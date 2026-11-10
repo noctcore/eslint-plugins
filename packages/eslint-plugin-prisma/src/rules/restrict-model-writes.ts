@@ -26,7 +26,7 @@ export interface ModelWriteRestriction {
   /**
    * Globs of the files permitted to write those models: the owning service,
    * its repository, their specs, and usually seeds and migrations. Matched
-   * against the absolute and the workspace-root-relative path. Nothing is
+   * against the absolute path and the cwd- and workspace-root-relative paths. Nothing is
    * implicit: a file not listed here is outside the fence.
    */
   readonly allowedFiles: readonly string[];
@@ -193,7 +193,7 @@ export const restrictModelWritesRule = createRule<RuleOptions, MessageIds>({
     const schemaPath = options.schemaPath ?? DEFAULT_SCHEMA_PATH;
     const fences: ActiveFence[] = [];
     for (const restriction of options.restrictions ?? []) {
-      if (isAllowlisted(context.filename, restriction.allowedFiles)) continue;
+      if (isAllowlisted(context.filename, restriction.allowedFiles, context.cwd)) continue;
       const request = {
         filename: context.filename,
         schemaPath,

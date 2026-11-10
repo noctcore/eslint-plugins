@@ -63,7 +63,7 @@ export const indexMustReexportDefaultRule = createRule<RuleOptions, MessageIds>(
   create(context, [options]) {
     const ignorePaths = options.ignorePaths ?? DEFAULT_IGNORE_PATHS;
     const filename = context.filename;
-    if (getBasename(filename) !== 'index.ts' || isIgnoredPath(filename, ignorePaths)) {
+    if (getBasename(filename) !== 'index.ts' || isIgnoredPath(filename, ignorePaths, context.cwd)) {
       return {};
     }
 

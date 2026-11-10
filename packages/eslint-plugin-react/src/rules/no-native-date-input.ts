@@ -1,4 +1,4 @@
-import { matchesAnyGlob } from '@noctcore/eslint-utils';
+import { fileMatchesAnyGlob } from '@noctcore/eslint-utils';
 import { AST_NODE_TYPES, type TSESTree } from '@typescript-eslint/utils';
 import type { JSONSchema4 } from '@typescript-eslint/utils/json-schema';
 
@@ -108,7 +108,7 @@ export const noNativeDateInputRule = createRule<RuleOptions, MessageIds>({
   },
   defaultOptions: [{}],
   create(context, [options]) {
-    if (matchesAnyGlob(context.filename, options.allowIn ?? [])) {
+    if (fileMatchesAnyGlob(context.filename, options.allowIn ?? [], context.cwd)) {
       return {};
     }
     const elementNames = new Set(options.elementNames ?? DEFAULT_ELEMENT_NAMES);
