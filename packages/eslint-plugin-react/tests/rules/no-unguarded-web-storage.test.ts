@@ -4,6 +4,61 @@ import { noUnguardedWebStorageRule } from '../../src/rules/no-unguarded-web-stor
 
 const FILE = 'src/Theme.tsx';
 
+const DEFERRED = `
+function subscribe() {
+  try {
+    window.addEventListener('storage', () => {
+      sessionStorage.removeItem('draft');
+    });
+    setTimeout(() => localStorage.setItem('seen', '1'), 1000);
+    load().then((value) => localStorage.setItem('cache', value));
+    (async () => {
+      await ready;
+      localStorage.clear();
+    })();
+  } catch {}
+}`;
+
+const LISTENER_FIXED = DEFERRED.replace(
+  "      sessionStorage.removeItem('draft');",
+  [
+    '      try {',
+    "        sessionStorage.removeItem('draft');",
+    '      } catch {',
+    '        // Storage is unavailable or full. Fall back to the default.',
+    '      }',
+  ].join('\n'),
+);
+
+const IIFE_FIXED = DEFERRED.replace(
+  '      localStorage.clear();',
+  [
+    '      try {',
+    '        localStorage.clear();',
+    '      } catch {',
+    '        // Storage is unavailable or full. Fall back to the default.',
+    '      }',
+  ].join('\n'),
+);
+
+const ALIAS = `
+const store = window.localStorage;
+const draft = sessionStorage as Storage;
+export function readTheme() {
+  return store.getItem('theme') ?? draft.getItem('theme');
+}`;
+
+const ALIAS_FIXED = ALIAS.replace(
+  "  return store.getItem('theme') ?? draft.getItem('theme');",
+  [
+    '  try {',
+    "    return store.getItem('theme') ?? draft.getItem('theme');",
+    '  } catch {',
+    '    // Storage is unavailable or full. Fall back to the default.',
+    '  }',
+  ].join('\n'),
+);
+
 ruleTester.run('no-unguarded-web-storage', noUnguardedWebStorageRule, {
   valid: [
     // Guarded directly.
@@ -36,16 +91,57 @@ function persist(entries) {
 }`,
       filename: FILE,
     },
-    // A try in an outer function around an inline callback counts as guarded.
-    // It does not run when the callback fires later, but the rule errs toward silence.
+    // A callback that runs before the try ends is covered: an IIFE, Array.from.
     {
       code: `
-function subscribe() {
+function readAll(keys) {
   try {
-    window.addEventListener('storage', () => {
-      sessionStorage.removeItem('draft');
-    });
-  } catch {}
+    const values = Array.from(keys, (key) => localStorage.getItem(key));
+    const size = (() => sessionStorage.length)();
+    return { values, size };
+  } catch {
+    return null;
+  }
+}`,
+      filename: FILE,
+    },
+    // A const alias is followed, and a guarded alias is silent.
+    {
+      code: `
+const store = window.localStorage;
+export function readTheme() {
+  try {
+    return store.getItem('theme');
+  } catch {
+    return null;
+  }
+}`,
+      filename: FILE,
+    },
+    // A \`let\` binding can be reassigned to a shim, so it is not followed.
+    {
+      code: `
+let store = window.localStorage;
+store = createMemoryStorage();
+store.getItem('theme');`,
+      filename: FILE,
+    },
+    // A const bound to something that is not the storage object is not an alias.
+    {
+      code: `
+const store = createJSONStorage(() => localStorage);
+store.getItem('theme');`,
+      filename: FILE,
+    },
+    // Reading through a guarded member read, computed form included.
+    {
+      code: `
+function count() {
+  try {
+    return localStorage.length + Number(localStorage['visits'] ?? 0);
+  } catch {
+    return 0;
+  }
 }`,
       filename: FILE,
     },
@@ -68,10 +164,9 @@ function sweep() {
     { code: `storage.getItem('theme');`, filename: FILE },
     { code: `store.local.setItem('theme', 'dark');`, filename: FILE },
     { code: `window.appStorage.getItem('theme');`, filename: FILE },
-    // A non-call reference to the object is not a call and cannot be wrapped.
+    // A bare reference to the object reads no member; the consumer decides when it runs.
     { code: `const storage = createJSONStorage(() => localStorage);`, filename: FILE },
     { code: `const store = window.sessionStorage;`, filename: FILE },
-    { code: `const count = localStorage.length;`, filename: FILE },
     // A storage call written as TEXT inside a template literal is a string, not a
     // call expression. This is the inline boot-script shape.
     {
@@ -113,6 +208,98 @@ function withStorage(sessionStorage) {
     },
   ],
   invalid: [
+    // A callback defined inside a try runs after the try has ended: a listener,
+    // a timer, a then-callback, an async IIFE past its await.
+    {
+      code: DEFERRED,
+      filename: FILE,
+      errors: [
+        {
+          messageId: 'unguarded',
+          data: { access: 'sessionStorage.removeItem' },
+          line: 5,
+          suggestions: [{ messageId: 'wrapInTry', output: LISTENER_FIXED }],
+        },
+        { messageId: 'unguarded', data: { access: 'localStorage.setItem' }, line: 7 },
+        { messageId: 'unguarded', data: { access: 'localStorage.setItem' }, line: 8 },
+        {
+          messageId: 'unguarded',
+          data: { access: 'localStorage.clear' },
+          line: 11,
+          suggestions: [{ messageId: 'wrapInTry', output: IIFE_FIXED }],
+        },
+      ],
+    },
+    // A try with only a finally catches nothing.
+    {
+      code: `
+function save(theme) {
+  try {
+    localStorage.setItem('theme', theme);
+  } finally {
+    notify();
+  }
+}`,
+      filename: FILE,
+      errors: [
+        {
+          messageId: 'unguarded',
+          data: { access: 'localStorage.setItem' },
+          line: 4,
+          suggestions: [
+            {
+              messageId: 'wrapInTry',
+              output: `
+function save(theme) {
+  try {
+    try {
+      localStorage.setItem('theme', theme);
+    } catch {
+      // Storage is unavailable or full. Fall back to the default.
+    }
+  } finally {
+    notify();
+  }
+}`,
+            },
+          ],
+        },
+      ],
+    },
+    // A plain member read throws too: \`length\`, a computed key, a method reference.
+    {
+      code: `
+const count = localStorage.length;
+const visits = sessionStorage['visits'];
+const read = window.localStorage.getItem;`,
+      filename: FILE,
+      errors: [
+        { messageId: 'unguarded', data: { access: 'localStorage.length' }, line: 2, column: 15 },
+        { messageId: 'unguarded', data: { access: "sessionStorage['visits']" }, line: 3 },
+        { messageId: 'unguarded', data: { access: 'window.localStorage.getItem' }, line: 4 },
+      ],
+    },
+    // A const alias of the storage object, in either written form, with a cast.
+    {
+      code: ALIAS,
+      filename: FILE,
+      errors: [
+        {
+          messageId: 'unguarded',
+          data: { access: 'store.getItem' },
+          line: 5,
+          column: 10,
+          suggestions: [{ messageId: 'wrapInTry', output: ALIAS_FIXED }],
+        },
+        {
+          messageId: 'unguarded',
+          data: { access: 'draft.getItem' },
+          line: 5,
+          column: 36,
+          suggestions: [{ messageId: 'wrapInTry', output: ALIAS_FIXED }],
+        },
+      ],
+    },
     // The canonical case: a bare read in a return statement. The suggestion wraps it.
     {
       code: `
