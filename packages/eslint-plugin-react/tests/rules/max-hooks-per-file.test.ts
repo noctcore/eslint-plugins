@@ -89,26 +89,37 @@ ruleTester.run('max-hooks-per-file', maxHooksPerFileRule, {
     { code: fiveHooks, filename: HOOKS, options: [{ fileSuffixes: ['.data.ts'] }] },
   ],
   invalid: [
-    { code: fiveHooks, filename: QUERIES, errors: [{ messageId: 'tooManyHooks' }] },
-    { code: fiveHooks, filename: HOOKS, errors: [{ messageId: 'tooManyHooks' }] },
-    // A lowered `max` tightens the limit.
+    // The report sits on the first hook past the limit, not on the whole file.
+    {
+      code: fiveHooks,
+      filename: QUERIES,
+      errors: [{ messageId: 'tooManyHooks', line: 7, column: 17, endLine: 7, endColumn: 21 }],
+    },
+    { code: fiveHooks, filename: HOOKS, errors: [{ messageId: 'tooManyHooks', line: 7, column: 17 }] },
+    // A lowered `max` tightens the limit, and moves the report to the fourth hook.
     {
       code: fourHooks,
       filename: QUERIES,
       options: [{ max: 3 }],
-      errors: [{ messageId: 'tooManyHooks' }],
+      errors: [{ messageId: 'tooManyHooks', line: 5, column: 14 }],
     },
     // Hooks re-exported via a single specifier list must also be counted.
     {
       code: fiveHooksViaSpecifiers,
       filename: QUERIES,
-      errors: [{ messageId: 'tooManyHooks' }],
+      errors: [{ messageId: 'tooManyHooks', line: 7, column: 34 }],
     },
     // Aliasing hook exports to non-hook names must not bypass the limit.
     {
       code: fiveHooksAliasedExports,
       filename: QUERIES,
-      errors: [{ messageId: 'tooManyHooks' }],
+      errors: [{ messageId: 'tooManyHooks', line: 7, column: 78 }],
+    },
+    // A hook exported twice counts once, at its first export.
+    {
+      code: `${fourHooks}export function useE() { return 5; }\nexport { useA as again };\n`,
+      filename: QUERIES,
+      errors: [{ messageId: 'tooManyHooks', line: 6, column: 17 }],
     },
     // A custom `fileSuffixes` constrains a file the default would ignore.
     {

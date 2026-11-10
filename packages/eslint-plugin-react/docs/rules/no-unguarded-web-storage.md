@@ -1,6 +1,6 @@
 # `noctcore-react/no-unguarded-web-storage`
 
-> A `localStorage` / `sessionStorage` call must sit inside a `try` block, because the access itself can throw. 💡
+> A `localStorage` / `sessionStorage` access must sit inside a `try` with a `catch`, because the access itself can throw. 💡
 
 <!-- begin generated rule header -->
 ✅ In `recommended` at `error` · 💡 Offers editor suggestions · 💭 Type information: not needed
@@ -24,10 +24,11 @@ users, and the guard that silences it is the fix, not a workaround.
 
 ## What it flags
 
-A call whose callee is a method of `localStorage` or `sessionStorage`, written bare or through
-`window.`, `globalThis.` or `self.`, when **no enclosing `try` block covers it at any depth**. Every
-method counts (`getItem`, `setItem`, `removeItem`, `clear`, `key`), because the failing step can be
-the property access itself, before any method runs.
+A member read of `localStorage` or `sessionStorage` (a method call such as `getItem(...)`, or a
+plain read such as `length` or `['key']`), written bare, through `window.`, `globalThis.` or `self.`,
+or through a `const` alias of either, when **no `try` with a `catch` is on the stack when it runs**.
+Every member counts (`getItem`, `setItem`, `removeItem`, `clear`, `key`, `length`), because the
+failing step can be the property access itself, before any method runs.
 
 ```tsx bad
 // throws in private browsing or when storage is disabled
@@ -43,6 +44,72 @@ function readTheme(): string {
     return localStorage.getItem('theme') ?? 'light';
   } catch {
     return 'light';
+  }
+}
+```
+
+### A `try` around a callback does not guard the callback
+
+A `try` only catches what throws while it is on the stack. A listener, a timer or a `.then`
+callback defined inside a `try` runs after the `try` has finished, so the rule checks it on its own.
+A callback that runs on the spot, such as an IIFE or the callback of `forEach`, `map` or
+`Array.from`, stays covered. A `try` with only a `finally` catches nothing.
+
+```tsx bad reports=2
+// the try has ended by the time either callback runs
+function subscribe(): void {
+  try {
+    window.addEventListener('storage', () => {
+      sessionStorage.removeItem('draft');
+    });
+    setTimeout(() => localStorage.setItem('seen', '1'), 1000);
+  } catch {
+    // never reached by the callbacks
+  }
+}
+```
+
+```tsx good
+// each callback guards its own access
+function subscribe(): void {
+  window.addEventListener('storage', () => {
+    try {
+      sessionStorage.removeItem('draft');
+    } catch {
+      // Storage is unavailable. Nothing to clear.
+    }
+  });
+  setTimeout(() => {
+    try {
+      localStorage.setItem('seen', '1');
+    } catch {
+      // Storage is unavailable or full. The banner may show again.
+    }
+  }, 1000);
+}
+```
+
+### An alias is the same object
+
+`const store = window.localStorage` gives the object another name; reading through it throws the
+same way. The rule follows a `const` binding of the storage object, with or without a type cast.
+
+```tsx bad
+// the alias reads the same storage object
+const store = window.localStorage;
+export function visits(): number {
+  return Number(store.getItem('visits') ?? 0);
+}
+```
+
+```tsx good
+// guarded where the alias is read
+const store = window.localStorage;
+export function visits(): number {
+  try {
+    return Number(store.getItem('visits') ?? 0);
+  } catch {
+    return 0;
   }
 }
 ```
@@ -123,13 +190,16 @@ around the declaration would scope `x` to it.
 
 ## What it does not flag
 
-- A call inside a `try` block at any nesting depth, including a `try` in an outer function around
-  an inline callback. That outer `try` does not run when the callback fires later, but the rule errs
-  toward silence.
-- A wrapper or helper (`safeStorage.get(...)`, `storage.getItem(...)`): the callee is not the
+- An access inside a `try` with a `catch` at any nesting depth, including inside a callback that
+  runs before the `try` ends (an IIFE, `forEach`, `map`, `Array.from`).
+- A wrapper or helper (`safeStorage.get(...)`, `storage.getItem(...)`): the object is not the
   global. Put the `try` inside the helper and the rule checks it there.
-- A non-call reference to the object, such as `createJSONStorage(() => localStorage)` or
-  `const store = window.sessionStorage`.
+- A bare reference to the object that reads no member, such as
+  `createJSONStorage(() => localStorage)` or `const store = window.sessionStorage`. Reading
+  `window.sessionStorage` can throw too, but the line that defines an alias is not reported; the
+  reads through the alias are.
+- A `let` alias, which can be reassigned to a shim later, and an alias passed through a function
+  parameter.
 - A `localStorage` declared in the file (a memory shim, a parameter).
 - Storage code written as **text**, such as an inline boot script built from strings. It is a string
   literal, not a call expression, so an AST rule sees nothing, and that is correct: the script guards
@@ -153,7 +223,7 @@ the statement after it.
 
 | Option | Type | Default | Meaning |
 | --- | --- | --- | --- |
-| `allowIn` | `string[]` (globs) | `["**/*.test.*", "**/*.spec.*", "**/__tests__/**", "**/tests/**", "**/e2e/**"]` | File-path globs where a bare storage call is allowed. Replaces the default list. |
+| `allowIn` | `string[]` (globs) | `["**/*.test.*", "**/*.spec.*", "**/__tests__/**", "**/tests/**", "**/e2e/**"]` | File-path globs where a bare storage access is allowed. Replaces the default list. |
 
 The default exempts tests, where storage runs under jsdom and cannot throw. Setting the option
 replaces the list, so include the test globs again if you add to it.

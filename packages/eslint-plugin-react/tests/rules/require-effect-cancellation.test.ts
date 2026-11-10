@@ -56,8 +56,74 @@ ruleTester.run('require-effect-cancellation', requireEffectCancellationRule, {
       code: `function C({ id }) { const { setUser } = useAuth(); useEffect(() => { fetchUser(id).then((u) => setUser(u)); }, [id]); }`,
       filename: FILE,
     },
+    // A cleanup that flips a ref, or a returned value the rule cannot see into.
+    {
+      code: `function C() {
+        const [data, setData] = useState(null);
+        const live = useRef(true);
+        useEffect(() => {
+          load().then((d) => setData(d));
+          return () => { live.current = false; };
+        }, []);
+      }`,
+      filename: FILE,
+    },
+    {
+      code: `function C() {
+        const [data, setData] = useState(null);
+        useEffect(() => {
+          const unsubscribe = feed.subscribe((d) => setData(d));
+          load().then((d) => setData(d));
+          return unsubscribe;
+        }, []);
+      }`,
+      filename: FILE,
+    },
+    // A cleanup that calls a cancel method counts.
+    {
+      code: `function C() {
+        const [data, setData] = useState(null);
+        useEffect(() => {
+          const request = client.get('/me');
+          request.then((d) => setData(d));
+          return () => request.cancel();
+        }, []);
+      }`,
+      filename: FILE,
+    },
   ],
   invalid: [
+    // A cleanup that only clears a timer or a listener does not cancel the fetch.
+    {
+      code: `function C() {
+        const [data, setData] = useState(null);
+        useEffect(() => {
+          const id = setInterval(poll, 1000);
+          load().then((d) => setData(d));
+          return () => clearInterval(id);
+        }, []);
+      }`,
+      filename: FILE,
+      errors: [{ messageId: 'missingCancellation', line: 5 }],
+    },
+    {
+      code: `function C() {
+        const [width, setWidth] = useState(0);
+        useEffect(() => {
+          const onResize = () => setWidth(window.innerWidth);
+          window.addEventListener('resize', onResize);
+          (async () => {
+            const size = await measure();
+            setWidth(size);
+          })();
+          return () => {
+            window.removeEventListener('resize', onResize);
+          };
+        }, []);
+      }`,
+      filename: FILE,
+      errors: [{ messageId: 'missingCancellation', line: 8 }],
+    },
     // await shape, no guard.
     {
       code: `function C({ id }) {

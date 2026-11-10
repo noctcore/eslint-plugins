@@ -1,3 +1,4 @@
+import { walkSome } from '@noctcore/eslint-utils';
 import { AST_NODE_TYPES, type TSESTree } from '@typescript-eslint/utils';
 
 import { createRule } from '../createRule';
@@ -26,40 +27,6 @@ type MessageIds = 'derivedState';
  */
 
 const EFFECT_NAMES = new Set(['useEffect', 'useLayoutEffect']);
-
-function isNode(value: unknown): value is TSESTree.Node {
-  return (
-    typeof value === 'object' &&
-    value !== null &&
-    typeof (value as { type?: unknown }).type === 'string'
-  );
-}
-
-/** All descendant nodes of `root` (inclusive), never crossing the `parent` back-edge. */
-function descendants(root: TSESTree.Node): TSESTree.Node[] {
-  const out: TSESTree.Node[] = [];
-  const stack: TSESTree.Node[] = [root];
-  while (stack.length > 0) {
-    const node = stack.pop() as TSESTree.Node;
-    out.push(node);
-    for (const key of Object.keys(node)) {
-      if (key === 'parent') {
-        continue;
-      }
-      const value = (node as unknown as Record<string, unknown>)[key];
-      if (Array.isArray(value)) {
-        for (const child of value) {
-          if (isNode(child)) {
-            stack.push(child);
-          }
-        }
-      } else if (isNode(value)) {
-        stack.push(value);
-      }
-    }
-  }
-  return out;
-}
 
 function isUseEffectCallee(callee: TSESTree.Node): boolean {
   if (callee.type === AST_NODE_TYPES.Identifier) {
@@ -230,13 +197,16 @@ export const noEffectDerivedStateRule = createRule<[], MessageIds>({
           return;
         }
 
+        const readsAnyDep = (expr: TSESTree.Node): boolean =>
+          walkSome(
+            expr,
+            context.sourceCode.visitorKeys,
+            (n) => n.type === AST_NODE_TYPES.Identifier && depRoots.has(n.name),
+          );
+
         // `const [draft, setDraft] = useState(value)` re-synced from `value`: state
         // seeded from the dependency and then edited locally. Correct by design.
-        const seededFromDep = stateInits.some((init) =>
-          init.arguments.some((arg) =>
-            descendants(arg).some((n) => n.type === AST_NODE_TYPES.Identifier && depRoots.has(n.name)),
-          ),
-        );
+        const seededFromDep = stateInits.some((init) => init.arguments.some(readsAnyDep));
         if (seededFromDep) {
           return;
         }
@@ -247,7 +217,7 @@ export const noEffectDerivedStateRule = createRule<[], MessageIds>({
             if (arg.type === AST_NODE_TYPES.SpreadElement || !isPureDerivable(arg, depRoots)) {
               return;
             }
-            if (descendants(arg).some((n) => n.type === AST_NODE_TYPES.Identifier && depRoots.has(n.name))) {
+            if (readsAnyDep(arg)) {
               usesDep = true;
             }
           }

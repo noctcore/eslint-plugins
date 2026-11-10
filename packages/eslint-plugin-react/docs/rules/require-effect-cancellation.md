@@ -53,11 +53,51 @@ useEffect(() => {
 }, [id]);
 ```
 
+### A cleanup that cancels something else
+
+A cleanup that only clears a timer or removes a listener does nothing for the pending request, so
+the effect is still checked.
+
+```tsx bad
+// the cleanup stops the poll, not the load
+function Feed() {
+  const [items, setItems] = useState([]);
+  useEffect(() => {
+    const id = setInterval(poll, 1000);
+    load().then((next) => setItems(next));
+    return () => clearInterval(id);
+  }, []);
+  return <List items={items} />;
+}
+```
+
+```tsx good
+// the same cleanup also stops the pending update
+function Feed() {
+  const [items, setItems] = useState([]);
+  useEffect(() => {
+    let cancelled = false;
+    const id = setInterval(poll, 1000);
+    load().then((next) => {
+      if (!cancelled) setItems(next);
+    });
+    return () => {
+      cancelled = true;
+      clearInterval(id);
+    };
+  }, []);
+  return <List items={items} />;
+}
+```
+
 ## What it does not flag
 
 The rule is intentionally conservative: any recognisable guard — an `AbortController`/`AbortSignal`,
 a `cancelled`/`isMounted`-style boolean flag that is read, an `if` test on such a flag, or a cleanup
-`return` — silences it, so a real finding is almost always genuine. It also leaves alone:
+`return` that can stop the update — silences it, so a real finding is almost always genuine. A
+returned cleanup counts when it sets something (`cancelled = true`, `live.current = false`) or calls
+an abort or cancel method (`request.cancel()`), and when the rule cannot see into it
+(`return unsubscribe`). It also leaves alone:
 
 - a synchronous `setState` in an effect, with no async step;
 - an `await` or `.then` with no state update after it.

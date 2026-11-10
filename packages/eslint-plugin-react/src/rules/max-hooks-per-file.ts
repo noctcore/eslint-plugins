@@ -20,6 +20,9 @@ type MessageIds = 'tooManyHooks';
  * doing too much; split it before it becomes a grab-bag. Only exported hook
  * factories count. Which file roles are constrained is configurable via
  * `fileSuffixes`; no folder layout is read.
+ *
+ * The report lands on the first exported hook past the limit, so an editor
+ * underlines the export to move rather than the whole file.
  */
 const DEFAULT_MAX = 4;
 
@@ -60,11 +63,12 @@ export const maxHooksPerFileRule = createRule<RuleOptions, MessageIds>({
       return {};
     }
 
-    const exportedHooks = new Set<string>();
+    // Insertion order is source order: the first export of each hook name wins.
+    const exportedHooks = new Map<string, TSESTree.Node>();
 
-    function record(name: string | undefined): void {
-      if (isHookName(name)) {
-        exportedHooks.add(name as string);
+    function record(name: string | undefined, node: TSESTree.Node): void {
+      if (name !== undefined && isHookName(name) && !exportedHooks.has(name)) {
+        exportedHooks.set(name, node);
       }
     }
 
@@ -73,13 +77,13 @@ export const maxHooksPerFileRule = createRule<RuleOptions, MessageIds>({
         return;
       }
       if (declaration.type === AST_NODE_TYPES.FunctionDeclaration && declaration.id) {
-        record(declaration.id.name);
+        record(declaration.id.name, declaration.id);
         return;
       }
       if (declaration.type === AST_NODE_TYPES.VariableDeclaration) {
         for (const decl of declaration.declarations) {
           if (decl.id.type === AST_NODE_TYPES.Identifier) {
-            record(decl.id.name);
+            record(decl.id.name, decl.id);
           }
         }
       }
@@ -93,14 +97,15 @@ export const maxHooksPerFileRule = createRule<RuleOptions, MessageIds>({
             specifier.type === AST_NODE_TYPES.ExportSpecifier &&
             specifier.local.type === AST_NODE_TYPES.Identifier
           ) {
-            record(specifier.local.name);
+            record(specifier.local.name, specifier);
           }
         }
       },
-      'Program:exit'(node): void {
+      'Program:exit'(): void {
         if (exportedHooks.size > max) {
+          const firstOverLimit = [...exportedHooks.values()][max] as TSESTree.Node;
           context.report({
-            node,
+            node: firstOverLimit,
             messageId: 'tooManyHooks',
             data: { count: exportedHooks.size, max },
           });
