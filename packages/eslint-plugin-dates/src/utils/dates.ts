@@ -11,7 +11,7 @@ export const allowInSchema = {
   items: { type: 'string' },
   uniqueItems: true,
   description:
-    'Globs of the files exempt from the rule (your calendar module and its tests), matched against the forward-slashed filename. A leading `**/` matches any directory prefix. Empty by default.',
+    'Globs of the files exempt from the rule (your calendar module and its tests), matched against the absolute path and the path relative to the working directory or workspace root (`src/calendar/**` or `**/calendar/**`). Empty by default.',
 } as const;
 
 /** The schema entry both rules share for the module named in the message. */

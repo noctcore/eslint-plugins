@@ -1,4 +1,4 @@
-import { AST_NODE_TYPES, matchesAnyGlob, type TSESTree } from '@noctcore/eslint-utils';
+import { AST_NODE_TYPES, fileMatchesAnyGlob, type TSESTree } from '@noctcore/eslint-utils';
 
 import { createRule } from '../createRule';
 import {
@@ -136,7 +136,7 @@ export const calendarMathViaSharedRule = createRule<RuleOptions, MessageIds>({
   },
   defaultOptions: [{}],
   create(context, [options]) {
-    if (matchesAnyGlob(context.filename, options.allowIn ?? [])) return {};
+    if (fileMatchesAnyGlob(context.filename, options.allowIn ?? [], context.cwd)) return {};
 
     const checks: ReadonlySet<Check> = new Set(options.checks ?? CHECKS);
     const hint = calendarHint(options.calendarModule);

@@ -78,7 +78,7 @@ export const dayOfMonth = (day: Date): number => day.getDate();
 
 | Option | Type | Default | Meaning |
 | --- | --- | --- | --- |
-| `allowIn` | `string[]` (globs) | `[]` | Files exempt from the rule (the calendar module and its tests), matched against the forward-slashed filename. A leading `**/` matches any directory prefix. |
+| `allowIn` | `string[]` (globs) | `[]` | Files exempt from the rule (the calendar module and its tests), matched against the absolute path and the path relative to the working directory or workspace root, so `src/calendar/**` and `**/calendar/**` both work. |
 | `checks` | `string[]` | `["localAccessor", "dateOnlyParse", "isoDaySlice"]` | The shapes to report. Add `instantVsNow` when every `Date` compared with the clock in scope is a calendar day. |
 | `calendarModule` | `string` | none | Import path of your calendar module, named in the message. |
 

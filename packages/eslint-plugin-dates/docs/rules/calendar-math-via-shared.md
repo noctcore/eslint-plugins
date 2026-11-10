@@ -70,7 +70,7 @@ export function addMonths(day: Date, months: number): Date {
 
 | Option | Type | Default | Meaning |
 | --- | --- | --- | --- |
-| `allowIn` | `string[]` (globs) | `[]` | Files exempt from the rule (the calendar module and its tests), matched against the forward-slashed filename. A leading `**/` matches any directory prefix. |
+| `allowIn` | `string[]` (globs) | `[]` | Files exempt from the rule (the calendar module and its tests), matched against the absolute path and the path relative to the working directory or workspace root, so `src/calendar/**` and `**/calendar/**` both work. |
 | `checks` | `string[]` | all four | The shapes to report: `utcAccessor`, `dateUtc`, `setMonth`, `msPerDay`. |
 | `calendarModule` | `string` | none | Import path of your calendar module, named in the message. |
 
