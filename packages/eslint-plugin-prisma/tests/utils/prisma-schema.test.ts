@@ -1,8 +1,9 @@
-import { readFileSync } from 'node:fs';
+import { mkdirSync, mkdtempSync, readFileSync, rmSync, utimesSync, writeFileSync } from 'node:fs';
+import { tmpdir } from 'node:os';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 
-import { describe, expect, it } from 'vitest';
+import { afterAll, describe, expect, it } from 'vitest';
 
 import { guardedRelationNames, relationNamesFor } from '../../src/utils/prisma-nested-write';
 import {
@@ -78,6 +79,44 @@ describe('loadPrismaSchema', () => {
 
   it('serves a cached parse for an unchanged file', () => {
     expect(loadPrismaSchema(FIXTURE_SCHEMA)).toBe(loadPrismaSchema(FIXTURE_SCHEMA));
+  });
+
+  it('serves a cached parse for an unchanged folder', () => {
+    expect(loadPrismaSchema(SCHEMA_FOLDER)).toBe(loadPrismaSchema(SCHEMA_FOLDER));
+  });
+});
+
+describe('loadPrismaSchema on a real, changing schema folder', () => {
+  const dir = mkdtempSync(path.join(tmpdir(), 'prisma-schema-'));
+  const folder = path.join(dir, 'schema');
+  mkdirSync(folder);
+  const first = path.join(folder, 'a.prisma');
+  const second = path.join(folder, 'b.prisma');
+  afterAll(() => rmSync(dir, { recursive: true, force: true }));
+
+  const write = (file: string, text: string, mtimeSeconds: number): void => {
+    writeFileSync(file, text);
+    utimesSync(file, mtimeSeconds, mtimeSeconds);
+  };
+
+  it('re-parses when any file changes, even one older than its sibling', () => {
+    write(first, 'model Order {\n  id String @id\n}\n', 1_000);
+    write(second, 'model Invoice {\n  id String @id\n}\n', 5_000);
+    expect(loadPrismaSchema(folder)?.models).toEqual(['Order', 'Invoice']);
+
+    // The edited file's mtime stays below the sibling's, so the newest mtime
+    // across the folder does not move.
+    write(first, 'model Order {\n  id String @id\n}\nmodel Customer {\n  id String @id\n}\n', 2_000);
+    expect(loadPrismaSchema(folder)?.models).toEqual(['Order', 'Customer', 'Invoice']);
+  });
+
+  it('picks up a file added to or removed from the folder', () => {
+    const third = path.join(folder, 'c.prisma');
+    write(third, 'model Payment {\n  id String @id\n}\n', 3_000);
+    expect(loadPrismaSchema(folder)?.models).toContain('Payment');
+
+    rmSync(third);
+    expect(loadPrismaSchema(folder)?.models).not.toContain('Payment');
   });
 });
 

@@ -1,5 +1,7 @@
-import { readdirSync, readFileSync, statSync } from 'node:fs';
+import { readdirSync, statSync } from 'node:fs';
 import path from 'node:path';
+
+import { createFileCache } from '@noctcore/eslint-utils';
 
 import { findRepoRoot } from './allowlist';
 
@@ -146,18 +148,29 @@ export function tenantBearingAccessors(
   return accessors.sort();
 }
 
-interface SchemaCacheEntry {
-  readonly mtimeMs: number;
-  readonly parsed: ParsedPrismaSchema;
-}
-
 /*
  * One parse per schema per lint run. ESLint constructs a rule context per file,
  * so without this the schema would be read and parsed once per file per rule.
- * Keyed on mtime as well as path so an edit mid-watch-run is picked up rather
- * than served stale.
+ *
+ * Two layers. `schemaFiles` holds each `.prisma` file's text, keyed on path and
+ * mtime by the shared cache, so an edit mid-watch-run is picked up rather than
+ * served stale; it hands back the SAME string while a file is unchanged.
+ * `parsedSchemas` keeps the parse of a schema path and reuses it only while
+ * every source text is that same string, so editing any one file of a schema
+ * folder re-parses, whatever its mtime is relative to the others.
  */
-const schemaCache = new Map<string, SchemaCacheEntry>();
+const schemaFiles = createFileCache((text) => text);
+
+interface ParsedSchemaEntry {
+  readonly texts: readonly string[];
+  readonly parsed: ParsedPrismaSchema;
+}
+
+const parsedSchemas = new Map<string, ParsedSchemaEntry>();
+
+function sameTexts(a: readonly string[], b: readonly string[]): boolean {
+  return a.length === b.length && a.every((text, index) => text === b[index]);
+}
 
 /** Absolute path of the schema to read for a file being linted. */
 export function resolveSchemaPath(filename: string, schemaPath: string): string {
@@ -176,48 +189,37 @@ export function resolveSchemaPath(filename: string, schemaPath: string): string 
  * red instead of silently disarming every fence.
  */
 export function loadPrismaSchema(absolutePath: string): ParsedPrismaSchema | null {
-  let stats: ReturnType<typeof statSync>;
-  try {
-    stats = statSync(absolutePath);
-  } catch {
-    return null;
-  }
-
-  // Every `.prisma` under the folder, sorted so the cache key and the parse
-  // are stable across filesystem enumeration order. A directory's own mtime
-  // does not move when a file INSIDE it is edited, so the cache is keyed on
-  // the newest mtime across the set rather than on the directory's.
   let sources: readonly string[];
-  let mtimeMs: number;
   try {
-    if (stats.isDirectory()) {
-      const files = collectSchemaFiles(absolutePath);
-      if (files.length === 0) return null;
-      sources = files;
-      mtimeMs = files.reduce((newest, file) => Math.max(newest, statSync(file).mtimeMs), 0);
-    } else {
-      sources = [absolutePath];
-      mtimeMs = stats.mtimeMs;
-    }
+    // Every `.prisma` under a folder, sorted so the parse is stable across
+    // filesystem enumeration order.
+    sources = statSync(absolutePath).isDirectory() ? collectSchemaFiles(absolutePath) : [absolutePath];
   } catch {
     return null;
   }
+  if (sources.length === 0) return null;
 
-  const cacheKey = `${absolutePath}\u0000${sources.join('\u0000')}`;
-  const cached = schemaCache.get(cacheKey);
-  if (cached !== undefined && cached.mtimeMs === mtimeMs) return cached.parsed;
+  const texts: string[] = [];
+  for (const file of sources) {
+    const text = schemaFiles.get(file);
+    if (text === undefined) return null;
+    texts.push(text);
+  }
+
+  const cached = parsedSchemas.get(absolutePath);
+  if (cached !== undefined && sameTexts(cached.texts, texts)) return cached.parsed;
 
   let parsed: ParsedPrismaSchema;
   try {
     // Concatenated, not parsed per file and merged: a relation's target may be
     // declared in a different file than the field that points at it, and the
     // parser only needs to see every `model` block in one text to resolve that.
-    parsed = parsePrismaSchema(sources.map((file) => readFileSync(file, 'utf8')).join('\n'));
+    parsed = parsePrismaSchema(texts.join('\n'));
   } catch {
     return null;
   }
 
-  schemaCache.set(cacheKey, { mtimeMs, parsed });
+  parsedSchemas.set(absolutePath, { texts, parsed });
   return parsed;
 }
 
