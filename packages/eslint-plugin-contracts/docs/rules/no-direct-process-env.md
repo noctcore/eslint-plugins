@@ -33,7 +33,7 @@ const isProd = config.isProduction;
 
 ## What it does not flag
 
-- Files matched by the `allowedFiles` glob allowlist are skipped entirely. The default covers config
+- Files matched by the `allowIn` glob allowlist are skipped entirely. The default covers config
   files (`*.config.{ts,js,mjs,cjs,mts,cts}`), tests in every module flavour, and repo tooling under
   `scripts/` and `tools/`: a CLI's environment is its input, and it boots no app whose config module
   it could read through.
@@ -53,7 +53,8 @@ const sandboxDir = process.env.VERIFY_DIR;
 | Option | Type | Default | Meaning |
 | --- | --- | --- | --- |
 | `configModule` | `string` | `'@/config'` | Import path of the validated config module, named in the report message. |
-| `allowedFiles` | `string[]` (globs) | `['**/*.config.{ts,js,mjs,cjs,mts,cts}', '**/*.{spec,test}.{ts,tsx,mts,cts,js,jsx,mjs,cjs}', '**/scripts/**', '**/tools/**']` | Files permitted to read `process.env` directly. Passing it replaces the default list. |
+| `allowIn` | `string[]` (globs) | `['**/*.config.{ts,js,mjs,cjs,mts,cts}', '**/*.{spec,test}.{ts,tsx,mts,cts,js,jsx,mjs,cjs}', '**/scripts/**', '**/tools/**']` | Files permitted to read `process.env` directly. Passing it replaces the default list. |
+| `allowedFiles` | `string[]` | (none) | Deprecated alias of `allowIn`, kept through 1.x. When both are set, their globs are combined. |
 
 Globs support `*`, `**`, `?`, and `{a,b}` alternation. They are matched against the file's absolute
 path and its path relative to the working directory and to the workspace root (the nearest ancestor holding a lockfile, `pnpm-workspace.yaml` or `.git`), so `apps/server/**` and `**/server/**` both work.
@@ -61,11 +62,11 @@ path and its path relative to the working directory and to the workspace root (t
 ```js
 'noctcore-contracts/no-direct-process-env': ['error', {
   configModule: '@acme/config',
-  allowedFiles: ['**/apps/server/**', '**/*.{spec,test}.{ts,tsx}'],
+  allowIn: ['**/apps/server/**', '**/*.{spec,test}.{ts,tsx}'],
 }]
 ```
 
 ## When not to use it
 
 If you have no config seam yet, or intentionally read `process.env` throughout (a small script, a
-Vite-style `import.meta.env` app), leave this rule off or widen `allowedFiles`.
+Vite-style `import.meta.env` app), leave this rule off or widen `allowIn`.

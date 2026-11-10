@@ -1,4 +1,4 @@
-import { fileMatchesAnyGlob } from '@noctcore/eslint-utils';
+import { allowInAliasDescription, fileMatchesAnyGlob, resolveAllowIn } from '@noctcore/eslint-utils';
 import { AST_NODE_TYPES, type TSESTree } from '@typescript-eslint/utils';
 import type { JSONSchema4 } from '@typescript-eslint/utils/json-schema';
 
@@ -10,6 +10,8 @@ export interface NoDirectProcessEnvOptions {
   /** Import path of the typed config accessor consumers should read env through. */
   readonly configModule?: string;
   /** Glob allowlist of files permitted to read `process.env` directly (bootstrap, config, tests). */
+  readonly allowIn?: readonly string[];
+  /** @deprecated Use `allowIn`. */
   readonly allowedFiles?: readonly string[];
 }
 
@@ -47,11 +49,17 @@ const optionSchema: JSONSchema4 = {
       minLength: 1,
       description: 'Import path of the validated config module, named in the report message.',
     },
-    allowedFiles: {
+    allowIn: {
       type: 'array',
       items: { type: 'string' },
       uniqueItems: true,
       description: 'Globs of files that may read `process.env` directly. Replaces the default list.',
+    },
+    allowedFiles: {
+      type: 'array',
+      items: { type: 'string' },
+      uniqueItems: true,
+      description: allowInAliasDescription('allowedFiles'),
     },
   },
 };
@@ -83,18 +91,17 @@ export const noDirectProcessEnvRule = createRule<RuleOptions, MessageIds>({
     schema: [optionSchema],
     messages: {
       directProcessEnv:
-        'Read environment variables through your validated config module (`{{configModule}}`); a direct `process.env` read skips the check at startup. A script or CLI whose environment is its input belongs in `allowedFiles`.',
+        'Read environment variables through your validated config module (`{{configModule}}`); a direct `process.env` read skips the check at startup. A script or CLI whose environment is its input belongs in `allowIn`.',
     },
   },
   defaultOptions: [
     {
       configModule: DEFAULT_CONFIG_MODULE,
-      allowedFiles: [...DEFAULT_ALLOWED_FILES],
     },
   ],
   create(context, [options]) {
     const configModule = options.configModule ?? DEFAULT_CONFIG_MODULE;
-    const allowedFiles = options.allowedFiles ?? DEFAULT_ALLOWED_FILES;
+    const allowedFiles = resolveAllowIn(options, ['allowedFiles'], DEFAULT_ALLOWED_FILES);
 
     if (fileMatchesAnyGlob(context.filename, allowedFiles, context.cwd)) {
       return {};
