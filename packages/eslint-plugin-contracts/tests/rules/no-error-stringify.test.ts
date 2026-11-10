@@ -24,10 +24,27 @@ ruleTester.run('no-error-stringify', noErrorStringifyRule, {
     { code: 'function explain(cause: string) { return `because ${cause}`; }' },
     // The first callback of then is the success handler.
     { code: 'load().then((e) => `${e}`);' },
+    // Inside a logger call's arguments, observability no-error-detail-loss owns
+    // the line (it asks for the error object), so this rule stays silent.
+    { code: 'logger.error(`request failed: ${error}`);' },
+    { code: 'this.logger.warn("failed: " + err.toString());' },
+    { code: 'try { run(); } catch (e) { console.error(`boom ${e}`, { at: Date.now() }); }' },
+    { code: 'audit.error(`failed: ${error}`);', options: [{ loggers: ['audit'] }] },
   ],
   invalid: [
+    // Outside a logger call, and in a callback passed to a logger (another function), it still reports.
+    {
+      code: 'logger.error(`x`, () => `${error}`);',
+      errors: [{ messageId: 'noErrorStringify', suggestions: [{ messageId: 'useMessage', output: 'logger.error(`x`, () => `${error instanceof Error ? error.message : String(error)}`);' }] }],
+    },
+    {
+      code: 'audit.error(`failed: ${error}`);',
+      errors: [{ messageId: 'noErrorStringify', suggestions: [{ messageId: 'useMessage', output: 'audit.error(`failed: ${error instanceof Error ? error.message : String(error)}`);' }] }],
+    },
+    // checkLoggerArguments puts logger arguments back in scope.
     {
       code: 'logger.error(`request failed: ${error}`);',
+      options: [{ checkLoggerArguments: true }],
       errors: [{ messageId: 'noErrorStringify', suggestions: [{ messageId: 'useMessage', output: 'logger.error(`request failed: ${error instanceof Error ? error.message : String(error)}`);' }] }],
     },
     {
