@@ -91,6 +91,11 @@ export const maxHooksPerFileRule = createRule<RuleOptions, MessageIds>({
 
     return {
       ExportNamedDeclaration(node): void {
+        // `export { useX } from './useX'` passes on a hook that lives, and is
+        // counted, in another module; it does not grow this file.
+        if (node.source !== null) {
+          return;
+        }
         handleExport(node.declaration);
         for (const specifier of node.specifiers) {
           if (

@@ -47,6 +47,10 @@ export function useE() {}
 
 - Internal (non-exported) helper hooks: only exported hook factories count.
 - A file with exactly `max` exported hooks.
+- Pass-through re-exports (`export { useA } from './useA'`): the hook lives, and is counted, in the
+  module that defines it, so passing it on does not grow this file. A hook imported and then
+  exported from a local specifier list (`import { useA } from './a'; export { useA };`) still
+  counts.
 - Files outside `fileSuffixes`, however many hooks they export (`Board.utils.ts`, and
   `Board.hooks.tsx`, which does not end with `.hooks.ts`).
 
@@ -59,6 +63,19 @@ export function useE() {}
 
 ```js
 'noctcore-react/max-hooks-per-file': ['error', { max: 4 }]
+```
+
+Hook modules that live in a directory rather than carry a role suffix
+(`src/hooks/queries/usePlaylists.ts`) are covered by scoping a block to that directory and matching
+every module in it:
+
+```js
+{
+  files: ['src/hooks/**/*.{ts,tsx}'],
+  rules: {
+    'noctcore-react/max-hooks-per-file': ['error', { fileSuffixes: ['.ts', '.tsx'] }],
+  },
+}
 ```
 
 ## When not to use it
