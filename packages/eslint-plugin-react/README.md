@@ -44,6 +44,36 @@ export default [
 ];
 ```
 
+## Opt-in rules
+
+Two rules are left out of `recommended`: `enforce-context-consumption` does nothing until its
+`contexts` registry is set, and `no-native-date-input` enforces a house convention (use the design
+system's date picker) rather than a defect every codebase has.
+
+```js
+// eslint.config.js
+export default [
+  // ...the quick start's entries, then:
+  {
+    files: ['**/*.{ts,tsx}'],
+    languageOptions: { parser: tsParser },
+    rules: {
+      'noctcore-react/enforce-context-consumption': ['error', {
+        contexts: [{
+          hook: 'useTaskActions',
+          files: ['src/components/board/**'],
+          providedProps: ['onRun', 'onCancel', 'onDelete'],
+        }],
+      }],
+      'noctcore-react/no-native-date-input': ['error', {
+        replacement: '`DateField` from `@/shared/components/DateField`',
+        allowIn: ['**/DateField/**'],
+      }],
+    },
+  },
+];
+```
+
 ## Rules
 
 <!-- begin generated rules -->
@@ -55,15 +85,18 @@ export default [
 | --- | --- | :-: | :-: | :-: | :-: | :-: |
 | [`component-props-naming`](https://noctcore.github.io/eslint-plugins/rules/react/component-props-naming/) | A function component's first-param props type must be named `<Component>Props`. Autofixes by renaming the in-file type declaration and its references when that is safe. | ✅ |  | 🔧 |  |  |
 | [`context-value-must-be-memoized`](https://noctcore.github.io/eslint-plugins/rules/react/context-value-must-be-memoized/) | A context Provider `value` must not be an inline object, array or function: a fresh reference each render re-renders every consumer. Memoize it with `useMemo` / `useCallback` and pass the stable reference. | ✅ |  |  |  |  |
+| [`enforce-context-consumption`](https://noctcore.github.io/eslint-plugins/rules/react/enforce-context-consumption/) | A prop whose value a registered scoped context already supplies must be read from the context, not declared or destructured as a prop again. | 🔘 | ⚙️ |  |  |  |
 | [`max-hook-return-surface`](https://noctcore.github.io/eslint-plugins/rules/react/max-hook-return-surface/) | An exported `use*` hook in a hook file may return object literals (top-level or nested one level) of at most `max` (default 20) members. Wider returns are god-controllers in the making. | ✅ |  |  |  |  |
 | [`max-hooks-per-file`](https://noctcore.github.io/eslint-plugins/rules/react/max-hooks-per-file/) | A hook/query/mutation file (default `*.hooks.ts` / `*.queries.ts` / `*.mutations.ts`) may export at most `max` (default 4) `use*` hooks. Split larger files. | ✅ |  |  |  |  |
 | [`max-props-per-component`](https://noctcore.github.io/eslint-plugins/rules/react/max-props-per-component/) | A `*Props` interface/type-literal may declare at most `max` (default 12) local members. `extends` clauses are not counted. | ✅ |  |  |  |  |
 | [`no-effect-derived-state`](https://noctcore.github.io/eslint-plugins/rules/react/no-effect-derived-state/) | An effect whose entire body is `setState` calls with values derived purely from its dependencies is the "you might not need an effect" anti-pattern — compute the value during render (or with `useMemo`) instead. | ✅ |  |  |  |  |
 | [`no-jsx-computation`](https://noctcore.github.io/eslint-plugins/rules/react/no-jsx-computation/) | Disallow array methods, arithmetic, and chained logical expressions directly inside JSX `{...}`. Lift them to a const above the return or into the hook. | ✅ |  |  |  |  |
 | [`no-jsx-in-hooks`](https://noctcore.github.io/eslint-plugins/rules/react/no-jsx-in-hooks/) | A `use*`-named function must not return JSX — that is a component wearing a hook costume. Rename it to a PascalCase component, or return values instead of elements. | ✅ |  |  |  |  |
+| [`no-native-date-input`](https://noctcore.github.io/eslint-plugins/rules/react/no-native-date-input/) | Disallow native date inputs (`type="date"` and friends): Chromium formats them in the browser UI language and ignores `lang`, so the date order can contradict the page. | 🔘 |  |  |  |  |
 | [`no-prop-drilling`](https://noctcore.github.io/eslint-plugins/rules/react/no-prop-drilling/) | A bundle of `maxForwarded`+ (default 4) props each forwarded unchanged (`name={name}`) from the `*Props` param to the same child component is prop drilling. Compose instead. | ✅ |  |  |  |  |
 | [`no-state-in-component-body`](https://noctcore.github.io/eslint-plugins/rules/react/no-state-in-component-body/) | State/effect/query hooks must live in the colocated hook file (`<Name>.hooks.ts`), not in the component `.tsx` body. The component is a thin shell. | ✅ |  |  |  |  |
 | [`no-unguarded-web-storage`](https://noctcore.github.io/eslint-plugins/rules/react/no-unguarded-web-storage/) | A `localStorage` / `sessionStorage` access must sit inside a `try` with a `catch`: the access itself throws when storage is disabled, partitioned or full. | ✅ |  |  | 💡 |  |
+| [`password-input-requires-autocomplete`](https://noctcore.github.io/eslint-plugins/rules/react/password-input-requires-autocomplete/) | A password field must carry an explicit `autoComplete` purpose, so a password manager can fill the current password and save a new one. | ✅ |  |  |  |  |
 | [`prefer-lazy-state-init`](https://noctcore.github.io/eslint-plugins/rules/react/prefer-lazy-state-init/) | A `useState` initializer that is an expensive call (default `JSON.parse` / `localStorage.getItem` / `sessionStorage.getItem`, or a configured builder) must be wrapped in a function so it runs once on mount, not every render. | ✅ |  | 🔧 |  |  |
 | [`props-must-be-visual`](https://noctcore.github.io/eslint-plugins/rules/react/props-must-be-visual/) | Component props must be visual. Auth/business-identity and credential prop names (`userId`, `currentUser`, `*token*`, `*jwt*`, `*secret*`, `apiKey`, ...) are disallowed. A live `password` input is a legitimate visual concern and is intentionally allowed. | ✅ |  |  |  |  |
 | [`require-effect-cancellation`](https://noctcore.github.io/eslint-plugins/rules/react/require-effect-cancellation/) | A `setState`/`dispatch` that runs after an `await` or `.then()` inside a `useEffect` must be guarded against a unmounted/re-run effect (AbortController, a cancelled flag, or a cleanup return). | ✅ |  |  |  |  |

@@ -1,14 +1,17 @@
 import { componentPropsNamingRule } from './component-props-naming';
 import { contextValueMustBeMemoizedRule } from './context-value-must-be-memoized';
+import { enforceContextConsumptionRule } from './enforce-context-consumption';
 import { maxHookReturnSurfaceRule } from './max-hook-return-surface';
 import { maxHooksPerFileRule } from './max-hooks-per-file';
 import { maxPropsPerComponentRule } from './max-props-per-component';
 import { noEffectDerivedStateRule } from './no-effect-derived-state';
 import { noJsxComputationRule } from './no-jsx-computation';
 import { noJsxInHooksRule } from './no-jsx-in-hooks';
+import { noNativeDateInputRule } from './no-native-date-input';
 import { noPropDrillingRule } from './no-prop-drilling';
 import { noStateInComponentBodyRule } from './no-state-in-component-body';
 import { noUnguardedWebStorageRule } from './no-unguarded-web-storage';
+import { passwordInputRequiresAutocompleteRule } from './password-input-requires-autocomplete';
 import { preferLazyStateInitRule } from './prefer-lazy-state-init';
 import { propsMustBeVisualRule } from './props-must-be-visual';
 import { requireEffectCancellationRule } from './require-effect-cancellation';
@@ -17,15 +20,18 @@ import { requireEffectCancellationRule } from './require-effect-cancellation';
 export const rules = {
   'component-props-naming': componentPropsNamingRule,
   'context-value-must-be-memoized': contextValueMustBeMemoizedRule,
+  'enforce-context-consumption': enforceContextConsumptionRule,
   'max-hook-return-surface': maxHookReturnSurfaceRule,
   'max-hooks-per-file': maxHooksPerFileRule,
   'max-props-per-component': maxPropsPerComponentRule,
   'no-effect-derived-state': noEffectDerivedStateRule,
   'no-jsx-computation': noJsxComputationRule,
   'no-jsx-in-hooks': noJsxInHooksRule,
+  'no-native-date-input': noNativeDateInputRule,
   'no-prop-drilling': noPropDrillingRule,
   'no-state-in-component-body': noStateInComponentBodyRule,
   'no-unguarded-web-storage': noUnguardedWebStorageRule,
+  'password-input-requires-autocomplete': passwordInputRequiresAutocompleteRule,
   'prefer-lazy-state-init': preferLazyStateInitRule,
   'props-must-be-visual': propsMustBeVisualRule,
   'require-effect-cancellation': requireEffectCancellationRule,

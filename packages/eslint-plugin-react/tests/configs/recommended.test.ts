@@ -10,7 +10,10 @@ function severityOf(entry: unknown): unknown {
 // Rules the preset leaves out on purpose; `src/configs/recommended.ts` says why.
 // A new rule must land in the preset or here, so leaving one out is a decision.
 // Every rule that needs options (`meta.docs.requiresOptions`) must be here.
-const OMITTED_FROM_PRESETS: readonly string[] = [];
+const OMITTED_FROM_PRESETS: readonly string[] = [
+  'enforce-context-consumption',
+  'no-native-date-input',
+];
 
 type Preset = { name?: string; rules: Record<string, unknown> };
 type RuleMeta = { meta?: { docs?: { requiresOptions?: boolean } } };
