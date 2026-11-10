@@ -38,7 +38,7 @@ export default [
   {
     files: ['**/*.{ts,tsx}'],
     rules: {
-      'noctcore-async-safety/require-fetch-timeout': ['error', { callees: ['undici.request'] }],
+      'noctcore-async-safety/require-fetch-timeout': ['error', { fetchCallees: ['undici.request'] }],
     },
   },
 ];

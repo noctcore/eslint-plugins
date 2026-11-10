@@ -15,7 +15,7 @@ the failure observable.
 
 ## What it flags
 
-A call to global `fetch` whose options carry no `signal`, or a call to a wrapper named in the `callees` option
+A call to global `fetch` whose options carry no `signal`, or a call to a wrapper named in the `fetchCallees` option
 (e.g. `undici.request`, `got`) whose options carry neither a `signal` nor a `timeout`. `timeout` is not a
 `fetch` option, so it only counts for wrappers.
 
@@ -50,20 +50,23 @@ The rule is purely syntactic and stays silent whenever it cannot see the argumen
 - an options slot that is an identifier/call/member (`fetch(url, opts)`) — that bag may already set a signal, skipped;
 - a `Request` built in view (`fetch(new Request(url, { signal }))`, or a `const` initialised with
   `new Request(...)`): it can carry its own signal, skipped;
-- a wrapper named in `callees` called with one non-string argument (`axios(config)`): that may be the config bag, skipped.
+- a wrapper named in `fetchCallees` called with one non-string argument (`axios(config)`): that may be the config bag, skipped.
 
 ## Options
 
 | Option | Type | Default | Meaning |
 | --- | --- | --- | --- |
-| `callees` | `string[]` | `[]` | Additional callee texts to check, matched literally (`'axios'`, `'undici.request'`). `fetch` is always checked. |
+| `fetchCallees` | `(string \| object)[]` | `[]` | Wrappers to check besides the global `fetch` (`'axios'`, `'undici.request'`). `fetch` is always checked. |
+| `callees` | `string[]` | (none) | Deprecated alias of `fetchCallees`, kept through 1.x. When both are set, the lists are combined. |
 | `defaultTimeoutMs` | `integer` (≥1) | `10000` | The timeout value used in the suggestion. |
 
 ```js
-'noctcore-async-safety/require-fetch-timeout': ['error', { callees: ['undici.request'], defaultTimeoutMs: 5000 }]
+'noctcore-async-safety/require-fetch-timeout': ['error', { fetchCallees: ['undici.request'], defaultTimeoutMs: 5000 }]
 ```
+
+The same `fetchCallees` list works for async-safety `require-fetch-timeout`, contracts `fetch-must-check-ok` and security `no-user-controlled-fetch-url`, so declare a wrapper once and pass it to all three. An entry is a string (`'http.fetchWithRetry'`: the last segment is the method, the rest the receiver as written) or an object (`{ object: 'axios', name: 'get', urlArgument: 0, urlProperty: 'url' }`).
 
 ## When not to use it
 
 If your `fetch` wrapper enforces a timeout centrally (an interceptor, a default `AbortSignal`), the per-call
-signal is redundant — leave `callees` at its default so only bare `fetch` is checked, or disable the rule.
+signal is redundant — leave `fetchCallees` at its default so only bare `fetch` is checked, or disable the rule.
