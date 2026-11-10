@@ -34,8 +34,26 @@ ruleTester.run('no-direct-process-env', noDirectProcessEnvRule, {
       code: 'const v = process.env.NODE_ENV;',
       filename: 'vite.config.ts',
     },
+    // ...in every module flavour, tests written in plain JavaScript, and repo tooling.
+    { code: 'const v = process.env.NODE_ENV;', filename: 'vite.config.mts' },
+    { code: 'const v = process.env.NODE_ENV;', filename: '/repo/apps/web/vitest.config.cts' },
+    { code: "process.env.TZ = 'UTC';", filename: '/repo/packages/cli/src/a.test.js' },
+    { code: "process.env.TZ = 'UTC';", filename: 'src/a.spec.mjs' },
+    { code: 'const dir = process.env.VERIFY_DIR;', filename: '/repo/tools/verify/run.ts' },
+    { code: 'const token = process.env.GITHUB_TOKEN;', filename: 'scripts/release.mjs' },
   ],
   invalid: [
+    // Application code next to the allowlisted shapes is still checked.
+    {
+      code: 'const url = process.env.DATABASE_URL;',
+      filename: '/repo/apps/api/src/toolsService.ts',
+      errors: [{ messageId: 'directProcessEnv' }],
+    },
+    {
+      code: 'const url = process.env.DATABASE_URL;',
+      filename: '/repo/apps/api/src/config.service.ts',
+      errors: [{ messageId: 'directProcessEnv', data: { configModule: '@/config' } }],
+    },
     {
       code: "const isProd = process.env.NODE_ENV === 'production';",
       filename: 'apps/web/src/lib/runtime.ts',

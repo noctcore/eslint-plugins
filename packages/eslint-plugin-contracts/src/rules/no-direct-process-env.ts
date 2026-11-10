@@ -20,29 +20,38 @@ type MessageIds = 'directProcessEnv';
  * De-projected from BoringStack: the original resolved every file to a
  * pnpm-workspace root and matched allowlist globs with micromatch. That coupled
  * the rule to one repo layout and a runtime dependency. Here the allowlist is
- * matched against the (forward-slashed) filename with a small self-contained
- * glob matcher — no repo-root detection, no external dependency — so the rule is
- * portable. Globs support `*`, `**`, `?`, and `{a,b}` alternation; a leading
+ * matched against the (forward-slashed) filename with the shared eslint-utils
+ * matcher, which compiles each glob once and caches it, with no repo-root
+ * detection. Globs support `*`, `**`, `?`, and `{a,b}` alternation; a leading
  * `**\/` matches any (or no) directory prefix, so patterns work against both
  * relative and absolute filenames.
  */
 const DEFAULT_CONFIG_MODULE = '@/config';
 
+// Config files and tests in every module flavour, and repo tooling (`scripts/`,
+// `tools/`): a CLI's environment is its input, and it boots no app whose config
+// module it could read through.
 const DEFAULT_ALLOWED_FILES: readonly string[] = [
-  '**/*.config.{ts,js,mjs,cjs}',
-  '**/*.{spec,test}.{ts,tsx}',
+  '**/*.config.{ts,js,mjs,cjs,mts,cts}',
+  '**/*.{spec,test}.{ts,tsx,mts,cts,js,jsx,mjs,cjs}',
   '**/scripts/**',
+  '**/tools/**',
 ];
 
 const optionSchema: JSONSchema4 = {
   type: 'object',
   additionalProperties: false,
   properties: {
-    configModule: { type: 'string', minLength: 1 },
+    configModule: {
+      type: 'string',
+      minLength: 1,
+      description: 'Import path of the validated config module, named in the report message.',
+    },
     allowedFiles: {
       type: 'array',
       items: { type: 'string' },
       uniqueItems: true,
+      description: 'Globs of files that may read `process.env` directly. Replaces the default list.',
     },
   },
 };
@@ -74,7 +83,7 @@ export const noDirectProcessEnvRule = createRule<RuleOptions, MessageIds>({
     schema: [optionSchema],
     messages: {
       directProcessEnv:
-        'Read environment variables through your typed config accessor (import from `{{configModule}}`). Direct `process.env` access bypasses boot-time validation.',
+        'Read environment variables through your validated config module (`{{configModule}}`); a direct `process.env` read skips the check at startup. A script or CLI whose environment is its input belongs in `allowedFiles`.',
     },
   },
   defaultOptions: [
