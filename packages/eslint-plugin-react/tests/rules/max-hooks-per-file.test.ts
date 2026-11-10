@@ -57,6 +57,16 @@ export { useA as helperA, useB as helperB, useC as helperC, useD as helperD, use
 
 ruleTester.run('max-hooks-per-file', maxHooksPerFileRule, {
   valid: [
+    // Pass-through re-exports add no hooks to this file: four local hooks plus
+    // hooks re-exported from the module that defines them stay at the limit.
+    {
+      code: `${fourHooks}export { useCheckForUpdatesMutation, useInstallUpdateMutation } from '@/hooks/queries/useUpdater';\n`,
+      filename: QUERIES,
+    },
+    {
+      code: "export { useA, useB, useC, useD, useE } from './Board.queries';\n",
+      filename: 'src/board/Board.hooks.ts',
+    },
     // Exactly the max is fine.
     { code: fourHooks, filename: QUERIES },
     // `.hooks.ts` is also a bucket file but four is within the limit.
