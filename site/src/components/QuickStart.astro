@@ -17,8 +17,12 @@ const installed = pkg.kind === 'eslint-plugin' ? `${pkg.npmName} @typescript-esl
 const install = `npm install --save-dev ${installed}\n# or: bun add -D / pnpm add -D ${installed}`;
 
 const enabled = enabledInPreset(pkg);
+// House rules on only in `strict`; zero when the package has no `strict` preset.
+const strictOnly = pkg.rules.filter((rule) => rule.recommended !== 'error' && rule.strict === 'error').length;
+// With an empty `recommended`, the snippet spreads `strict` so it checks something.
+const preset = enabled === 0 && strictOnly > 0 ? 'strict' : 'recommended';
 // Prefer a rule that works without options, so the example line runs as written.
-const optIns = pkg.rules.filter((rule) => rule.recommended !== 'error' && !rule.deprecated);
+const optIns = pkg.rules.filter((rule) => rule.recommended !== 'error' && rule.strict !== 'error' && !rule.deprecated);
 const firstOptIn = optIns.find((rule) => !rule.requiresOptions) ?? optIns[0];
 
 let config: string;
@@ -32,7 +36,7 @@ if (pkg.kind === 'eslint-plugin') {
     '',
     'export default [',
     '  {',
-    `    ...${name}.configs.recommended,`,
+    `    ...${name}.configs.${preset},`,
     "    files: ['**/*.{ts,tsx}'],",
     '    languageOptions: { parser: tsParser },',
     '  },',
@@ -47,12 +51,19 @@ if (pkg.kind === 'eslint-plugin') {
       `// { rules: { '${firstOptIn.id}': ${severity} } }`,
     ].join('\n');
   }
+  const strictNote =
+    strictOnly === 0
+      ? ''
+      : ` The strict preset adds ${plural(strictOnly, 'house rule')} (naming, folder shape, size caps) on top.`;
   note =
-    enabled === 0
+    enabled === 0 && strictOnly > 0
+      ? `The recommended preset turns none of its ${plural(pkg.rules.length, 'rule')} on: each is a house ` +
+        `convention or needs options, so the snippet spreads strict, which enables ${strictOnly}.`
+      : enabled === 0
       ? `The recommended preset turns none of its ${plural(pkg.rules.length, 'rule')} on: each needs options ` +
         'only your project can give, so the preset alone checks nothing. Enable them with your options, ' +
         "as each rule's page shows."
-      : `The recommended preset enables ${enabled} of ${plural(pkg.rules.length, 'rule')}.`;
+      : `The recommended preset enables ${enabled} of ${plural(pkg.rules.length, 'rule')}.${strictNote}`;
 } else {
   config = [
     `import { createAllRules, createPackageShapeRule } from '${pkg.npmName}';`,

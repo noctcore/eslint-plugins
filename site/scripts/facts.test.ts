@@ -18,6 +18,7 @@ function rule(overrides: Partial<RuleEntry> = {}): RuleEntry {
     id: 'noctcore-fixture/some-rule',
     description: 'Fixture rule.',
     recommended: 'error',
+    strict: null,
     fixable: false,
     hasSuggestions: false,
     typeInfo: 'none',
@@ -83,6 +84,13 @@ describe('facts strip', () => {
     );
     expect(cells(html)).toContain('Options: Optional');
     expect(cells(html)).toContain('Type information: <span class="nc-badge nc-badge--types">optional</span>');
+  });
+
+  test('a house rule on only in the strict preset', () => {
+    const html = factsStrip(plugin, rule({ recommended: null, strict: 'error' }));
+    expect(cells(html)).toContain(
+      'Recommended preset: <span class="nc-badge nc-badge--out">not listed</span> <span class="nc-badge nc-badge--strict">on in strict</span>',
+    );
   });
 
   test('a lint-meta rule gets the harness cells', () => {

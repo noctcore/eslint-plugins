@@ -32,6 +32,7 @@ export const PLUGIN_README_SECTIONS = [
   'Requirements',
   'Install',
   'Quick start',
+  'Strict preset',
   'Opt-in rules',
   'Rules',
   'Severity policy',
@@ -103,11 +104,15 @@ export function checkReadmeSections(source: string, path: string, pkg: PackageEn
     expectSections(headings, LINT_META_README_SECTIONS, () => true, path, 'README');
     return;
   }
-  const hasOptIn = pkg.rules.some((rule) => rule.recommended !== 'error' || rule.requiresOptions);
+  const hasOptIn = pkg.rules.some(
+    (rule) => (rule.recommended !== 'error' && rule.strict !== 'error') || rule.requiresOptions,
+  );
+  const hasStrict = pkg.rules.some((rule) => rule.strict !== null);
   expectSections(
     headings,
     PLUGIN_README_SECTIONS,
     (section) => {
+      if (section === 'Strict preset') return hasStrict;
       if (section === 'Opt-in rules') return hasOptIn;
       if (section === 'Credits') return headings.includes(section);
       return true;

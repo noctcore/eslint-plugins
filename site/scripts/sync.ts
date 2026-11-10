@@ -159,6 +159,8 @@ const yesNo = (label: string, yes: boolean) => fact(label, yes ? 'Yes' : 'No', !
 
 function presetFact(rule: RuleEntry): string {
   if (rule.recommended === 'error') return badge('on', 'error');
+  // Not in `recommended`, but on in the package's `strict` preset (the house rules).
+  if (rule.strict === 'error') return `${badge('out', 'not listed')} ${badge('strict', 'on in strict')}`;
   const state = rule.recommended === 'off' ? badge('off', 'off') : badge('out', 'not listed');
   // A deprecated rule is in no preset on purpose; it is not one to turn on.
   return rule.deprecated ? state : `${state}<span class="nc-optin">opt-in</span>`;

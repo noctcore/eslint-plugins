@@ -3,7 +3,7 @@
  * `deprecation.test.ts` runs it over the real inventory, where it must come
  * back empty, and over a fixture, where it must catch each break.
  *
- * - A deprecated rule is in no `recommended` preset, not even at `off`: a
+ * - A deprecated rule is in no preset (`recommended` or `strict`), not even at `off`: a
  *   preset is what a consumer spreads without reading, and it must not hand
  *   them a rule that is on its way out.
  * - Every id in `replacedBy` is a rule in the inventory, and not a deprecated one.
@@ -25,6 +25,9 @@ export function deprecationProblems(
       if (!rule.deprecated) continue;
       if (rule.recommended !== null) {
         problems.push(`${rule.id} is deprecated but its package's recommended preset lists it (${rule.recommended})`);
+      }
+      if (rule.strict !== null) {
+        problems.push(`${rule.id} is deprecated but its package's strict preset lists it (${rule.strict})`);
       }
       for (const id of rule.replacedBy) {
         const replacement = byId.get(id);

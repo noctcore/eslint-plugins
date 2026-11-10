@@ -14,9 +14,9 @@ interface Props {
 }
 
 const { rule, column } = Astro.props;
-const preset = presetLabel(rule.recommended);
+const preset = presetLabel(rule);
 // A deprecated rule is in no preset on purpose; it is not one to turn on.
-const optIn = preset !== 'error' && !rule.deprecated;
+const optIn = preset !== 'error' && preset !== 'strict' && !rule.deprecated;
 ---
 
 {

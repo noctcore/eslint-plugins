@@ -58,7 +58,7 @@ describe('generated README tables and rule-doc headers', () => {
     expect([...headers]).toEqual(['| Rule | Description | Preset | ⚙️ | 🔧 | 💡 | 💭 |']);
   });
 
-  test('every plugin rule row is marked either on in recommended or opt-in', () => {
+  test('every plugin rule row is marked on in recommended, on in strict only, or opt-in', () => {
     for (const pkg of inventory.filter((entry) => entry.kind === 'eslint-plugin')) {
       const rows = renderRulesBlock(pkg)
         .split('\n')
@@ -66,7 +66,7 @@ describe('generated README tables and rule-doc headers', () => {
       expect(rows).toHaveLength(pkg.rules.length);
       for (const [i, rule] of pkg.rules.entries()) {
         const preset = rows[i]!.split(' | ')[2];
-        expect(preset).toBe(rule.recommended === 'error' ? '✅' : '🔘');
+        expect(preset).toBe(rule.recommended === 'error' ? '✅' : rule.strict === 'error' ? '☑️' : '🔘');
       }
     }
   });

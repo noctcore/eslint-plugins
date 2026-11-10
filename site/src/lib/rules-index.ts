@@ -42,6 +42,8 @@ export interface RulesIndexRule {
   readonly url: string;
   /** Severity in the package's `recommended` preset; null when the preset does not list it, or for lint-meta rules. */
   readonly recommended: 'error' | 'off' | null;
+  /** Severity in the package's `strict` preset; null when the package has none, it does not list the rule, or for lint-meta rules. */
+  readonly strict: 'error' | 'off' | null;
   readonly fixable: boolean;
   readonly hasSuggestions: boolean;
   /** Whether the rule needs a type-checked program. */
@@ -99,6 +101,7 @@ function ruleEntry(pkg: CatalogPackage, rule: CatalogRule): RulesIndexRule {
     description: rule.description,
     url: absoluteUrl(rule.route),
     recommended,
+    strict: rule.strict === 'error' || rule.strict === 'off' ? rule.strict : null,
     fixable: rule.fixable,
     hasSuggestions: rule.hasSuggestions,
     typeInfo: rule.typeInfo as RulesIndexRule['typeInfo'],
