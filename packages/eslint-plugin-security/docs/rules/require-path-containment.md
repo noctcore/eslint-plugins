@@ -1,6 +1,6 @@
 # `noctcore-security/require-path-containment`
 
-> Request-shaped input flowing directly into `path.join` / `path.resolve` without a containment guard is a path-traversal sink. **Opt-in — not in `recommended`.**
+> Request-shaped input passed directly into `path.join` / `path.resolve` without a containment test on the result is a path-traversal sink.
 
 <!-- begin generated rule header -->
 🔘 Opt-in: not in `recommended` · 💭 Type information: not needed
@@ -27,12 +27,35 @@ if (!resolved.startsWith(baseDir)) throw new ForbiddenError();
 
 Deliberately **narrow** to stay high-precision without type information. It fires only when:
 
-- a `req.*` / `request.*` member expression is passed **directly** into `path.join(...)` or
-  `path.resolve(...)`, **and**
-- the enclosing function contains no containment guard.
+- a member expression rooted at a request object (`req.*` / `request.*` by default, see
+  `requestObjects`) is passed **directly** into `join` or `resolve` from `path` / `node:path`,
+  written as `path.join`, through a default or namespace import under any name, or as an imported
+  `join` / `resolve` (renamed or not), **and**
+- the joined value is never tested for containment in the same function.
 
-A guard is any `path.normalize` / `path.relative` / `.startsWith(...)` call in the same function, or
-the escape-hatch comment convention (below).
+```ts bad
+import { join } from 'node:path';
+
+export function download(req) {
+  return join(uploadsDir, req.params.file);
+}
+```
+
+A test is a call that takes the joined value: `full.startsWith(...)`, `path.relative(base, full)`,
+or a helper named in `containmentGuards`. The joined value is the variable the join is stored in,
+plus any variable initialised from it through `join`, `resolve` or `normalize`. A test of some other
+string does not count:
+
+```ts bad
+// the guard tests the raw name, not the path that is used
+function serve(req) {
+  if (req.params.file.startsWith('.')) throw new ForbiddenError();
+  return path.join(baseDir, req.params.file);
+}
+```
+
+`path.normalize` on its own is not a test: it resolves `..` segments, so it happily returns a path
+outside the base directory.
 
 ### Escape hatch
 
@@ -48,7 +71,7 @@ function serve(req) {
 
 ## What it does not flag
 
-Because a sanitized value is normally bound to a local first (`const safe = clean(req.x)` →
+Because a sanitized value is normally bound to a local first (`const safe = clean(req.x)` then
 `path.join(base, safe)`), that shape is **not** a direct `req.*` argument and is never flagged.
 
 ```ts good
@@ -57,19 +80,45 @@ const safe = sanitize(req.params.file);
 return path.join(base, safe);
 ```
 
-Broader user-input sources — arbitrary handler parameters, decoded JWT/payload fields — are **out of
-scope**. Proving them user-shaped needs type or dataflow analysis this syntactic rule cannot do
-soundly, and guessing would flood the codebase with false positives. Only the unambiguous `req.*` /
-`request.*` root is tracked.
+A `join` or `resolve` imported from any other module (lodash, a DI container) is not a path builder.
+
+Broader user-input sources (arbitrary handler parameters, decoded JWT or payload fields) are not
+tracked by default. Proving them user-shaped needs type or dataflow analysis this syntactic rule
+cannot do soundly. When you know a source, name its root object in `requestObjects`; for example a
+settings object a renderer process can write:
+
+```ts bad options={"requestObjects":["settings"]}
+import { join } from 'node:path';
+import { rm } from 'node:fs/promises';
+
+export async function clearSprite(settings) {
+  await rm(join(spritesDir, settings.mascotCustomSprite));
+}
+```
+
+```ts good options={"requestObjects":["settings"]}
+import { join, sep } from 'node:path';
+import { rm } from 'node:fs/promises';
+
+export async function clearSprite(settings) {
+  const target = join(spritesDir, settings.mascotCustomSprite);
+  if (!target.startsWith(spritesDir + sep)) throw new Error('outside the sprites directory');
+  await rm(target);
+}
+```
 
 ## Options
 
 | Option | Type | Default | Meaning |
 | --- | --- | --- | --- |
 | `requestObjects` | `string[]` | `['req', 'request']` | Root object names treated as request-shaped input. |
+| `containmentGuards` | `string[]` | `[]` | Names of project helpers that verify containment; a call to one that takes the joined value counts as a test. |
 
 ```js
-'noctcore-security/require-path-containment': ['error', { requestObjects: ['req', 'request', 'ctx'] }]
+'noctcore-security/require-path-containment': [
+  'error',
+  { requestObjects: ['req', 'request', 'ctx'], containmentGuards: ['assertInside'] },
+]
 ```
 
 ## When not to use it

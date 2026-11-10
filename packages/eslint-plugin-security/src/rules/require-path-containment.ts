@@ -1,4 +1,10 @@
-import { AST_NODE_TYPES, type TSESTree } from '@typescript-eslint/utils';
+import {
+  AST_NODE_TYPES,
+  enclosingFunction,
+  walkSome,
+  type TSESLint,
+  type TSESTree,
+} from '@noctcore/eslint-utils';
 import type { JSONSchema4 } from '@typescript-eslint/utils/json-schema';
 
 import { createRule } from '../createRule';
@@ -7,40 +13,40 @@ const RULE_NAME = 'require-path-containment';
 
 export interface RequirePathContainmentOptions {
   readonly requestObjects?: readonly string[];
+  readonly containmentGuards?: readonly string[];
 }
 
 type RuleOptions = [RequirePathContainmentOptions];
 type MessageIds = 'unguardedPathJoin';
 
 /*
- * Path-traversal precision — OPT-IN. `path.join(baseDir, req.params.file)` lets a
+ * Path-traversal precision, OPT-IN. `path.join(baseDir, req.params.file)` lets a
  * crafted `../../etc/passwd` escape the intended directory. The safe pattern is
- * to resolve, then verify the result still starts with the base dir (or normalize
- * and reject `..`) before touching the filesystem.
+ * to resolve, then verify the result still starts with the base dir before
+ * touching the filesystem.
  *
  * DELIBERATELY NARROW to stay high-precision without type information: it fires
- * only when a `req.*` / `request.*` member expression is passed DIRECTLY into
- * `path.join(...)` / `path.resolve(...)`, and the enclosing function contains no
- * containment guard. A guard is any `path.normalize` / `path.relative` /
- * `.startsWith(...)` call in the same function, or an escape-hatch comment
- * containing `path-containment` (e.g. `// path-containment: base is a constant`).
- * Because a sanitized value is bound to a local first (`const safe = clean(req.x)`
- * → `path.join(base, safe)`), that shape is not a direct `req.*` argument and is
- * never flagged.
+ * only when a member expression rooted at a request-shaped object (`req.*` /
+ * `request.*` by default, configurable) is passed DIRECTLY into `join` /
+ * `resolve` from `path` / `node:path` (as `path.join`, through a default or
+ * namespace import under any name, or as an imported `join` / `resolve`), and
+ * the joined value is never tested. A test is a call that takes the joined
+ * value: `full.startsWith(...)`, `path.relative(base, full)`, or a configured
+ * guard function `isInside(base, full)`. The joined value is the variable the
+ * join is stored in, plus any variable initialised from it, so
+ * `const full = normalize(join(base, f)); if (!full.startsWith(base)) ...` is
+ * guarded. A test of some other string (`name.startsWith('.')`) is not. An
+ * escape-hatch comment containing `path-containment` anywhere in the function
+ * silences it.
  *
- * This is a HIGH-false-positive family, so the rule is exported and documented
- * but NOT in the `recommended` preset — enable it explicitly. Broader
- * "handler params / decoded payloads" sources are intentionally out of scope:
- * proving them user-shaped needs type/dataflow analysis this syntactic rule
- * cannot do soundly.
+ * Because a sanitized value is bound to a local first (`const safe = clean(req.x)`
+ * then `path.join(base, safe)`), that shape is not a direct request argument and
+ * is never flagged.
  */
 const DEFAULT_REQUEST_OBJECTS: readonly string[] = ['req', 'request'];
 const HATCH_TOKEN = 'path-containment';
-const GUARD_PROPERTIES: ReadonlySet<string> = new Set([
-  'normalize',
-  'relative',
-  'startsWith',
-]);
+const PATH_MODULES: ReadonlySet<string> = new Set(['path', 'node:path']);
+const BUILDERS: ReadonlySet<string> = new Set(['join', 'resolve']);
 
 const optionSchema: JSONSchema4 = {
   type: 'object',
@@ -49,26 +55,70 @@ const optionSchema: JSONSchema4 = {
     requestObjects: {
       type: 'array',
       items: { type: 'string' },
+      description:
+        'Root object names treated as request-shaped input, e.g. `ctx` or a renderer-writable `settings` object.',
+    },
+    containmentGuards: {
+      type: 'array',
+      items: { type: 'string' },
+      description:
+        'Names of project helpers that verify containment; a call to one that takes the joined value counts as a guard.',
     },
   },
 };
 
-/** The `path.join` / `path.resolve` method name, or null for any other callee. */
-function pathBuilderMethod(callee: TSESTree.Node): string | null {
+interface PathBindings {
+  /** Local names of default or namespace imports of `path` / `node:path`. */
+  readonly modules: Set<string>;
+  /** Local name of an imported `join` / `resolve` to the imported name. */
+  readonly builders: Map<string, string>;
+}
+
+/** Collects how this file names the `path` module and its builders. */
+function collectPathBindings(program: TSESTree.Program): PathBindings {
+  const bindings: PathBindings = { modules: new Set(['path']), builders: new Map() };
+  for (const statement of program.body) {
+    if (
+      statement.type !== AST_NODE_TYPES.ImportDeclaration ||
+      !PATH_MODULES.has(statement.source.value)
+    ) {
+      continue;
+    }
+    for (const specifier of statement.specifiers) {
+      if (specifier.type === AST_NODE_TYPES.ImportSpecifier) {
+        const imported =
+          specifier.imported.type === AST_NODE_TYPES.Identifier
+            ? specifier.imported.name
+            : specifier.imported.value;
+        if (BUILDERS.has(imported)) {
+          bindings.builders.set(specifier.local.name, imported);
+        }
+      } else {
+        bindings.modules.add(specifier.local.name);
+      }
+    }
+  }
+  return bindings;
+}
+
+/** The `join` / `resolve` builder a callee names, or null for any other callee. */
+function pathBuilderMethod(callee: TSESTree.Node, bindings: PathBindings): string | null {
+  if (callee.type === AST_NODE_TYPES.Identifier) {
+    return bindings.builders.get(callee.name) ?? null;
+  }
   if (
     callee.type !== AST_NODE_TYPES.MemberExpression ||
     callee.computed ||
     callee.object.type !== AST_NODE_TYPES.Identifier ||
-    callee.object.name !== 'path' ||
+    !bindings.modules.has(callee.object.name) ||
     callee.property.type !== AST_NODE_TYPES.Identifier
   ) {
     return null;
   }
-  const method = callee.property.name;
-  return method === 'join' || method === 'resolve' ? method : null;
+  return BUILDERS.has(callee.property.name) ? callee.property.name : null;
 }
 
-/** The root identifier of a member chain (`req.params.file` → `req`), else null. */
+/** The root identifier of a member chain (`req.params.file` gives `req`), else null. */
 function rootIdentifier(node: TSESTree.Node): TSESTree.Identifier | null {
   let current: TSESTree.Node = node;
   while (current.type === AST_NODE_TYPES.MemberExpression) {
@@ -77,64 +127,123 @@ function rootIdentifier(node: TSESTree.Node): TSESTree.Identifier | null {
   return current.type === AST_NODE_TYPES.Identifier ? current : null;
 }
 
-type ScopeNode =
-  | TSESTree.FunctionDeclaration
-  | TSESTree.FunctionExpression
-  | TSESTree.ArrowFunctionExpression
-  | TSESTree.Program;
-
-/** Nearest enclosing function, or the Program when at module top level. */
-function enclosingScope(node: TSESTree.Node): ScopeNode {
-  let current: TSESTree.Node | undefined = node.parent;
-  while (current) {
-    if (
-      current.type === AST_NODE_TYPES.FunctionDeclaration ||
-      current.type === AST_NODE_TYPES.FunctionExpression ||
-      current.type === AST_NODE_TYPES.ArrowFunctionExpression ||
-      current.type === AST_NODE_TYPES.Program
-    ) {
-      return current;
+/** The first argument that is a member chain rooted at a request object. */
+function requestSource(
+  call: TSESTree.CallExpression,
+  requestObjects: ReadonlySet<string>,
+): TSESTree.MemberExpression | null {
+  for (const arg of call.arguments) {
+    if (arg.type !== AST_NODE_TYPES.MemberExpression) {
+      continue;
     }
-    current = current.parent;
+    const root = rootIdentifier(arg);
+    if (root !== null && requestObjects.has(root.name)) {
+      return arg;
+    }
   }
-  return node as unknown as TSESTree.Program;
+  return null;
 }
 
-/** True when the scope subtree contains a normalize / relative / startsWith call. */
-function hasContainmentGuard(scope: ScopeNode): boolean {
-  let found = false;
-  function walk(node: TSESTree.Node): void {
-    if (found) {
-      return;
+const PATH_PRESERVING: ReadonlySet<string> = new Set(['join', 'resolve', 'normalize']);
+
+/**
+ * True when `parent` passes `child`'s path value on: a type wrapper, or a
+ * `join` / `resolve` / `normalize` call taking it. A call to anything else
+ * (`readFileSync(full)`) produces a different value.
+ */
+function passesPathOn(parent: TSESTree.Node, child: TSESTree.Node): boolean {
+  switch (parent.type) {
+    case AST_NODE_TYPES.TSAsExpression:
+    case AST_NODE_TYPES.TSNonNullExpression:
+    case AST_NODE_TYPES.TSSatisfiesExpression:
+      return true;
+    case AST_NODE_TYPES.CallExpression: {
+      const name = calledName(parent.callee);
+      return name !== null && PATH_PRESERVING.has(name) && parent.arguments.some((arg) => arg === child);
     }
-    if (
-      node.type === AST_NODE_TYPES.CallExpression &&
-      node.callee.type === AST_NODE_TYPES.MemberExpression &&
-      !node.callee.computed &&
-      node.callee.property.type === AST_NODE_TYPES.Identifier &&
-      GUARD_PROPERTIES.has(node.callee.property.name)
-    ) {
-      found = true;
-      return;
+    default:
+      return false;
+  }
+}
+
+/** The declarator a path value is stored in (`const full = normalize(<node>)`), else null. */
+function storingDeclarator(node: TSESTree.Node): TSESTree.VariableDeclarator | null {
+  let child: TSESTree.Node = node;
+  let parent = node.parent;
+  while (parent != null && passesPathOn(parent, child)) {
+    child = parent;
+    parent = parent.parent;
+  }
+  return parent?.type === AST_NODE_TYPES.VariableDeclarator &&
+    parent.init === child &&
+    parent.id.type === AST_NODE_TYPES.Identifier
+    ? parent
+    : null;
+}
+
+/**
+ * Every node holding the joined value: the join itself, the variable it is
+ * stored in, and any variable initialised from that one through path calls,
+ * transitively (`const full = join(...)`, `const normal = normalize(full)`).
+ */
+function joinedValueNodes(
+  join: TSESTree.CallExpression,
+  sourceCode: Readonly<TSESLint.SourceCode>,
+): Set<TSESTree.Node> {
+  const nodes = new Set<TSESTree.Node>([join]);
+  const queue: TSESTree.Node[] = [join];
+  const seen = new Set<TSESLint.Scope.Variable>();
+  for (let current = queue.pop(); current !== undefined; current = queue.pop()) {
+    const declarator = storingDeclarator(current);
+    const variable = declarator === null ? undefined : sourceCode.getDeclaredVariables(declarator)[0];
+    if (variable === undefined || seen.has(variable)) {
+      continue;
     }
-    for (const key of Object.keys(node)) {
-      if (key === 'parent') {
-        continue;
-      }
-      const value = (node as unknown as Record<string, unknown>)[key];
-      if (Array.isArray(value)) {
-        for (const child of value) {
-          if (child && typeof (child as { type?: unknown }).type === 'string') {
-            walk(child as TSESTree.Node);
-          }
-        }
-      } else if (value && typeof (value as { type?: unknown }).type === 'string') {
-        walk(value as TSESTree.Node);
+    seen.add(variable);
+    for (const reference of variable.references) {
+      if (reference.isRead()) {
+        nodes.add(reference.identifier);
+        queue.push(reference.identifier);
       }
     }
   }
-  walk(scope);
-  return found;
+  return nodes;
+}
+
+/** The called name of `f(...)` or `x.f(...)`, for guard matching. */
+function calledName(callee: TSESTree.Node): string | null {
+  if (callee.type === AST_NODE_TYPES.Identifier) {
+    return callee.name;
+  }
+  if (
+    callee.type === AST_NODE_TYPES.MemberExpression &&
+    !callee.computed &&
+    callee.property.type === AST_NODE_TYPES.Identifier
+  ) {
+    return callee.property.name;
+  }
+  return null;
+}
+
+/** True when `call` tests one of the joined identifiers. */
+function testsJoinedValue(
+  call: TSESTree.CallExpression,
+  joined: ReadonlySet<TSESTree.Node>,
+  guards: ReadonlySet<string>,
+): boolean {
+  const name = calledName(call.callee);
+  if (name === null) {
+    return false;
+  }
+  if (name === 'startsWith') {
+    return (
+      call.callee.type === AST_NODE_TYPES.MemberExpression && joined.has(call.callee.object)
+    );
+  }
+  if (name === 'relative' || guards.has(name)) {
+    return call.arguments.some((arg) => joined.has(arg));
+  }
+  return false;
 }
 
 export const requirePathContainmentRule = createRule<RuleOptions, MessageIds>({
@@ -143,49 +252,51 @@ export const requirePathContainmentRule = createRule<RuleOptions, MessageIds>({
     type: 'problem',
     docs: {
       description:
-        'Request-shaped input (`req.*`) passed directly into `path.join` / `path.resolve` without a containment guard is a path-traversal sink.',
+        'Request-shaped input (`req.*`) passed directly into `path.join` / `path.resolve` without a containment test on the result is a path-traversal sink.',
     },
     schema: [optionSchema],
     messages: {
       unguardedPathJoin:
-        '`{{source}}` (request-shaped input) flows into `path.{{method}}(...)` with no containment guard — a path-traversal sink. Resolve then verify the result stays under the base dir (`resolved.startsWith(baseDir)`) or normalize and reject `..`. If this path is already safe, add a `// path-containment: <reason>` comment.',
+        '`{{source}}` (request-shaped input) flows into `{{method}}(...)` and the result is never tested for containment, a path-traversal sink. Store the result and verify it stays under the base dir (`resolved.startsWith(baseDir + sep)`). If this path is already safe, add a `// path-containment: <reason>` comment.',
     },
   },
-  defaultOptions: [{ requestObjects: DEFAULT_REQUEST_OBJECTS }],
+  defaultOptions: [{ requestObjects: DEFAULT_REQUEST_OBJECTS, containmentGuards: [] }],
   create(context, [options]) {
-    const requestObjects = new Set(
-      options.requestObjects ?? DEFAULT_REQUEST_OBJECTS,
-    );
+    const requestObjects = new Set(options.requestObjects ?? DEFAULT_REQUEST_OBJECTS);
+    const guards = new Set(options.containmentGuards ?? []);
+    const { sourceCode } = context;
+    let bindings: PathBindings | null = null;
 
     return {
+      Program(program): void {
+        bindings = collectPathBindings(program);
+      },
       CallExpression(node): void {
-        const method = pathBuilderMethod(node.callee);
+        if (bindings === null) {
+          return;
+        }
+        const method = pathBuilderMethod(node.callee, bindings);
         if (method === null) {
           return;
         }
-
-        // A direct `req.*` / `request.*` member argument is the tracked sink.
-        let source: TSESTree.MemberExpression | null = null;
-        for (const arg of node.arguments) {
-          if (arg.type !== AST_NODE_TYPES.MemberExpression) {
-            continue;
-          }
-          const root = rootIdentifier(arg);
-          if (root !== null && requestObjects.has(root.name)) {
-            source = arg;
-            break;
-          }
-        }
+        const source = requestSource(node, requestObjects);
         if (source === null) {
           return;
         }
 
-        const scope = enclosingScope(node);
-        if (hasContainmentGuard(scope)) {
+        const scope: TSESTree.Node = enclosingFunction(node) ?? sourceCode.ast;
+        const joined = joinedValueNodes(node, sourceCode);
+        const guarded = walkSome(
+          scope,
+          sourceCode.visitorKeys,
+          (candidate) =>
+            candidate.type === AST_NODE_TYPES.CallExpression &&
+            testsJoinedValue(candidate, joined, guards),
+        );
+        if (guarded) {
           return;
         }
-        // Escape-hatch: any `path-containment` comment inside the scope silences.
-        const hatched = context.sourceCode
+        const hatched = sourceCode
           .getAllComments()
           .some(
             (comment) =>
@@ -200,10 +311,7 @@ export const requirePathContainmentRule = createRule<RuleOptions, MessageIds>({
         context.report({
           node,
           messageId: 'unguardedPathJoin',
-          data: {
-            source: context.sourceCode.getText(source),
-            method,
-          },
+          data: { source: sourceCode.getText(source), method },
         });
       },
     };

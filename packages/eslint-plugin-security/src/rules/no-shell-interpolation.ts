@@ -1,4 +1,5 @@
-import { AST_NODE_TYPES, type TSESTree } from '@typescript-eslint/utils';
+import { AST_NODE_TYPES, unwrapTypeWrappers, type TSESLint, type TSESTree } from '@noctcore/eslint-utils';
+import { ASTUtils } from '@typescript-eslint/utils';
 import type { JSONSchema4 } from '@typescript-eslint/utils/json-schema';
 
 import { createRule } from '../createRule';
@@ -23,8 +24,12 @@ type MessageIds = 'shellInterpolation';
  *  - `exec` / `execSync` (always shell): first arg is a template literal with
  *    expressions, or a `+` concatenation with a dynamic part.
  *  - `spawn` / `spawnSync` / `execFile` / `execFileSync`: same dynamic first arg,
- *    but ONLY when an options object passes `shell: true` (or a shell path). The
+ *    but ONLY when an options object literal passes a `shell` value other than
+ *    `false` (`true`, a shell path, or a runtime value such as
+ *    `process.platform === 'win32'`, which is a shell on some machines). The
  *    array-args, no-shell forms are safe and left entirely alone.
+ *  - A binding made with `promisify(exec)` (or `util.promisify(cp.exec)`) is
+ *    followed through scope and checked like the runner it wraps.
  * `exec` called as a member on a non-`child_process` object (notably
  * `regex.exec(...)`) is excluded so RegExp usage never false-positives. There is
  * no autofix — the safe rewrite changes the call shape.
@@ -46,6 +51,7 @@ const optionSchema: JSONSchema4 = {
     extraCallees: {
       type: 'array',
       items: { type: 'string' },
+      description: 'Extra callee names to treat as always-shell command runners, checked like `exec`.',
     },
   },
 };
@@ -101,12 +107,20 @@ function isDynamicCommandString(node: TSESTree.Node): boolean {
   return false;
 }
 
-/** True when a value node enables a shell (`shell: true` or a shell-path string). */
-function isShellEnabled(value: TSESTree.Node): boolean {
-  if (value.type !== AST_NODE_TYPES.Literal) {
-    return false;
+/**
+ * True when a `shell` option value may enable a shell. Only a value that is
+ * statically off (`false`, `null`, `undefined`, `''`) is safe; anything decided
+ * at run time can be a shell on some machine.
+ */
+function isShellEnabled(node: TSESTree.Node): boolean {
+  const value = unwrapTypeWrappers(node);
+  if (value.type === AST_NODE_TYPES.Identifier) {
+    return value.name !== 'undefined';
   }
-  return value.value === true || (typeof value.value === 'string' && value.value !== '');
+  if (value.type !== AST_NODE_TYPES.Literal) {
+    return true;
+  }
+  return value.value !== false && value.value !== null && value.value !== '';
 }
 
 /** True when any argument is an options object requesting a shell. */
@@ -127,13 +141,52 @@ function argsRequestShell(args: readonly TSESTree.Node[]): boolean {
   );
 }
 
+/** True when `callee` is `promisify` or `<x>.promisify` (`util.promisify`). */
+function isPromisify(callee: TSESTree.Node): boolean {
+  const info = getCalleeInfo(callee);
+  return info !== null && info.name === 'promisify';
+}
+
+/** The runner a `child_process` function reference names (`exec`, `cp.execFile`), else null. */
+function childProcessRunner(node: TSESTree.Node): string | null {
+  const info = getCalleeInfo(node);
+  if (info === null) {
+    return null;
+  }
+  if (info.isMember && !(info.objectName !== undefined && CHILD_PROCESS_OBJECT.test(info.objectName))) {
+    return null;
+  }
+  return ALWAYS_SHELL.has(info.name) || CONDITIONAL_SHELL.has(info.name) ? info.name : null;
+}
+
+/**
+ * The runner a local binding wraps when it was made with
+ * `const execAsync = promisify(exec)`, followed through scope; else null.
+ */
+function promisifiedRunner(
+  callee: TSESTree.Identifier,
+  sourceCode: Readonly<TSESLint.SourceCode>,
+): string | null {
+  const variable = ASTUtils.findVariable(sourceCode.getScope(callee), callee);
+  const definition = variable?.defs[0];
+  if (definition?.node.type !== AST_NODE_TYPES.VariableDeclarator) {
+    return null;
+  }
+  const init = definition.node.init === null ? null : unwrapTypeWrappers(definition.node.init);
+  if (init?.type !== AST_NODE_TYPES.CallExpression || !isPromisify(init.callee)) {
+    return null;
+  }
+  const wrapped = init.arguments[0];
+  return wrapped === undefined ? null : childProcessRunner(wrapped);
+}
+
 export const noShellInterpolationRule = createRule<RuleOptions, MessageIds>({
   name: RULE_NAME,
   meta: {
     type: 'problem',
     docs: {
       description:
-        'A dynamically-interpolated command string must not flow into a shell runner (`exec`/`execSync`, or `spawn`/`execFile` with `shell: true`). Pass the program and arguments separately.',
+        'A dynamically-interpolated command string must not flow into a shell runner (`exec`/`execSync`, or `spawn`/`execFile` with a `shell` option that is not `false`), including through `promisify(exec)`. Pass the program and arguments separately.',
     },
     schema: [optionSchema],
     messages: {
@@ -148,10 +201,15 @@ export const noShellInterpolationRule = createRule<RuleOptions, MessageIds>({
 
     return {
       CallExpression(node): void {
-        const info = getCalleeInfo(node.callee);
-        if (info === null) {
+        const direct = getCalleeInfo(node.callee);
+        if (direct === null) {
           return;
         }
+        const wrapped =
+          node.callee.type === AST_NODE_TYPES.Identifier
+            ? promisifiedRunner(node.callee, context.sourceCode)
+            : null;
+        const info: CalleeInfo = wrapped === null ? direct : { ...direct, name: wrapped };
         // Exclude `regex.exec(...)`: `exec` as a member on a non-child_process
         // object is RegExp.prototype.exec, never a shell runner.
         if (
@@ -179,7 +237,7 @@ export const noShellInterpolationRule = createRule<RuleOptions, MessageIds>({
         context.report({
           node: command,
           messageId: 'shellInterpolation',
-          data: { callee: info.name },
+          data: { callee: direct.name },
         });
       },
     };

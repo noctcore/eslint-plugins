@@ -25,4 +25,5 @@ export const recommended = {
   'noctcore-security/no-timing-unsafe-compare': 'error',
   'noctcore-security/no-user-controlled-fetch-url': 'error',
   'noctcore-security/no-user-controlled-redirect': 'error',
+  'noctcore-security/presigned-post-requires-policy': 'error',
 } as const;
