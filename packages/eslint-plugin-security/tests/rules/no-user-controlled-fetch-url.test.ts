@@ -5,6 +5,9 @@ import { noUserControlledFetchUrlRule } from '../../src/rules/no-user-controlled
 const TS = 'client.ts';
 const error = { messageId: 'userControlledFetchUrl' } as const;
 
+// One wrapper list, declared once and passed to all three fetch rules.
+const FETCH_CALLEES = ['fetch', 'http.fetchWithCsrfRetry'];
+
 ruleTester.run('no-user-controlled-fetch-url', noUserControlledFetchUrlRule, {
   valid: [
     // Plain literals and no-interpolation templates.
@@ -60,6 +63,8 @@ ruleTester.run('no-user-controlled-fetch-url', noUserControlledFetchUrlRule, {
     { code: `fetch('https://api.example.com/v' + 2 + '/todos');`, filename: TS },
   ],
   invalid: [
+    // The shared wrapper list, string form.
+    { code: 'http.fetchWithCsrfRetry(url);', filename: TS, options: [{ fetchCallees: FETCH_CALLEES }], errors: [error] },
     // A bare runtime value.
     { code: 'fetch(url);', filename: TS, errors: [error] },
     { code: 'axios.post(target, body);', filename: TS, errors: [error] },
