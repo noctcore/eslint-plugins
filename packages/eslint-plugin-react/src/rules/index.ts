@@ -4,6 +4,7 @@ import { enforceContextConsumptionRule } from './enforce-context-consumption';
 import { maxHookReturnSurfaceRule } from './max-hook-return-surface';
 import { maxHooksPerFileRule } from './max-hooks-per-file';
 import { maxPropsPerComponentRule } from './max-props-per-component';
+import { maxStatePerHookRule } from './max-state-per-hook';
 import { noEffectDerivedStateRule } from './no-effect-derived-state';
 import { noJsxComputationRule } from './no-jsx-computation';
 import { noJsxInHooksRule } from './no-jsx-in-hooks';
@@ -24,6 +25,7 @@ export const rules = {
   'max-hook-return-surface': maxHookReturnSurfaceRule,
   'max-hooks-per-file': maxHooksPerFileRule,
   'max-props-per-component': maxPropsPerComponentRule,
+  'max-state-per-hook': maxStatePerHookRule,
   'no-effect-derived-state': noEffectDerivedStateRule,
   'no-jsx-computation': noJsxComputationRule,
   'no-jsx-in-hooks': noJsxInHooksRule,

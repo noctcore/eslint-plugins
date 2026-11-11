@@ -18,6 +18,7 @@ export const strict = {
   'noctcore-react/max-hook-return-surface': 'error',
   'noctcore-react/max-hooks-per-file': 'error',
   'noctcore-react/max-props-per-component': 'error',
+  'noctcore-react/max-state-per-hook': 'error',
   'noctcore-react/no-jsx-computation': 'error',
   'noctcore-react/no-state-in-component-body': 'error',
 } as const;

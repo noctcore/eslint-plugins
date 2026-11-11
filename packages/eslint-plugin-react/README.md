@@ -46,7 +46,7 @@ export default [
 
 ## Strict preset
 
-`configs.strict` is `recommended` plus the house rules: `component-props-naming`, `max-hook-return-surface`, `max-hooks-per-file`, `max-props-per-component`, `no-jsx-computation`, `no-state-in-component-body`. A house rule holds in a codebase
+`configs.strict` is `recommended` plus the house rules: `component-props-naming`, `max-hook-return-surface`, `max-hooks-per-file`, `max-props-per-component`, `max-state-per-hook`, `no-jsx-computation`, `no-state-in-component-body`. A house rule holds in a codebase
 that follows the same convention and reports widely in one that does not, so it is one spread away
 instead of on by default.
 
@@ -113,6 +113,7 @@ export default [
 | [`max-hook-return-surface`](https://noctcore.github.io/eslint-plugins/rules/react/max-hook-return-surface/) | An exported `use*` hook in a hook file may return object literals (top-level or nested one level) of at most `max` (default 20) members. Wider returns are god-controllers in the making. | ☑️ |  |  |  |  |
 | [`max-hooks-per-file`](https://noctcore.github.io/eslint-plugins/rules/react/max-hooks-per-file/) | A hook/query/mutation file (default `*.hooks.ts` / `*.queries.ts` / `*.mutations.ts`) may export at most `max` (default 4) `use*` hooks. Split larger files. | ☑️ |  |  |  |  |
 | [`max-props-per-component`](https://noctcore.github.io/eslint-plugins/rules/react/max-props-per-component/) | A `*Props` interface/type-literal may declare at most `max` (default 12) local members. `extends` clauses are not counted. | ☑️ |  |  |  |  |
+| [`max-state-per-hook`](https://noctcore.github.io/eslint-plugins/rules/react/max-state-per-hook/) | A `use*` hook in a hook file may keep at most `max` (default 4) `useState` / `useReducer` slots, and a function inside it may call at most `maxSettersPerFunction` (default 3) distinct setters. Group the rest in a reducer. | ☑️ |  |  |  |  |
 | [`no-effect-derived-state`](https://noctcore.github.io/eslint-plugins/rules/react/no-effect-derived-state/) | An effect whose entire body is `setState` calls with values derived purely from its dependencies is the "you might not need an effect" anti-pattern — compute the value during render (or with `useMemo`) instead. | ✅ |  |  |  |  |
 | [`no-jsx-computation`](https://noctcore.github.io/eslint-plugins/rules/react/no-jsx-computation/) | Disallow array methods, arithmetic, and chained logical expressions directly inside JSX `{...}`. Lift them to a const above the return or into the hook. | ☑️ |  |  |  |  |
 | [`no-jsx-in-hooks`](https://noctcore.github.io/eslint-plugins/rules/react/no-jsx-in-hooks/) | A `use*`-named function must not return JSX — that is a component wearing a hook costume. Rename it to a PascalCase component, or return values instead of elements. | ✅ |  |  |  |  |
