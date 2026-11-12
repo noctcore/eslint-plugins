@@ -1,8 +1,16 @@
-import { calleePath, forEachDescendant } from '@noctcore/eslint-utils';
-import { AST_NODE_TYPES, type TSESTree } from '@typescript-eslint/utils';
+import { forEachDescendant } from '@noctcore/eslint-utils';
+import { ASTUtils, AST_NODE_TYPES, type TSESTree } from '@typescript-eslint/utils';
 
 import { createRule } from '../createRule';
-import { isBullmqNew, listenerChain } from '../utils/bullmq';
+import {
+  type ClassNode,
+  isBullmqNew,
+  listenerChain,
+  outermostTypeWrapper,
+  stripTypeWrappers,
+  thisClass,
+  WORKER_ASSIGNMENT_OPERATORS,
+} from '../utils/bullmq';
 
 const RULE_NAME = 'worker-must-implement-close';
 
@@ -15,6 +23,9 @@ const DEFAULT_CLOSE_METHOD_NAMES: readonly string[] = [
   'beforeApplicationShutdown',
 ];
 
+/** The close method the message points to when the configured names include it. */
+const PREFERRED_CLOSE_METHOD = 'onModuleDestroy';
+
 export interface WorkerMustImplementCloseOptions {
   /** Methods that may close the worker. Replaces the defaults. */
   readonly closeMethodNames?: readonly string[];
@@ -23,7 +34,6 @@ export interface WorkerMustImplementCloseOptions {
 type RuleOptions = [WorkerMustImplementCloseOptions];
 type MessageIds = 'missingClose';
 
-type ClassNode = TSESTree.ClassDeclaration | TSESTree.ClassExpression;
 type FunctionValue = TSESTree.ArrowFunctionExpression | TSESTree.FunctionExpression;
 
 interface OwnedWorker {
@@ -31,71 +41,40 @@ interface OwnedWorker {
   readonly node: TSESTree.NewExpression;
 }
 
-function skipTypeWrappers(node: TSESTree.Node): TSESTree.Node {
-  let current = node;
-  while (
-    current.parent !== undefined &&
-    (current.parent.type === AST_NODE_TYPES.TSAsExpression ||
-      current.parent.type === AST_NODE_TYPES.TSSatisfiesExpression ||
-      current.parent.type === AST_NODE_TYPES.TSNonNullExpression ||
-      current.parent.type === AST_NODE_TYPES.TSTypeAssertion)
-  ) {
-    current = current.parent;
-  }
-  return current;
+/** A method body found in the class chain, with the index of the class that declares it. */
+interface MethodHit {
+  readonly fn: FunctionValue;
+  readonly level: number;
 }
 
 /** The name of an instance member with a plain identifier key, else null. */
-function instanceMemberName(
-  member: TSESTree.MethodDefinition | TSESTree.PropertyDefinition,
-): string | null {
-  if (member.static || member.computed || member.key.type !== AST_NODE_TYPES.Identifier) return null;
-  return member.key.name;
-}
-
-/** The class whose instance member has `fn` as its value, or null. */
-function memberClass(fn: FunctionValue): ClassNode | null {
-  const member = fn.parent;
+function instanceMemberName(member: TSESTree.ClassElement): string | null {
   if (
-    (member.type !== AST_NODE_TYPES.MethodDefinition &&
-      member.type !== AST_NODE_TYPES.PropertyDefinition) ||
-    member.value !== fn ||
-    member.static
+    member.type === AST_NODE_TYPES.StaticBlock ||
+    member.type === AST_NODE_TYPES.TSIndexSignature ||
+    member.static ||
+    member.computed ||
+    member.key.type !== AST_NODE_TYPES.Identifier
   ) {
     return null;
   }
-  return member.parent.parent;
+  return member.key.name;
 }
 
-/**
- * The class `this` refers to at `node`: the nearest enclosing function that is
- * not an arrow must be an instance method (or an arrow-valued field) of it. A
- * plain nested `function` rebinds `this`, so nothing is attributed through it.
- */
-function thisClass(node: TSESTree.Node): ClassNode | null {
-  for (let current = node.parent; current !== undefined; current = current.parent) {
-    switch (current.type) {
-      case AST_NODE_TYPES.ArrowFunctionExpression: {
-        const owner = memberClass(current);
-        if (owner !== null) return owner;
-        break;
-      }
-      case AST_NODE_TYPES.FunctionExpression:
-        return memberClass(current);
-      case AST_NODE_TYPES.FunctionDeclaration:
-      case AST_NODE_TYPES.StaticBlock:
-      case AST_NODE_TYPES.ClassBody:
-        return null;
-      default:
-        break;
-    }
-  }
-  return null;
+/** `this.<field>` read directly, with type wrappers ignored, gives `<field>`; anything else null. */
+function thisField(node: TSESTree.Node): string | null {
+  const inner = stripTypeWrappers(node);
+  return inner.type === AST_NODE_TYPES.MemberExpression &&
+    !inner.computed &&
+    inner.property.type === AST_NODE_TYPES.Identifier &&
+    stripTypeWrappers(inner.object).type === AST_NODE_TYPES.ThisExpression
+    ? inner.property.name
+    : null;
 }
 
 /** The class and field that own a worker expression, or null when it is not a field of a class. */
 function ownerOf(top: TSESTree.Node): { readonly owner: ClassNode; readonly field: string } | null {
-  const value = skipTypeWrappers(top);
+  const value = outermostTypeWrapper(top);
   const parent = value.parent;
   if (parent?.type === AST_NODE_TYPES.PropertyDefinition && parent.value === value) {
     const field = instanceMemberName(parent);
@@ -103,15 +82,12 @@ function ownerOf(top: TSESTree.Node): { readonly owner: ClassNode; readonly fiel
   }
   if (
     parent?.type === AST_NODE_TYPES.AssignmentExpression &&
-    parent.operator === '=' &&
-    parent.right === value &&
-    parent.left.type === AST_NODE_TYPES.MemberExpression &&
-    parent.left.object.type === AST_NODE_TYPES.ThisExpression &&
-    !parent.left.computed &&
-    parent.left.property.type === AST_NODE_TYPES.Identifier
+    WORKER_ASSIGNMENT_OPERATORS.has(parent.operator) &&
+    parent.right === value
   ) {
-    const owner = thisClass(parent);
-    return owner === null ? null : { owner, field: parent.left.property.name };
+    const field = thisField(parent.left);
+    const owner = field === null ? null : thisClass(parent);
+    return owner === null || field === null ? null : { owner, field };
   }
   return null;
 }
@@ -123,6 +99,12 @@ function ownerOf(top: TSESTree.Node): { readonly owner: ClassNode; readonly fiel
  * worker after the lock expires, while the Redis connection is dropped instead
  * of released. A NestJS `@Processor` extending `WorkerHost` builds no worker of
  * its own, so it is never an owner here.
+ *
+ * A close method may close the worker itself, through a local alias, or
+ * through a helper it calls on `this` or `super`, and it may be inherited from
+ * a base class declared in the same file. A class whose base comes from
+ * elsewhere, or whose close method is abstract, may close the worker where the
+ * rule cannot see, so it is not reported.
  */
 export const workerMustImplementCloseRule = createRule<RuleOptions, MessageIds>({
   name: RULE_NAME,
@@ -150,50 +132,146 @@ export const workerMustImplementCloseRule = createRule<RuleOptions, MessageIds>(
     ],
     messages: {
       missingClose:
-        'This class creates the BullMQ worker `this.{{field}}` but no {{methods}} method calls `this.{{field}}.close()`, so shutdown abandons its running jobs. Close it in `onModuleDestroy`.',
+        'This class creates the BullMQ worker `this.{{field}}` but no {{methods}} method calls `this.{{field}}.close()`, so shutdown abandons its running jobs. Close it in `{{suggested}}`.',
     },
   },
   defaultOptions: [{}],
   create(context, [options]) {
-    const closeMethodNames = new Set(options.closeMethodNames ?? DEFAULT_CLOSE_METHOD_NAMES);
-    const methodList = [...closeMethodNames].map((name) => `\`${name}\``).join(' / ');
+    const { sourceCode } = context;
+    const closeMethodNames = [...new Set(options.closeMethodNames ?? DEFAULT_CLOSE_METHOD_NAMES)];
+    const methodList = closeMethodNames.map((name) => `\`${name}\``).join(' / ');
+    const suggested = closeMethodNames.includes(PREFERRED_CLOSE_METHOD)
+      ? PREFERRED_CLOSE_METHOD
+      : (closeMethodNames[0] ?? PREFERRED_CLOSE_METHOD);
     const owned = new Map<ClassNode, OwnedWorker[]>();
 
-    /** The `this.<field>` names closed by `.close()` calls in the class's close methods. */
-    function closedFields(owner: ClassNode): Set<string> {
+    /** The class a `extends` clause names, when this file declares it; else null. */
+    function declaredClass(node: TSESTree.Expression): ClassNode | null {
+      const inner = stripTypeWrappers(node);
+      if (inner.type === AST_NODE_TYPES.ClassExpression) return inner;
+      if (inner.type !== AST_NODE_TYPES.Identifier) return null;
+      const def = ASTUtils.findVariable(sourceCode.getScope(inner), inner)?.defs[0];
+      if (def?.type === 'ClassName') return def.node;
+      if (def?.type === 'Variable' && def.node.init !== null) {
+        const init = stripTypeWrappers(def.node.init);
+        if (init.type === AST_NODE_TYPES.ClassExpression) return init;
+      }
+      return null;
+    }
+
+    /** The class and the bases it inherits from, nearest first; null when a base is not declared in this file. */
+    function classChain(owner: ClassNode): ClassNode[] | null {
+      const chain: ClassNode[] = [];
+      let current: ClassNode | null = owner;
+      while (current !== null) {
+        if (chain.includes(current)) return null;
+        chain.push(current);
+        if (current.superClass === null) return chain;
+        current = declaredClass(current.superClass);
+      }
+      return null;
+    }
+
+    /**
+     * The nearest instance method `name` in `chain` from index `start`: its
+     * body, `'abstract'` when that declaration is abstract, or null.
+     */
+    function lookup(chain: readonly ClassNode[], start: number, name: string): MethodHit | 'abstract' | null {
+      for (let level = start; level < chain.length; level += 1) {
+        for (const member of chain[level]?.body.body ?? []) {
+          if (instanceMemberName(member) !== name) continue;
+          if (
+            member.type === AST_NODE_TYPES.TSAbstractMethodDefinition ||
+            member.type === AST_NODE_TYPES.TSAbstractPropertyDefinition
+          ) {
+            return 'abstract';
+          }
+          if (member.type === AST_NODE_TYPES.MethodDefinition && member.kind !== 'method') continue;
+          if (member.type !== AST_NODE_TYPES.MethodDefinition && member.type !== AST_NODE_TYPES.PropertyDefinition) {
+            continue;
+          }
+          const value = member.value;
+          if (
+            value?.type === AST_NODE_TYPES.FunctionExpression ||
+            value?.type === AST_NODE_TYPES.ArrowFunctionExpression
+          ) {
+            return { fn: value, level };
+          }
+        }
+      }
+      return null;
+    }
+
+    /** The field a local holds when it was declared as `const w = this.w` or `const { w } = this`. */
+    function aliasedField(identifier: TSESTree.Identifier): string | null {
+      const def = ASTUtils.findVariable(sourceCode.getScope(identifier), identifier)?.defs[0];
+      if (def?.type !== 'Variable' || def.node.init === null) return null;
+      const { id, init } = def.node;
+      if (id.type === AST_NODE_TYPES.Identifier) return thisField(init);
+      if (id.type !== AST_NODE_TYPES.ObjectPattern || stripTypeWrappers(init).type !== AST_NODE_TYPES.ThisExpression) {
+        return null;
+      }
+      for (const property of id.properties) {
+        if (
+          property.type !== AST_NODE_TYPES.Property ||
+          property.computed ||
+          property.key.type !== AST_NODE_TYPES.Identifier
+        ) {
+          continue;
+        }
+        const target = property.value.type === AST_NODE_TYPES.AssignmentPattern ? property.value.left : property.value;
+        if (target === def.name) return property.key.name;
+      }
+      return null;
+    }
+
+    /**
+     * The fields the class's close methods close, following helper calls on
+     * `this` and `super`; null when a base outside this file or an abstract
+     * method may close them where the rule cannot see.
+     */
+    function closedFields(owner: ClassNode): Set<string> | null {
+      const chain = classChain(owner);
+      if (chain === null) return null;
       const closed = new Set<string>();
-      for (const member of owner.body.body) {
-        if (
-          member.type !== AST_NODE_TYPES.MethodDefinition &&
-          member.type !== AST_NODE_TYPES.PropertyDefinition
-        ) {
-          continue;
+      const seen = new Set<FunctionValue>();
+      const queue: MethodHit[] = [];
+      let unknown = false;
+
+      function follow(hit: MethodHit | 'abstract' | null): void {
+        if (hit === 'abstract') {
+          unknown = true;
+        } else if (hit !== null && !seen.has(hit.fn)) {
+          seen.add(hit.fn);
+          queue.push(hit);
         }
-        const name = instanceMemberName(member);
-        if (name === null || !closeMethodNames.has(name)) continue;
-        if (member.type === AST_NODE_TYPES.MethodDefinition && member.kind !== 'method') continue;
-        const value = member.value;
-        if (
-          value?.type !== AST_NODE_TYPES.FunctionExpression &&
-          value?.type !== AST_NODE_TYPES.ArrowFunctionExpression
-        ) {
-          continue;
-        }
-        forEachDescendant(value.body, context.sourceCode.visitorKeys, (node) => {
+      }
+
+      for (const name of closeMethodNames) follow(lookup(chain, 0, name));
+      for (let hit = queue.pop(); hit !== undefined; hit = queue.pop()) {
+        const level = hit.level;
+        forEachDescendant(hit.fn.body, sourceCode.visitorKeys, (node) => {
           if (
             node.type !== AST_NODE_TYPES.CallExpression ||
             node.callee.type !== AST_NODE_TYPES.MemberExpression ||
             node.callee.computed ||
-            node.callee.property.type !== AST_NODE_TYPES.Identifier ||
-            node.callee.property.name !== 'close'
+            node.callee.property.type !== AST_NODE_TYPES.Identifier
           ) {
             return;
           }
-          const path = calleePath(node.callee.object, { allowThis: true });
-          if (path?.startsWith('this.') === true) closed.add(path.slice('this.'.length));
+          const receiver = stripTypeWrappers(node.callee.object);
+          const method = node.callee.property.name;
+          if (method === 'close') {
+            const field = receiver.type === AST_NODE_TYPES.Identifier ? aliasedField(receiver) : thisField(receiver);
+            if (field !== null) closed.add(field);
+          } else if (receiver.type === AST_NODE_TYPES.ThisExpression) {
+            follow(lookup(chain, 0, method));
+          } else if (receiver.type === AST_NODE_TYPES.Super) {
+            follow(lookup(chain, level + 1, method));
+          }
         });
       }
-      return closed;
+      return unknown ? null : closed;
     }
 
     function checkClass(owner: ClassNode): void {
@@ -201,19 +279,20 @@ export const workerMustImplementCloseRule = createRule<RuleOptions, MessageIds>(
       if (workers === undefined) return;
       owned.delete(owner);
       const closed = closedFields(owner);
+      if (closed === null) return;
       for (const worker of workers) {
         if (closed.has(worker.field)) continue;
         context.report({
           node: worker.node,
           messageId: 'missingClose',
-          data: { field: worker.field, methods: methodList },
+          data: { field: worker.field, methods: methodList, suggested },
         });
       }
     }
 
     return {
       NewExpression(node): void {
-        if (!isBullmqNew(node, 'Worker', context.sourceCode.getScope(node))) return;
+        if (!isBullmqNew(node, 'Worker', sourceCode.getScope(node))) return;
         const found = ownerOf(listenerChain(node).top);
         if (found === null) return;
         const workers = owned.get(found.owner) ?? [];

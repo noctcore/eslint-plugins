@@ -103,6 +103,129 @@ class P extends WorkerHost {
       code: `${IMPORT}class S { static w = new Worker('m', run); }`,
     },
     {
+      name: 'static method does not attribute this to an instance field',
+      code: `${IMPORT}class S { static make() { this.w = new Worker('m', run); } }`,
+    },
+    {
+      name: 'close delegated to a helper method',
+      code: `${IMPORT}class Mail {
+  private w = new Worker('m', run);
+  async onModuleDestroy() { await this.stopWorkers(); }
+  private async stopWorkers() { await this.w.close(); }
+}`,
+    },
+    {
+      name: 'close delegated through two helpers and an arrow field',
+      code: `${IMPORT}class Mail {
+  private w = new Worker('m', run);
+  async onModuleDestroy() { await this.stopAll(); }
+  private stopAll = async () => { await this.stopWorker(); };
+  private async stopWorker() { await this.w.close(); }
+}`,
+    },
+    {
+      name: 'helpers that call each other do not loop',
+      code: `${IMPORT}class Mail {
+  private w = new Worker('m', run);
+  async onModuleDestroy() { await this.a(); }
+  private async a() { await this.b(); }
+  private async b() { await this.a(); await this.w.close(); }
+}`,
+    },
+    {
+      name: 'close through a local alias',
+      code: `${IMPORT}class Mail {
+  private w = new Worker('m', run);
+  async onModuleDestroy() {
+    const worker = this.w;
+    await worker.close();
+  }
+}`,
+    },
+    {
+      name: 'close through a destructured field',
+      code: `${IMPORT}class Mail {
+  private w = new Worker('m', run);
+  async onModuleDestroy() {
+    const { w } = this;
+    await w.close();
+  }
+}`,
+    },
+    {
+      name: 'close through a renamed destructured field',
+      code: `${IMPORT}class Mail {
+  private w = new Worker('m', run);
+  async onModuleDestroy() {
+    const { w: worker } = this;
+    await worker.close();
+  }
+}`,
+    },
+    {
+      name: 'non-null assertion on the field',
+      code: `${IMPORT}class Mail {
+  private w?: Worker;
+  onModuleInit() { this.w = new Worker('m', run); }
+  async onModuleDestroy() { await this.w!.close(); }
+}`,
+    },
+    {
+      name: 'lazy assignment closed',
+      code: `${IMPORT}class Mail {
+  private w?: Worker;
+  get() { return (this.w ??= new Worker('m', run)); }
+  async onModuleDestroy() { await this.w?.close(); }
+}`,
+    },
+    {
+      name: 'close inherited from a base class in the file',
+      code: `${IMPORT}class Base {
+  protected w!: Worker;
+  async onModuleDestroy() { await this.w.close(); }
+}
+class Mail extends Base {
+  constructor() {
+    super();
+    this.w = new Worker('m', run);
+  }
+}`,
+    },
+    {
+      name: 'override that calls the base close method',
+      code: `${IMPORT}class Base {
+  protected w!: Worker;
+  async onModuleDestroy() { await this.w.close(); }
+}
+class Mail extends Base {
+  protected w = new Worker('m', run);
+  async onModuleDestroy() {
+    log.info('closing');
+    await super.onModuleDestroy();
+  }
+}`,
+    },
+    {
+      name: 'base class from another module may close it',
+      code: `${IMPORT}import { WorkerService } from './worker-service';
+class Mail extends WorkerService { private w = new Worker('m', run); }`,
+    },
+    {
+      name: 'abstract close method is implemented by a subclass',
+      code: `${IMPORT}abstract class MailBase {
+  protected w = new Worker('m', run);
+  abstract close(): Promise<void>;
+}`,
+    },
+    {
+      name: 'overload signatures before the close method',
+      code: `${IMPORT}class Mail {
+  private w = new Worker('m', run);
+  close(): Promise<void>;
+  close(force?: boolean): Promise<void> { return this.w.close(force); }
+}`,
+    },
+    {
       name: 'Worker not from bullmq is ignored',
       code: `import { Worker } from 'node:worker_threads';
 class Pool { private w = new Worker(file); }`,
@@ -151,7 +274,12 @@ class Mail {
   private q = new Queue('m');
   async onModuleDestroy() { await this.q.close(); }
 }`,
-      errors: [{ messageId: 'missingClose', data: { field: 'w', methods: DEFAULT_METHODS } }],
+      errors: [
+        {
+          messageId: 'missingClose',
+          data: { field: 'w', methods: DEFAULT_METHODS, suggested: 'onModuleDestroy' },
+        },
+      ],
     },
     {
       name: 'close in a method not in closeMethodNames',
@@ -174,6 +302,81 @@ class Mail {
   static async close() { await this.w.close(); }
 }`,
       errors: [{ messageId: 'missingClose' }],
+    },
+    {
+      name: 'message names the configured close method',
+      code: `${IMPORT}class Mail { private w = new Worker('m', run); }`,
+      options: [{ closeMethodNames: ['stop', 'halt'] }],
+      errors: [
+        { messageId: 'missingClose', data: { field: 'w', methods: '`stop` / `halt`', suggested: 'stop' } },
+      ],
+    },
+    {
+      name: 'getter named close does not count',
+      code: `${IMPORT}class Mail {
+  private w = new Worker('m', run);
+  get close() { return this.w.close(); }
+}`,
+      errors: [{ messageId: 'missingClose' }],
+    },
+    {
+      name: 'lazy assignment with no close method',
+      code: `${IMPORT}class Mail {
+  private w?: Worker;
+  get() { return (this.w ??= new Worker('m', run)); }
+}`,
+      errors: [{ messageId: 'missingClose', data: { field: 'w', methods: DEFAULT_METHODS, suggested: 'onModuleDestroy' } }],
+    },
+    {
+      name: 'helper that never closes the worker',
+      code: `${IMPORT}class Mail {
+  private w = new Worker('m', run);
+  async onModuleDestroy() { await this.flush(); }
+  private async flush() { log.info('bye'); }
+}`,
+      errors: [{ messageId: 'missingClose' }],
+    },
+    {
+      name: 'closing helper that no close method calls',
+      code: `${IMPORT}class Mail {
+  private w = new Worker('m', run);
+  async onModuleDestroy() { log.info('bye'); }
+  private async stopWorker() { await this.w.close(); }
+}`,
+      errors: [{ messageId: 'missingClose' }],
+    },
+    {
+      name: 'local alias of another field',
+      code: `import { Worker, Queue } from 'bullmq';
+class Mail {
+  private w = new Worker('m', run);
+  private q = new Queue('m');
+  async onModuleDestroy() {
+    const queue = this.q;
+    await queue.close();
+  }
+}`,
+      errors: [{ messageId: 'missingClose' }],
+    },
+    {
+      name: 'override that drops the base close',
+      code: `${IMPORT}class Base {
+  protected w!: Worker;
+  async onModuleDestroy() { await this.w.close(); }
+}
+class Mail extends Base {
+  protected w = new Worker('m', run);
+  async onModuleDestroy() { log.info('bye'); }
+}`,
+      errors: [{ messageId: 'missingClose', line: 7 }],
+    },
+    {
+      name: 'base class in the file that does not close',
+      code: `${IMPORT}class Base {
+  async onModuleDestroy() { log.info('bye'); }
+}
+class Mail extends Base { private w = new Worker('m', run); }`,
+      errors: [{ messageId: 'missingClose', line: 5 }],
     },
     {
       name: 'renamed import is resolved',
