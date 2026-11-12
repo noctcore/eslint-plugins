@@ -124,6 +124,97 @@ const e = new QueueEvents('mail');`,
 const w = new Worker('m', run);`,
     },
     {
+      name: 'binding returned from an arrow body',
+      code: `${IMPORT}const w = new Worker('m', run);
+export const getWorker = () => w;`,
+    },
+    {
+      name: 'event name held in a const',
+      code: `${IMPORT}const FAILED = 'failed';
+const w = new Worker('m', run);
+w.on(FAILED, f);`,
+    },
+    {
+      name: 'event name with as const',
+      code: `${IMPORT}const w = new Worker('m', run);
+w.on('failed' as const, f);`,
+    },
+    {
+      name: 'event name from a loop counts for every event',
+      code: `${IMPORT}const w = new Worker('m', run);
+for (const event of events) w.on(event, f);`,
+      options: [{ requiredEvents: ['failed', 'error'] }],
+    },
+    {
+      name: 'event name from an imported enum counts',
+      code: `${IMPORT}import { Events } from './events';
+const w = new Worker('m', run);
+w.on(Events.Failed, f);`,
+    },
+    {
+      name: 'chained listener with a const event name',
+      code: `${IMPORT}const FAILED = 'failed';
+new Worker('m', run).on(FAILED, f);`,
+    },
+    {
+      name: 'addListener counts like on',
+      code: `${IMPORT}const w = new Worker('m', run);
+w.addListener('failed', f);`,
+    },
+    {
+      name: 'non-null assertion on the binding',
+      code: `${IMPORT}let w: Worker | undefined;
+w = new Worker('m', run);
+w!.on('failed', f);`,
+    },
+    {
+      name: 'non-null assertion on a this binding',
+      code: `${IMPORT}class S {
+  private worker?: Worker;
+  init() {
+    this.worker = new Worker('m', run);
+    this.worker!.on('failed', f);
+  }
+}`,
+    },
+    {
+      name: 'lazy assignment with a listener',
+      code: `${IMPORT}class S {
+  private worker?: Worker;
+  get() {
+    this.worker ??= new Worker('m', run);
+    this.worker.on('failed', f);
+  }
+}`,
+    },
+    {
+      name: 'chained assignment listened to through the local',
+      code: `${IMPORT}class S {
+  worker;
+  init() {
+    const worker = this.worker = new Worker('m', run);
+    worker.on('failed', f);
+  }
+}`,
+    },
+    {
+      name: 'field destructured from this',
+      code: `${IMPORT}class S {
+  worker = new Worker('m', run);
+  init() {
+    const { worker } = this;
+    worker.on('failed', f);
+  }
+}`,
+    },
+    {
+      name: 'listener in an arrow inside a method',
+      code: `${IMPORT}class S {
+  private worker = new Worker('m', run);
+  onModuleInit() { setup(() => this.worker.on('failed', f)); }
+}`,
+    },
+    {
       name: 'requiredEvents all heard',
       code: `${IMPORT}const w = new Worker('m', run);
 w.on('failed', f);
@@ -189,6 +280,58 @@ const w = new BullWorker('mail', run);`,
       name: 'type assertion on the worker',
       code: `${IMPORT}const w = new Worker('mail', run) as Worker;`,
       errors: [{ messageId: 'missingListener' }],
+    },
+    {
+      name: 'const event name for another event',
+      code: `${IMPORT}const COMPLETED = 'completed';
+const w = new Worker('m', run);
+w.on(COMPLETED, done);`,
+      errors: [{ messageId: 'missingListener', data: { name: 'w', events: "'failed'" } }],
+    },
+    {
+      name: 'once does not count',
+      code: `${IMPORT}const w = new Worker('m', run);
+w.once('failed', f);`,
+      errors: [{ messageId: 'missingListener' }],
+    },
+    {
+      name: 'same name in another function is another worker',
+      code: `${IMPORT}function a() {
+  const w = new Worker('a', run);
+  w.on('failed', f);
+}
+function b() {
+  const w = new Worker('b', run);
+}`,
+      errors: [{ messageId: 'missingListener', line: 7, data: { name: 'w', events: "'failed'" } }],
+    },
+    {
+      name: 'escape in another function does not cover a worker of the same name',
+      code: `${IMPORT}function a() {
+  const w = new Worker('a', run);
+  return w;
+}
+function b() {
+  const w = new Worker('b', run);
+}`,
+      errors: [{ messageId: 'missingListener', line: 7 }],
+    },
+    {
+      name: 'same field name in another class is another worker',
+      code: `${IMPORT}class A { private worker = new Worker('a', run); }
+class B {
+  worker;
+  init() { this.worker.on('failed', f); }
+}`,
+      errors: [{ messageId: 'missingListener', line: 2, data: { name: 'this.worker', events: "'failed'" } }],
+    },
+    {
+      name: 'lazy assignment with no listener',
+      code: `${IMPORT}class S {
+  private worker?: Worker;
+  get() { return (this.worker ??= new Worker('m', run)).name; }
+}`,
+      errors: [{ messageId: 'missingListener', data: { name: 'this.worker', events: "'failed'" } }],
     },
     {
       name: 'one report per worker',

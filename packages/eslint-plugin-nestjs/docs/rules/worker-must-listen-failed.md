@@ -28,12 +28,15 @@ mailWorker.on('failed', (job, err) => logger.error({ jobId: job?.id, err }, 'mai
 
 ## What it flags
 
-- A `new Worker(...)` bound to a name (`const worker`, `this.worker =`, or a class field
-  `private worker = new Worker(...)`) when no `<name>.on('failed', ...)` appears anywhere in the
-  file.
+- A `new Worker(...)` bound to a name (`const worker`, `this.worker =`, `this.worker ??=`, or a
+  class field `private worker = new Worker(...)`) when no `<name>.on('failed', ...)` appears
+  anywhere in the file. Names are resolved through scope: a listener on another function's `w`,
+  or on the `this.worker` of another class, does not count.
 - A `new Worker(...)` written as a bare statement with no `.on('failed', ...)` chained on it:
   nothing can ever subscribe to it.
 - With `requiredEvents`, each listed event that has no listener.
+- A worker whose only listener is `.once('failed', ...)`: it hears the first failure and misses
+  every later one.
 
 ```ts bad
 import { Worker } from 'bullmq';
@@ -64,17 +67,22 @@ export class MailService {
 
 - A listener chained on the constructor: `new Worker(...).on('failed', ...)`, alone or after other
   `.on(...)` calls.
-- A listener attached anywhere in the file, before or after the worker, in any method of the class.
-- A worker that is returned, passed to a function, or stored in another variable, object or array:
-  the listener can be attached where it ends up.
+- A listener attached through the same binding anywhere in the file, before or after the worker,
+  in any method of the class, with or without a non-null assertion (`this.worker!.on(...)`).
+  `.addListener('failed', ...)` counts like `.on`.
+- A listener whose event name is not a static string, such as `worker.on(Events.Failed, ...)` or an
+  event from a loop: it may be the `failed` listener, so it counts for every event. A `const`
+  holding a string (`const FAILED = 'failed'`) is read, and `'failed' as const` is too.
+- A worker that is returned, passed to a function, stored in another variable, object or array, or
+  destructured (`const { worker } = this`): the listener can be attached where it ends up. A chained
+  assignment (`const worker = this.worker = new Worker(...)`) binds both names, so a listener on
+  either counts.
 - A NestJS `@Processor` class extending `WorkerHost`: Nest builds that worker, so there is no
   `new Worker(...)` to check, and an `@OnWorkerEvent('failed')` method is how it listens.
 - A `Worker` that is not imported from `bullmq`, such as the one from `node:worker_threads`, a
   local class of the same name, or a parameter that shadows the import. A renamed import
   (`import { Worker as BullWorker } from 'bullmq'`) is followed.
 - A namespace import (`import * as bullmq from 'bullmq'`) or `require('bullmq')`.
-- `.once('failed', ...)` and `.addListener('failed', ...)`: only `.on` counts, since `once` hears
-  one failure.
 
 ```ts good
 import { Worker } from 'bullmq';
@@ -86,6 +94,11 @@ export function createMailWorker() {
 new Worker('reports', buildReport, { connection }).on('failed', (job, err) => {
   logger.error({ jobId: job?.id, err }, 'report failed');
 });
+
+const exportWorker = new Worker('exports', runExport, { connection });
+for (const event of ['failed', 'error'] as const) {
+  exportWorker.on(event, (...args) => logger.error({ event, args }, 'export worker event'));
+}
 ```
 
 ## Options

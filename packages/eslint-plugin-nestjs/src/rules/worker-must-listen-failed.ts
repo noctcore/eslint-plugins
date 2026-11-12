@@ -2,12 +2,15 @@ import { AST_NODE_TYPES, type TSESTree } from '@typescript-eslint/utils';
 
 import { createRule } from '../createRule';
 import {
-  bindingKey,
-  eventName,
+  ANY_EVENT,
+  createBindingResolver,
   isBullmqNew,
   listenerChain,
-  onCallReceiver,
+  listenerEvent,
+  listenerReceiver,
+  stripTypeWrappers,
   workerBinding,
+  type BindingRef,
 } from '../utils/bullmq';
 
 const RULE_NAME = 'worker-must-listen-failed';
@@ -24,7 +27,7 @@ type MessageIds = 'missingListener' | 'unboundWorker';
 
 interface BoundWorker {
   readonly node: TSESTree.NewExpression;
-  readonly key: string;
+  readonly refs: readonly BindingRef[];
   readonly missing: readonly string[];
 }
 
@@ -33,15 +36,17 @@ function quoteEvents(events: readonly string[]): string {
 }
 
 /**
- * The receiver a `.on(...)` call is ultimately made on: `w` for
+ * The receiver a listener call is ultimately made on: `w` for
  * `w.on('completed', a).on('failed', b)`, since each `on` returns the worker.
  */
 function listenerRoot(node: TSESTree.CallExpression): TSESTree.Expression | null {
-  let receiver = onCallReceiver(node);
-  while (receiver?.type === AST_NODE_TYPES.CallExpression) {
-    const inner = onCallReceiver(receiver);
-    if (inner === null) break;
-    receiver = inner;
+  let receiver = listenerReceiver(node);
+  while (receiver !== null) {
+    const inner = stripTypeWrappers(receiver);
+    if (inner.type !== AST_NODE_TYPES.CallExpression) break;
+    const next = listenerReceiver(inner);
+    if (next === null) break;
+    receiver = next;
   }
   return receiver;
 }
@@ -51,8 +56,11 @@ function listenerRoot(node: TSESTree.CallExpression): TSESTree.Expression | null
  * is moved to the failed set, retried or not, and nothing in the logs says so.
  * Every `new Worker(...)` imported from `bullmq` must have a `.on('failed', ...)`
  * somewhere in the same file, chained on the constructor or attached through
- * the name it is bound to. A worker handed to a caller or another function is
- * left alone, since the listener can be attached there.
+ * the binding it is stored in. Bindings are resolved through scope, so two
+ * workers named `w` in different functions are checked apart. A worker handed
+ * to a caller, another function or another binding is left alone, since the
+ * listener can be attached there, and a listener whose event name is not a
+ * static string may be the one for `failed`, so it counts for every event.
  */
 export const workerMustListenFailedRule = createRule<RuleOptions, MessageIds>({
   name: RULE_NAME,
@@ -88,26 +96,35 @@ export const workerMustListenFailedRule = createRule<RuleOptions, MessageIds>({
   defaultOptions: [{}],
   create(context, [options]) {
     const required = options.requiredEvents ?? DEFAULT_REQUIRED_EVENTS;
+    const { sourceCode } = context;
+    const resolver = createBindingResolver(sourceCode);
     const bound: BoundWorker[] = [];
     const heard = new Map<string, Set<string>>();
+    const heardAny = new Set<string>();
     const escaped = new Set<string>();
 
     function markEscaped(node: TSESTree.Node | null | undefined): void {
       if (node === null || node === undefined) return;
-      const key = bindingKey(node);
-      if (key !== null) escaped.add(key);
+      const ref = resolver.ref(node);
+      if (ref !== null) escaped.add(ref.key);
+    }
+
+    function hears(ref: BindingRef, event: string): boolean {
+      return heard.get(ref.key)?.has(event) === true;
     }
 
     return {
       NewExpression(node): void {
         for (const argument of node.arguments) markEscaped(argument);
-        if (!isBullmqNew(node, 'Worker', context.sourceCode.getScope(node))) return;
+        if (!isBullmqNew(node, 'Worker', sourceCode.getScope(node))) return;
         const chain = listenerChain(node);
-        const missing = required.filter((event) => !chain.events.includes(event));
+        const events = chain.calls.map((call) => listenerEvent(call.arguments[0], sourceCode.getScope(call)));
+        if (events.includes(ANY_EVENT)) return;
+        const missing = required.filter((event) => !events.includes(event));
         if (missing.length === 0) return;
-        const binding = workerBinding(chain.top);
+        const binding = workerBinding(chain.top, resolver);
         if (binding.kind === 'bound') {
-          bound.push({ node, key: binding.key, missing });
+          bound.push({ node, refs: binding.refs, missing });
         } else if (binding.kind === 'bare') {
           context.report({ node, messageId: 'unboundWorker', data: { events: quoteEvents(missing) } });
         }
@@ -115,12 +132,17 @@ export const workerMustListenFailedRule = createRule<RuleOptions, MessageIds>({
       CallExpression(node): void {
         for (const argument of node.arguments) markEscaped(argument);
         const root = listenerRoot(node);
-        const key = root === null ? null : bindingKey(root);
-        const event = eventName(node.arguments[0]);
-        if (key === null || event === null) return;
-        const events = heard.get(key) ?? new Set<string>();
+        const ref = root === null ? null : resolver.ref(root);
+        if (ref === null) return;
+        const event = listenerEvent(node.arguments[0], sourceCode.getScope(node));
+        if (event === null) return;
+        if (event === ANY_EVENT) {
+          heardAny.add(ref.key);
+          return;
+        }
+        const events = heard.get(ref.key) ?? new Set<string>();
         events.add(event);
-        heard.set(key, events);
+        heard.set(ref.key, events);
       },
       ReturnStatement(node): void {
         markEscaped(node.argument);
@@ -130,6 +152,18 @@ export const workerMustListenFailedRule = createRule<RuleOptions, MessageIds>({
       },
       VariableDeclarator(node): void {
         markEscaped(node.init);
+        if (node.id.type !== AST_NODE_TYPES.ObjectPattern || node.init === null) return;
+        const source = resolver.ref(node.init);
+        if (source === null) return;
+        for (const property of node.id.properties) {
+          if (
+            property.type === AST_NODE_TYPES.Property &&
+            !property.computed &&
+            property.key.type === AST_NODE_TYPES.Identifier
+          ) {
+            escaped.add(resolver.memberRef(source, property.key.name).key);
+          }
+        }
       },
       AssignmentExpression(node): void {
         markEscaped(node.right);
@@ -142,14 +176,13 @@ export const workerMustListenFailedRule = createRule<RuleOptions, MessageIds>({
       },
       'Program:exit'(): void {
         for (const worker of bound) {
-          if (escaped.has(worker.key)) continue;
-          const events = heard.get(worker.key);
-          const missing = worker.missing.filter((event) => events?.has(event) !== true);
+          if (worker.refs.some((ref) => escaped.has(ref.key) || heardAny.has(ref.key))) continue;
+          const missing = worker.missing.filter((event) => !worker.refs.some((ref) => hears(ref, event)));
           if (missing.length === 0) continue;
           context.report({
             node: worker.node,
             messageId: 'missingListener',
-            data: { name: worker.key, events: quoteEvents(missing) },
+            data: { name: worker.refs[0]?.name ?? '', events: quoteEvents(missing) },
           });
         }
       },
