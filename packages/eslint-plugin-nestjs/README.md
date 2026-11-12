@@ -70,6 +70,7 @@ export default [
 | [`job-name-must-be-constant`](https://noctcore.github.io/eslint-plugins/rules/nestjs/job-name-must-be-constant/) | Require queue and job names passed to `@Processor(...)`, `@InjectQueue(...)` and `<queue>.add(...)` to be shared constants, not inline string literals. | 🔘 |  |  |  |  |
 | [`queue-add-requires-dedup-key`](https://noctcore.github.io/eslint-plugins/rules/nestjs/queue-add-requires-dedup-key/) | Require every BullMQ `.add` / `.addBulk` job to carry a `jobId` or `deduplication` in literal options, so a producer retry cannot enqueue the same work twice. | 🔘 |  |  |  |  |
 | [`schedule-states-time-zone`](https://noctcore.github.io/eslint-plugins/rules/nestjs/schedule-states-time-zone/) | Require a `@Cron` to state `timeZone` (or `utcOffset`) and a BullMQ cron schedule to state `tz`, so it does not run in whatever zone the host has. | ✅ |  |  |  |  |
+| [`worker-must-listen-failed`](https://noctcore.github.io/eslint-plugins/rules/nestjs/worker-must-listen-failed/) | Require every BullMQ `new Worker(...)` to have a `.on('failed', ...)` listener in the same file, so a failing job is not silent. | ✅ |  |  |  |  |
 <!-- end generated rules -->
 
 ## Severity policy
