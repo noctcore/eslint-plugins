@@ -31,12 +31,12 @@ mailWorker.on('failed', (job, err) => logger.error({ jobId: job?.id, err }, 'mai
 - A `new Worker(...)` bound to a name (`const worker`, `this.worker =`, `this.worker ??=`, or a
   class field `private worker = new Worker(...)`) when no `<name>.on('failed', ...)` appears
   anywhere in the file. Names are resolved through scope: a listener on another function's `w`,
-  or on the `this.worker` of another class, does not count.
+  or on the `this.worker` of an unrelated class (a sibling subclass included), does not count.
 - A `new Worker(...)` written as a bare statement with no `.on('failed', ...)` chained on it:
   nothing can ever subscribe to it.
 - With `requiredEvents`, each listed event that has no listener.
-- A worker whose only listener is `.once('failed', ...)`: it hears the first failure and misses
-  every later one.
+- A worker whose only listener is `.once('failed', ...)` or `.prependOnceListener('failed', ...)`:
+  it hears the first failure and misses every later one.
 
 ```ts bad
 import { Worker } from 'bullmq';
@@ -69,7 +69,13 @@ export class MailService {
   `.on(...)` calls.
 - A listener attached through the same binding anywhere in the file, before or after the worker,
   in any method of the class, with or without a non-null assertion (`this.worker!.on(...)`).
-  `.addListener('failed', ...)` counts like `.on`.
+  `.addListener('failed', ...)` and `.prependListener('failed', ...)` count like `.on`.
+- A listener on `this.worker` in a base class or a subclass declared in the same file: the field is
+  shared along the hierarchy, so an abstract base service that wires the listeners covers the
+  worker its subclass builds. A `const self = this` alias reads the same field.
+- A worker held in a field of a class whose base class comes from another module, or is a
+  `declare class`: that base may attach the listener where the rule cannot see. A worker in a local
+  variable of such a class is still checked.
 - A listener whose event name is not a static string, such as `worker.on(Events.Failed, ...)` or an
   event from a loop: it may be the `failed` listener, so it counts for every event. A `const`
   holding a string (`const FAILED = 'failed'`) is read, and `'failed' as const` is too.
@@ -98,6 +104,22 @@ new Worker('reports', buildReport, { connection }).on('failed', (job, err) => {
 const exportWorker = new Worker('exports', runExport, { connection });
 for (const event of ['failed', 'error'] as const) {
   exportWorker.on(event, (...args) => logger.error({ event, args }, 'export worker event'));
+}
+```
+
+```ts good
+import { Worker } from 'bullmq';
+
+abstract class QueueWorker {
+  protected abstract worker: Worker;
+
+  onModuleInit() {
+    this.worker.on('failed', (job, err) => logger.error({ jobId: job?.id, err }, 'job failed'));
+  }
+}
+
+export class MailWorker extends QueueWorker {
+  protected worker = new Worker('mail', sendMail, { connection });
 }
 ```
 

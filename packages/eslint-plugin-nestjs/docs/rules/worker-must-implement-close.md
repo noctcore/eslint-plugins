@@ -87,12 +87,16 @@ export class MailWorker {
   class owns none.
 - A close call anywhere in a close method's body: awaited or not, inside `Promise.all`, through
   `this.worker?.close()` or `this.worker!.close()`, or through a local alias
-  (`const { worker } = this; await worker.close()`).
+  (`const { worker } = this; await worker.close()`, `const self = this; await self.worker.close()`).
+- A worker a close method hands off to be closed: passed to a function
+  (`await closeQuietly(this.worker)`) or put in an array literal
+  (`await Promise.all([this.worker, this.queue].map((w) => w.close()))`). The rule trusts that the
+  function or the array closes it.
 - A close in a helper the close method calls on `this` or `super`, at any depth:
   `onModuleDestroy() { return this.stopWorkers(); }` counts when `stopWorkers` closes the worker.
 - A close method inherited from a base class declared in the same file.
-- A class that extends a base class from another module, since that base may close the worker,
-  and a class whose close method is abstract, since a subclass implements it.
+- A class that extends a base class from another module or a `declare class`, since that base may
+  close the worker, and a class whose close method is abstract, since a subclass implements it.
 - A worker held in a local variable, an array, a map, a static field or a `#private` field. Only
   plain instance fields are tracked.
 - `this.worker = new Worker(...)` inside a plain nested `function`, where `this` is not the class.
