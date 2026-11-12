@@ -41,7 +41,11 @@ export default [
 
 `mutation-requires-error-handling` is left out of `recommended`: an app that handles every mutation
 error in a global `MutationCache({ onError })` has nothing to fix, and the rule cannot see that
-cache. Turn it on if your mutations handle their own errors:
+cache. Turn it on if your mutations handle their own errors.
+
+`query-key-must-be-constant` is also off by default: keeping query keys in a constant or a key
+factory is a convention, not a defect, so a codebase whose inline keys work has nothing broken to
+fix. Turn it on if your keys live in one place and you want the inline ones flagged:
 
 ```js
 // eslint.config.js
@@ -52,6 +56,7 @@ export default [
     languageOptions: { parser: tsParser },
     rules: {
       'noctcore-query/mutation-requires-error-handling': ['error', { hooks: ['useMutation'] }],
+      'noctcore-query/query-key-must-be-constant': 'error',
     },
   },
 ];
