@@ -1,6 +1,6 @@
 {
   "name": "@noctcore/eslint-plugin-nestjs",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "description": "NestJS and BullMQ rules: queue jobs that duplicate on retry, job names that drift between producer and worker, schedules that run in the host's time zone.",
   "license": "MIT",
   "type": "module",

@@ -1,5 +1,19 @@
 # @noctcore/eslint-plugin-contracts
 
+## 1.1.0
+
+### Minor Changes
+
+- [#208](https://github.com/noctcore/eslint-plugins/pull/208) [`73b66b3`](https://github.com/noctcore/eslint-plugins/commit/73b66b3686fd18d5ffd4bf92415066a9497cf560) Thanks [@Shironex](https://github.com/Shironex)! - `no-direct-process-env` gains a `sources` option. Its values are `process.env` and `import.meta.env`, and it defaults to `['process.env']`, so existing configs behave exactly as before. With `import.meta.env` listed, the rule reports dot access, `import.meta['env']`, destructuring and bare reads, and never reports Vite's build constants `MODE`, `DEV`, `PROD`, `SSR` and `BASE_URL`. The report message now names the source that was read, with identical text under the default. A project spreading `recommended` sees no new errors.
+
+- [#210](https://github.com/noctcore/eslint-plugins/pull/210) [`df85134`](https://github.com/noctcore/eslint-plugins/commit/df85134252b8c01a536821bbef10d1d5fc632b7e) Thanks [@Shironex](https://github.com/Shironex)! - Add `zod-field-describe`, an opt-in rule that reports a property of a `z.object` (or an `.extend` shape) whose schema has no `.describe('...')` and no `.meta({ description })`, so generated JSON Schema, tool definitions and API docs have text for every field. It takes `zodIdentifiers` and `allowSchemaReferences` (default `true`, which leaves a field that is another schema, such as `user: UserSchema`, to that schema's own description). The rule is in neither `recommended` nor `strict`, so a project spreading either preset sees no new errors; enable it under a `files` glob for your schema modules.
+
+- [#207](https://github.com/noctcore/eslint-plugins/pull/207) [`69a2d25`](https://github.com/noctcore/eslint-plugins/commit/69a2d2586cee0296f7287ae44eb1098b68e56471) Thanks [@Shironex](https://github.com/Shironex)! - `schema-enum-field-consistency` gains a `compareEnumValues` option (default `false`). When on, it reports a field whose `z.enum` value lists differ between two schemas of one file. Only literal lists are compared: an inline array, or a same-file `const` array or `const` enum schema. A project spreading `recommended` or `strict` sees no new errors, because the option is off by default.
+
+### Patch Changes
+
+- [#233](https://github.com/noctcore/eslint-plugins/pull/233) [`227e0c8`](https://github.com/noctcore/eslint-plugins/commit/227e0c822f33121c3572cbb69a4f38f9487c69c3) Thanks [@Shironex](https://github.com/Shironex)! - Fix two gaps in `zod-field-describe`: a field built from a member chain on the zod namespace (`z.coerce.string().min(1)`, `z.iso.date()`) was skipped and now needs a description, and a description inside the first argument of `z.optional(...)` or `z.nullable(...)` is now found instead of reported as missing. The rule is in no preset, so a project spreading `recommended` sees no new errors; a project that enabled it may see new reports on undescribed `z.coerce` fields.
+
 ## 1.0.0
 
 ### Major Changes

@@ -1,5 +1,13 @@
 # @noctcore/eslint-plugin-architecture
 
+## 1.1.0
+
+### Minor Changes
+
+- [#214](https://github.com/noctcore/eslint-plugins/pull/214) [`23e0393`](https://github.com/noctcore/eslint-plugins/commit/23e0393a320a02f9fbedeffd17840a9dffc986e5) Thanks [@Shironex](https://github.com/Shironex)! - Add the opt-in `file-naming-pattern` rule. In folders matched by `folders`, a file's basename must match `pattern`, a regular expression in which every `{folder}` stands for the file's immediate parent folder name (escaped), so `account/account.routes.ts` passes `^{folder}(\.[a-z-]+)?\.ts$` and `account/routes.ts` is reported with the expected pattern in the message. Files whose parent folder does not match, and files matched by `allowIn`, are never reported, and an invalid `pattern` is reported as a configuration problem instead of throwing. The rule does nothing until `folders` and `pattern` are set and is in neither preset, so a project spreading `recommended` or `strict` sees no new errors.
+
+- [#206](https://github.com/noctcore/eslint-plugins/pull/206) [`b719374`](https://github.com/noctcore/eslint-plugins/commit/b7193741bce4d6ccc4b097da8824ad141411b6f8) Thanks [@Shironex](https://github.com/Shironex)! - `single-semantic-module` gains a `schemaFactories` option, for example `['errorOf']`. A call rooted at a listed name, such as `export const NotFound = errorOf('not-found')`, counts as `schema` instead of `constant`, so a schemas-only module built with a local helper is no longer reported as mixing kinds. The default is an empty list, so existing configs behave exactly as before. The rule ships `off` in `recommended`, so a project spreading `recommended` sees no new errors.
+
 ## 1.0.0
 
 ### Major Changes
