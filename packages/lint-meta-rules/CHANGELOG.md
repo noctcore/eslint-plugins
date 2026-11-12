@@ -1,5 +1,16 @@
 # @noctcore/lint-meta-rules
 
+## 1.1.0
+
+### Minor Changes
+
+- [#235](https://github.com/noctcore/eslint-plugins/pull/235) [`5af0267`](https://github.com/noctcore/eslint-plugins/commit/5af0267fe87f4927e0930e9ec4e01e691e979972) Thanks [@Shironex](https://github.com/Shironex)! - Add the `github-actions-expression-syntax` rule and its factory `createGithubActionsExpressionSyntaxRule`. It reports a `${{` immediately followed by another `{` (the `${{{name}}}` slip in an f-string or script) and a `${{` with no closing `}}`, which make GitHub reject the whole workflow before any job runs. A folded, literal, plain or quoted scalar that wraps over several lines is read as one unit, so an expression may close on a later line of the same scalar, a quoted `}}` inside an expression is string text, and a `${{` in a YAML comment is checked like any other text. It takes `workflowGlobs` (default `.github/workflows/*.y(a)ml`) and `ciCritical` (default `true`). The factory is part of `RULE_FACTORIES`, so `createAllRules()` now includes it: a caller of `createAllRules()` will see new violations on a workflow with a malformed `${{`. lint-meta has no `recommended` preset, and a caller that picks factories one by one sees nothing new.
+
+### Patch Changes
+
+- Updated dependencies [[`73b66b3`](https://github.com/noctcore/eslint-plugins/commit/73b66b3686fd18d5ffd4bf92415066a9497cf560), [`df85134`](https://github.com/noctcore/eslint-plugins/commit/df85134252b8c01a536821bbef10d1d5fc632b7e), [`69a2d25`](https://github.com/noctcore/eslint-plugins/commit/69a2d2586cee0296f7287ae44eb1098b68e56471), [`227e0c8`](https://github.com/noctcore/eslint-plugins/commit/227e0c822f33121c3572cbb69a4f38f9487c69c3)]:
+  - @noctcore/eslint-plugin-contracts@1.1.0
+
 ## 1.0.0
 
 ### Major Changes
