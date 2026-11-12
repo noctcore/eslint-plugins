@@ -11,6 +11,8 @@
  *    every `url` in it resolves to an emitted page. It is a public contract
  *    (see src/lib/rules-index.ts), and a generated contract with no check rots.
  * 5. dist/llms.txt exists and points at rules.json.
+ * 6. Every page carries the search palette, and no Pagefind index is emitted
+ *    (the palette replaces it).
  * 7. Every rule page carries the facts panel with its copyable rule id and the
  *    "on this page" column, and its previous and next links point at the
  *    neighbouring rules in catalog order (none before the first rule, none
@@ -151,6 +153,14 @@ if (!existsSync(LLMS_TXT)) {
   }
 }
 
+// 6. The search palette on every page, and no Pagefind output beside it.
+let pagesWithPalette = 0;
+for (const page of pages) {
+  if (readFileSync(page, 'utf8').includes('id="search-palette"')) pagesWithPalette++;
+  else failures.push(`${page.slice(DIST.length)}: no search palette`);
+}
+if (existsSync(join(DIST, 'pagefind'))) failures.push('dist/pagefind was emitted; the search palette replaces it');
+
 // 7. The rule page frame: facts panel, rule id, contents column, pager.
 const ruleOrder = inventory.flatMap((pkg) => pkg.rules.map((rule) => ({ short: pkg.short, name: rule.name, id: rule.id })));
 const pagerHref = (html: string, rel: 'prev' | 'next'): string | null => {
@@ -200,7 +210,7 @@ if (strictFound.join() !== strictExpected.join()) {
 console.log(
   `check-build: ${pages.length} HTML pages, ${rulePages.length} rule pages for ${docs.length} docs, ` +
     `${urlsChecked} meta.docs.url checked, ${linksChecked} root-relative links checked, ` +
-    `rules.json ${indexEntries} entries with ${indexUrlsChecked} urls checked, ${rulePagesFramed} rule page frames checked, strict offered on ${strictFound.length} package pages`,
+    `rules.json ${indexEntries} entries with ${indexUrlsChecked} urls checked, search palette on ${pagesWithPalette} pages, ${rulePagesFramed} rule page frames checked, strict offered on ${strictFound.length} package pages`,
 );
 if (failures.length > 0) {
   const unique = [...new Set(failures)];

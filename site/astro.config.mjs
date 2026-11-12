@@ -57,7 +57,11 @@ export default defineConfig({
         Pagination: './src/components/Pagination.astro',
         Sidebar: './src/components/Sidebar.astro',
         ThemeSelect: './src/components/ThemeToggle.astro',
+        Search: './src/components/Search.astro',
       },
+      // The Search override is a palette over the catalog; Pagefind's index
+      // would be built and shipped for nothing.
+      pagefind: false,
       // Not under src/pages or src/middleware, where Starlight refuses it.
       routeMiddleware: './src/lib/route-data.ts',
       social: [

@@ -1,0 +1,178 @@
+---
+/**
+ * The header's search: a trigger button and the palette dialog, replacing
+ * Pagefind (astro.config.mjs sets `pagefind: false`). The index is every
+ * package, rule and lint-meta check from the catalog (src/lib/search.ts), so
+ * it needs no build step and no request: the client script bundles it once and
+ * every page shares the cached file. Ctrl+K or Cmd+K toggles the palette, `/`
+ * opens it outside a text field, Escape closes it.
+ */
+import Glyph from './Glyph.astro';
+import { packages } from '../lib/catalog';
+
+const total = packages.reduce((sum, pkg) => sum + pkg.rules.length, 0);
+---
+
+<button
+  type="button"
+  class="top-search"
+  data-open-search
+  aria-haspopup="dialog"
+  aria-controls="search-palette"
+  aria-label="Search rules and packages"
+>
+  <Glyph name="search" />
+  <span class="lbl">Search {total} rules</span>
+  <kbd data-search-kbd>Ctrl K</kbd>
+</button>
+
+<dialog id="search-palette" class="pal" aria-label="Search the docs">
+  <div class="pal-in">
+    <Glyph name="search" />
+    <input
+      type="text"
+      role="combobox"
+      aria-label="Search rules, packages and checks"
+      aria-expanded="true"
+      aria-controls="search-results"
+      aria-autocomplete="list"
+      autocomplete="off"
+      spellcheck="false"
+      placeholder="Search rules, packages, checks"
+    />
+    <kbd>Esc</kbd>
+  </div>
+  <div class="pal-list" id="search-results" role="listbox" aria-label="Results"></div>
+  <div class="pal-foot" aria-hidden="true">
+    <span><kbd>↑</kbd><kbd>↓</kbd> move</span>
+    <span><kbd>Enter</kbd> open</span>
+    <span><kbd>Esc</kbd> close</span>
+  </div>
+</dialog>
+
+<script>
+  import { packages } from '../lib/catalog';
+  import { escapeHtml } from '../lib/format';
+  import { filterWords } from '../lib/rule-filters';
+  import { buildSearchIndex, paletteShortcut, searchIndex, type SearchEntry } from '../lib/search';
+
+  const dialog = document.querySelector<HTMLDialogElement>('#search-palette');
+  if (dialog) {
+    const input = dialog.querySelector<HTMLInputElement>('input')!;
+    const list = dialog.querySelector<HTMLElement>('#search-results')!;
+    const index = buildSearchIndex(packages, import.meta.env.BASE_URL);
+    let results: SearchEntry[] = [];
+    let selected = 0;
+    let returnFocus: HTMLElement | null = null;
+
+    if (/Mac|iPhone|iPad/.test(navigator.platform || navigator.userAgent)) {
+      for (const kbd of document.querySelectorAll('[data-search-kbd]')) kbd.textContent = '⌘K';
+    }
+
+    const kindLabel = { package: 'package', rule: 'rule', check: 'repo check' } as const;
+
+    const highlight = (text: string, words: readonly string[]) => {
+      let html = escapeHtml(text);
+      const usable = words.filter((word) => word.length > 1).map((word) => escapeHtml(word).replace(/[.*+?^${}()|[\]\\]/g, '\\$&'));
+      if (usable.length > 0) html = html.replace(new RegExp(`(${usable.join('|')})`, 'gi'), '<mark>$1</mark>');
+      return html;
+    };
+
+    const select = (i: number, scroll: boolean) => {
+      selected = i;
+      for (const item of list.querySelectorAll<HTMLElement>('.pal-item')) {
+        item.setAttribute('aria-selected', String(Number(item.dataset.i) === selected));
+      }
+      const current = list.querySelector<HTMLElement>(`#search-option-${selected}`);
+      if (current) {
+        input.setAttribute('aria-activedescendant', current.id);
+        if (scroll) current.scrollIntoView({ block: 'nearest' });
+      } else {
+        input.removeAttribute('aria-activedescendant');
+      }
+    };
+
+    const draw = () => {
+      const query = input.value;
+      const words = filterWords(query);
+      results = searchIndex(index, query);
+      if (results.length === 0) {
+        list.innerHTML =
+          `<div class="pal-empty">Nothing matches <b>${escapeHtml(query.trim())}</b>. Try a package like ` +
+          '<code>prisma</code> or a concept like <code>timeout</code>, <code>tenant</code> or <code>barrel</code>.</div>';
+        select(-1, false);
+        return;
+      }
+      const heading = words.length === 0 ? '<div class="pal-gh" role="presentation">Starter set</div>' : '';
+      list.innerHTML =
+        heading +
+        results
+          .map(
+            (entry, i) =>
+              `<a class="pal-item" id="search-option-${i}" role="option" aria-selected="false" data-i="${i}" href="${escapeHtml(entry.href)}">` +
+              `<span class="a">${highlight(entry.label, words)}</span>` +
+              `<span class="b">${highlight(entry.detail, words)}</span>` +
+              `<span class="c">${kindLabel[entry.kind]} · ${escapeHtml(entry.meta)}</span></a>`,
+          )
+          .join('');
+      select(0, false);
+    };
+
+    const open = () => {
+      if (dialog.open) return;
+      returnFocus = document.activeElement instanceof HTMLElement ? document.activeElement : null;
+      input.value = '';
+      draw();
+      dialog.showModal();
+      input.focus();
+    };
+
+    const close = () => {
+      if (!dialog.open) return;
+      dialog.close();
+    };
+
+    dialog.addEventListener('close', () => returnFocus?.focus());
+    // A click on the backdrop lands on the dialog itself, outside its box.
+    dialog.addEventListener('click', (event) => {
+      if (event.target !== dialog) return;
+      const box = dialog.getBoundingClientRect();
+      const inside =
+        event.clientX >= box.left && event.clientX <= box.right && event.clientY >= box.top && event.clientY <= box.bottom;
+      if (!inside) close();
+    });
+    list.addEventListener('mousemove', (event) => {
+      const item = (event.target as Element).closest<HTMLElement>('.pal-item');
+      if (item && Number(item.dataset.i) !== selected) select(Number(item.dataset.i), false);
+    });
+    list.addEventListener('click', (event) => {
+      if ((event.target as Element).closest('.pal-item')) close();
+    });
+    input.addEventListener('input', draw);
+    input.addEventListener('keydown', (event) => {
+      if (event.key === 'ArrowDown' || event.key === 'ArrowUp') {
+        event.preventDefault();
+        if (results.length === 0) return;
+        const step = event.key === 'ArrowDown' ? 1 : -1;
+        select(Math.min(Math.max(selected + step, 0), results.length - 1), true);
+      } else if (event.key === 'Enter') {
+        const entry = results[selected];
+        if (!entry) return;
+        event.preventDefault();
+        close();
+        location.href = entry.href;
+      }
+    });
+
+    for (const trigger of document.querySelectorAll('[data-open-search]')) trigger.addEventListener('click', open);
+
+    document.addEventListener('keydown', (event) => {
+      const target = event.target instanceof HTMLElement ? event.target : null;
+      const action = paletteShortcut(event, target, dialog.open);
+      if (!action) return;
+      event.preventDefault();
+      if (action === 'open') open();
+      else close();
+    });
+  }
+</script>
