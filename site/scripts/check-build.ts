@@ -20,6 +20,9 @@
  * 8. The rules board offers strict on exactly the package pages whose plugin
  *    ships a strict preset (and there is at least one), and every plugin page
  *    carries the generated config and the "bad fit" line.
+ * 9. dist/404.html is the site's own not-found page (check 3 already walks its
+ *    links, as it does for every page).
+ * 10. Nothing emitted loads Google Fonts: every font is self-hosted.
  */
 import { existsSync, readdirSync, readFileSync, statSync } from 'node:fs';
 import { dirname, join, resolve } from 'node:path';
@@ -207,10 +210,31 @@ if (strictFound.join() !== strictExpected.join()) {
   failures.push(`strict is offered on [${strictFound.join(', ')}], expected [${strictExpected.join(', ')}]`);
 }
 
+// 9. The not-found page.
+const NOT_FOUND = join(DIST, '404.html');
+if (!existsSync(NOT_FOUND)) failures.push('dist/404.html was not emitted');
+else if (!readFileSync(NOT_FOUND, 'utf8').includes('class="not-found')) failures.push('dist/404.html is not the site\'s own 404 page');
+
+// 10. Self-hosted fonts only.
+const TEXT_FILE = /\.(?:html|css|js|mjs|json|txt|xml|svg)$/;
+let textFilesScanned = 0;
+for (const file of files.filter((f) => TEXT_FILE.test(f))) {
+  textFilesScanned++;
+  const text = readFileSync(file, 'utf8');
+  for (const host of ['fonts.googleapis.com', 'fonts.gstatic.com']) {
+    if (text.includes(host)) failures.push(`${file.slice(DIST.length)}: mentions ${host}`);
+  }
+}
+const fontFiles = files.filter((f) => f.endsWith('.woff2')).length;
+if (fontFiles === 0) failures.push('no .woff2 font emitted; the self-hosted fonts are missing');
+
 console.log(
   `check-build: ${pages.length} HTML pages, ${rulePages.length} rule pages for ${docs.length} docs, ` +
     `${urlsChecked} meta.docs.url checked, ${linksChecked} root-relative links checked, ` +
-    `rules.json ${indexEntries} entries with ${indexUrlsChecked} urls checked, search palette on ${pagesWithPalette} pages, ${rulePagesFramed} rule page frames checked, strict offered on ${strictFound.length} package pages`,
+    `rules.json ${indexEntries} entries with ${indexUrlsChecked} urls checked, ` +
+    `search palette on ${pagesWithPalette} pages, ${rulePagesFramed} rule page frames checked, ` +
+    `strict offered on ${strictFound.length} package pages, ` +
+    `${textFilesScanned} text files free of Google Fonts, ${fontFiles} woff2 fonts`,
 );
 if (failures.length > 0) {
   const unique = [...new Set(failures)];

@@ -62,6 +62,9 @@ export default defineConfig({
       // The Search override is a palette over the catalog; Pagefind's index
       // would be built and shipped for nothing.
       pagefind: false,
+      // src/pages/404.astro is the not-found page; Starlight's injected one
+      // would claim the same route.
+      disable404Route: true,
       // Not under src/pages or src/middleware, where Starlight refuses it.
       routeMiddleware: './src/lib/route-data.ts',
       social: [
