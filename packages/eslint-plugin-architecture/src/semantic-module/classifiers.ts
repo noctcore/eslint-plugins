@@ -150,12 +150,14 @@ const SCHEMA_BUILDER_NAMES: ReadonlySet<string> = new Set([
 export interface SchemaImportContext {
   readonly namespaceIdentifiers: ReadonlySet<string>;
   readonly builderIdentifiers: ReadonlySet<string>;
+  readonly factoryIdentifiers: ReadonlySet<string>;
 }
 
 /**
- * Schema detection only switches on for identifiers imported from an enabled
- * schema library, so a local variable that happens to be called `z` or `yup`
- * is never mistaken for a schema builder.
+ * Library builders count only when imported from an enabled schema library, so
+ * a local variable that happens to be called `z` or `yup` is never mistaken
+ * for a schema builder. Names listed in `schemaFactories` count wherever they
+ * come from, local or imported, because they are named on purpose.
  */
 export function collectSchemaImportContext(
   program: TSESTree.Program,
@@ -163,6 +165,7 @@ export function collectSchemaImportContext(
 ): SchemaImportContext {
   const namespaceIdentifiers = new Set<string>();
   const builderIdentifiers = new Set<string>();
+  const factoryIdentifiers = new Set(options.schemaFactories);
   const enabledModules = new Set(
     options.schemaLibraries.flatMap((library) => SCHEMA_LIBRARY_MODULES[library]),
   );
@@ -199,7 +202,7 @@ export function collectSchemaImportContext(
     }
   }
 
-  return { namespaceIdentifiers, builderIdentifiers };
+  return { namespaceIdentifiers, builderIdentifiers, factoryIdentifiers };
 }
 
 export function isSchemaExpression(
@@ -214,7 +217,11 @@ export function isSchemaExpression(
   if (!rootName) {
     return false;
   }
-  return context.namespaceIdentifiers.has(rootName) || context.builderIdentifiers.has(rootName);
+  return (
+    context.namespaceIdentifiers.has(rootName) ||
+    context.builderIdentifiers.has(rootName) ||
+    context.factoryIdentifiers.has(rootName)
+  );
 }
 
 function expressionRootIdentifier(

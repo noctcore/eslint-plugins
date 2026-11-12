@@ -58,6 +58,8 @@ export interface SingleSemanticModuleOptions {
    */
   readonly ignorePrivateDeclarations?: boolean;
   readonly schemaLibraries?: readonly SchemaLibrary[];
+  /** Names of helpers whose calls count as `schema`, matched on the call's root identifier. Default empty. */
+  readonly schemaFactories?: readonly string[];
   readonly reactComponentDetection?: { readonly enabled?: boolean };
   readonly hookDetection?: { readonly enabled?: boolean; readonly namePattern?: string };
 }
@@ -69,6 +71,7 @@ export interface NormalizedOptions {
   readonly ignoreAmbientDeclarations: boolean;
   readonly ignorePrivateDeclarations: boolean;
   readonly schemaLibraries: readonly SchemaLibrary[];
+  readonly schemaFactories: readonly string[];
   readonly reactComponentDetection: { readonly enabled: boolean };
   readonly hookDetection: { readonly enabled: boolean; readonly namePattern: RegExp };
 }
@@ -82,6 +85,7 @@ export const DEFAULT_OPTIONS: Required<SingleSemanticModuleOptions> = {
   ignoreAmbientDeclarations: false,
   ignorePrivateDeclarations: true,
   schemaLibraries: SCHEMA_LIBRARIES,
+  schemaFactories: [],
   reactComponentDetection: { enabled: true },
   hookDetection: { enabled: true, namePattern: DEFAULT_HOOK_NAME_PATTERN },
 };
@@ -96,6 +100,7 @@ export function normalizeOptions(options: SingleSemanticModuleOptions): Normaliz
     ignorePrivateDeclarations:
       options.ignorePrivateDeclarations ?? DEFAULT_OPTIONS.ignorePrivateDeclarations,
     schemaLibraries: options.schemaLibraries ?? DEFAULT_OPTIONS.schemaLibraries,
+    schemaFactories: options.schemaFactories ?? DEFAULT_OPTIONS.schemaFactories,
     reactComponentDetection: { enabled: options.reactComponentDetection?.enabled ?? true },
     hookDetection: {
       enabled: options.hookDetection?.enabled ?? true,

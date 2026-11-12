@@ -58,6 +58,13 @@ const optionSchema: JSONSchema4 = {
       uniqueItems: true,
       items: { type: 'string', enum: [...SCHEMA_LIBRARIES] },
     },
+    schemaFactories: {
+      type: 'array',
+      uniqueItems: true,
+      items: { type: 'string', minLength: 1 },
+      description:
+        'Names of helpers whose calls count as schema, matched on the call root identifier. Default empty.',
+    },
     reactComponentDetection: {
       type: 'object',
       additionalProperties: false,

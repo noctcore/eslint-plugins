@@ -26,7 +26,7 @@ The rule classifies by **AST shape**, never by filename or suffix:
 | `class` | class declaration or class expression |
 | `react-component` | PascalCase function returning JSX (or typed `FC` / `JSX.Element`) |
 | `hook` | a function named like a hook (`^use[A-Z0-9]`) |
-| `schema` | a call on an identifier imported from `zod`, `yup` or `valibot` |
+| `schema` | a call on an identifier imported from `zod`, `yup` or `valibot`, or a call rooted at a name listed in `schemaFactories` |
 
 ## What it flags
 
@@ -111,6 +111,8 @@ type Options = {
   ignorePrivateDeclarations?: boolean;
   /** Libraries whose builders count as `schema`. Default ['zod', 'yup', 'valibot']. */
   schemaLibraries?: Array<'zod' | 'yup' | 'valibot'>;
+  /** Helpers whose calls count as `schema`, matched on the call's root identifier. Default []. */
+  schemaFactories?: string[];
   /** Default { enabled: true }. */
   reactComponentDetection?: { enabled?: boolean };
   /** Default { enabled: true, namePattern: '^use[A-Z0-9].*' }. */
@@ -168,6 +170,29 @@ group passes.
 
 ```js
 { enumCategory: 'type' } // `export enum Role {}` beside `export type User = {}` is one concern
+```
+
+### `schemaFactories`
+
+A call to a listed helper counts as `schema`, wherever the helper is defined. The match is on the call's
+root identifier, so `errorOf('x').describe('y')` matches `errorOf`, while `errors.errorOf('x')` matches
+only `errors`.
+
+```js
+{ schemaFactories: ['errorOf'] }
+```
+
+```ts bad filename=src/errors/schemas.ts
+import { z } from 'zod';
+export const UserSchema = z.object({ id: z.string() });
+// a constant beside a schema, because errorOf is not a known schema builder
+export const NotFound = errorOf('not-found');
+```
+
+```ts good filename=src/errors/schemas.ts options={"schemaFactories":["errorOf"]} reconfigured
+import { z } from 'zod';
+export const UserSchema = z.object({ id: z.string() });
+export const NotFound = errorOf('not-found');
 ```
 
 ### `ignorePrivateDeclarations: false`
