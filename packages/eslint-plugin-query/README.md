@@ -41,7 +41,11 @@ export default [
 
 `mutation-requires-error-handling` is left out of `recommended`: an app that handles every mutation
 error in a global `MutationCache({ onError })` has nothing to fix, and the rule cannot see that
-cache. Turn it on if your mutations handle their own errors:
+cache. Turn it on if your mutations handle their own errors.
+
+`query-key-must-be-constant` is also off by default: keeping query keys in a constant or a key
+factory is a convention, not a defect, so a codebase whose inline keys work has nothing broken to
+fix. Turn it on if your keys live in one place and you want the inline ones flagged:
 
 ```js
 // eslint.config.js
@@ -52,6 +56,7 @@ export default [
     languageOptions: { parser: tsParser },
     rules: {
       'noctcore-query/mutation-requires-error-handling': ['error', { hooks: ['useMutation'] }],
+      'noctcore-query/query-key-must-be-constant': 'error',
     },
   },
 ];
@@ -68,6 +73,7 @@ export default [
 | --- | --- | :-: | :-: | :-: | :-: | :-: |
 | [`effect-fired-mutation-must-bind-callbacks`](https://noctcore.github.io/eslint-plugins/rules/query/effect-fired-mutation-must-bind-callbacks/) | Require a mutation fired from an effect to carry its onSuccess/onError on `useMutation`, not as per-call `mutate()` options, which a detached observer never delivers. | ✅ |  |  |  |  |
 | [`mutation-requires-error-handling`](https://noctcore.github.io/eslint-plugins/rules/query/mutation-requires-error-handling/) | Require a TanStack Query mutation to handle its error somewhere visible: `onError` on the hook, `onError` or a `catch` at the call, or a read of its error state. | 🔘 |  |  |  |  |
+| [`query-key-must-be-constant`](https://noctcore.github.io/eslint-plugins/rules/query/query-key-must-be-constant/) | Require query and mutation keys to come from a constant or key factory, not an inline array that starts with a string. | 🔘 |  |  |  |  |
 | [`trpc-invalidate-with-path-key`](https://noctcore.github.io/eslint-plugins/rules/query/trpc-invalidate-with-path-key/) | Require `pathKey()` when a tRPC procedure is invalidated, refetched, cancelled, removed or reset without an input. A bare `queryKey()` misses infinite queries. | ✅ |  | 🔧 |  |  |
 <!-- end generated rules -->
 

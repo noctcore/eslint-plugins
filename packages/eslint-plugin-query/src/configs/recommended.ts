@@ -6,6 +6,9 @@
  * - `mutation-requires-error-handling`: an app that handles every mutation
  *   error in one global `MutationCache({ onError })` has nothing to fix, and
  *   the rule cannot see that cache from the component.
+ * - `query-key-must-be-constant`: keeping keys in a constant or key factory is a
+ *   convention, not a defect, so a codebase whose inline keys work has nothing
+ *   broken to fix.
  */
 export const recommended = {
   'noctcore-query/effect-fired-mutation-must-bind-callbacks': 'error',
