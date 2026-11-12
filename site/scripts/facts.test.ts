@@ -7,10 +7,13 @@
  * inventory so no rule falls outside them.
  */
 import { describe, expect, test } from 'bun:test';
+import { readFileSync } from 'node:fs';
+import { join } from 'node:path';
 
 import { factsPanel } from '../src/lib/facts';
-import { SITE_BASE, loadInventory, type PackageEntry, type RuleEntry } from './inventory';
-import { renderRuleDoc } from './sync';
+import { HERO } from '../src/lib/stacks';
+import { REPO_ROOT, SITE_BASE, loadInventory, type PackageEntry, type RuleEntry } from './inventory';
+import { heroExample, renderRuleDoc } from './sync';
 
 const inventory = await loadInventory('src');
 
@@ -144,5 +147,48 @@ describe('rule page header', () => {
     expect(rendered.startsWith('\n<div class="rule-lead">\n\nChecks `x` twice.\n**Opt-in.**\n\n</div>\n\n## Why')).toBe(true);
     expect(rendered).not.toMatch(/^>/m);
     expect(rendered).not.toContain('rule-facts');
+  });
+});
+
+describe('overview hero example', () => {
+  const doc = [
+    '# `noctcore-fixture/some-rule`',
+    '',
+    '> Checks `x` before **use**.',
+    '',
+    '## What it flags',
+    '',
+    '```ts good',
+    'const ok = res.json();',
+    '```',
+    '',
+    '```ts bad reports=2',
+    '// a leading comment',
+    'export function f() {',
+    '  return res.json();',
+    '}',
+    '',
+    'const second = res.json();',
+    '```',
+  ].join('\n');
+
+  test('the first block of the first Incorrect fence, comments dropped, with the 1-based position', () => {
+    expect(heroExample(doc, 'res.json()')).toEqual({
+      code: 'export function f() {\n  return res.json();\n}',
+      line: 2,
+      column: 10,
+      summary: 'Checks `x` before use.',
+    });
+  });
+
+  test('a doc that loses its example fails instead of drifting', () => {
+    expect(() => heroExample(doc, 'res.text()')).toThrow('no longer contains "res.text()"');
+    expect(() => heroExample(doc.replace('ts bad reports=2', 'ts good'), 'res.json()')).toThrow('no Incorrect');
+  });
+
+  test('the real hero rule still yields its example', () => {
+    const source = readFileSync(join(REPO_ROOT, 'packages', `eslint-plugin-${HERO.short}`, 'docs', 'rules', `${HERO.rule}.md`), 'utf8');
+    const hero = heroExample(source, HERO.highlight);
+    expect(hero.code.split('\n')[hero.line - 1]!.slice(hero.column - 1)).toStartWith(HERO.highlight);
   });
 });

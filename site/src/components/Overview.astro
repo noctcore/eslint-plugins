@@ -1,0 +1,189 @@
+---
+/**
+ * The overview page, built from the catalog: every count, description and
+ * snippet below comes from the plugins themselves (catalog.json), the hero
+ * diagnostic from a rule doc's own Incorrect example (hero.json, written by
+ * scripts/sync.ts), and the grouping from src/lib/stacks.ts. checkStacks fails
+ * the build when a plugin is in no group.
+ */
+import { Code } from '@astrojs/starlight/components';
+
+import Glyph from './Glyph.astro';
+import hero from '../generated/hero.json';
+import { codeSpans, getPackage, href, packages, plural } from '../lib/catalog';
+import { configText, installCommand } from '../lib/config-builder';
+import { presetCounts } from '../lib/package-page';
+import { HERO, STACK_GROUPS, STARTER, checkStacks } from '../lib/stacks';
+
+const plugins = packages.filter((pkg) => pkg.kind === 'eslint-plugin');
+checkStacks(plugins.map((pkg) => pkg.short));
+const lintMeta = packages.find((pkg) => pkg.kind === 'lint-meta');
+const example = getPackage(HERO.short);
+const inline = (text: string) => codeSpans(text);
+---
+
+<div class="overview not-content">
+  <section class="hero" aria-labelledby="_top">
+    <div>
+      <h1 class="d1" id="_top">Catch what compiles but <span class="sq-red">bites in production</span>.</h1>
+      <p class="lede">
+        A family of {plugins.length} focused ESLint plugins for cross-file boundaries, IO contracts and the conventions
+        generic linters cannot see.
+      </p>
+      <div class="hero-cta">
+        <a class="btn btn-primary" href={href('getting-started/')}>
+          Get started
+          <Glyph name="forward" size={18} />
+        </a>
+        <a class="btn btn-ghost" href={href('rules/')}>Browse all rules</a>
+      </div>
+    </div>
+    <figure class="diag" aria-label={`Example report from ${hero.id}`}>
+      <Code code={hero.code} lang="ts" title={hero.file} mark={hero.highlight} />
+      <figcaption class="hover-card">
+        <div class="rid">
+          <a href={href(hero.route)}>{hero.id}</a>
+          <span class="loc">{hero.line}:{hero.column} error</span>
+        </div>
+        {inline(hero.summary).map(({ part, code }) => (code ? <code>{part}</code> : part))}
+      </figcaption>
+    </figure>
+  </section>
+
+  <section class="thesis" aria-labelledby="severity-h">
+    <div>
+      <h2 class="d2" id="severity-h">Every rule is error or off. Never warn.</h2>
+      <p class="lede">
+        A warning is a rule nobody obeys. If a rule matters it fails the build, and if it does not fit your codebase you
+        switch it off, where the config can see it.
+      </p>
+      <p class="thesis-link"><a href={href('getting-started/#severity-policy')}>Read the severity policy</a></p>
+    </div>
+    <ul class="states">
+      <li class="state-row">
+        <span class="chip chip-error">error</span>
+        <p>The build fails. The editor link lands on the rule's own page.</p>
+      </li>
+      <li class="state-row">
+        <span class="chip chip-off">off</span>
+        <p>Deferred on purpose, written down in your config, re-enabled one directory at a time.</p>
+      </li>
+      <li class="state-row warn">
+        <span class="chip chip-warn">warn</span>
+        <p>Not shipped. A lint-meta check holds your repo to the same policy.</p>
+      </li>
+    </ul>
+  </section>
+
+  <section class="sec" aria-labelledby="catalog-h">
+    <div class="sec-head">
+      <h2 class="d2" id="catalog-h">Start with three. Add the ones for your stack.</h2>
+      <p>Each plugin is versioned and installed on its own. The starter set fits almost any TypeScript codebase.</p>
+    </div>
+    <div class="starter">
+      {
+        STARTER.map(({ short, sample }) => {
+          const pkg = getPackage(short);
+          const rule = pkg.rules.find((candidate) => candidate.name === sample);
+          if (!rule) throw new Error(`stacks.ts: ${short} has no rule ${sample}`);
+          return (
+            <div class="st">
+              <h3>
+                <a class="st-link" href={href(`packages/${short}/`)}>
+                  {short}
+                </a>
+              </h3>
+              <p>{inline(pkg.description).map(({ part, code }) => (code ? <code>{part}</code> : part))}</p>
+              <a class="st-sample" href={href(rule.route)}>
+                {rule.name}
+              </a>
+              <span class="st-meta">
+                <span>
+                  <b>{pkg.rules.length}</b> rules
+                </span>
+                <span>
+                  <b>{presetCounts(pkg).recommended}</b> in recommended
+                </span>
+                <Glyph name="forward" size={18} class="st-go" />
+              </span>
+            </div>
+          );
+        })
+      }
+    </div>
+    <div class="cat-groups">
+      {
+        STACK_GROUPS.map((group) => (
+          <div class="cat-group">
+            <h3>{group.label}</h3>
+            {group.packages.map(({ short, when }) => {
+              const pkg = getPackage(short);
+              return (
+                <a class="cat-row" href={href(`packages/${short}/`)}>
+                  <span class="cat-name">{short}</span>
+                  <span class="cat-when">{inline(when).map(({ part, code }) => (code ? <code>{part}</code> : part))}</span>
+                  <span class="cat-n">
+                    <b>{pkg.rules.length}</b>
+                    {pkg.rules.length === 1 ? 'rule' : 'rules'}
+                  </span>
+                </a>
+              );
+            })}
+          </div>
+        ))
+      }
+      {
+        lintMeta && (
+          <div class="cat-group">
+            <h3>Whole-repo checks</h3>
+            <a class="cat-row" href={href(`packages/${lintMeta.short}/`)}>
+              <span class="cat-name">{lintMeta.short}</span>
+              <span class="cat-when">{lintMeta.description}</span>
+              <span class="cat-n">
+                <b>{lintMeta.rules.length}</b>
+                {lintMeta.rules.length === 1 ? 'rule' : 'rules'}
+              </span>
+            </a>
+          </div>
+        )
+      }
+    </div>
+  </section>
+
+  <section class="sec" aria-labelledby="install-h">
+    <div class="install-grid">
+      <div>
+        <h2 class="d2" id="install-h">A few lines of config per plugin.</h2>
+        <ol class="steps">
+          <li>
+            <div>
+              <h3>Install it with the parser</h3>
+              <p>ESLint 9 or 10, flat config only, TypeScript 5 or 6.</p>
+            </div>
+          </li>
+          <li>
+            <div>
+              <h3>Spread its preset</h3>
+              <p><code>configs.recommended</code> registers the plugin and sets severities, nothing else.</p>
+            </div>
+          </li>
+          <li>
+            <div>
+              <h3>Give it files and a parser</h3>
+              <p>The preset sets neither, so add both, or spread it next to your existing TypeScript config.</p>
+            </div>
+          </li>
+        </ol>
+        <p class="install-more">
+          Every package page builds this config live: pick a preset and switch single rules. {
+            plural(plugins.length, 'plugin')
+          } share the same shape.
+        </p>
+      </div>
+      <div class="stack">
+        <Code code={installCommand(example)} lang="sh" title="Terminal" />
+        <Code code={configText(example, 'recommended', {})} lang="js" title="eslint.config.js" />
+      </div>
+    </div>
+  </section>
+</div>

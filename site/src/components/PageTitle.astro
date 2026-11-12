@@ -1,6 +1,7 @@
 ---
 /**
  * The page heading, by route:
+ * - the overview renders none here: Overview.astro holds its h1;
  * - a package page gets the package header: the npm scope, quiet, over the
  *   short name, a facts row from the catalog, and the page's own "bad fit"
  *   sentence lifted out of its prose (src/lib/package-page.ts);
@@ -17,6 +18,7 @@ import { badFitLine, presetCounts } from '../lib/package-page';
 
 const route = Astro.locals.starlightRoute;
 const title = route.entry.data.title;
+const isOverview = route.id === '' || route.id === 'index';
 const pkg = packageForRoute(route.id);
 const match = pkg ? null : /^([\w-]+\/)(.+)$/.exec(title);
 
@@ -27,7 +29,7 @@ const badFit = pkg ? codeSpans(badFitLine(route.entry.body ?? '')) : [];
 ---
 
 {
-  pkg ? (
+  isOverview ? null : pkg ? (
     <header class="pkg-head">
       <h1 id="_top" class="pkg-name">
         <span class="scope">{pkg.npmName.slice(0, -pkg.short.length)}</span>

@@ -1,31 +1,21 @@
 ---
 title: noctcore ESLint plugins
 description: Focused ESLint plugins for architecture and correctness conventions generic linters cannot see.
-template: splash
 head:
   - tag: title
     content: noctcore ESLint plugins
-hero:
-  tagline: A family of focused ESLint plugins that encode architecture and correctness conventions generic linters can't see. Cross-file boundaries, IO contracts, and code that compiles but bites in production.
-  actions:
-    - text: Get started
-      link: /eslint-plugins/getting-started/
-      icon: right-arrow
-    - text: Browse the packages
-      link: /eslint-plugins/packages/react/
-      variant: minimal
-    - text: GitHub
-      link: https://github.com/noctcore/eslint-plugins
-      icon: external
-      variant: minimal
+tableOfContents: false
+prev: false
+next: false
 ---
 
-import PackageGrid from '../../components/PackageGrid.astro';
-import AllQuickStarts from '../../components/AllQuickStarts.astro';
+import Overview from '../../components/Overview.astro';
+
+<Overview />
 
 ## Is this for you?
 
-<div class="nc-fit">
+<div class="fit">
 <div>
 
 **Yes, if** you run a TypeScript codebase on ESLint 9 or 10 with flat config, and the bugs that reach
@@ -44,19 +34,8 @@ codebase does not share the conventions a plugin encodes. Each package page says
 </div>
 </div>
 
-Every package is independently versioned. Install the one that matches the problem you have.
-
-## Packages
-
-<PackageGrid />
-
-Looking for one rule? [Every rule on one page](/eslint-plugins/rules/), across all packages.
-
-## Install and configure
-
-Pick a package. Each tab is the install command and a working `eslint.config.js`.
-
-<AllQuickStarts />
+Every package is independently versioned. Install the one that matches the problem you have, or look
+up a single rule on [the page that lists every rule](/eslint-plugins/rules/).
 
 ## How these docs are built
 
