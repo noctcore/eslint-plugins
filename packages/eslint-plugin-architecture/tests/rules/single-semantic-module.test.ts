@@ -1,6 +1,9 @@
 import { ruleTester } from '@noctcore/eslint-test-utils';
+import type { JSONSchema4 } from '@typescript-eslint/utils/json-schema';
+import { describe, expect, it } from 'vitest';
 
 import { singleSemanticModuleRule } from '../../src/rules/single-semantic-module';
+import { DEFAULT_OPTIONS, normalizeOptions } from '../../src/semantic-module/options';
 
 const TS = 'src/module.ts';
 const TSX = 'src/Component.tsx';
@@ -178,8 +181,57 @@ ruleTester.run('single-semantic-module', singleSemanticModuleRule, {
       code: 'const z = { object: () => ({}) };\nexport const A = z.object();\nexport const B = 2;',
       filename: TS,
     },
+    // ---- schemaFactories: calls to listed helpers count as schema.
+    {
+      code: "import { z } from 'zod';\nexport const UserSchema = z.object({});\nexport const NotFound = errorOf('not-found');",
+      filename: TS,
+      options: [{ schemaFactories: ['errorOf'] }],
+    },
+    {
+      code: "import { z } from 'zod';\nexport const UserSchema = z.object({});\nexport default errorOf('not-found');",
+      filename: TS,
+      options: [{ schemaFactories: ['errorOf'] }],
+    },
+    {
+      code: "import { z } from 'zod';\nexport const UserSchema = z.object({});\nexport const NotFound = errorOf('not-found').describe('missing');",
+      filename: TS,
+      options: [{ schemaFactories: ['errorOf'] }],
+    },
+    {
+      code: "import { z } from 'zod';\nexport const UserSchema = z.object({});\nexport const NotFound = errors.errorOf('not-found');",
+      filename: TS,
+      options: [{ schemaFactories: ['errors'] }],
+    },
   ],
   invalid: [
+    // ---- schemaFactories stays opt-in and never hides a real mix.
+    {
+      code: "import { z } from 'zod';\nexport const UserSchema = z.object({});\nexport const NotFound = errorOf('not-found');",
+      filename: TS,
+      errors: [{ ...mixed, data: { message: message('constant', 'schema') }, line: 3 }],
+    },
+    {
+      code: "import { z } from 'zod';\nexport const UserSchema = z.object({});\nexport default errorOf('not-found');",
+      filename: TS,
+      errors: [{ ...mixed, data: { message: message('constant', 'schema') } }],
+    },
+    {
+      code: "import { z } from 'zod';\nexport const UserSchema = z.object({});\nexport const NotFound = errorOf('not-found').describe('missing');",
+      filename: TS,
+      errors: [{ ...mixed, data: { message: message('constant', 'schema') } }],
+    },
+    {
+      code: "import { z } from 'zod';\nexport const UserSchema = z.object({});\nexport const NotFound = errors.errorOf('not-found');",
+      filename: TS,
+      options: [{ schemaFactories: ['errorOf'] }],
+      errors: [{ ...mixed, data: { message: message('constant', 'schema') } }],
+    },
+    {
+      code: "export const NotFound = errorOf('not-found');\nexport function toResponse() {}",
+      filename: TS,
+      options: [{ schemaFactories: ['errorOf'] }],
+      errors: [{ ...mixed, data: { message: message('function', 'schema') } }],
+    },
     // ---- Exported declarations are surface; private helpers never excuse a mix.
     {
       code: 'function helper() { return 1; }\nexport function useThing() { return helper(); }\nexport const THING_LIMIT = 3;',
@@ -287,4 +339,20 @@ ruleTester.run('single-semantic-module', singleSemanticModuleRule, {
       ],
     },
   ],
+});
+
+describe('single-semantic-module schemaFactories option', () => {
+  it('declares schemaFactories as a described string array', () => {
+    const [schema] = singleSemanticModuleRule.meta.schema as JSONSchema4[];
+    const property = schema?.properties?.schemaFactories;
+    expect(property?.type).toBe('array');
+    expect((property?.items as JSONSchema4).type).toBe('string');
+    expect(typeof property?.description).toBe('string');
+    expect(property?.description?.length).toBeGreaterThan(0);
+  });
+
+  it('defaults schemaFactories to an empty list', () => {
+    expect(DEFAULT_OPTIONS.schemaFactories).toEqual([]);
+    expect(normalizeOptions({}).schemaFactories).toEqual([]);
+  });
 });
