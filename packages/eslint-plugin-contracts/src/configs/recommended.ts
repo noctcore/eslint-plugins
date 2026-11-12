@@ -7,6 +7,12 @@
  * are listed in `tests/configs/recommended.test.ts`, and the README's
  * "Opt-in rules" block shows how to enable them.
  *
+ * `zod-field-describe` is left out too: it needs no options, but requiring a
+ * description on every schema field is a documentation convention, not a
+ * defect, and a project that has not adopted it would see an error on every
+ * field. It is not in `strict` either, so spreading either preset adds no new
+ * errors.
+ *
  * The naming conventions (`zod-schema-naming`, `wire-message-naming`) are in
  * `strict` (`./strict.ts`), not here.
  */

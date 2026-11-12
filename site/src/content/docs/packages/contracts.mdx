@@ -17,7 +17,7 @@ The places a system talks to the outside world are where types stop being true: 
 
 ## What it will yell at you about
 
-It will yell at you about **naming and boundary discipline**: zod schemas must be `PascalCaseSchema` with a paired inferred type, wire messages need a literal `type` discriminant, `process.env` goes through one config module, thrown errors come from an approved taxonomy. Several conventions are opinionated, and the naming rules assume zod. **It is a bad fit** if you do not use zod, or if your error handling is intentionally untyped. Four rules ship `off`: three are inert until you give them a sink list, schema file or translation catalogs, and `require-schema-parse-at-boundary` is a conservative syntactic slice of a concern a type-aware setup does better.
+It will yell at you about **naming and boundary discipline**: zod schemas must be `PascalCaseSchema` with a paired inferred type, wire messages need a literal `type` discriminant, `process.env` goes through one config module, thrown errors come from an approved taxonomy. Several conventions are opinionated, and the naming rules assume zod. **It is a bad fit** if you do not use zod, or if your error handling is intentionally untyped. Six rules ship `off`: three are inert until you give them a sink list, schema file or translation catalogs, `require-schema-parse-at-boundary` is a conservative syntactic slice of a concern a type-aware setup does better, and `zod-field-describe` is a documentation convention you enable for the schema modules that feed a generator.
 
 ## Install and configure
 
