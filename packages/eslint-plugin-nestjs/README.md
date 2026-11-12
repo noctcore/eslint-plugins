@@ -1,8 +1,9 @@
 # @noctcore/eslint-plugin-nestjs
 
 NestJS and BullMQ rules for the background work a request handler hands off: queue jobs that run
-twice when a producer retries, queue and job names that drift between producer and worker, and
-schedules that run in whatever time zone the host happens to have.
+twice when a producer retries, queue and job names that drift between producer and worker,
+schedules that run in whatever time zone the host happens to have, workers whose failures nobody
+hears, and workers that are never closed on shutdown.
 
 **Docs:** [noctcore.github.io/eslint-plugins/packages/nestjs](https://noctcore.github.io/eslint-plugins/packages/nestjs/)
 
