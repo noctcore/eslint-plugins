@@ -1,8 +1,9 @@
 # @noctcore/eslint-plugin-nestjs
 
 NestJS and BullMQ rules for the background work a request handler hands off: queue jobs that run
-twice when a producer retries, queue and job names that drift between producer and worker, and
-schedules that run in whatever time zone the host happens to have.
+twice when a producer retries, queue and job names that drift between producer and worker,
+schedules that run in whatever time zone the host happens to have, workers whose failures nobody
+hears, and workers that are never closed on shutdown.
 
 **Docs:** [noctcore.github.io/eslint-plugins/packages/nestjs](https://noctcore.github.io/eslint-plugins/packages/nestjs/)
 
@@ -70,6 +71,8 @@ export default [
 | [`job-name-must-be-constant`](https://noctcore.github.io/eslint-plugins/rules/nestjs/job-name-must-be-constant/) | Require queue and job names passed to `@Processor(...)`, `@InjectQueue(...)` and `<queue>.add(...)` to be shared constants, not inline string literals. | 🔘 |  |  |  |  |
 | [`queue-add-requires-dedup-key`](https://noctcore.github.io/eslint-plugins/rules/nestjs/queue-add-requires-dedup-key/) | Require every BullMQ `.add` / `.addBulk` job to carry a `jobId` or `deduplication` in literal options, so a producer retry cannot enqueue the same work twice. | 🔘 |  |  |  |  |
 | [`schedule-states-time-zone`](https://noctcore.github.io/eslint-plugins/rules/nestjs/schedule-states-time-zone/) | Require a `@Cron` to state `timeZone` (or `utcOffset`) and a BullMQ cron schedule to state `tz`, so it does not run in whatever zone the host has. | ✅ |  |  |  |  |
+| [`worker-must-implement-close`](https://noctcore.github.io/eslint-plugins/rules/nestjs/worker-must-implement-close/) | Require a class that creates a BullMQ `Worker` in a field to call `.close()` on it in a shutdown method such as `onModuleDestroy`, so in-flight jobs are not abandoned. | ✅ |  |  |  |  |
+| [`worker-must-listen-failed`](https://noctcore.github.io/eslint-plugins/rules/nestjs/worker-must-listen-failed/) | Require every BullMQ `new Worker(...)` to have a `.on('failed', ...)` listener in the same file, so a failing job is not silent. | ✅ |  |  |  |  |
 <!-- end generated rules -->
 
 ## Severity policy
