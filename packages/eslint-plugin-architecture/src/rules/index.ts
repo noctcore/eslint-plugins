@@ -1,6 +1,7 @@
 import { barrelPurityRule } from './barrel-purity';
 import { colocatedTestRequiredRule } from './colocated-test-required';
 import { componentFolderStructureRule } from './component-folder-structure';
+import { fileNamingPatternRule } from './file-naming-pattern';
 import { filenameMatchesExportRule } from './filename-matches-export';
 import { indexMustReexportDefaultRule } from './index-must-reexport-default';
 import { maxImportDepthRule } from './max-import-depth';
@@ -13,6 +14,7 @@ export const rules = {
   'barrel-purity': barrelPurityRule,
   'colocated-test-required': colocatedTestRequiredRule,
   'component-folder-structure': componentFolderStructureRule,
+  'file-naming-pattern': fileNamingPatternRule,
   'filename-matches-export': filenameMatchesExportRule,
   'index-must-reexport-default': indexMustReexportDefaultRule,
   'max-import-depth': maxImportDepthRule,

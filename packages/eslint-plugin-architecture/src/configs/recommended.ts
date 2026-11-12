@@ -5,7 +5,9 @@
  * out, not listed at `error` or `off`: a preset entry that checks nothing
  * would read as coverage the project does not have. The rules left out here
  * are listed in `tests/configs/recommended.test.ts`, and the README's
- * "Opt-in rules" block shows how to enable them.
+ * "Opt-in rules" block shows how to enable them. Today those are
+ * `colocated-test-required`, `file-naming-pattern` and
+ * `no-restricted-imports-layered`.
  *
  * Every other rule here encodes a layout convention (file names, folder shape,
  * feature boundaries, import depth), so they all sit in `strict` (`./strict.ts`)
