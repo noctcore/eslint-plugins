@@ -48,6 +48,22 @@ function scalarKeyColumn(line: string): number | null {
 }
 
 /**
+ * The key column of a `key:` line with no inline value whose first following
+ * non-blank line is a plain scalar (not a key, a list item or a comment), or
+ * null. The scalar then belongs to the key, as in `if:` over `${{ a &&`.
+ */
+function valueOnNextLineColumn(lines: readonly string[], index: number): number | null {
+  const line = lines[index] ?? '';
+  if (!KEYED.test(line)) return null;
+  const column = /^\s*-\s+/u.exec(line)?.[0].length ?? indentOf(line);
+  const next = lines.slice(index + 1).find((candidate) => candidate.trim() !== '');
+  if (next === undefined || indentOf(next) <= column) return null;
+  const trimmed = next.trim();
+  if (trimmed.startsWith('-') || trimmed.startsWith('#') || KEYED.test(next)) return null;
+  return column;
+}
+
+/**
  * Group lines into the units GitHub lexes together: a scalar's header plus the
  * blank or deeper lines that continue it (block, plain and quoted scalars),
  * and every other line on its own. Comments are kept, because the lexer reads
@@ -58,7 +74,7 @@ function scalarSegments(lines: readonly string[]): Segment[] {
   let index = 0;
   while (index < lines.length) {
     const line = lines[index] ?? '';
-    const column = scalarKeyColumn(line);
+    const column = scalarKeyColumn(line) ?? valueOnNextLineColumn(lines, index);
     let end = index + 1;
     if (column !== null) {
       while (end < lines.length) {

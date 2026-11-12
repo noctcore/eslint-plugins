@@ -86,6 +86,20 @@ describe('github-actions-expression-syntax', () => {
     expect(violationsFor(body)).toEqual([]);
   });
 
+  test('accepts an expression that starts on the line after its key', () => {
+    const body = ['    runs-on: ubuntu-24.04', '    if:', '      ${{ a &&', '      b }}', ''].join('\n');
+
+    expect(violationsFor(body)).toEqual([]);
+  });
+
+  test('still reports an unclosed opener on the line after its key', () => {
+    const body = ['    runs-on: ubuntu-24.04', '    if:', '      ${{ a &&', '      b', ''].join('\n');
+    const violations = violationsFor(body);
+
+    expect(violations).toHaveLength(1);
+    expect(violations[0]?.line).toBe(7);
+  });
+
   test('reports an unclosed opener inside a block scalar, at the opener line', () => {
     const body = [
       '    if: >-',
