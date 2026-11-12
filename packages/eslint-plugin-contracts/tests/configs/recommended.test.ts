@@ -15,6 +15,7 @@ const OMITTED_FROM_PRESETS: readonly string[] = [
   'require-registered-keys',
   'restrict-throw-to-taxonomy',
   'translation-key-exists',
+  'zod-field-describe',
 ];
 
 type Preset = { name?: string; rules: Record<string, unknown> };

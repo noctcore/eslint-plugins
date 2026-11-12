@@ -70,11 +70,12 @@ export default [
 
 ## Opt-in rules
 
-Five rules are not on in `recommended`: `require-registered-keys`, `env-var-schema-parity` and
+Six rules are not on in `recommended`: `require-registered-keys`, `env-var-schema-parity` and
 `translation-key-exists` do nothing until their `sinks` / `schema` / `catalogs` options are set,
 `restrict-throw-to-taxonomy` reports every framework exception and built-in until `allow` names
-your error classes, and `require-schema-parse-at-boundary` is a conservative syntactic slice of a
-type-aware concern.
+your error classes, `require-schema-parse-at-boundary` is a conservative syntactic slice of a
+type-aware concern, and `zod-field-describe` is a documentation convention that reports every
+undescribed field of the schemas it is scoped to.
 
 ```js
 // eslint.config.js
@@ -95,6 +96,13 @@ export default [
         allow: ['AppError', 'ValidationError', 'TypeError'],
       }],
       'noctcore-contracts/require-schema-parse-at-boundary': 'error',
+    },
+  },
+  {
+    files: ['**/*.schemas.ts'],
+    languageOptions: { parser: tsParser },
+    rules: {
+      'noctcore-contracts/zod-field-describe': 'error',
     },
   },
 ];
@@ -121,6 +129,7 @@ export default [
 | [`schema-enum-field-consistency`](https://noctcore.github.io/eslint-plugins/rules/contracts/schema-enum-field-consistency/) | Disallow a zod field that is an enum in one object schema of a module from being `z.string()` in another, which widens the wire type every consumer then narrows by hand. | ✅ |  |  |  |  |
 | [`translation-key-exists`](https://noctcore.github.io/eslint-plugins/rules/contracts/translation-key-exists/) | Require every static i18next / react-i18next translation key (`t(...)`, `i18n.t(...)`, `<Trans i18nKey>`) to exist in the catalog of the namespace in scope. | 🔘 | ⚙️ |  |  |  |
 | [`wire-message-naming`](https://noctcore.github.io/eslint-plugins/rules/contracts/wire-message-naming/) | A message-schema const ending in a role suffix (default Event/Command/Query) whose zod object declares `type: z.literal(...)` must set that literal to kebab-case(const name minus its role suffix). | ☑️ |  | 🔧 |  |  |
+| [`zod-field-describe`](https://noctcore.github.io/eslint-plugins/rules/contracts/zod-field-describe/) | Require every property of a zod object schema to carry a non-empty `.describe()` or `.meta({ description })`, so generated JSON Schema, tool definitions and API docs have text for each field. | 🔘 |  |  |  |  |
 | [`zod-schema-naming`](https://noctcore.github.io/eslint-plugins/rules/contracts/zod-schema-naming/) | Every exported zod schema is a PascalCase const suffixed `Schema`, paired with a same-named inferred type (`export type Foo = z.infer<typeof FooSchema>`). | ☑️ |  |  |  |  |
 <!-- end generated rules -->
 

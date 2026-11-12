@@ -10,6 +10,7 @@ import { restrictThrowToTaxonomyRule } from './restrict-throw-to-taxonomy';
 import { schemaEnumFieldConsistencyRule } from './schema-enum-field-consistency';
 import { translationKeyExistsRule } from './translation-key-exists';
 import { wireMessageNamingRule } from './wire-message-naming';
+import { zodFieldDescribeRule } from './zod-field-describe';
 import { zodSchemaNamingRule } from './zod-schema-naming';
 
 /** Every rule this plugin exposes, keyed by its (unprefixed) rule id. */
@@ -27,4 +28,5 @@ export const rules = {
   'schema-enum-field-consistency': schemaEnumFieldConsistencyRule,
   'fetch-must-check-ok': fetchMustCheckOkRule,
   'translation-key-exists': translationKeyExistsRule,
+  'zod-field-describe': zodFieldDescribeRule,
 };
