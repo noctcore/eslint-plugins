@@ -32,6 +32,7 @@ import {
   type PackageEntry,
   type RuleEntry,
 } from './inventory';
+import { escapeHtml } from '../src/lib/format';
 import { deprecationSentence, stripRuleHeader } from './readmes';
 import { checkRuleDocSections } from './structure';
 
@@ -143,10 +144,6 @@ function plainText(markdown: string): string {
     .replace(/\[([^\]]*)\]\([^)]*\)/g, '$1')
     .replace(/\s+/g, ' ')
     .trim();
-}
-
-function escapeHtml(text: string): string {
-  return text.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
 }
 
 /** One cell of the facts strip. `quiet` marks a negative value, so it reads quieter. */
@@ -308,6 +305,21 @@ export function renderRuleDoc(source: string, docPath: string, pkg: PackageEntry
   return [...frontmatter, ...body].join('\n').replace(/\n{3,}/g, '\n\n');
 }
 
+/**
+ * The catalog the components read (src/generated/catalog.json): the inventory
+ * with each package's repo path and each rule's route. Exported so the site
+ * tests build the same shape from source, without a sync having run.
+ */
+export function catalogOf(inventory: readonly PackageEntry[]) {
+  return inventory.map(({ dir, ...pkg }) => ({
+    ...pkg,
+    repoDir: relative(REPO_ROOT, dir),
+    rules: pkg.rules.map((rule) => ({ ...rule, route: ruleRoute(pkg.short, rule.name) })),
+  }));
+}
+
+export type CatalogEntry = ReturnType<typeof catalogOf>[number];
+
 async function main(): Promise<void> {
   const inventory = await loadInventory();
   const docs = listRuleDocs();
@@ -334,13 +346,8 @@ async function main(): Promise<void> {
     writeFileSync(out, renderRuleDoc(readFileSync(doc.path, 'utf8'), doc.path, pkg, rule));
   }
 
-  const catalog = inventory.map(({ dir, ...pkg }) => ({
-    ...pkg,
-    repoDir: relative(REPO_ROOT, dir),
-    rules: pkg.rules.map((rule) => ({ ...rule, route: ruleRoute(pkg.short, rule.name) })),
-  }));
   mkdirSync(dirname(CATALOG_OUT), { recursive: true });
-  writeFileSync(CATALOG_OUT, `${JSON.stringify(catalog, null, 2)}\n`);
+  writeFileSync(CATALOG_OUT, `${JSON.stringify(catalogOf(inventory), null, 2)}\n`);
 
   const counts = inventory.map((pkg) => `${pkg.short}=${pkg.rules.length}`).join(' ');
   console.log(`sync: ${docs.length} rule pages, ${inventory.length} packages (${counts})`);
