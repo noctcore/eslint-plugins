@@ -13,11 +13,11 @@ NestJS and BullMQ background work: queue jobs keyed against retries, shared queu
 
 ## What it solves
 
-The work a NestJS app hands to a queue or a schedule fails quietly. A producer that runs twice (a double submit, a replayed request, a sweep that restarts) enqueues the same job twice unless the job carries a key. A queue name typed differently in the producer and the worker routes jobs nowhere. A `@Cron` without a time zone runs at 03:00 in whatever zone the host has, which is not the zone you meant once the code leaves your laptop.
+The work a NestJS app hands to a queue or a schedule fails quietly. A producer that runs twice (a double submit, a replayed request, a sweep that restarts) enqueues the same job twice unless the job carries a key. A queue name typed differently in the producer and the worker routes jobs nowhere. A `@Cron` without a time zone runs at 03:00 in whatever zone the host has, which is not the zone you meant once the code leaves your laptop. A BullMQ worker that nobody listens to fails without a trace, and one that is never closed abandons its running jobs on every deploy.
 
 ## What it will yell at you about
 
-It will yell at you about **a `@Cron` or a BullMQ cron schedule that does not state its time zone**, the one rule `recommended` turns on. Two queue conventions are opt-in: **every `queue.add` carrying a `jobId` or `deduplication`**, and **queue and job names coming from shared constants**. Both find queues by receiver name (`this.queue`, `emailQueue`), with no type information. **It is a bad fit** for a codebase without BullMQ or `@nestjs/schedule`, and the queue rules need `queuePattern` tuned if your queues are not named like queues.
+It will yell at you about three things, all on in `recommended`: **a `@Cron` or a BullMQ cron schedule that does not state its time zone**, **a BullMQ worker with no `failed` listener**, and **a class that creates a worker and never closes it** on shutdown. The worker rules recognise `Worker` by its `bullmq` import, renamed or not. Two queue conventions are opt-in: **every `queue.add` carrying a `jobId` or `deduplication`**, and **queue and job names coming from shared constants**. Both find queues by receiver name (`this.queue`, `emailQueue`), with no type information. **It is a bad fit** for a codebase without BullMQ or `@nestjs/schedule`, and the queue rules need `queuePattern` tuned if your queues are not named like queues.
 
 ## Install and configure
 

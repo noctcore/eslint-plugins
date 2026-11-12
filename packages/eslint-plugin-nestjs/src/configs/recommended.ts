@@ -8,7 +8,12 @@
  *   A stranger's repo would see every `queue.add` reported on day one.
  * - `job-name-must-be-constant`: inline queue names are the documented NestJS
  *   style; moving them to constants is a convention to opt into.
+ *
+ * The worker rules are in: a worker nobody listens to or nobody closes is a
+ * defect in any repo, and they need no options.
  */
 export const recommended = {
   'noctcore-nestjs/schedule-states-time-zone': 'error',
+  'noctcore-nestjs/worker-must-implement-close': 'error',
+  'noctcore-nestjs/worker-must-listen-failed': 'error',
 } as const;
