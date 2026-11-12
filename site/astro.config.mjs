@@ -19,14 +19,14 @@ export default defineConfig({
       description:
         'Focused ESLint plugins for architecture and correctness conventions generic linters cannot see: cross-file boundaries, IO contracts, and code that compiles but bites in production.',
       favicon: '/favicon.svg',
-      logo: { src: './src/assets/mark.svg', alt: '' },
-      // The noctcore docs theme in its load order (tokens, pieces, preset), then
-      // this site's own rules. The Nocturne preset imports its fonts itself.
+      // The inspection-sheet theme in its load order: tokens (and the
+      // self-hosted fonts), element and Starlight chrome, the site's own
+      // pieces, then the responsive rules.
       customCss: [
-        './src/styles/noctcore/base.css',
-        './src/styles/noctcore/components.css',
-        './src/styles/noctcore/presets/nocturne.css',
-        './src/styles/site.css',
+        './src/styles/tokens.css',
+        './src/styles/base.css',
+        './src/styles/components.css',
+        './src/styles/layout.css',
       ],
       components: {
         SiteTitle: './src/components/SiteTitle.astro',

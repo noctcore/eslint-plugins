@@ -100,7 +100,7 @@ const namespaceOf = (pkg: (typeof packages)[number]) =>
                   {pkg.kind === 'eslint-plugin' ? (
                     <RuleBadges rule={rule} column="preset" />
                   ) : (
-                    <span class="pill pill-harness">harness</span>
+                    <span class="chip chip-harness">harness</span>
                   )}
                 </td>
                 <td data-label="Fix"><RuleBadges rule={rule} column="fix" /></td>
@@ -115,15 +115,15 @@ const namespaceOf = (pkg: (typeof packages)[number]) =>
 </div>
 <p class="rule-table-legend">
   <strong>Preset</strong>: the rule's severity in its package's <code>configs.recommended</code>.{' '}
-  <span class="pill pill-strict">strict</span> is on only in <code>configs.strict</code>, the package's
+  <span class="chip chip-strict">strict</span> is on only in <code>configs.strict</code>, the package's
   <code>recommended</code> plus its house rules.{' '}
-  <span class="pill pill-error">error</span> is on. <span class="pill pill-off">off</span> (registered, switched off)
-  and <span class="pill pill-not-listed">not listed</span> (left out) are both <span class="nc-optin">opt-in</span>:
-  you turn the rule on yourself. <span class="nc-badge nc-badge--options">needs options</span> means it does nothing
-  until you configure it. <span class="pill pill-harness">harness</span> marks a lint-meta rule, which has no ESLint
-  preset. <span class="pill pill-deprecated">deprecated</span> marks a rule that still works but is in no preset and
+  <span class="chip chip-error">error</span> is on. <span class="chip chip-off">off</span> (registered, switched off)
+  and <span class="chip chip-off">not listed</span> (left out) are both <span class="chip chip-opt">opt-in</span>:
+  you turn the rule on yourself. <span class="chip chip-options">needs options</span> means it does nothing
+  until you configure it. <span class="chip chip-harness">harness</span> marks a lint-meta rule, which has no ESLint
+  preset. <span class="chip chip-deprecated">deprecated</span> marks a rule that still works but is in no preset and
   will be removed; move to the rule named after it. <strong>Fix</strong>:
-  <span class="nc-badge nc-badge--fix">autofix</span> with <code>--fix</code>,
-  <span class="nc-badge nc-badge--suggest">suggestion</span> in your editor. <strong>Types</strong>: whether the
+  <span class="chip chip-fix">autofix</span> with <code>--fix</code>,
+  <span class="chip chip-suggest">suggestion</span> in your editor. <strong>Types</strong>: whether the
   rule needs a type-checked program (<code>parserOptions.projectService</code>), or uses one when present.
 </p>

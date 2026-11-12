@@ -1,6 +1,6 @@
 import { defineEcConfig } from '@astrojs/starlight/expressive-code';
 
-import { noctcoreCodeConfig } from './src/styles/noctcore/expressive-code.mjs';
+import { codeConfig } from './src/styles/code-theme.mjs';
 
 /**
  * The rule docs mark every example ` ```ts bad ` or ` ```ts good `, and
@@ -26,6 +26,6 @@ function pluginVerdict() {
 }
 
 export default defineEcConfig({
-  ...noctcoreCodeConfig('nocturne'),
+  ...codeConfig(),
   plugins: [pluginVerdict()],
 });

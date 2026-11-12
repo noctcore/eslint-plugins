@@ -22,12 +22,12 @@ const optIn = preset !== 'error' && preset !== 'strict' && !rule.deprecated;
 {
   column === 'preset' && (
     <>
-      <span class:list={['pill', `pill-${preset.replace(' ', '-')}`]}>{preset}</span>
-      {optIn && <span class="nc-optin">opt-in</span>}
+      <span class:list={['chip', preset === 'error' ? 'chip-error' : preset === 'strict' ? 'chip-strict' : 'chip-off']}>{preset}</span>
+      {optIn && <span class="chip chip-opt">opt-in</span>}
       {rule.requiresOptions && (
         <>
           {' '}
-          <span class="nc-badge nc-badge--options">needs options</span>
+          <span class="chip chip-options">needs options</span>
         </>
       )}
     </>
@@ -36,10 +36,10 @@ const optIn = preset !== 'error' && preset !== 'strict' && !rule.deprecated;
 {
   column === 'fix' && (
     <>
-      {rule.fixable && <span class="nc-badge nc-badge--fix">autofix</span>}
+      {rule.fixable && <span class="chip chip-fix">autofix</span>}
       {rule.fixable && rule.hasSuggestions && ' '}
-      {rule.hasSuggestions && <span class="nc-badge nc-badge--suggest">suggestion</span>}
+      {rule.hasSuggestions && <span class="chip chip-suggest">suggestion</span>}
     </>
   )
 }
-{column === 'types' && rule.typeInfo !== 'none' && <span class="nc-badge nc-badge--types">{rule.typeInfo}</span>}
+{column === 'types' && rule.typeInfo !== 'none' && <span class="chip chip-types">{rule.typeInfo}</span>}

@@ -9,4 +9,4 @@ const title = Astro.locals.starlightRoute.entry.data.title;
 const match = /^([\w-]+\/)(.+)$/.exec(title);
 ---
 
-<h1 id="_top">{match ? (<><span class="nc-title-ns">{match[1]}</span>{match[2]}</>) : title}</h1>
+<h1 id="_top">{match ? (<><span class="title-ns">{match[1]}</span>{match[2]}</>) : title}</h1>

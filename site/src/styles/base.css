@@ -1,0 +1,366 @@
+/* Element type and Starlight's chrome, restyled as an inspection sheet: a
+   quiet index rail, one reading column, mono condensed headings, and error
+   red as the only loud colour. Reads only --sheet-* tokens (tokens.css) and
+   the --sl-* variables tokens.css maps onto them. Starlight's own CSS sits in
+   cascade layers and customCss is unlayered, so these rules win without
+   !important. */
+
+/* ---------- type ---------- */
+body {
+  background: var(--sheet-bg);
+  color: var(--sheet-ink);
+  font-family: var(--sheet-font-ui);
+  font-size: 1rem;
+  line-height: 1.6;
+  font-feature-settings: 'ss01';
+  -webkit-font-smoothing: antialiased;
+  text-rendering: optimizeLegibility;
+}
+
+h1,
+h2,
+h3 {
+  text-wrap: balance;
+}
+
+code,
+kbd,
+pre,
+.expressive-code pre {
+  font-variant-ligatures: none;
+}
+
+kbd {
+  font: 500 0.71875rem/1 var(--sheet-font-code);
+  padding: 4px 6px;
+  border: 1px solid var(--sheet-line);
+  border-bottom-width: 2px;
+  border-radius: 4px;
+  color: var(--sheet-ink-2);
+  background: var(--sheet-bg);
+}
+
+:focus-visible {
+  outline: 2px solid var(--sheet-focus);
+  outline-offset: 2px;
+  border-radius: 3px;
+}
+
+::selection {
+  background: var(--sheet-signal-wash);
+  color: var(--sheet-ink);
+}
+
+/* The motif: a wavy error underline, never on running text a reader must parse. */
+.sq-red {
+  text-decoration: underline wavy var(--sheet-signal);
+  text-decoration-thickness: 2px;
+  text-underline-offset: 0.18em;
+  text-decoration-skip-ink: none;
+}
+
+.sr-only {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+  clip: rect(0 0 0 0);
+  white-space: nowrap;
+}
+
+/* ---------- page title ---------- */
+.sl-container > h1#_top,
+h1#_top {
+  margin-top: 0.5rem;
+  font: 700 clamp(1.75rem, 3.6vw, 2.625rem) / 1.08 var(--sheet-font-display);
+  font-stretch: 76%;
+  letter-spacing: -0.03em;
+  color: var(--sheet-ink);
+  overflow-wrap: anywhere;
+}
+
+.title-ns {
+  display: block;
+  font-size: 0.42em;
+  font-weight: 500;
+  letter-spacing: 0;
+  color: var(--sheet-ink-3);
+  margin-bottom: 0.625rem;
+}
+
+/* ---------- markdown content ---------- */
+.sl-markdown-content {
+  color: var(--sheet-ink);
+}
+
+.sl-markdown-content :is(p, li) {
+  line-height: 1.65;
+  max-width: 70ch;
+}
+
+.sl-markdown-content :is(h2, h3, h4):not(:where(.not-content *)) {
+  color: var(--sheet-ink);
+}
+
+.sl-markdown-content h2:not(:where(.not-content *)) {
+  font: 650 1.375rem/1.2 var(--sheet-font-display);
+  font-stretch: 82%;
+  letter-spacing: -0.02em;
+  margin-top: 3rem;
+}
+
+.sl-markdown-content h3:not(:where(.not-content *)) {
+  font: 650 1rem/1.3 var(--sheet-font-ui);
+  letter-spacing: -0.01em;
+  margin-top: 1.625rem;
+}
+
+.sl-markdown-content h4:not(:where(.not-content *)) {
+  font: 650 0.9375rem/1.3 var(--sheet-font-ui);
+}
+
+.sl-markdown-content li::marker {
+  color: var(--sheet-ink-3);
+}
+
+.sl-markdown-content a:not(:where(.not-content *)),
+.tlink {
+  color: var(--sheet-ink);
+  text-decoration: underline;
+  text-decoration-color: var(--sheet-line-2);
+  text-decoration-thickness: 1px;
+  text-underline-offset: 3px;
+}
+
+.sl-markdown-content a:hover:not(:where(.not-content *)),
+.tlink:hover {
+  color: var(--sheet-ink);
+  text-decoration-color: var(--sheet-signal);
+}
+
+.sl-markdown-content code:not(:where(.not-content *)),
+:where(.sheet-ui) code {
+  font: 500 0.88em/1 var(--sheet-font-code);
+  padding: 0.16em 0.36em;
+  border-radius: 4px;
+  background: var(--sheet-bg-3);
+  color: var(--sheet-ink);
+  overflow-wrap: anywhere;
+}
+
+.sl-markdown-content :is(h2, h3) code:not(:where(.not-content *)) {
+  font-size: 0.9em;
+}
+
+/* Markdown tables: a framed sheet with a quiet header row. The options tables
+   in the rule docs scroll inside themselves at phone width. */
+.sl-markdown-content table:not(:where(.not-content *)) {
+  border-collapse: separate;
+  border-spacing: 0;
+  border: 1px solid var(--sheet-line);
+  border-radius: var(--sheet-radius);
+  font-size: 0.90625rem;
+}
+
+.sl-markdown-content :is(th, td):not(:where(.not-content *)) {
+  padding: 0.75rem 0.875rem;
+  border-bottom: 1px solid var(--sheet-line);
+  vertical-align: top;
+  line-height: 1.5;
+}
+
+.sl-markdown-content tr:last-child td:not(:where(.not-content *)) {
+  border-bottom: 0;
+}
+
+.sl-markdown-content th:not(:where(.not-content *)) {
+  font: 600 0.75rem/1.3 var(--sheet-font-ui);
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+  color: var(--sheet-ink-3);
+  background: var(--sheet-bg-2);
+  white-space: nowrap;
+}
+
+.sl-markdown-content td:first-child code:not(:where(.not-content *)) {
+  white-space: nowrap;
+}
+
+.sl-markdown-content blockquote:not(:where(.not-content *)) {
+  border-inline-start: 2px solid var(--sheet-line-2);
+  color: var(--sheet-ink-2);
+}
+
+.sl-markdown-content hr:not(:where(.not-content *)) {
+  border-color: var(--sheet-line);
+}
+
+/* ---------- asides (the deprecation banner is a :::caution) ---------- */
+.starlight-aside {
+  border: 0;
+  border-inline-start: 3px solid var(--sl-color-asides-border);
+  border-radius: var(--sheet-radius);
+  padding: 0.875rem 1rem;
+  color: var(--sheet-ink-2);
+}
+
+.starlight-aside__title {
+  font: 600 0.8125rem/1.3 var(--sheet-font-ui);
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+}
+
+/* ---------- header ---------- */
+header.header {
+  background: color-mix(in oklch, var(--sheet-bg) 88%, transparent);
+  backdrop-filter: saturate(1.4) blur(10px);
+  -webkit-backdrop-filter: saturate(1.4) blur(10px);
+  border-bottom: 1px solid var(--sheet-line);
+}
+
+header .social-icons::after {
+  border-inline-end-color: var(--sheet-line);
+}
+
+header .social-icons a,
+.mobile-preferences .social-icons a {
+  color: var(--sheet-ink-2);
+}
+
+header .social-icons a:hover,
+.mobile-preferences .social-icons a:hover {
+  color: var(--sheet-ink);
+}
+
+/* ---------- index rail (Starlight's sidebar) ---------- */
+.sidebar-content {
+  padding-top: 1.5rem;
+}
+
+.sidebar-content ul.top-level > li + li {
+  margin-top: 1.25rem;
+}
+
+.sidebar-content summary {
+  padding: 0 0.625rem 0.5rem;
+  cursor: default;
+}
+
+.sidebar-content summary .caret {
+  display: none;
+}
+
+.sidebar-content .group-label .large {
+  font: 600 0.71875rem/1 var(--sheet-font-ui);
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--sheet-ink-3);
+}
+
+.sidebar-content ul ul li {
+  margin-inline-start: 0;
+  border-inline-start: 0;
+  padding-inline-start: 0;
+}
+
+.sidebar-content a {
+  display: flex;
+  align-items: baseline;
+  gap: 0.5rem;
+  padding: 0.3125rem 0.625rem;
+  border-radius: 5px;
+  font-size: 0.90625rem;
+  line-height: 1.35;
+  color: var(--sheet-ink-2);
+}
+
+.sidebar-content a:hover,
+.sidebar-content a:focus-visible {
+  background: var(--sheet-bg-3);
+  color: var(--sheet-ink);
+}
+
+.sidebar-content a[aria-current='page'],
+.sidebar-content a[aria-current='page']:hover,
+.sidebar-content a[aria-current='page']:focus {
+  background: var(--sheet-bg-3);
+  color: var(--sheet-ink);
+  font-weight: 600;
+  box-shadow: inset 0 0 0 1px var(--sheet-line);
+}
+
+/* Rule counts ride on Starlight's sidebar badge. */
+.sidebar-content a .sl-badge {
+  margin-inline-start: auto;
+  padding: 0;
+  border: 0;
+  background: none;
+  font: 500 0.71875rem/1 var(--sheet-font-code);
+  font-variant-numeric: tabular-nums;
+  color: var(--sheet-ink-3);
+}
+
+.sidebar-content a[aria-current='page'] .sl-badge {
+  color: var(--sheet-signal-ink);
+}
+
+.mobile-preferences {
+  border-top-color: var(--sheet-line);
+}
+
+/* ---------- right column: on this page ---------- */
+.right-sidebar {
+  border-inline-start-color: var(--sheet-line);
+}
+
+.right-sidebar-panel h2 {
+  font: 600 0.71875rem/1 var(--sheet-font-ui);
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--sheet-ink-3);
+  margin-bottom: 0.625rem;
+}
+
+.right-sidebar-panel starlight-toc a {
+  padding: 0.25rem 0 0.25rem 0.75rem;
+  border-inline-start: 1px solid var(--sheet-line);
+  font-size: 0.875rem;
+  color: var(--sheet-ink-2);
+}
+
+.right-sidebar-panel starlight-toc a:hover {
+  color: var(--sheet-ink);
+  border-inline-start-color: var(--sheet-signal);
+}
+
+.right-sidebar-panel starlight-toc a[aria-current='true'] {
+  color: var(--sheet-ink);
+  border-inline-start-color: var(--sheet-signal);
+}
+
+mobile-starlight-toc nav {
+  border-top-color: var(--sheet-line);
+  background: var(--sheet-bg);
+}
+
+mobile-starlight-toc summary {
+  border-bottom-color: var(--sheet-line);
+}
+
+/* ---------- content panels ---------- */
+.content-panel + .content-panel {
+  border-top: 0;
+}
+
+.content-panel:first-of-type + .content-panel {
+  padding-top: 0;
+}
+
+/* ---------- edit link and footer meta ---------- */
+footer .meta {
+  color: var(--sheet-ink-3);
+}
+
+footer .meta a {
+  color: var(--sheet-ink-2);
+}

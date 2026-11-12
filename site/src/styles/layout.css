@@ -1,0 +1,189 @@
+/* Responsive rules only. Starlight's own breakpoints stay in charge of the
+   frame (50rem shows the rail, 72rem the right column); the blocks below fit
+   the site's pieces to them, and the phone block sets the 16px gutter, the
+   navigation drawer and the scroll rules. scripts/theme.test.ts asserts the
+   phone block's declarations. */
+
+/* Pages without an "on this page" column (overview, package pages, all rules,
+   404) use the full width for the board and the overview grid. */
+html:not([data-has-toc]) {
+  --sl-content-width: 70rem;
+}
+
+@media (min-width: 72rem) {
+  .rule-facts-inline {
+    display: none;
+  }
+}
+
+@media (max-width: 80rem) {
+  .board-wrap {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .board-wrap > aside {
+    position: static;
+  }
+}
+
+@media (max-width: 64rem) {
+  .hero,
+  .thesis,
+  .install-grid {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .starter {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .st {
+    border-left: 0;
+    border-top: 1px solid var(--sheet-line);
+  }
+
+  .st:first-child {
+    border-top: 0;
+  }
+
+  .cat-groups {
+    grid-template-columns: minmax(0, 1fr);
+    gap: 36px;
+  }
+}
+
+/* Below 50rem Starlight hides the rail behind its menu button: restyle the
+   button as a plain icon button in the header. */
+@media (max-width: 49.99rem) {
+  .sl-menu-button,
+  :root[data-theme='light'] .sl-menu-button {
+    border-radius: var(--sheet-radius);
+    background: none;
+    color: var(--sheet-ink-2);
+    box-shadow: none;
+  }
+
+  .sl-menu-button:has(~ :popover-open),
+  :root[data-theme='light'] .sl-menu-button:has(~ :popover-open) {
+    background: var(--sheet-bg-3);
+  }
+}
+
+/* ---------- phone ---------- */
+@media (max-width: 45rem) {
+  :root {
+    --sl-content-pad-x: 16px;
+    --sl-nav-pad-x: 16px;
+  }
+
+  html,
+  body {
+    overflow-x: clip;
+  }
+
+  /* Navigation is a drawer from the left edge over a scrim, not a full-width sheet. */
+  .sidebar-pane {
+    position: fixed;
+    inset-block: 0;
+    inset-inline: 0 auto;
+    width: min(320px, 86vw);
+    border-inline-end: 1px solid var(--sheet-line);
+    background: var(--sheet-bg);
+  }
+
+  .sidebar-pane::backdrop {
+    background: var(--sheet-scrim);
+  }
+
+  .sidebar-pane:popover-open {
+    animation: drawer-in 0.2s cubic-bezier(0.2, 0.8, 0.2, 1);
+  }
+
+  /* Code scrolls inside its own panel; the page never scrolls sideways. */
+  .expressive-code pre,
+  .code pre {
+    overflow-x: auto;
+  }
+
+  .sl-markdown-content table:not(:where(.not-content *)) {
+    display: block;
+    overflow-x: auto;
+  }
+
+  .top-search {
+    width: auto;
+    flex: 0 0 auto;
+    padding: 0;
+    border: 0;
+    background: none;
+  }
+
+  .top-search .lbl,
+  .top-search kbd {
+    display: none;
+  }
+
+  .top-search svg {
+    width: 22px;
+    height: 22px;
+    margin: 8px;
+    color: var(--sheet-ink-2);
+  }
+
+  .fit,
+  .pager {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .pager .next {
+    grid-column: 1;
+  }
+
+  .rrow .pin:not(.changed) {
+    display: none;
+  }
+
+  .irow {
+    grid-template-columns: minmax(0, 1fr) auto;
+  }
+
+  .irow .rd {
+    grid-column: 1 / -1;
+    grid-row: 2;
+  }
+
+  .irow .chips {
+    grid-row: 1;
+    grid-column: 2;
+  }
+
+  .state-row {
+    grid-template-columns: 76px minmax(0, 1fr);
+    gap: 12px;
+  }
+
+  .pal {
+    max-height: 80vh;
+    margin-top: 12px;
+  }
+
+  .pal-foot {
+    display: none;
+  }
+}
+
+@keyframes drawer-in {
+  from {
+    transform: translateX(-24px);
+    opacity: 0;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation: none !important;
+    transition: none !important;
+  }
+}
