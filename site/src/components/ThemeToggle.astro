@@ -1,0 +1,41 @@
+---
+/**
+ * One button that flips the theme, in place of Starlight's three-way select.
+ * The choice is stored under Starlight's own `starlight-theme` key, which its
+ * inline theme script reads before paint, so the next page opens in the same
+ * theme with no flash. With nothing stored, Starlight follows the system.
+ */
+import Glyph from './Glyph.astro';
+---
+
+<button type="button" class="icon-btn theme-toggle" aria-label="Switch theme" data-theme-toggle>
+  <Glyph name="moon" class="moon" />
+  <Glyph name="sun" class="sun" />
+</button>
+
+<script>
+  const KEY = 'starlight-theme';
+  const root = document.documentElement;
+  const isDark = () => root.dataset.theme === 'dark';
+
+  function label(): void {
+    const text = isDark() ? 'Switch to light theme' : 'Switch to dark theme';
+    for (const button of document.querySelectorAll<HTMLButtonElement>('[data-theme-toggle]')) {
+      button.setAttribute('aria-label', text);
+    }
+  }
+
+  for (const button of document.querySelectorAll<HTMLButtonElement>('[data-theme-toggle]')) {
+    button.addEventListener('click', () => {
+      const next = isDark() ? 'light' : 'dark';
+      root.dataset.theme = next;
+      try {
+        localStorage.setItem(KEY, next);
+      } catch {
+        // Storage is unavailable (private mode, blocked): the choice lasts this page view.
+      }
+      label();
+    });
+  }
+  label();
+</script>

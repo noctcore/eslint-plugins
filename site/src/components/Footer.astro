@@ -1,10 +1,67 @@
 ---
+/**
+ * Starlight's footer (edit link, previous and next), then the site footer:
+ * how the docs are made and where to report a rule. It also carries the one
+ * copy handler for every `[data-copy-text]` and `[data-copy-target]` button,
+ * since the footer is on every page.
+ */
 import Default from '@astrojs/starlight/components/Footer.astro';
+
+const REPO = 'https://github.com/noctcore/eslint-plugins';
 ---
 
 <Default />
 
-<p class="site-footer-note">
-  Every rule page is generated from the Markdown doc that ships inside the npm package, and its examples
-  run in that package's test suite. MIT licensed.
-</p>
+<div class="site-footer not-content">
+  <p>
+    Every rule page is generated from the Markdown doc that ships inside the npm package, and its examples run in
+    that package's test suite. MIT licensed. Each plugin is versioned on its own.
+  </p>
+  <a href={REPO}>Source on GitHub</a>
+  <a href={`${REPO}/issues/new/choose`}>Report a false positive</a>
+</div>
+
+<script>
+  const RESET_MS = 1600;
+
+  function textOf(button: HTMLElement): string | null {
+    if (button.dataset.copyText) return button.dataset.copyText;
+    const target = button.dataset.copyTarget ? document.getElementById(button.dataset.copyTarget) : null;
+    return target?.textContent ?? null;
+  }
+
+  function selectTarget(button: HTMLElement): void {
+    const target = button.dataset.copyTarget ? document.getElementById(button.dataset.copyTarget) : null;
+    if (!target) return;
+    const range = document.createRange();
+    range.selectNodeContents(target);
+    const selection = getSelection();
+    selection?.removeAllRanges();
+    selection?.addRange(range);
+  }
+
+  function copied(button: HTMLElement): void {
+    const label = button.querySelector('.cl');
+    button.toggleAttribute('data-copied', true);
+    if (label) label.textContent = 'Copied';
+    setTimeout(() => {
+      button.toggleAttribute('data-copied', false);
+      if (label) label.textContent = 'Copy';
+    }, RESET_MS);
+  }
+
+  document.addEventListener('click', (event) => {
+    const button = (event.target as Element | null)?.closest<HTMLElement>('[data-copy-text], [data-copy-target]');
+    if (!button) return;
+    const text = textOf(button);
+    if (text === null) return;
+    if (!navigator.clipboard) {
+      selectTarget(button);
+      return;
+    }
+    navigator.clipboard.writeText(text).then(
+      () => copied(button),
+      () => selectTarget(button),
+    );
+  });
+</script>

@@ -1150,6 +1150,26 @@
   color: var(--sheet-ink-3);
 }
 
+/* The drawer head: shown only when the rail opens as a drawer (layout.css). */
+.drawer-top {
+  display: none;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.sidebar-content .drawer-top .brand {
+  display: flex;
+  align-items: baseline;
+  gap: 2px;
+  padding: 0;
+  background: none;
+  box-shadow: none;
+  white-space: nowrap;
+  text-decoration: none;
+  color: var(--sheet-ink);
+}
+
 /* ---------- pager ---------- */
 .pager {
   display: grid;

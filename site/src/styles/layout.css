@@ -91,6 +91,14 @@ html:not([data-has-toc]) {
     background: var(--sheet-bg);
   }
 
+  .sidebar-content {
+    padding-top: 12px;
+  }
+
+  .drawer-top {
+    display: flex;
+  }
+
   .sidebar-pane::backdrop {
     background: var(--sheet-scrim);
   }

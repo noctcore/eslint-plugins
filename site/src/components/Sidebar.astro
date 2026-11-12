@@ -1,0 +1,28 @@
+---
+/**
+ * The index rail, with a drawer head on phones: the brand and a close button,
+ * as the rail opens over the page there (layout.css). Starlight's sidebar
+ * popover does the opening, focus handling and light dismiss.
+ */
+import Default from '@astrojs/starlight/components/Sidebar.astro';
+
+import Glyph from './Glyph.astro';
+
+const { siteTitleHref } = Astro.locals.starlightRoute;
+---
+
+<div class="drawer-top">
+  <a href={siteTitleHref} class="brand" translate="no" aria-label="noctcore ESLint plugins, home">
+    <b>noctcore</b><span>/eslint-plugins</span>
+  </a>
+  <button
+    type="button"
+    class="icon-btn"
+    popovertarget="starlight__sidebar"
+    popovertargetaction="hide"
+    aria-label="Close navigation"
+  >
+    <Glyph name="close" />
+  </button>
+</div>
+<Default />

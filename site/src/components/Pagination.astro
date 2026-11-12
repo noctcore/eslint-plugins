@@ -1,0 +1,36 @@
+---
+/**
+ * Previous and next as the inspection sheet's pager. On a rule page the two
+ * links come from src/lib/route-data.ts (the neighbouring rules in catalog
+ * order); elsewhere from the rail. `rel` stays on both links:
+ * scripts/check-build.ts reads it.
+ */
+import Glyph from './Glyph.astro';
+
+const { prev, next } = Astro.locals.starlightRoute.pagination;
+---
+
+{
+  (prev || next) && (
+    <nav class="pager not-content print:hidden" aria-label="Neighbouring pages">
+      {prev && (
+        <a href={prev.href} rel="prev">
+          <span class="dir">
+            <Glyph name="back" size={16} />
+            Previous
+          </span>
+          <span class="nm">{prev.label}</span>
+        </a>
+      )}
+      {next && (
+        <a class="next" href={next.href} rel="next">
+          <span class="dir">
+            Next
+            <Glyph name="forward" size={16} />
+          </span>
+          <span class="nm">{next.label}</span>
+        </a>
+      )}
+    </nav>
+  )
+}
