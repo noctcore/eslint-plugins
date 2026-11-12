@@ -1,3 +1,5 @@
+import { readFileSync } from 'node:fs';
+
 import { describe, expect, test } from 'bun:test';
 
 import * as pkg from '../src/index';
@@ -19,6 +21,7 @@ describe('package export surface', () => {
         'canonical-helpers-single-home',
         'dockerfile-base-image-digest-pin',
         'file-size-ratchet',
+        'github-actions-expression-syntax',
         'github-actions-least-privilege-permissions',
         'github-actions-no-template-injection',
         'github-actions-runner-pinned',
@@ -39,6 +42,13 @@ describe('package export surface', () => {
     for (const id of RULE_IDS) {
       expect(typeof RULE_FACTORIES[id]).toBe('function');
     }
+  });
+
+  test("the README states the main entry's factory count", () => {
+    const readme = readFileSync(new URL('../README.md', import.meta.url), 'utf8');
+    const stated = /The main entry exports (\d+) factories/u.exec(readme)?.[1];
+
+    expect(Number(stated)).toBe(RULE_IDS.length);
   });
 
   test('createAllRules() instantiates every factory with defaults', () => {
@@ -65,6 +75,7 @@ describe('package export surface', () => {
       'createCanonicalHelpersSingleHomeRule',
       'createDockerfileBaseImageDigestPinRule',
       'createFileSizeRatchetRule',
+      'createGithubActionsExpressionSyntaxRule',
       'createGithubActionsLeastPrivilegePermissionsRule',
       'createGithubActionsNoTemplateInjectionRule',
       'createGithubActionsRunnerPinnedRule',

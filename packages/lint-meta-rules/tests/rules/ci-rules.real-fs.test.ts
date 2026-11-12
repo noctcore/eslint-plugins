@@ -96,6 +96,25 @@ describe('CI rules on a real tree with a dot-directory', () => {
   );
 
   test(
+    'github-actions-expression-syntax reaches .github/workflows',
+    () => {
+      const run = runLintMetaOnRealTree(
+        {
+          '.github/workflows/ci.yml': `${WORKFLOW_HEAD}    runs-on: ubuntu-24.04\n    steps:\n      - run: python -c "print(f'\${{{name}}}')"\n`,
+        },
+        'createGithubActionsExpressionSyntaxRule',
+      );
+
+      expect(run.stdout).toContain('github-actions-expression-syntax');
+      expect(run.violations).toHaveLength(1);
+      expect(run.violations[0]).toContain('(.github/workflows/ci.yml)');
+      expect(run.violations[0]).toContain('line 7:');
+      expect(run.code).toBe(1);
+    },
+    TIMEOUT_MS,
+  );
+
+  test(
     'service-image-digest-pin reaches .github/workflows and a compose file in .devcontainer',
     () => {
       const run = runLintMetaOnRealTree(
