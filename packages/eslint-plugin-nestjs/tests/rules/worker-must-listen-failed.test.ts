@@ -215,6 +215,66 @@ w!.on('failed', f);`,
 }`,
     },
     {
+      name: 'listener in a base class method',
+      code: `${IMPORT}class Base {
+  protected worker!: Worker;
+  protected listen() { this.worker.on('failed', f); }
+}
+class Mail extends Base {
+  constructor() {
+    super();
+    this.worker = new Worker('m', run);
+    this.listen();
+  }
+}`,
+    },
+    {
+      name: 'listener in a subclass for a base class field',
+      code: `${IMPORT}class Base { protected worker = new Worker('m', run); }
+class Mail extends Base {
+  onModuleInit() { this.worker.on('failed', f); }
+}`,
+    },
+    {
+      name: 'listener in an abstract base for a subclass field',
+      code: `${IMPORT}abstract class Base {
+  protected abstract worker: Worker;
+  protected wire() { this.worker.on('failed', f); }
+}
+class Mail extends Base { protected worker = new Worker('m', run); }`,
+    },
+    {
+      name: 'listener in a grandparent class',
+      code: `${IMPORT}class Root { protected worker!: Worker; wire() { this.worker.on('failed', f); } }
+class Middle extends Root {}
+class Mail extends Middle { init() { this.worker = new Worker('m', run); } }`,
+    },
+    {
+      name: 'field worker in a class extending a base from another module',
+      code: `${IMPORT}import { BaseWorkerService } from './base';
+class Mail extends BaseWorkerService { protected worker = new Worker('m', run); }`,
+    },
+    {
+      name: 'field worker in a class extending a declared class',
+      code: `${IMPORT}declare class Base { protected wire(): void; }
+class Mail extends Base { protected worker = new Worker('m', run); }`,
+    },
+    {
+      name: 'listener through a const alias of this',
+      code: `${IMPORT}class Mail {
+  private worker = new Worker('m', run);
+  onModuleInit() {
+    const self = this;
+    self.worker.on('failed', f);
+  }
+}`,
+    },
+    {
+      name: 'prependListener counts like on',
+      code: `${IMPORT}const w = new Worker('m', run);
+w.prependListener('failed', f);`,
+    },
+    {
       name: 'requiredEvents all heard',
       code: `${IMPORT}const w = new Worker('m', run);
 w.on('failed', f);
@@ -332,6 +392,39 @@ class B {
   get() { return (this.worker ??= new Worker('m', run)).name; }
 }`,
       errors: [{ messageId: 'missingListener', data: { name: 'this.worker', events: "'failed'" } }],
+    },
+    {
+      name: 'listener in a sibling class does not count',
+      code: `${IMPORT}class Base { protected worker!: Worker; }
+class A extends Base { init() { this.worker = new Worker('a', run); } }
+class B extends Base { init() { this.worker.on('failed', f); } }`,
+      errors: [{ messageId: 'missingListener', line: 3, data: { name: 'this.worker', events: "'failed'" } }],
+    },
+    {
+      name: 'local worker in a class extending a base from another module',
+      code: `${IMPORT}import { BaseService } from './base';
+class Mail extends BaseService {
+  start() { const w = new Worker('m', run); }
+}`,
+      errors: [{ messageId: 'missingListener', line: 4, data: { name: 'w', events: "'failed'" } }],
+    },
+    {
+      name: 'reassigned alias of this does not count',
+      code: `${IMPORT}class Mail {
+  private worker = new Worker('m', run);
+  onModuleInit(other) {
+    let self = this;
+    self = other;
+    self.worker.on('failed', f);
+  }
+}`,
+      errors: [{ messageId: 'missingListener', line: 3, data: { name: 'this.worker', events: "'failed'" } }],
+    },
+    {
+      name: 'prependOnceListener does not count',
+      code: `${IMPORT}const w = new Worker('m', run);
+w.prependOnceListener('failed', f);`,
+      errors: [{ messageId: 'missingListener', data: { name: 'w', events: "'failed'" } }],
     },
     {
       name: 'one report per worker',

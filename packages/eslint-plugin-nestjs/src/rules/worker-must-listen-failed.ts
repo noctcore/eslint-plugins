@@ -3,6 +3,8 @@ import { AST_NODE_TYPES, type TSESTree } from '@typescript-eslint/utils';
 import { createRule } from '../createRule';
 import {
   ANY_EVENT,
+  classChain,
+  type ClassNode,
   createBindingResolver,
   isBullmqNew,
   listenerChain,
@@ -57,7 +59,11 @@ function listenerRoot(node: TSESTree.CallExpression): TSESTree.Expression | null
  * Every `new Worker(...)` imported from `bullmq` must have a `.on('failed', ...)`
  * somewhere in the same file, chained on the constructor or attached through
  * the binding it is stored in. Bindings are resolved through scope, so two
- * workers named `w` in different functions are checked apart. A worker handed
+ * workers named `w` in different functions are checked apart. A field is
+ * shared along a class hierarchy, so `this.worker` in a base class or a
+ * subclass declared in the same file is the same binding; when a base comes
+ * from elsewhere it may attach the listener, so a field worker of that class
+ * is left alone. A worker handed
  * to a caller, another function or another binding is left alone, since the
  * listener can be attached there, and a listener whose event name is not a
  * static string may be the one for `failed`, so it counts for every event.
@@ -102,6 +108,33 @@ export const workerMustListenFailedRule = createRule<RuleOptions, MessageIds>({
     const heard = new Map<string, Set<string>>();
     const heardAny = new Set<string>();
     const escaped = new Set<string>();
+    const classes: ClassNode[] = [];
+
+    function recordClass(node: ClassNode): void {
+      classes.push(node);
+    }
+
+    /**
+     * Every key `ref` is known by: itself, and for a `this` binding the same
+     * member path on each class of its hierarchy declared in this file. Null
+     * when the hierarchy has a base from elsewhere, which may listen unseen.
+     */
+    function keysOf(ref: BindingRef): readonly string[] | null {
+      if (ref.owner === undefined) return [ref.key];
+      const chain = classChain(ref.owner, sourceCode);
+      if (!chain.complete) return null;
+      const owner = ref.owner;
+      const related = new Set<ClassNode>(chain.classes);
+      for (const other of classes) {
+        if (classChain(other, sourceCode).classes.includes(owner)) related.add(other);
+      }
+      const keys = new Set<string>([ref.key]);
+      for (const member of related) {
+        const key = resolver.keyIn(ref, member);
+        if (key !== null) keys.add(key);
+      }
+      return [...keys];
+    }
 
     function markEscaped(node: TSESTree.Node | null | undefined): void {
       if (node === null || node === undefined) return;
@@ -109,8 +142,8 @@ export const workerMustListenFailedRule = createRule<RuleOptions, MessageIds>({
       if (ref !== null) escaped.add(ref.key);
     }
 
-    function hears(ref: BindingRef, event: string): boolean {
-      return heard.get(ref.key)?.has(event) === true;
+    function hears(keys: readonly string[], event: string): boolean {
+      return keys.some((key) => heard.get(key)?.has(event) === true);
     }
 
     return {
@@ -174,10 +207,15 @@ export const workerMustListenFailedRule = createRule<RuleOptions, MessageIds>({
       ArrayExpression(node): void {
         for (const element of node.elements) markEscaped(element);
       },
+      ClassDeclaration: recordClass,
+      ClassExpression: recordClass,
       'Program:exit'(): void {
         for (const worker of bound) {
-          if (worker.refs.some((ref) => escaped.has(ref.key) || heardAny.has(ref.key))) continue;
-          const missing = worker.missing.filter((event) => !worker.refs.some((ref) => hears(ref, event)));
+          const keySets = worker.refs.map(keysOf);
+          if (keySets.includes(null)) continue;
+          const keys = keySets.flatMap((set) => set ?? []);
+          if (keys.some((key) => escaped.has(key) || heardAny.has(key))) continue;
+          const missing = worker.missing.filter((event) => !hears(keys, event));
           if (missing.length === 0) continue;
           context.report({
             node: worker.node,

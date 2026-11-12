@@ -126,6 +126,67 @@ export function thisClass(node: TSESTree.Node): ClassNode | null {
   return null;
 }
 
+/**
+ * The `this` a local stands for when it was declared as `const self = this`
+ * and is never reassigned; null for any other variable.
+ */
+export function thisAlias(variable: TSESLint.Scope.Variable | null): TSESTree.ThisExpression | null {
+  if (variable === null || variable.defs.length !== 1) return null;
+  const def = variable.defs[0];
+  if (def?.type !== 'Variable' || def.node.id.type !== AST_NODE_TYPES.Identifier || def.node.init === null) {
+    return null;
+  }
+  if (variable.references.filter((reference) => reference.isWrite()).length > 1) return null;
+  const init = stripTypeWrappers(def.node.init);
+  return init.type === AST_NODE_TYPES.ThisExpression ? init : null;
+}
+
+/** True for `this`, or a local that stands for it (`const self = this`), with type wrappers ignored. */
+export function isThisLike(node: TSESTree.Node, sourceCode: Readonly<TSESLint.SourceCode>): boolean {
+  const inner = stripTypeWrappers(node);
+  if (inner.type === AST_NODE_TYPES.ThisExpression) return true;
+  if (inner.type !== AST_NODE_TYPES.Identifier) return false;
+  return thisAlias(ASTUtils.findVariable(sourceCode.getScope(inner), inner)) !== null;
+}
+
+/**
+ * The class an `extends` clause names, when this file declares it with a
+ * body; null for a base from another module, a `declare class` (its
+ * implementation lives elsewhere) and any expression the rule cannot follow.
+ */
+function declaredClass(node: TSESTree.Expression, sourceCode: Readonly<TSESLint.SourceCode>): ClassNode | null {
+  const inner = stripTypeWrappers(node);
+  if (inner.type === AST_NODE_TYPES.ClassExpression) return inner;
+  if (inner.type !== AST_NODE_TYPES.Identifier) return null;
+  const def = ASTUtils.findVariable(sourceCode.getScope(inner), inner)?.defs[0];
+  if (def?.type === 'ClassName') return def.node.type === AST_NODE_TYPES.ClassDeclaration && def.node.declare ? null : def.node;
+  if (def?.type === 'Variable' && def.node.init !== null) {
+    const init = stripTypeWrappers(def.node.init);
+    if (init.type === AST_NODE_TYPES.ClassExpression) return init;
+  }
+  return null;
+}
+
+export interface ClassChain {
+  /** The class and the bases it inherits from that this file declares, nearest first. */
+  readonly classes: readonly ClassNode[];
+  /** False when a base comes from elsewhere, so code the rule cannot read is inherited. */
+  readonly complete: boolean;
+}
+
+/** The inheritance chain of `owner` as far as this file declares it. */
+export function classChain(owner: ClassNode, sourceCode: Readonly<TSESLint.SourceCode>): ClassChain {
+  const classes: ClassNode[] = [];
+  let current: ClassNode | null = owner;
+  while (current !== null) {
+    if (classes.includes(current)) return { classes, complete: false };
+    classes.push(current);
+    if (current.superClass === null) return { classes, complete: true };
+    current = declaredClass(current.superClass, sourceCode);
+  }
+  return { classes, complete: false };
+}
+
 /** A listener whose event name is not known statically, so it may be any event. */
 export const ANY_EVENT: unique symbol = Symbol('any event');
 
@@ -149,13 +210,16 @@ export function listenerEvent(
   return typeof result.value === 'string' ? result.value : null;
 }
 
-/** The methods that subscribe a listener; `addListener` is the emitter's alias of `on`. */
-const LISTENER_METHODS: ReadonlySet<string> = new Set(['on', 'addListener']);
+/**
+ * The methods that subscribe a lasting listener: `addListener` is the
+ * emitter's alias of `on`, and `prependListener` only changes the order.
+ */
+const LISTENER_METHODS: ReadonlySet<string> = new Set(['on', 'addListener', 'prependListener']);
 
 /**
- * The receiver of `<receiver>.on(...)` or `<receiver>.addListener(...)`, or
- * null when `node` is not such a call. `once` is not a listener here: it hears
- * one event and misses every later one.
+ * The receiver of a listener call such as `<receiver>.on(...)`, or null when
+ * `node` is not one. `once` and `prependOnceListener` are not listeners here:
+ * they hear one event and miss every later one.
  */
 export function listenerReceiver(node: TSESTree.CallExpression): TSESTree.Expression | null {
   const callee = node.callee;
@@ -207,20 +271,27 @@ export interface BindingRef {
   readonly key: string;
   /** How the source names it, for messages: `w`, `this.worker`. */
   readonly name: string;
+  /** For a binding read through `this`: the class the `this` belongs to. */
+  readonly owner?: ClassNode;
+  /** For a binding read through `this`: the member path after it, `.worker` for `this.worker`. */
+  readonly path?: string;
 }
 
 export interface BindingResolver {
   /**
    * The binding an expression reads: `w`, `this.worker`, `a.b`, with type
-   * wrappers ignored. A variable is resolved through scope, `this` to the
-   * class it is an instance of. Null for computed access, `#private` fields,
-   * calls and any other shape, which are not tracked.
+   * wrappers ignored. A variable is resolved through scope, `this` (or a
+   * `const self = this` alias) to the class it is an instance of. Null for
+   * computed access, `#private` fields, calls and any other shape, which are
+   * not tracked.
    */
   ref(node: TSESTree.Node): BindingRef | null;
   /** The instance field `field` of `owner`, as `this.<field>` reads it inside the class. */
   fieldRef(owner: ClassNode, field: string): BindingRef;
   /** The property `property` of `parent`, as `<parent>.<property>` reads it. */
   memberRef(parent: BindingRef, property: string): BindingRef;
+  /** The key of a `this` binding's member path read on an instance of `owner` instead. */
+  keyIn(ref: BindingRef, owner: ClassNode): string | null;
 }
 
 /** Resolves expressions to bindings for one file; keys are only comparable within it. */
@@ -236,12 +307,19 @@ export function createBindingResolver(sourceCode: Readonly<TSESLint.SourceCode>)
     return nextId;
   }
 
+  function classKey(owner: ClassNode, path: string): string {
+    return `class:${idOf(owner)}${path}`;
+  }
+
   function classRef(owner: ClassNode): BindingRef {
-    return { key: `class:${idOf(owner)}`, name: 'this' };
+    return { key: classKey(owner, ''), name: 'this', owner, path: '' };
   }
 
   function memberRef(parent: BindingRef, property: string): BindingRef {
-    return { key: `${parent.key}.${property}`, name: `${parent.name}.${property}` };
+    const ref = { key: `${parent.key}.${property}`, name: `${parent.name}.${property}` };
+    return parent.owner === undefined || parent.path === undefined
+      ? ref
+      : { ...ref, owner: parent.owner, path: `${parent.path}.${property}` };
   }
 
   function ref(node: TSESTree.Node): BindingRef | null {
@@ -249,6 +327,8 @@ export function createBindingResolver(sourceCode: Readonly<TSESLint.SourceCode>)
     switch (inner.type) {
       case AST_NODE_TYPES.Identifier: {
         const variable = ASTUtils.findVariable(sourceCode.getScope(inner), inner);
+        const self = thisAlias(variable);
+        if (self !== null) return ref(self);
         return {
           key: variable === null ? `global:${inner.name}` : `var:${idOf(variable)}`,
           name: inner.name,
@@ -272,6 +352,7 @@ export function createBindingResolver(sourceCode: Readonly<TSESLint.SourceCode>)
     ref,
     fieldRef: (owner, field) => memberRef(classRef(owner), field),
     memberRef,
+    keyIn: (binding, owner) => (binding.path === undefined ? null : classKey(owner, binding.path)),
   };
 }
 
