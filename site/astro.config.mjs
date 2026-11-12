@@ -53,10 +53,13 @@ export default defineConfig({
         SiteTitle: './src/components/SiteTitle.astro',
         PageTitle: './src/components/PageTitle.astro',
         Footer: './src/components/Footer.astro',
+        PageSidebar: './src/components/PageSidebar.astro',
         Pagination: './src/components/Pagination.astro',
         Sidebar: './src/components/Sidebar.astro',
         ThemeSelect: './src/components/ThemeToggle.astro',
       },
+      // Not under src/pages or src/middleware, where Starlight refuses it.
+      routeMiddleware: './src/lib/route-data.ts',
       social: [
         { icon: 'github', label: 'GitHub', href: 'https://github.com/noctcore/eslint-plugins' },
         { icon: 'npm', label: 'npm', href: 'https://www.npmjs.com/org/noctcore' },

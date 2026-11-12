@@ -25,14 +25,12 @@ import {
   PACKAGES_DIR,
   REPO_ROOT,
   REPO_URL,
-  SITE_BASE,
   listRuleDocs,
   loadInventory,
   ruleRoute,
   type PackageEntry,
   type RuleEntry,
 } from './inventory';
-import { escapeHtml } from '../src/lib/format';
 import { deprecationSentence, stripRuleHeader } from './readmes';
 import { checkRuleDocSections } from './structure';
 
@@ -146,66 +144,6 @@ function plainText(markdown: string): string {
     .trim();
 }
 
-/** One cell of the facts strip. `quiet` marks a negative value, so it reads quieter. */
-function fact(label: string, value: string, quiet = false): string {
-  return `  <div><dt>${label}</dt><dd${quiet ? ' class="is-no"' : ''}>${value}</dd></div>`;
-}
-
-const badge = (kind: string, text: string) => `<span class="nc-badge nc-badge--${kind}">${text}</span>`;
-const yesNo = (label: string, yes: boolean) => fact(label, yes ? 'Yes' : 'No', !yes);
-
-function presetFact(rule: RuleEntry): string {
-  if (rule.recommended === 'error') return badge('on', 'error');
-  // Not in `recommended`, but on in the package's `strict` preset (the house rules).
-  if (rule.strict === 'error') return `${badge('out', 'not listed')} ${badge('strict', 'on in strict')}`;
-  const state = rule.recommended === 'off' ? badge('off', 'off') : badge('out', 'not listed');
-  // A deprecated rule is in no preset on purpose; it is not one to turn on.
-  return rule.deprecated ? state : `${state}<span class="nc-optin">opt-in</span>`;
-}
-
-/**
- * The facts strip under a rule's title and summary: the same cells in the same
- * place on every rule page, with a badge where a value is a state and plain
- * text for a yes or no. Markup and classes are the noctcore theme's
- * (`.nc-facts` in src/styles/noctcore/components.css).
- */
-export function factsStrip(pkg: PackageEntry, rule: RuleEntry): string {
-  const packageLink =
-    `<a href="${SITE_BASE}/packages/${pkg.short}/"><code>${pkg.short}</code></a><wbr>` +
-    `<span class="nc-facts-note">v${pkg.version}</span>`;
-  let cells: string[];
-  if (pkg.kind === 'lint-meta') {
-    // A reader who lands here from search has no other route to what runs a
-    // lint-meta rule: not ESLint, the harness. The package page explains it.
-    cells = [
-      fact('Package', packageLink),
-      fact('Runs under', `<code>@noctcore/harness</code> lint-meta, not ESLint`),
-      fact('Factory', `<code>${escapeHtml(rule.factory ?? '')}</code>`),
-      fact('Entry point', `<code>${escapeHtml(rule.entry ?? '')}</code>`),
-      fact('Category', `<code>${escapeHtml(rule.category ?? '')}</code>`),
-      yesNo('Fails CI by default', rule.ciCritical === true),
-    ];
-  } else {
-    const options = rule.requiresOptions
-      ? fact('Options', badge('options', 'Required'))
-      : fact('Options', rule.hasOptions ? 'Optional' : 'None', !rule.hasOptions);
-    const typeInfo =
-      rule.typeInfo === 'none'
-        ? fact('Type information', 'Not needed', true)
-        : fact('Type information', badge('types', rule.typeInfo));
-    cells = [
-      fact('Package', packageLink),
-      fact('Recommended preset', presetFact(rule)),
-      yesNo('Autofix', rule.fixable),
-      yesNo('Suggestions', rule.hasSuggestions),
-      options,
-      typeInfo,
-    ];
-  }
-  if (rule.deprecated) cells.push(fact('Status', badge('deprecated', 'deprecated')));
-  return ['<dl class="nc-facts">', ...cells, '</dl>'].join('\n');
-}
-
 /**
  * The doc's `> summary` blockquote as the page's lead paragraph. The summary is
  * Markdown (code spans, bold), so it stays Markdown inside the wrapper and the
@@ -214,7 +152,7 @@ export function factsStrip(pkg: PackageEntry, rule: RuleEntry): string {
  */
 function lead(quote: readonly string[]): string[] {
   const text = quote.map((line) => line.replace(/^>\s?/, ''));
-  return ['<div class="nc-lead">', '', ...text, '', '</div>'];
+  return ['<div class="rule-lead">', '', ...text, '', '</div>'];
 }
 
 /** A replacement rule's page, relative to a rule page at rules/<short>/<rule>/. */
@@ -230,11 +168,25 @@ function deprecationBanner(rule: RuleEntry): string[] {
 }
 
 /**
- * Render one rule doc as a Starlight page. Throws on a doc out of shape. The
- * doc's generated status header is dropped: the page states the same facts in
- * its own facts strip, and showing both would say everything twice.
+ * The page description: the blockquote summary as plain text, without its
+ * bold status lines (`**Opt-in.**`).
  */
-export function renderRuleDoc(source: string, docPath: string, pkg: PackageEntry, rule: RuleEntry): string {
+export function docSummary(quote: readonly string[]): string {
+  return plainText(
+    quote
+      .map((line) => line.replace(/^>\s?/, ''))
+      .filter((line) => !/^\*\*.*\*\*\.?$/.test(line.trim()))
+      .join(' '),
+  );
+}
+
+/**
+ * Render one rule doc as a Starlight page. Throws on a doc out of shape. The
+ * doc's generated status header is dropped: the page shows the same facts in
+ * its facts panel (src/lib/facts.ts, rendered by the page's components), and
+ * showing both would say everything twice.
+ */
+export function renderRuleDoc(source: string, docPath: string, _pkg: PackageEntry, rule: RuleEntry): string {
   const lines = stripRuleHeader(source.replace(/\r\n/g, '\n')).split('\n');
   const heading = /^# `([^`]+)`\s*$/.exec(lines[0] ?? '');
   if (!heading) throw new Error(`${docPath}: first line must be "# \`<rule id>\`"`);
@@ -247,14 +199,9 @@ export function renderRuleDoc(source: string, docPath: string, pkg: PackageEntry
   while (i < lines.length && lines[i]!.startsWith('>')) i++;
   if (i === quoteStart) throw new Error(`${docPath}: expected a "> summary" blockquote after the title`);
   const quote = lines.slice(quoteStart, i);
-  const summary = plainText(
-    quote
-      .map((line) => line.replace(/^>\s?/, ''))
-      .filter((line) => !/^\*\*.*\*\*\.?$/.test(line.trim()))
-      .join(' '),
-  );
+  const summary = docSummary(quote);
 
-  const body: string[] = [...lead(quote), ...deprecationBanner(rule), '', factsStrip(pkg, rule)];
+  const body: string[] = [...lead(quote), ...deprecationBanner(rule)];
   let inFence = false;
   for (const line of lines.slice(i)) {
     const fence = FENCE.exec(line);

@@ -11,6 +11,10 @@
  *    every `url` in it resolves to an emitted page. It is a public contract
  *    (see src/lib/rules-index.ts), and a generated contract with no check rots.
  * 5. dist/llms.txt exists and points at rules.json.
+ * 7. Every rule page carries the facts panel with its copyable rule id and the
+ *    "on this page" column, and its previous and next links point at the
+ *    neighbouring rules in catalog order (none before the first rule, none
+ *    after the last).
  */
 import { existsSync, readdirSync, readFileSync, statSync } from 'node:fs';
 import { dirname, join, resolve } from 'node:path';
@@ -50,8 +54,9 @@ if (rulePages.length !== docs.length) {
   failures.push(`${rulePages.length} rule pages emitted for ${docs.length} rule docs`);
 }
 
+const inventory = await loadInventory();
 let urlsChecked = 0;
-for (const pkg of await loadInventory()) {
+for (const pkg of inventory) {
   for (const rule of pkg.rules) {
     if (rule.docsUrl === null) continue;
     urlsChecked++;
@@ -143,10 +148,36 @@ if (!existsSync(LLMS_TXT)) {
   }
 }
 
+// 7. The rule page frame: facts panel, rule id, contents column, pager.
+const ruleOrder = inventory.flatMap((pkg) => pkg.rules.map((rule) => ({ short: pkg.short, name: rule.name, id: rule.id })));
+const pagerHref = (html: string, rel: 'prev' | 'next'): string | null => {
+  const anchor = new RegExp(`<a\\b[^>]*\\brel="${rel}"[^>]*>`).exec(html)?.[0];
+  return anchor ? (/\bhref="([^"]*)"/.exec(anchor)?.[1] ?? '') : null;
+};
+let rulePagesFramed = 0;
+for (const [i, rule] of ruleOrder.entries()) {
+  const page = join(DIST, 'rules', rule.short, rule.name, 'index.html');
+  if (!existsSync(page)) continue;
+  const html = readFileSync(page, 'utf8');
+  const where = `rules/${rule.short}/${rule.name}`;
+  rulePagesFramed++;
+  if (!html.includes('class="rule-facts"')) failures.push(`${where}: no facts panel`);
+  if (!html.includes(`data-copy-text="${rule.id}"`)) failures.push(`${where}: no copyable rule id ${rule.id}`);
+  if (!html.includes('<starlight-toc')) failures.push(`${where}: no "on this page" column`);
+  for (const [rel, neighbour] of [
+    ['prev', ruleOrder[i - 1]],
+    ['next', ruleOrder[i + 1]],
+  ] as const) {
+    const expected = neighbour ? `${SITE_BASE}/rules/${neighbour.short}/${neighbour.name}/` : null;
+    const actual = pagerHref(html, rel);
+    if (actual !== expected) failures.push(`${where}: ${rel} link is ${actual ?? 'missing'}, expected ${expected ?? 'none'}`);
+  }
+}
+
 console.log(
   `check-build: ${pages.length} HTML pages, ${rulePages.length} rule pages for ${docs.length} docs, ` +
     `${urlsChecked} meta.docs.url checked, ${linksChecked} root-relative links checked, ` +
-    `rules.json ${indexEntries} entries with ${indexUrlsChecked} urls checked`,
+    `rules.json ${indexEntries} entries with ${indexUrlsChecked} urls checked, ${rulePagesFramed} rule page frames checked`,
 );
 if (failures.length > 0) {
   const unique = [...new Set(failures)];

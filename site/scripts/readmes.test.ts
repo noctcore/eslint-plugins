@@ -8,7 +8,8 @@
 import { describe, expect, test } from 'bun:test';
 import { join, relative } from 'node:path';
 
-import { REPO_ROOT, loadInventory } from './inventory';
+import { factsPanel } from '../src/lib/facts';
+import { REPO_ROOT, SITE_BASE, loadInventory } from './inventory';
 import {
   HEADER_BEGIN,
   HEADER_END,
@@ -71,7 +72,7 @@ describe('generated README tables and rule-doc headers', () => {
     }
   });
 
-  test('the site page drops the doc header and keeps its own facts strip', () => {
+  test('the site page drops the doc header, and its facts panel states the preset', () => {
     const pkg = inventory.find((entry) => entry.kind === 'eslint-plugin')!;
     const rule = pkg.rules[0]!;
     const sections = ['Why', 'What it flags', 'What it does not flag', 'When not to use it'];
@@ -81,8 +82,8 @@ describe('generated README tables and rule-doc headers', () => {
     const page = renderRuleDoc(doc, `${pkg.dir}/docs/rules/${rule.name}.md`, pkg, rule);
     expect(page).not.toContain(HEADER_BEGIN);
     expect(page).not.toContain(HEADER_END);
-    expect(page).toContain('<dl class="nc-facts">');
-    expect(page).toContain('<dt>Recommended preset</dt>');
+    expect(page).toContain('<div class="rule-lead">');
+    expect(factsPanel(pkg, rule, SITE_BASE)).toContain('<dt>Preset</dt>');
   });
 });
 

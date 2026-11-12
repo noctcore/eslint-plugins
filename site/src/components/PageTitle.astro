@@ -1,12 +1,15 @@
 ---
 /**
  * A rule id reads as its namespace, quiet, over the rule name
- * (`noctcore-contracts/` then `fetch-must-check-ok`). Every other page keeps
- * the plain title. components.css restores the h1 styles Starlight scopes to
- * its own PageTitle.
+ * (`noctcore-contracts/` then `fetch-must-check-ok`), with the facts panel
+ * under it below 72rem. Every other page keeps the plain title. base.css
+ * restores the h1 styles Starlight scopes to its own PageTitle.
  */
+import RuleFacts from './RuleFacts.astro';
+
 const title = Astro.locals.starlightRoute.entry.data.title;
 const match = /^([\w-]+\/)(.+)$/.exec(title);
 ---
 
 <h1 id="_top">{match ? (<><span class="title-ns">{match[1]}</span>{match[2]}</>) : title}</h1>
+<RuleFacts inline />
