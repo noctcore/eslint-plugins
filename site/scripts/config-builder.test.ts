@@ -6,6 +6,10 @@
 import { describe, expect, test } from 'bun:test';
 import { readdirSync, readFileSync } from 'node:fs';
 import { join } from 'node:path';
+import { pathToFileURL } from 'node:url';
+
+import tsParser from '@typescript-eslint/parser';
+import { ESLint, type Linter } from 'eslint';
 
 import {
   configText,
@@ -15,9 +19,12 @@ import {
   presetSeverity,
   presetsOffered,
   type BuilderPackage,
+  type Preset,
+  type Severity,
 } from '../src/lib/config-builder';
+import { importName } from '../src/lib/format';
 import { badFitLine, presetCounts } from '../src/lib/package-page';
-import { loadInventory } from './inventory';
+import { loadInventory, PACKAGES_DIR } from './inventory';
 import { catalogOf } from './sync';
 
 const catalog = catalogOf(await loadInventory('src'));
@@ -52,7 +59,7 @@ describe('config text', () => {
     );
   });
 
-  test('react strict with one house rule switched off prints one rules line', () => {
+  test('react strict with one house rule switched off prints the override as its own config object', () => {
     expect(configText(react, 'strict', { 'component-props-naming': 'off' })).toBe(
       [
         '// eslint.config.js',
@@ -64,6 +71,9 @@ describe('config text', () => {
         '    ...react.configs.strict,',
         "    files: ['**/*.{ts,tsx}'],",
         '    languageOptions: { parser: tsParser },',
+        '  },',
+        '  {',
+        "    files: ['**/*.{ts,tsx}'],",
         '    rules: {',
         "      'noctcore-react/component-props-naming': 'off',",
         '    },',
@@ -154,6 +164,80 @@ describe('config text', () => {
         '# or: bun add -D / pnpm add -D @noctcore/eslint-plugin-security @typescript-eslint/parser',
     );
     expect(installCommand(lintMeta).split('\n')[0]).toBe('npm install --save-dev @noctcore/lint-meta-rules');
+  });
+});
+
+/** The plugin a generated config imports, from source as the inventory reads it. */
+async function pluginOf(short: string): Promise<unknown> {
+  const entry = join(PACKAGES_DIR, `eslint-plugin-${short}`, 'src', 'index.ts');
+  return ((await import(pathToFileURL(entry).href)) as { default: unknown }).default;
+}
+
+/** The generated text run as a module would run it, with its two imports bound to the real modules. */
+function evaluate(text: string, entry: BuilderPackage, plugin: unknown): Linter.Config[] {
+  const [head, body] = text.split('\nexport default ');
+  expect(head).toBe(
+    [
+      '// eslint.config.js',
+      "import tsParser from '@typescript-eslint/parser';",
+      `import ${importName(entry.short)} from '${entry.npmName}';`,
+      '',
+    ].join('\n'),
+  );
+  return new Function(importName(entry.short), 'tsParser', `return ${body!.replace(/;$/, '')}`)(plugin, tsParser);
+}
+
+/** What ESLint turns on for a TypeScript file under the config, per catalog rule. */
+async function resolved(entry: BuilderPackage, config: Linter.Config[]): Promise<Record<string, Severity>> {
+  const eslint = new ESLint({ cwd: import.meta.dir, overrideConfigFile: true, overrideConfig: config });
+  const rules = ((await eslint.calculateConfigForFile(join(import.meta.dir, 'probe.tsx'))) as Linter.Config).rules ?? {};
+  const atError = (value: unknown): boolean => {
+    const severity: unknown = Array.isArray(value) ? value[0] : value;
+    return severity === 2 || severity === 'error';
+  };
+  return Object.fromEntries(entry.rules.map((rule) => [rule.name, atError(rules[rule.id]) ? 'error' : 'off']));
+}
+
+describe('config text, as ESLint resolves it', () => {
+  const plugins = catalog.filter((entry) => entry.kind === 'eslint-plugin');
+
+  /** The overrides worth proving per preset: none, one preset rule off, one rule the preset leaves off switched on. */
+  const casesFor = (entry: BuilderPackage, preset: Preset): Record<string, Severity>[] => {
+    const on = entry.rules.find((rule) => presetSeverity(rule, preset) === 'error');
+    const off = entry.rules.find((rule) => presetSeverity(rule, preset) === 'off' && !rule.requiresOptions && !rule.deprecated);
+    return [{}, ...(on ? [{ [on.name]: 'off' as const }] : []), ...(off ? [{ [off.name]: 'error' as const }] : [])];
+  };
+
+  test('react strict with one house rule off keeps every other strict rule at error', async () => {
+    const overrides = { 'component-props-naming': 'off' } as const;
+    const severities = await resolved(react, evaluate(configText(react, 'strict', overrides), react, await pluginOf('react')));
+    const strictOn = react.rules.filter((rule) => rule.strict === 'error' && rule.name !== 'component-props-naming');
+    expect(strictOn.length).toBeGreaterThan(0);
+    for (const rule of strictOn) expect(severities[rule.name]).toBe('error');
+    expect(severities['component-props-naming']).toBe('off');
+  });
+
+  test('every plugin, preset and single override resolves to exactly the severities the board shows', async () => {
+    let checked = 0;
+    for (const entry of plugins) {
+      const plugin = await pluginOf(entry.short);
+      for (const preset of presetsOffered(entry)) {
+        for (const overrides of casesFor(entry, preset)) {
+          const expected = Object.fromEntries(
+            entry.rules.map((rule) => [rule.name, overrides[rule.name] ?? presetSeverity(rule, preset)]),
+          );
+          const config = evaluate(configText(entry, preset, overrides), entry, plugin);
+          expect({ pkg: entry.short, preset, overrides, severities: await resolved(entry, config) }).toEqual({
+            pkg: entry.short,
+            preset,
+            overrides,
+            severities: expected,
+          });
+          checked++;
+        }
+      }
+    }
+    expect(checked).toBeGreaterThan(plugins.length * 2);
   });
 });
 

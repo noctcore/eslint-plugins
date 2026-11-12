@@ -56,7 +56,10 @@ export function installCommand(pkg: BuilderPackage): string {
 /**
  * The flat config for a preset plus overrides. An override equal to what the
  * preset already sets is not printed, so flipping a rule twice gives back the
- * preset's own snippet.
+ * preset's own snippet. Under a preset the overrides go in a second config
+ * object: a preset is `{ name, plugins, rules }`, so a `rules` key written next
+ * to its spread would replace the preset's whole rule map instead of adding to
+ * it.
  */
 export function configText(pkg: BuilderPackage, preset: Preset, overrides: Readonly<Record<string, Severity>>): string {
   if (pkg.kind !== 'eslint-plugin') throw new Error(`${pkg.npmName} is not an ESLint plugin; it has no flat config.`);
@@ -68,18 +71,23 @@ export function configText(pkg: BuilderPackage, preset: Preset, overrides: Reado
     const value = severity === 'off' ? "'off'" : rule.requiresOptions ? OPTIONS_PLACEHOLDER : "'error'";
     return [`      '${rule.id}': ${value},`];
   });
+  const rulesBlock = ruleLines.length > 0 ? ['    rules: {', ...ruleLines, '    },'] : [];
+  const files = "    files: ['**/*.{ts,tsx}'],";
+  const parser = '    languageOptions: { parser: tsParser },';
+  const objects =
+    preset === 'none'
+      ? [['  {', `    plugins: { '${pkg.namespace}': ${name} },`, files, parser, ...rulesBlock, '  },']]
+      : [
+          ['  {', `    ...${name}.configs.${preset},`, files, parser, '  },'],
+          ...(rulesBlock.length > 0 ? [['  {', files, ...rulesBlock, '  },']] : []),
+        ];
   return [
     '// eslint.config.js',
     "import tsParser from '@typescript-eslint/parser';",
     `import ${name} from '${pkg.npmName}';`,
     '',
     'export default [',
-    '  {',
-    preset === 'none' ? `    plugins: { '${pkg.namespace}': ${name} },` : `    ...${name}.configs.${preset},`,
-    "    files: ['**/*.{ts,tsx}'],",
-    '    languageOptions: { parser: tsParser },',
-    ...(ruleLines.length > 0 ? ['    rules: {', ...ruleLines, '    },'] : []),
-    '  },',
+    ...objects.flat(),
     '];',
   ].join('\n');
 }
