@@ -61,6 +61,7 @@ export const ticketOutput = z.object({
 - A single `z.literal('X')`: a constant, not an enum.
 - An imported identifier, unless its name matches `enumIdentifierPattern` (see Options).
 - An enum in another file: the scope is one module.
+- Two enums with different value lists, unless `compareEnumValues` is on.
 - Keys in `ignoreFields`, computed keys, and schemas built from a namespace not listed in
   `zodIdentifiers`.
 
@@ -71,6 +72,7 @@ export const ticketOutput = z.object({
 | `zodIdentifiers` | `string[]` | `['z']` | Names zod is imported under. |
 | `ignoreFields` | `string[]` | `[]` | Keys that genuinely mean different things in two schemas. |
 | `enumIdentifierPattern` | `string` (regex source) | unset | An imported identifier counts as an enum only when its name matches. |
+| `compareEnumValues` | `boolean` | `false` | Also report a key whose `z.enum` value lists differ between two schemas of the file. |
 
 Imported identifiers are **not** assumed to be enums by default, so `email: emailSchema` (a string
 schema from another module) is not flagged against `email: z.string()`. If your project names its
@@ -86,6 +88,25 @@ enum schemas consistently, opt them in:
 
 Scope the rule to your schema modules with the config block's `files` (for example
 `files: ['src/schemas/**/*.ts']`); the rule itself assumes no layout.
+
+### Comparing enum values
+
+With `compareEnumValues: true`, a key that is a `z.enum` in two schemas of the file must list the same
+values, in any order. Only lists known from the source are compared: an inline array of string
+literals, or a same-file `const` array or `const` enum schema that resolves to one. Imported enums,
+`z.nativeEnum`, `.extract()` and `.exclude()` results and lists with non-literal elements are skipped.
+The first declaration in the file is the reference; each later declaration that differs is reported.
+
+```ts bad options={"compareEnumValues":true} reports=1
+const ticketInput = z.object({ status: z.enum(['open', 'closed']) });
+const ticketOutput = z.object({ status: z.enum(['open', 'closed', 'archived']) });
+```
+
+```ts good options={"compareEnumValues":true}
+const statusSchema = z.enum(['open', 'closed', 'archived']);
+const ticketInput = z.object({ status: statusSchema });
+const ticketOutput = z.object({ status: statusSchema });
+```
 
 ## When not to use it
 
