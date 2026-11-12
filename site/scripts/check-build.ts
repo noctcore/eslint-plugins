@@ -15,6 +15,9 @@
  *    "on this page" column, and its previous and next links point at the
  *    neighbouring rules in catalog order (none before the first rule, none
  *    after the last).
+ * 8. The rules board offers strict on exactly the package pages whose plugin
+ *    ships a strict preset (and there is at least one), and every plugin page
+ *    carries the generated config and the "bad fit" line.
  */
 import { existsSync, readdirSync, readFileSync, statSync } from 'node:fs';
 import { dirname, join, resolve } from 'node:path';
@@ -174,10 +177,30 @@ for (const [i, rule] of ruleOrder.entries()) {
   }
 }
 
+// 8. Package pages: strict switch, config output, bad fit line.
+const plugins = inventory.filter((pkg) => pkg.kind === 'eslint-plugin');
+const strictExpected = plugins.filter((pkg) => pkg.rules.some((rule) => rule.strict !== null)).map((pkg) => pkg.short);
+const strictFound: string[] = [];
+for (const pkg of inventory) {
+  const page = join(DIST, 'packages', pkg.short, 'index.html');
+  if (!existsSync(page)) {
+    failures.push(`packages/${pkg.short}: no page emitted`);
+    continue;
+  }
+  const html = readFileSync(page, 'utf8');
+  if (html.includes('data-preset="strict"')) strictFound.push(pkg.short);
+  if (!html.includes('class="pkg-notfit"')) failures.push(`packages/${pkg.short}: no "bad fit" line`);
+  if (pkg.kind === 'eslint-plugin' && !html.includes('data-config-output')) failures.push(`packages/${pkg.short}: no generated config`);
+}
+if (strictExpected.length === 0) failures.push('no plugin ships a strict preset, so the strict switch check proves nothing');
+if (strictFound.join() !== strictExpected.join()) {
+  failures.push(`strict is offered on [${strictFound.join(', ')}], expected [${strictExpected.join(', ')}]`);
+}
+
 console.log(
   `check-build: ${pages.length} HTML pages, ${rulePages.length} rule pages for ${docs.length} docs, ` +
     `${urlsChecked} meta.docs.url checked, ${linksChecked} root-relative links checked, ` +
-    `rules.json ${indexEntries} entries with ${indexUrlsChecked} urls checked, ${rulePagesFramed} rule page frames checked`,
+    `rules.json ${indexEntries} entries with ${indexUrlsChecked} urls checked, ${rulePagesFramed} rule page frames checked, strict offered on ${strictFound.length} package pages`,
 );
 if (failures.length > 0) {
   const unique = [...new Set(failures)];

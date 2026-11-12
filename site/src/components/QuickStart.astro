@@ -1,83 +1,60 @@
 ---
 /**
- * Install and flat-config snippets for one package, built from the catalog so
- * the package name, namespace and rule counts cannot drift from the source.
+ * The install block for one package, built from the catalog so the package
+ * name cannot drift from the source. A plugin's flat config is built live in
+ * the rules board below (RuleTable.astro); the lint-meta catalog, which is no
+ * ESLint plugin, keeps its registry snippet here.
  */
 import { Code } from '@astrojs/starlight/components';
 
-import { enabledInPreset, getPackage, importName, plural } from '../lib/catalog';
+import { getPackage, plural } from '../lib/catalog';
+import { installCommand } from '../lib/config-builder';
+import { presetCounts } from '../lib/package-page';
 
 interface Props {
   pkg: string;
 }
 
 const pkg = getPackage(Astro.props.pkg);
-const name = importName(pkg.short);
-const installed = pkg.kind === 'eslint-plugin' ? `${pkg.npmName} @typescript-eslint/parser` : pkg.npmName;
-const install = `npm install --save-dev ${installed}\n# or: bun add -D / pnpm add -D ${installed}`;
+const install = installCommand(pkg);
+const isPlugin = pkg.kind === 'eslint-plugin';
 
-const enabled = enabledInPreset(pkg);
-// House rules on only in `strict`; zero when the package has no `strict` preset.
-const strictOnly = pkg.rules.filter((rule) => rule.recommended !== 'error' && rule.strict === 'error').length;
-// With an empty `recommended`, the snippet spreads `strict` so it checks something.
-const preset = enabled === 0 && strictOnly > 0 ? 'strict' : 'recommended';
-// Prefer a rule that works without options, so the example line runs as written.
-const optIns = pkg.rules.filter((rule) => rule.recommended !== 'error' && rule.strict !== 'error' && !rule.deprecated);
-const firstOptIn = optIns.find((rule) => !rule.requiresOptions) ?? optIns[0];
-
-let config: string;
 let note: string;
-if (pkg.kind === 'eslint-plugin') {
-  // The preset sets no `files` and no parser, so the snippet adds both, as the READMEs do.
-  config = [
-    '// eslint.config.js',
-    "import tsParser from '@typescript-eslint/parser';",
-    `import ${name} from '${pkg.npmName}';`,
-    '',
-    'export default [',
-    '  {',
-    `    ...${name}.configs.${preset},`,
-    "    files: ['**/*.{ts,tsx}'],",
-    '    languageOptions: { parser: tsParser },',
-    '  },',
-    '];',
-  ].join('\n');
-  if (firstOptIn) {
-    const severity = firstOptIn.requiresOptions ? "['error', { /* see the rule's Options */ }]" : "'error'";
-    config += [
-      '',
-      '',
-      '// Rules outside the preset are enabled one by one, e.g.',
-      `// { rules: { '${firstOptIn.id}': ${severity} } }`,
-    ].join('\n');
+if (isPlugin) {
+  const { recommended, strictOnly } = presetCounts(pkg);
+  const total = plural(pkg.rules.length, 'rule');
+  const builder =
+    ' The rules board below builds the flat config: start from a preset, switch single rules between error and off, and copy the result.';
+  if (recommended === 0 && strictOnly > 0) {
+    note =
+      `The recommended preset turns none of its ${total} on: each is a house convention or needs options, ` +
+      `so the board starts from strict, which enables ${strictOnly}.${builder}`;
+  } else if (recommended === 0) {
+    note =
+      `The recommended preset turns none of its ${total} on: each needs options only your project can give, ` +
+      `so the preset alone checks nothing. Switch a rule on in the board, then fill in its options as the rule's page shows.`;
+  } else {
+    const strictNote =
+      strictOnly === 0 ? '' : ` The strict preset adds ${plural(strictOnly, 'house rule')} (naming, folder shape, size caps) on top.`;
+    note = `The recommended preset enables ${recommended} of ${total}.${strictNote}${builder}`;
   }
-  const strictNote =
-    strictOnly === 0
-      ? ''
-      : ` The strict preset adds ${plural(strictOnly, 'house rule')} (naming, folder shape, size caps) on top.`;
-  note =
-    enabled === 0 && strictOnly > 0
-      ? `The recommended preset turns none of its ${plural(pkg.rules.length, 'rule')} on: each is a house ` +
-        `convention or needs options, so the snippet spreads strict, which enables ${strictOnly}.`
-      : enabled === 0
-      ? `The recommended preset turns none of its ${plural(pkg.rules.length, 'rule')} on: each needs options ` +
-        'only your project can give, so the preset alone checks nothing. Enable them with your options, ' +
-        "as each rule's page shows."
-      : `The recommended preset enables ${enabled} of ${plural(pkg.rules.length, 'rule')}.${strictNote}`;
 } else {
-  config = [
-    `import { createAllRules, createPackageShapeRule } from '${pkg.npmName}';`,
-    '',
-    '// Every catalog rule with default options:',
-    'const rules = createAllRules();',
-    '',
-    '// Or one rule, retargeted at your repo:',
-    "const shape = createPackageShapeRule({ scope: '@acme' });",
-  ].join('\n');
   note = `A source catalog for the @noctcore/harness lint-meta runner, not an ESLint plugin. ${plural(pkg.rules.length, 'rule')}.`;
 }
+
+const registry = [
+  `import { createAllRules, createPackageShapeRule } from '${pkg.npmName}';`,
+  '',
+  '// Every catalog rule with default options:',
+  'const rules = createAllRules();',
+  '',
+  '// Or one rule, retargeted at your repo:',
+  "const shape = createPackageShapeRule({ scope: '@acme' });",
+].join('\n');
 ---
 
-<Code code={install} lang="sh" title="Install" />
-<Code code={config} lang={pkg.kind === 'eslint-plugin' ? 'js' : 'ts'} title={pkg.kind === 'eslint-plugin' ? 'eslint.config.js' : 'registry.ts'} />
-<p class="quickstart-note">{note}</p>
+<div class="quickstart">
+  <Code code={install} lang="sh" title="Install" />
+  {!isPlugin && <Code code={registry} lang="ts" title="registry.ts" />}
+  <p class="quickstart-note">{note}</p>
+</div>

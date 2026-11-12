@@ -1,11 +1,17 @@
 ---
 /**
- * A package's rule table, generated from the plugin's exported `rules` and each
+ * A package's rules, generated from the plugin's exported `rules` and each
  * rule's `meta` via the catalog. Nothing in it is typed by hand.
+ *
+ * A plugin gets the rules board: pick a preset, switch single rules between
+ * error and off, and the flat config beside it follows (src/lib/config-builder.ts,
+ * the same function the server render uses). The lint-meta catalog, which has
+ * no presets, keeps a plain table.
  */
 import DeprecatedNote from './DeprecatedNote.astro';
-import RuleBadges from './RuleBadges.astro';
-import { codeSpans, getPackage, href } from '../lib/catalog';
+import Glyph from './Glyph.astro';
+import { codeSpans, getPackage, href, type CatalogRule } from '../lib/catalog';
+import { configText, defaultPreset, presetSeverity, presetsOffered } from '../lib/config-builder';
 
 interface Props {
   pkg: string;
@@ -13,58 +19,149 @@ interface Props {
 
 const pkg = getPackage(Astro.props.pkg);
 const isPlugin = pkg.kind === 'eslint-plugin';
+const presets = isPlugin ? presetsOffered(pkg) : [];
+const initial = defaultPreset(pkg);
+const outputId = `config-${pkg.short}`;
+const hintId = `board-hint-${pkg.short}`;
+
+function pinLabel(rule: Pick<CatalogRule, 'recommended' | 'strict' | 'deprecated'>): string {
+  if (rule.recommended === 'error') return 'recommended';
+  if (rule.strict === 'error') return 'strict only';
+  return rule.deprecated ? 'deprecated' : 'opt-in';
+}
+
+const flags = (rule: CatalogRule) => [
+  { on: rule.fixable, glyph: 'build', label: 'Fixable with --fix' },
+  { on: rule.hasSuggestions, glyph: 'lightbulb', label: 'Editor suggestions' },
+  { on: rule.requiresOptions, glyph: 'tune', label: 'Needs options' },
+  { on: rule.typeInfo !== 'none', glyph: 'types', label: `Type information ${rule.typeInfo}` },
+] as const;
+
+const boardData = JSON.stringify({
+  short: pkg.short,
+  npmName: pkg.npmName,
+  kind: pkg.kind,
+  namespace: pkg.namespace,
+  rules: pkg.rules.map(({ name, id, recommended, strict, requiresOptions, deprecated }) => ({
+    name,
+    id,
+    recommended,
+    strict,
+    requiresOptions,
+    deprecated,
+    pin: pinLabel({ recommended, strict, deprecated }),
+  })),
+});
+const onAtStart = pkg.rules.filter((rule) => presetSeverity(rule, initial) === 'error').length;
 ---
 
-<div class="rule-table-wrap">
-  <table class="rule-table">
-    <thead>
-      {
-        isPlugin ? (
-          <tr>
-            <th scope="col">Rule</th>
-            <th scope="col">What it reports</th>
-            <th scope="col">Preset</th>
-            <th scope="col">Fix</th>
-            <th scope="col">Types</th>
-          </tr>
-        ) : (
+{
+  isPlugin ? (
+    <div class="board-wrap not-content" data-board data-initial={initial}>
+      <section aria-label={`${pkg.short} rules`}>
+        <div class="board-bar">
+          <div class="seg" role="group" aria-label="Start from preset">
+            {presets.map((preset) => (
+              <button type="button" data-preset={preset} aria-pressed={String(preset === initial)}>
+                {preset}
+              </button>
+            ))}
+          </div>
+          <span class="count" data-count aria-live="polite">
+            <b>{onAtStart}</b> of {pkg.rules.length} at error
+          </span>
+        </div>
+        <p class="legend" id={hintId}>
+          <span>
+            <Glyph name="build" size={16} />
+            --fix
+          </span>
+          <span>
+            <Glyph name="lightbulb" size={16} />
+            suggestions
+          </span>
+          <span>
+            <Glyph name="tune" size={16} />
+            needs options
+          </span>
+          <span>
+            <Glyph name="types" size={16} />
+            type info
+          </span>
+          <span>Each switch sets a rule to error or off.</span>
+        </p>
+        <div class="board">
+          {pkg.rules.map((rule) => (
+            <div class="rrow">
+              <a class="rn" href={href(rule.route)}>
+                {rule.name}
+              </a>
+              <div class="rd">{codeSpans(rule.description).map(({ part, code }) => (code ? <code>{part}</code> : part))}</div>
+              <div class="flags">
+                {flags(rule).map(({ on, glyph, label }) => (
+                  <span class:list={['flag', { off: !on }]} title={on ? label : `Not: ${label.toLowerCase()}`}>
+                    <Glyph name={glyph} size={18} />
+                    {on && <span class="sr-only">{label}</span>}
+                  </span>
+                ))}
+              </div>
+              <div class="ctl">
+                <button
+                  type="button"
+                  class="sev"
+                  role="switch"
+                  data-rule={rule.name}
+                  aria-checked={String(presetSeverity(rule, initial) === 'error')}
+                  aria-label={rule.name}
+                  aria-describedby={hintId}
+                >
+                  <span class="o" aria-hidden="true">off</span>
+                  <span class="e" aria-hidden="true">error</span>
+                </button>
+                <span class="pin" data-pin>
+                  {pinLabel(rule)}
+                </span>
+              </div>
+              <DeprecatedNote rule={rule} />
+            </div>
+          ))}
+        </div>
+      </section>
+      <aside aria-label="Generated config">
+        <div class="code-panel">
+          <div class="code-head">
+            <span class="t">eslint.config.js</span>
+            <button type="button" class="copy-btn" data-copy-target={outputId} aria-label="Copy the config">
+              <Glyph name="copy" size={15} />
+              <span class="cl">Copy</span>
+            </button>
+          </div>
+          <pre id={outputId} data-config-output>{configText(pkg, initial, {})}</pre>
+        </div>
+        <p class="cfg-note">Switch any rule and the config follows. A rule that needs options gets a placeholder to fill in.</p>
+      </aside>
+      <script type="application/json" data-board-data set:html={boardData} />
+    </div>
+  ) : (
+    <div class="rule-table-wrap">
+      <table class="rule-table">
+        <thead>
           <tr>
             <th scope="col">Rule</th>
             <th scope="col">What it enforces</th>
             <th scope="col">Category</th>
             <th scope="col">Entry point</th>
           </tr>
-        )
-      }
-    </thead>
-    <tbody>
-      {
-        pkg.rules.map((rule) =>
-          isPlugin ? (
-            <tr>
-              <td data-label="Rule">
-                <a href={href(rule.route)}>
-                  <code>{rule.name}</code>
-                </a>
-                <DeprecatedNote rule={rule} />
-              </td>
-              <td data-label="What it reports">
-                {codeSpans(rule.description).map(({ part, code }) => (code ? <code>{part}</code> : part))}
-              </td>
-              <td data-label="Preset"><RuleBadges rule={rule} column="preset" /></td>
-              <td data-label="Fix"><RuleBadges rule={rule} column="fix" /></td>
-              <td data-label="Types"><RuleBadges rule={rule} column="types" /></td>
-            </tr>
-          ) : (
+        </thead>
+        <tbody>
+          {pkg.rules.map((rule) => (
             <tr>
               <td data-label="Rule">
                 <a href={href(rule.route)}>
                   <code>{rule.name}</code>
                 </a>
               </td>
-              <td data-label="What it enforces">
-                {codeSpans(rule.description).map(({ part, code }) => (code ? <code>{part}</code> : part))}
-              </td>
+              <td data-label="What it enforces">{codeSpans(rule.description).map(({ part, code }) => (code ? <code>{part}</code> : part))}</td>
               <td data-label="Category">
                 <code>{rule.category}</code>
               </td>
@@ -72,24 +169,68 @@ const isPlugin = pkg.kind === 'eslint-plugin';
                 <code>{rule.entry}</code>
               </td>
             </tr>
-          ),
-        )
-      }
-    </tbody>
-  </table>
-</div>
-{
-  isPlugin && (
-    <p class="rule-table-legend">
-      <strong>Preset</strong>: severity in <code>configs.recommended</code>.{' '}
-      <span class="chip chip-strict">strict</span> means the rule is on only in <code>configs.strict</code>, which
-      is <code>recommended</code> plus the house rules (naming, folder shape, size caps).{' '}
-      <span class="chip chip-off">off</span> means the preset registers the rule switched off,{' '}
-      <span class="chip chip-off">not listed</span> means it leaves the rule out; both are{' '}
-      <span class="chip chip-opt">opt-in</span>, so you turn the rule on yourself.{' '}
-      <span class="chip chip-options">needs options</span> means it does nothing until you configure it.{' '}
-      <strong>Fix</strong>: whether the rule ships an autofix or an editor suggestion. <strong>Types</strong>: whether
-      the rule needs a type-checked program (<code>parserOptions.projectService</code>), or uses one when present.
-    </p>
+          ))}
+        </tbody>
+      </table>
+    </div>
   )
 }
+
+<script>
+  import { configText, presetSeverity, type BuilderPackage, type Preset, type Severity } from '../lib/config-builder';
+
+  type BoardRule = BuilderPackage['rules'][number] & { pin: string };
+
+  for (const board of document.querySelectorAll<HTMLElement>('[data-board]')) {
+    const data = JSON.parse(board.querySelector('[data-board-data]')!.textContent!) as BuilderPackage & { rules: BoardRule[] };
+    const rules = new Map(data.rules.map((rule) => [rule.name, rule]));
+    const output = board.querySelector<HTMLElement>('[data-config-output]')!;
+    const count = board.querySelector<HTMLElement>('[data-count]')!;
+    let preset = board.dataset.initial as Preset;
+    let overrides: Record<string, Severity> = {};
+
+    const severityOf = (rule: BoardRule): Severity => overrides[rule.name] ?? presetSeverity(rule, preset);
+
+    const sync = () => {
+      let on = 0;
+      for (const button of board.querySelectorAll<HTMLElement>('.sev')) {
+        const rule = rules.get(button.dataset.rule!)!;
+        const severity = severityOf(rule);
+        if (severity === 'error') on++;
+        button.setAttribute('aria-checked', String(severity === 'error'));
+        const pin = button.parentElement!.querySelector<HTMLElement>('[data-pin]')!;
+        const changed = rule.name in overrides;
+        pin.textContent = changed ? 'changed' : rule.pin;
+        pin.classList.toggle('changed', changed);
+      }
+      for (const button of board.querySelectorAll<HTMLElement>('[data-preset]')) {
+        button.setAttribute('aria-pressed', String(button.dataset.preset === preset));
+      }
+      const changed = Object.keys(overrides).length;
+      count.innerHTML = `<b>${on}</b> of ${data.rules.length} at error${changed > 0 ? ` · ${changed} changed from ${preset}` : ''}`;
+      output.textContent = configText(data, preset, overrides);
+    };
+
+    board.addEventListener('click', (event) => {
+      const target = event.target as Element;
+      const presetButton = target.closest<HTMLElement>('[data-preset]');
+      if (presetButton) {
+        preset = presetButton.dataset.preset as Preset;
+        overrides = {};
+        sync();
+        return;
+      }
+      const switchButton = target.closest<HTMLElement>('.sev');
+      if (!switchButton) return;
+      const rule = rules.get(switchButton.dataset.rule!)!;
+      const next: Severity = severityOf(rule) === 'error' ? 'off' : 'error';
+      if (next === presetSeverity(rule, preset)) {
+        const { [rule.name]: _dropped, ...rest } = overrides;
+        overrides = rest;
+      } else {
+        overrides = { ...overrides, [rule.name]: next };
+      }
+      sync();
+    });
+  }
+</script>
