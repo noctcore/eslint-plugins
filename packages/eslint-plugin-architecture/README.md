@@ -77,7 +77,7 @@ export default [
 
 ## Opt-in rules
 
-Two rules ship `off` because they are opinions many good codebases do not share, and two do nothing
+Two rules ship `off` because they are opinions many good codebases do not share, and three do nothing
 until you configure them. Turn them on explicitly:
 
 ```js
@@ -90,6 +90,12 @@ export default [
     rules: {
       // Does nothing until `include` names the files that need a colocated test.
       'noctcore-architecture/colocated-test-required': ['error', { include: ['src/**/*.{ts,tsx}'] }],
+      // Does nothing until `folders` and `pattern` say which folders name their files after themselves.
+      'noctcore-architecture/file-naming-pattern': ['error', {
+        folders: ['src/modules/*'],
+        pattern: '^{folder}(\\.[a-z-]+)?\\.ts$',
+        allowIn: ['**/index.ts'],
+      }],
       'noctcore-architecture/single-semantic-module': 'error',
       // Does nothing until `bans` and `layers` say which imports are banned where.
       'noctcore-architecture/no-restricted-imports-layered': ['error', {
@@ -113,6 +119,7 @@ export default [
 | [`barrel-purity`](https://noctcore.github.io/eslint-plugins/rules/architecture/barrel-purity/) | A barrel (an `index.*` file with an `export … from` re-export) must contain only re-exports, never local declarations, side effects, or default-exported values. | ☑️ |  |  |  |  |
 | [`colocated-test-required`](https://noctcore.github.io/eslint-plugins/rules/architecture/colocated-test-required/) | A source file matching an `include` glob must have a colocated `*.test.*` / `*.spec.*` sibling on disk. | 🔘 | ⚙️ |  |  |  |
 | [`component-folder-structure`](https://noctcore.github.io/eslint-plugins/rules/architecture/component-folder-structure/) | A component `<Name>/<Name>.tsx` under `<componentRoot>/<feature>/...` must have its sibling set (`.hooks.ts`, `.types.ts`, `.stories.tsx`, `.test.tsx`, `index.ts`) present on disk. | ☑️ |  |  |  |  |
+| [`file-naming-pattern`](https://noctcore.github.io/eslint-plugins/rules/architecture/file-naming-pattern/) | In a folder matched by `folders`, a file's basename must match `pattern`, a regular expression built from the folder's name. | 🔘 | ⚙️ |  |  |  |
 | [`filename-matches-export`](https://noctcore.github.io/eslint-plugins/rules/architecture/filename-matches-export/) | A file's basename must match its primary export (a default export, or the sole named export). | ☑️ |  |  | 💡 |  |
 | [`index-must-reexport-default`](https://noctcore.github.io/eslint-plugins/rules/architecture/index-must-reexport-default/) | A component folder's `index.ts` must re-export the component default (`export { default as <Name> } from './<Name>'`). | ☑️ |  |  |  |  |
 | [`max-import-depth`](https://noctcore.github.io/eslint-plugins/rules/architecture/max-import-depth/) | A relative import may not climb more than `max` parent levels (default 3). Autofixed to a path alias when one is configured. | ☑️ |  | 🔧 |  |  |
