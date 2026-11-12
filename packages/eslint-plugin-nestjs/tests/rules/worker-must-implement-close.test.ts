@@ -235,6 +235,58 @@ class Pool { private w = new Worker(file); }`,
       code: `import { Queue } from 'bullmq';
 class Mail { private q = new Queue('m'); }`,
     },
+    {
+      name: 'worker handed to a closing helper',
+      code: `${IMPORT}class Mail {
+  private w = new Worker('m', run);
+  async onModuleDestroy() { await closeQuietly(this.w); }
+}`,
+    },
+    {
+      name: 'worker closed through an array of fields',
+      code: `${IMPORT}class Mail {
+  private w = new Worker('m', run);
+  private q = new Queue('m');
+  async onModuleDestroy() { await Promise.all([this.w, this.q].map((x) => x.close())); }
+}`,
+    },
+    {
+      name: 'close through a const alias of this',
+      code: `${IMPORT}class Mail {
+  private w = new Worker('m', run);
+  async onModuleDestroy() {
+    const self = this;
+    await self.w.close();
+  }
+}`,
+    },
+    {
+      name: 'close through a local read from an alias of this',
+      code: `${IMPORT}class Mail {
+  private w = new Worker('m', run);
+  async onModuleDestroy() {
+    const self = this;
+    const worker = self.w;
+    await worker.close();
+  }
+}`,
+    },
+    {
+      name: 'helper followed through a const alias of this',
+      code: `${IMPORT}class Mail {
+  private w = new Worker('m', run);
+  async onModuleDestroy() {
+    const self = this;
+    await self.stop();
+  }
+  private async stop() { const { w } = this; await w.close(); }
+}`,
+    },
+    {
+      name: 'base class from a declare class is not read',
+      code: `${IMPORT}declare class Base { close(): Promise<void>; }
+class Mail extends Base { private w = new Worker('m', run); }`,
+    },
   ],
   invalid: [
     {
@@ -388,6 +440,15 @@ class Mail { private w = new BullWorker('mail', run); }`,
       name: 'class expression',
       code: `${IMPORT}export const Mail = class { private w = new Worker('mail', run); };`,
       errors: [{ messageId: 'missingClose' }],
+    },
+    {
+      name: 'another field handed to a helper does not close the worker',
+      code: `${IMPORT}class Mail {
+  private w = new Worker('m', run);
+  private q = new Queue('m');
+  async onModuleDestroy() { await closeQuietly(this.q); }
+}`,
+      errors: [{ messageId: 'missingClose', line: 3 }],
     },
     {
       name: 'each unclosed worker is reported',

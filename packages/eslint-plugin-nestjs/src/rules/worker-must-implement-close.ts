@@ -3,8 +3,10 @@ import { ASTUtils, AST_NODE_TYPES, type TSESTree } from '@typescript-eslint/util
 
 import { createRule } from '../createRule';
 import {
+  classChain,
   type ClassNode,
   isBullmqNew,
+  isThisLike,
   listenerChain,
   outermostTypeWrapper,
   stripTypeWrappers,
@@ -61,15 +63,20 @@ function instanceMemberName(member: TSESTree.ClassElement): string | null {
   return member.key.name;
 }
 
-/** `this.<field>` read directly, with type wrappers ignored, gives `<field>`; anything else null. */
-function thisField(node: TSESTree.Node): string | null {
+/** The field a member read `<object>.<field>` names when `<object>` passes `isThis`; else null. */
+function memberField(node: TSESTree.Node, isThis: (object: TSESTree.Node) => boolean): string | null {
   const inner = stripTypeWrappers(node);
   return inner.type === AST_NODE_TYPES.MemberExpression &&
     !inner.computed &&
     inner.property.type === AST_NODE_TYPES.Identifier &&
-    stripTypeWrappers(inner.object).type === AST_NODE_TYPES.ThisExpression
+    isThis(inner.object)
     ? inner.property.name
     : null;
+}
+
+/** `this.<field>` read directly, with type wrappers ignored, gives `<field>`; anything else null. */
+function thisField(node: TSESTree.Node): string | null {
+  return memberField(node, (object) => stripTypeWrappers(object).type === AST_NODE_TYPES.ThisExpression);
 }
 
 /** The class and field that own a worker expression, or null when it is not a field of a class. */
@@ -100,11 +107,13 @@ function ownerOf(top: TSESTree.Node): { readonly owner: ClassNode; readonly fiel
  * of released. A NestJS `@Processor` extending `WorkerHost` builds no worker of
  * its own, so it is never an owner here.
  *
- * A close method may close the worker itself, through a local alias, or
- * through a helper it calls on `this` or `super`, and it may be inherited from
- * a base class declared in the same file. A class whose base comes from
- * elsewhere, or whose close method is abstract, may close the worker where the
- * rule cannot see, so it is not reported.
+ * A close method may close the worker itself, through a local alias (of the
+ * worker, or of `this`), through a helper it calls on `this` or `super`, or by
+ * handing the worker to a function or an array to be closed there, and it may
+ * be inherited from a base class declared in the same file. A class whose base
+ * comes from elsewhere (a `declare class` included), or whose close method is
+ * abstract, may close the worker where the rule cannot see, so it is not
+ * reported.
  */
 export const workerMustImplementCloseRule = createRule<RuleOptions, MessageIds>({
   name: RULE_NAME,
@@ -145,32 +154,7 @@ export const workerMustImplementCloseRule = createRule<RuleOptions, MessageIds>(
       : (closeMethodNames[0] ?? PREFERRED_CLOSE_METHOD);
     const owned = new Map<ClassNode, OwnedWorker[]>();
 
-    /** The class a `extends` clause names, when this file declares it; else null. */
-    function declaredClass(node: TSESTree.Expression): ClassNode | null {
-      const inner = stripTypeWrappers(node);
-      if (inner.type === AST_NODE_TYPES.ClassExpression) return inner;
-      if (inner.type !== AST_NODE_TYPES.Identifier) return null;
-      const def = ASTUtils.findVariable(sourceCode.getScope(inner), inner)?.defs[0];
-      if (def?.type === 'ClassName') return def.node;
-      if (def?.type === 'Variable' && def.node.init !== null) {
-        const init = stripTypeWrappers(def.node.init);
-        if (init.type === AST_NODE_TYPES.ClassExpression) return init;
-      }
-      return null;
-    }
-
-    /** The class and the bases it inherits from, nearest first; null when a base is not declared in this file. */
-    function classChain(owner: ClassNode): ClassNode[] | null {
-      const chain: ClassNode[] = [];
-      let current: ClassNode | null = owner;
-      while (current !== null) {
-        if (chain.includes(current)) return null;
-        chain.push(current);
-        if (current.superClass === null) return chain;
-        current = declaredClass(current.superClass);
-      }
-      return null;
-    }
+    const isThis = (node: TSESTree.Node): boolean => isThisLike(node, sourceCode);
 
     /**
      * The nearest instance method `name` in `chain` from index `start`: its
@@ -202,15 +186,16 @@ export const workerMustImplementCloseRule = createRule<RuleOptions, MessageIds>(
       return null;
     }
 
-    /** The field a local holds when it was declared as `const w = this.w` or `const { w } = this`. */
+    /**
+     * The field a local holds when it was declared as `const w = this.w` or
+     * `const { w } = this`, `this` or a `const self = this` alias.
+     */
     function aliasedField(identifier: TSESTree.Identifier): string | null {
       const def = ASTUtils.findVariable(sourceCode.getScope(identifier), identifier)?.defs[0];
       if (def?.type !== 'Variable' || def.node.init === null) return null;
       const { id, init } = def.node;
-      if (id.type === AST_NODE_TYPES.Identifier) return thisField(init);
-      if (id.type !== AST_NODE_TYPES.ObjectPattern || stripTypeWrappers(init).type !== AST_NODE_TYPES.ThisExpression) {
-        return null;
-      }
+      if (id.type === AST_NODE_TYPES.Identifier) return memberField(init, isThis);
+      if (id.type !== AST_NODE_TYPES.ObjectPattern || !isThis(init)) return null;
       for (const property of id.properties) {
         if (
           property.type !== AST_NODE_TYPES.Property ||
@@ -225,14 +210,22 @@ export const workerMustImplementCloseRule = createRule<RuleOptions, MessageIds>(
       return null;
     }
 
+    /** The field an expression in a close method reads: `this.w`, `self.w`, or a local alias of either. */
+    function fieldOf(node: TSESTree.Node): string | null {
+      const inner = stripTypeWrappers(node);
+      return inner.type === AST_NODE_TYPES.Identifier ? aliasedField(inner) : memberField(inner, isThis);
+    }
+
     /**
      * The fields the class's close methods close, following helper calls on
      * `this` and `super`; null when a base outside this file or an abstract
-     * method may close them where the rule cannot see.
+     * method may close them where the rule cannot see. A field passed to a
+     * call or put in an array literal is handed off to be closed there, as in
+     * `closeQuietly(this.worker)` or `[this.worker, this.queue].map(...)`.
      */
     function closedFields(owner: ClassNode): Set<string> | null {
-      const chain = classChain(owner);
-      if (chain === null) return null;
+      const { classes: chain, complete } = classChain(owner, sourceCode);
+      if (!complete) return null;
       const closed = new Set<string>();
       const seen = new Set<FunctionValue>();
       const queue: MethodHit[] = [];
@@ -251,6 +244,16 @@ export const workerMustImplementCloseRule = createRule<RuleOptions, MessageIds>(
       for (let hit = queue.pop(); hit !== undefined; hit = queue.pop()) {
         const level = hit.level;
         forEachDescendant(hit.fn.body, sourceCode.visitorKeys, (node) => {
+          const handedOff =
+            node.type === AST_NODE_TYPES.ArrayExpression
+              ? node.elements
+              : node.type === AST_NODE_TYPES.CallExpression || node.type === AST_NODE_TYPES.NewExpression
+                ? node.arguments
+                : [];
+          for (const element of handedOff) {
+            const field = element === null ? null : fieldOf(element);
+            if (field !== null) closed.add(field);
+          }
           if (
             node.type !== AST_NODE_TYPES.CallExpression ||
             node.callee.type !== AST_NODE_TYPES.MemberExpression ||
@@ -262,9 +265,9 @@ export const workerMustImplementCloseRule = createRule<RuleOptions, MessageIds>(
           const receiver = stripTypeWrappers(node.callee.object);
           const method = node.callee.property.name;
           if (method === 'close') {
-            const field = receiver.type === AST_NODE_TYPES.Identifier ? aliasedField(receiver) : thisField(receiver);
+            const field = fieldOf(receiver);
             if (field !== null) closed.add(field);
-          } else if (receiver.type === AST_NODE_TYPES.ThisExpression) {
+          } else if (isThis(receiver)) {
             follow(lookup(chain, 0, method));
           } else if (receiver.type === AST_NODE_TYPES.Super) {
             follow(lookup(chain, level + 1, method));
