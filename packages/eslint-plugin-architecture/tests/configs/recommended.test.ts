@@ -12,6 +12,7 @@ function severityOf(entry: unknown): unknown {
 // Every rule that needs options (`meta.docs.requiresOptions`) must be here.
 const OMITTED_FROM_PRESETS: readonly string[] = [
   'colocated-test-required',
+  'file-naming-pattern',
   'no-restricted-imports-layered',
 ];
 
