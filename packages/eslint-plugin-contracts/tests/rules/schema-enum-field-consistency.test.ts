@@ -134,6 +134,101 @@ ruleTester.run('schema-enum-field-consistency', schemaEnumFieldConsistencyRule, 
       `,
       filename: FILE,
     },
+    {
+      // Without compareEnumValues, differing enum lists are not compared
+      code: `
+        const a = z.object({ status: z.enum(['open', 'closed']) });
+        const b = z.object({ status: z.enum(['open', 'closed', 'archived']) });
+      `,
+      filename: FILE,
+    },
+    {
+      // compareEnumValues: the same values in another order
+      code: `
+        const a = z.object({ status: z.enum(['open', 'closed']) });
+        const b = z.object({ status: z.enum(['closed', 'open']) });
+      `,
+      filename: FILE,
+      options: [{ compareEnumValues: true }],
+    },
+    {
+      // compareEnumValues: an imported enum has no static value list
+      code: `
+        import { statusSchema } from './common';
+        const a = z.object({ status: statusSchema });
+        const b = z.object({ status: z.enum(['open']) });
+      `,
+      filename: FILE,
+      options: [{ compareEnumValues: true, enumIdentifierPattern: '^statusSchema$' }],
+    },
+    {
+      // compareEnumValues: z.nativeEnum is skipped
+      code: `
+        const a = z.object({ status: z.nativeEnum(Status) });
+        const b = z.object({ status: z.enum(['open']) });
+      `,
+      filename: FILE,
+      options: [{ compareEnumValues: true }],
+    },
+    {
+      // compareEnumValues: extract and exclude are skipped
+      code: `
+        const base = z.enum(['a', 'b', 'c']);
+        const x = z.object({ kind: base });
+        const y = z.object({ kind: base.exclude(['c']) });
+        const w = z.object({ kind: base.extract(['a']) });
+      `,
+      filename: FILE,
+      options: [{ compareEnumValues: true }],
+    },
+    {
+      // compareEnumValues: a non-literal element is skipped
+      code: `
+        const OTHER = 'x';
+        const a = z.object({ status: z.enum(['open', OTHER]) });
+        const b = z.object({ status: z.enum(['open']) });
+      `,
+      filename: FILE,
+      options: [{ compareEnumValues: true }],
+    },
+    {
+      // compareEnumValues: a spread element is skipped
+      code: `
+        const LIST = ['a', 'b'];
+        const a = z.object({ status: z.enum([...LIST]) });
+        const b = z.object({ status: z.enum(['open']) });
+      `,
+      filename: FILE,
+      options: [{ compareEnumValues: true }],
+    },
+    {
+      // compareEnumValues: a let array is skipped
+      code: `
+        let LIST = ['a'];
+        const a = z.object({ status: z.enum(LIST) });
+        const b = z.object({ status: z.enum(['open']) });
+      `,
+      filename: FILE,
+      options: [{ compareEnumValues: true }],
+    },
+    {
+      // compareEnumValues: ignoreFields still exempts a key
+      code: `
+        const a = z.object({ status: z.enum(['open', 'closed']) });
+        const b = z.object({ status: z.enum(['open', 'closed', 'archived']) });
+      `,
+      filename: FILE,
+      options: [{ compareEnumValues: true, ignoreFields: ['status'] }],
+    },
+    {
+      // compareEnumValues: the fixed orders module is clean
+      code: WIDENED_ORDERS.replace(
+        'fulfilmentChannel: z.string().nullable()',
+        'fulfilmentChannel: fulfilmentChannelSchema.nullable()',
+      ),
+      filename: FILE,
+      options: [{ compareEnumValues: true }],
+    },
   ],
   invalid: [
     {
@@ -288,6 +383,56 @@ ruleTester.run('schema-enum-field-consistency', schemaEnumFieldConsistencyRule, 
       filename: FILE,
       options: [{ zodIdentifiers: ['z', 'zod'] }],
       errors: [{ messageId: 'widenedEnumField', line: 3 }],
+    },
+    {
+      // compareEnumValues: a value added in one schema
+      code: `
+        const a = z.object({ status: z.enum(['open', 'closed']) });
+        const b = z.object({ status: z.enum(['open', 'closed', 'archived']) });
+      `,
+      filename: FILE,
+      options: [{ compareEnumValues: true }],
+      errors: [
+        {
+          messageId: 'enumValuesDiffer',
+          line: 3,
+          data: {
+            field: 'status',
+            values: "'archived', 'closed', 'open'",
+            expected: "'closed', 'open'",
+            line: '2',
+          },
+        },
+      ],
+    },
+    {
+      // compareEnumValues: the reference is the first declaration in source order, not visit order
+      code: `
+        const a = z
+          .object({ status: z.enum(['a', 'b']) })
+          .extend({ status: z.enum(['a', 'b', 'c']) });
+      `,
+      filename: FILE,
+      options: [{ compareEnumValues: true }],
+      errors: [
+        {
+          messageId: 'enumValuesDiffer',
+          line: 4,
+          data: { field: 'status', values: "'a', 'b', 'c'", expected: "'a', 'b'", line: '3' },
+        },
+      ],
+    },
+    {
+      // compareEnumValues: a const array and a const enum resolve to their literals
+      code: `
+        const STATUSES = ['open', 'closed'] as const;
+        const statusSchema = z.enum(STATUSES);
+        const a = z.object({ status: statusSchema.optional() });
+        const b = z.object({ status: z.enum(['open']) });
+      `,
+      filename: FILE,
+      options: [{ compareEnumValues: true }],
+      errors: [{ messageId: 'enumValuesDiffer', line: 5 }],
     },
   ],
 });

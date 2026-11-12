@@ -1,3 +1,4 @@
+import { unwrapTypeWrappers } from '@noctcore/eslint-utils';
 import { AST_NODE_TYPES } from '@typescript-eslint/utils';
 import type { TSESLint, TSESTree } from '@typescript-eslint/utils';
 import type { JSONSchema4 } from '@typescript-eslint/utils/json-schema';
@@ -16,10 +17,15 @@ export interface SchemaEnumFieldConsistencyOptions {
    * matches. Unset, no imported identifier does.
    */
   readonly enumIdentifierPattern?: string;
+  /**
+   * Also report a field whose `z.enum` value lists differ between two schemas
+   * of the file. Off by default.
+   */
+  readonly compareEnumValues?: boolean;
 }
 
 type RuleOptions = [SchemaEnumFieldConsistencyOptions];
-type MessageIds = 'widenedEnumField';
+type MessageIds = 'widenedEnumField' | 'enumValuesDiffer';
 
 /*
  * WHY THIS RULE EXISTS.
@@ -40,6 +46,13 @@ type MessageIds = 'widenedEnumField';
  * Nothing here knows a project layout. The zod namespace, the imported-enum
  * naming convention and the per-field escape hatch are options; scoping to a
  * schema folder is the consuming config's `files`.
+ *
+ * Value comparison is opt-in (`compareEnumValues`). Only a `z.enum` whose list
+ * is statically known is compared: an inline array of string literals, or a
+ * same-file `const` array or `const` enum schema that resolves to one. Every
+ * other shape (imports, `z.nativeEnum`, `extract`/`exclude`, non-literal
+ * elements) is skipped rather than guessed. The first declaration of a field in
+ * source order is the reference the others are compared against.
  *
  * Provenance: upstreamed from Settly's `eslint-plugin-repo` (the owner's own
  * code), where it guarded a widened output field that shipped in a shared
@@ -71,6 +84,7 @@ const OBJECT_FACTORIES: ReadonlySet<string> = new Set(['object', 'strictObject',
 /** Methods that add fields to an existing object schema. */
 const SHAPE_EXTENDERS: ReadonlySet<string> = new Set(['extend', 'safeExtend']);
 
+const ENUM: ReadonlySet<string> = new Set(['enum']);
 const ENUM_FACTORIES: ReadonlySet<string> = new Set(['enum', 'nativeEnum']);
 const UNION: ReadonlySet<string> = new Set(['union']);
 const LITERAL: ReadonlySet<string> = new Set(['literal']);
@@ -83,6 +97,11 @@ const optionSchema: JSONSchema4 = {
     zodIdentifiers: { type: 'array', items: { type: 'string' }, uniqueItems: true },
     ignoreFields: { type: 'array', items: { type: 'string' }, uniqueItems: true },
     enumIdentifierPattern: { type: 'string' },
+    compareEnumValues: {
+      type: 'boolean',
+      description:
+        'Also report a field whose z.enum value lists differ between two schemas of the file. Off by default.',
+    },
   },
 };
 
@@ -99,6 +118,11 @@ const OTHER: FieldKind = { kind: 'other' };
 interface IFieldOccurrence<K extends FieldKind = FieldKind> {
   readonly property: TSESTree.Property;
   readonly kind: K;
+}
+
+interface IEnumValueOccurrence {
+  readonly property: TSESTree.Property;
+  readonly values: ReadonlySet<string>;
 }
 
 function isEnumOccurrence(occurrence: IFieldOccurrence): occurrence is IFieldOccurrence<IEnumKind> {
@@ -126,6 +150,17 @@ function propertyName(property: TSESTree.Property): string | null {
   return null;
 }
 
+function formatValues(values: ReadonlySet<string>): string {
+  return [...values]
+    .sort()
+    .map((value) => `'${value}'`)
+    .join(', ');
+}
+
+function sameValues(a: ReadonlySet<string>, b: ReadonlySet<string>): boolean {
+  return a.size === b.size && [...a].every((value) => b.has(value));
+}
+
 export const schemaEnumFieldConsistencyRule = createRule<RuleOptions, MessageIds>({
   name: RULE_NAME,
   meta: {
@@ -138,9 +173,11 @@ export const schemaEnumFieldConsistencyRule = createRule<RuleOptions, MessageIds
     messages: {
       widenedEnumField:
         '`{{field}}` is `z.string()` here but an enum on line {{line}} of this file. The widened type leaks `string` to every consumer, which then has to narrow or cast it. Use {{suggestion}} instead (and, if the stored data is free text, migrate it first).',
+      enumValuesDiffer:
+        '`{{field}}` allows {{values}} here but {{expected}} on line {{line}} of this file, so clients see two value lists for one field. Share one enum schema, or list `{{field}}` in `ignoreFields` if the two really mean different things.',
     },
   },
-  defaultOptions: [{ zodIdentifiers: ['z'], ignoreFields: [] }],
+  defaultOptions: [{ zodIdentifiers: ['z'], ignoreFields: [], compareEnumValues: false }],
   create(context, [options]) {
     const zodIdentifiers = new Set(options.zodIdentifiers ?? ['z']);
     const ignoreFields = new Set(options.ignoreFields ?? []);
@@ -150,7 +187,10 @@ export const schemaEnumFieldConsistencyRule = createRule<RuleOptions, MessageIds
         : new RegExp(options.enumIdentifierPattern, 'u');
     const sourceCode = context.sourceCode;
 
+    const compareEnumValues = options.compareEnumValues === true;
+
     const fields = new Map<string, IFieldOccurrence[]>();
+    const enumValueFields = new Map<string, IEnumValueOccurrence[]>();
 
     /** `z.<name>(...)` on a configured zod namespace. */
     function isZodCall(node: TSESTree.Node, names: ReadonlySet<string>): boolean {
@@ -236,12 +276,77 @@ export const schemaEnumFieldConsistencyRule = createRule<RuleOptions, MessageIds
       }
     }
 
+    /** The initializer of a same-file `const` the identifier resolves to, or null. */
+    function constInit(identifier: TSESTree.Identifier): TSESTree.Expression | null {
+      const definition = resolveVariable(identifier)?.defs[0];
+      if (definition === undefined || definition.type !== 'Variable') return null;
+      if (definition.parent.kind !== 'const') return null;
+      return definition.node.init;
+    }
+
+    /** A non-empty array of string literals, directly or through a same-file const. */
+    function literalList(
+      node: TSESTree.Node,
+      seen: ReadonlySet<TSESTree.Node>,
+    ): ReadonlySet<string> | null {
+      const current = unwrapTypeWrappers(node);
+      if (current.type === AST_NODE_TYPES.Identifier) {
+        const init = constInit(current);
+        if (init === null || seen.has(init)) return null;
+        return literalList(init, new Set([...seen, init]));
+      }
+      if (current.type !== AST_NODE_TYPES.ArrayExpression || current.elements.length === 0) {
+        return null;
+      }
+      const values = new Set<string>();
+      for (const element of current.elements) {
+        if (
+          element === null ||
+          element.type !== AST_NODE_TYPES.Literal ||
+          typeof element.value !== 'string'
+        ) {
+          return null;
+        }
+        values.add(element.value);
+      }
+      return values;
+    }
+
+    /** The literal value list of a `z.enum`, or null when it is not statically known. */
+    function staticEnumValues(
+      node: TSESTree.Node,
+      seen: ReadonlySet<TSESTree.Node>,
+    ): ReadonlySet<string> | null {
+      let current: TSESTree.Node = node;
+      for (;;) {
+        const call = methodCall(current);
+        if (call === null || !MODIFIERS.has(call.method)) break;
+        current = call.receiver;
+      }
+      if (current.type === AST_NODE_TYPES.Identifier) {
+        const init = constInit(current);
+        if (init === null || seen.has(init)) return null;
+        return staticEnumValues(init, new Set([...seen, init]));
+      }
+      if (!isZodCall(current, ENUM)) return null;
+      const list = (current as TSESTree.CallExpression).arguments[0];
+      return list === undefined ? null : literalList(list, seen);
+    }
+
     function collectShape(shape: TSESTree.Node | undefined): void {
       if (shape?.type !== AST_NODE_TYPES.ObjectExpression) return;
       for (const property of shape.properties) {
         if (property.type !== AST_NODE_TYPES.Property) continue;
         const name = propertyName(property);
         if (name === null || ignoreFields.has(name)) continue;
+        if (compareEnumValues) {
+          const values = staticEnumValues(property.value, new Set());
+          if (values !== null) {
+            const valueOccurrences = enumValueFields.get(name) ?? [];
+            valueOccurrences.push({ property, values });
+            enumValueFields.set(name, valueOccurrences);
+          }
+        }
         const kind = classify(property.value, new Set());
         if (kind.kind === 'other') continue;
         const occurrences = fields.get(name) ?? [];
@@ -276,6 +381,26 @@ export const schemaEnumFieldConsistencyRule = createRule<RuleOptions, MessageIds
                 field,
                 line: String(enumOccurrence.property.loc.start.line),
                 suggestion,
+              },
+            });
+          }
+        }
+        for (const [field, occurrences] of enumValueFields) {
+          if (occurrences.length < 2) continue;
+          const [reference, ...rest] = [...occurrences].sort(
+            (a, b) => a.property.range[0] - b.property.range[0],
+          );
+          if (reference === undefined) continue;
+          for (const occurrence of rest) {
+            if (sameValues(occurrence.values, reference.values)) continue;
+            context.report({
+              node: occurrence.property,
+              messageId: 'enumValuesDiffer',
+              data: {
+                field,
+                values: formatValues(occurrence.values),
+                expected: formatValues(reference.values),
+                line: String(reference.property.loc.start.line),
               },
             });
           }
