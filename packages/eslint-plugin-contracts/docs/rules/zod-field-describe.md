@@ -20,7 +20,8 @@ Every property of a `z.object` / `z.strictObject` / `z.looseObject` shape, and o
 `.meta({ description: '...' })`. The description may sit anywhere in the chain, so
 `z.string().describe('x').min(1)` and `z.string().min(1).describe('x')` both pass. The check is per
 property: a `.describe()` on the enclosing object does not cover its fields. An empty or blank
-description counts as missing.
+description counts as missing. Member chains on the zod namespace count as zod factories, so
+`z.coerce.string().min(1)` and `z.iso.date()` are checked like `z.string()`.
 
 ```ts bad reports=4
 export const UserSchema = z.object({
@@ -49,6 +50,8 @@ export const UserSchema = z.object({
   description.
 - A description or `meta` argument that is computed (`.describe(TEXT.name)`, a template with
   expressions, `.meta(base)`, `.meta({ ...base })`): the rule cannot read it, so it trusts it.
+- A description inside the first argument of `z.optional` or `z.nullable`
+  (`z.optional(z.string().describe('x'))`): the wrapper is followed, so the field counts as described.
 - Spread entries and values that are not a zod chain or a schema reference, such as a conditional.
 - Schemas built from a namespace not listed in `zodIdentifiers`, and any `z.object(shape)` whose
   shape is not an object literal.

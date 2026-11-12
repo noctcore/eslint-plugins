@@ -74,6 +74,19 @@ ruleTester.run('zod-field-describe', zodFieldDescribeRule, {
       filename: FILE,
     },
     {
+      // A description on a member-chain factory or inside a wrapper's argument counts.
+      code: `
+        const A = z.object({
+          n: z.coerce.number().describe('Count'),
+          a: z.optional(z.string().describe('x')),
+          b: z.nullable(z.number().meta({ description: 'y' })),
+          d: z.optional(z.string()).describe('x'),
+          e: z.optional(UserSchema),
+        });
+      `,
+      filename: FILE,
+    },
+    {
       // A described reference is fine with the option off.
       code: `const A = z.object({ user: UserSchema.describe('The user') });`,
       options: [{ allowSchemaReferences: false }],
@@ -208,6 +221,35 @@ ruleTester.run('zod-field-describe', zodFieldDescribeRule, {
       code: `const A = zod.object({ name: zod.string() }); const B = z.object({ other: z.string() });`,
       options: [{ zodIdentifiers: ['zod'] }],
       errors: [{ messageId: 'missingDescription', data: { field: 'name' } }],
+      filename: FILE,
+    },
+    {
+      code: `const A = z.object({ name: z.coerce.string().min(1) }); const B = z.object({ d: z.iso.date() });`,
+      errors: [
+        { messageId: 'missingDescription', data: { field: 'name' } },
+        { messageId: 'missingDescription', data: { field: 'd' } },
+      ],
+      filename: FILE,
+    },
+    {
+      // The member-chain root follows zodIdentifiers.
+      code: `const A = zod.object({ a: zod.coerce.string(), b: v.coerce.string() });`,
+      options: [{ zodIdentifiers: ['zod'] }],
+      errors: [{ messageId: 'missingDescription', data: { field: 'a' } }],
+      filename: FILE,
+    },
+    {
+      code: `const A = z.object({ c: z.optional(z.string()), f: z.optional() });`,
+      errors: [
+        { messageId: 'missingDescription', data: { field: 'c' } },
+        { messageId: 'missingDescription', data: { field: 'f' } },
+      ],
+      filename: FILE,
+    },
+    {
+      code: `const A = z.object({ e: z.optional(UserSchema) });`,
+      options: [{ allowSchemaReferences: false }],
+      errors: [{ messageId: 'missingDescription', data: { field: 'e' } }],
       filename: FILE,
     },
   ],
