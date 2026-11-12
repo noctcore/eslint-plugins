@@ -40,6 +40,9 @@ const OBJECT_FACTORIES: ReadonlySet<string> = new Set(['object', 'strictObject',
 /** Methods that add fields to an existing object schema. */
 const SHAPE_EXTENDERS: ReadonlySet<string> = new Set(['extend', 'safeExtend']);
 
+/** Function-form wrappers whose first argument is the schema they wrap. */
+const WRAPPER_FACTORIES: ReadonlySet<string> = new Set(['optional', 'nullable']);
+
 const optionSchema: JSONSchema4 = {
   type: 'object',
   additionalProperties: false,
@@ -134,6 +137,13 @@ export const zodFieldDescribeRule = createRule<RuleOptions, MessageIds>({
       return node.type === AST_NODE_TYPES.Identifier && zodIdentifiers.has(node.name);
     }
 
+    /** A configured zod namespace, or a member chain rooted at one (`z.coerce`, `z.iso`). */
+    function isZodRooted(node: TSESTree.Node): boolean {
+      let current: TSESTree.Node = node;
+      while (current.type === AST_NODE_TYPES.MemberExpression) current = current.object;
+      return isZodNamespace(current);
+    }
+
     /** `z.<name>(...)` on a configured zod namespace. */
     function isZodObjectFactory(node: TSESTree.Node): boolean {
       const call = methodCall(node);
@@ -141,7 +151,8 @@ export const zodFieldDescribeRule = createRule<RuleOptions, MessageIds>({
     }
 
     /**
-     * Walks a field's method chain from the outside in. Reports whether any
+     * Walks a field's method chain from the outside in, following the first
+     * argument of `z.optional` and `z.nullable`. Reports whether any
      * link describes the field, and what the chain is rooted at: a zod
      * factory, a reference to another schema, or something else.
      */
@@ -158,11 +169,19 @@ export const zodFieldDescribeRule = createRule<RuleOptions, MessageIds>({
             return { described, root: isZodNamespace(current) ? 'other' : 'reference' };
           }
           if (current.type === AST_NODE_TYPES.MemberExpression) {
-            return { described, root: isZodNamespace(current.object) ? 'other' : 'reference' };
+            return { described, root: isZodRooted(current) ? 'other' : 'reference' };
           }
           return { described, root: 'other' };
         }
-        if (isZodNamespace(call.receiver)) return { described, root: 'factory' };
+        if (isZodNamespace(call.receiver) && WRAPPER_FACTORIES.has(call.method)) {
+          const arg = call.call.arguments[0];
+          if (arg === undefined || arg.type === AST_NODE_TYPES.SpreadElement) {
+            return { described, root: 'factory' };
+          }
+          const inner = inspectChain(arg);
+          return { described: described || inner.described, root: inner.root };
+        }
+        if (isZodRooted(call.receiver)) return { described, root: 'factory' };
         if (call.method === 'describe') {
           const arg = call.call.arguments[0];
           if (arg !== undefined && isNonEmptyText(arg)) described = true;
