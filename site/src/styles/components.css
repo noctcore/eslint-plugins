@@ -141,7 +141,7 @@
   height: 20px;
 }
 
-/* A copy button: on a light surface (.copy-btn) or inside a code panel (.code .copy-btn). */
+/* A copy button: on a light surface (.copy-btn) or inside a code panel (.code-panel .copy-btn). */
 .copy-btn {
   display: inline-flex;
   align-items: center;
@@ -171,7 +171,7 @@
 }
 
 /* ---------- code panels the site renders itself ---------- */
-.code {
+.code-panel {
   position: relative;
   min-width: 0;
   border: 1px solid var(--sheet-code-line);
@@ -199,7 +199,7 @@
   text-overflow: ellipsis;
 }
 
-.code pre {
+.code-panel pre {
   margin: 0;
   padding: 14px 16px 16px;
   overflow-x: auto;
@@ -211,16 +211,16 @@
   scrollbar-color: var(--sheet-code-line) transparent;
 }
 
-.code .copy-btn {
+.code-panel .copy-btn {
   color: var(--sheet-code-dim);
 }
 
-.code .copy-btn:hover {
+.code-panel .copy-btn:hover {
   background: var(--sheet-code-bg-2);
   color: var(--sheet-code-fg);
 }
 
-.code .copy-btn[data-copied] {
+.code-panel .copy-btn[data-copied] {
   color: var(--sheet-code-str);
 }
 

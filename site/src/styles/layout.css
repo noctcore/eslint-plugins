@@ -109,7 +109,7 @@ html:not([data-has-toc]) {
 
   /* Code scrolls inside its own panel; the page never scrolls sideways. */
   .expressive-code pre,
-  .code pre {
+  .code-panel pre {
     overflow-x: auto;
   }
 
