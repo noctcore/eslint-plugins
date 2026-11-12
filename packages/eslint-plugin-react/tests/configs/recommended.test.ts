@@ -24,6 +24,7 @@ const STRICT_ONLY: readonly string[] = [
   'noctcore-react/max-hook-return-surface',
   'noctcore-react/max-hooks-per-file',
   'noctcore-react/max-props-per-component',
+  'noctcore-react/max-state-per-hook',
   'noctcore-react/no-jsx-computation',
   'noctcore-react/no-state-in-component-body',
 ];
