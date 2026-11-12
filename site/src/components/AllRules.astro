@@ -1,12 +1,17 @@
 ---
 /**
- * Every rule across every package on one page, generated from the catalog.
- * Today a rule is reachable only through its package; this is the page for
+ * Every rule across every package on one page, generated from the catalog,
+ * with a filter bar: text, preset and capability toggles. This is the page for
  * "which noctcore rule catches X?", for a human scanning and for an LLM that
  * has been asked. Nothing here is typed by hand: the counts, the ids and the
  * descriptions all come from the plugins' exported metadata.
+ *
+ * Every row is in the HTML, so the page works without JavaScript and find in
+ * page sees every rule; the client script only hides rows, using
+ * src/lib/rule-filters.ts, the function scripts/rule-filters.test.ts pins.
  */
 import DeprecatedNote from './DeprecatedNote.astro';
+import Glyph from './Glyph.astro';
 import RuleBadges from './RuleBadges.astro';
 import { codeSpans, href, packages, plural } from '../lib/catalog';
 
@@ -23,20 +28,23 @@ const lintMetaCount = rows.length - pluginRules.length;
 const typed = rows.filter(({ rule }) => rule.typeInfo !== 'none');
 const typeLabel = { required: 'required', optional: 'optional', none: '' } as const;
 const stats = [
-  ['Rules', total],
-  ['On in recommended', onInPreset],
-  ['On in strict only', onInStrict],
-  ['Opt-in', registeredOff + optIn],
+  ['rules', total],
+  ['on in recommended', onInPreset],
+  ['on in strict only', onInStrict],
+  ['opt-in', registeredOff + optIn],
   ['lint-meta', lintMetaCount],
-  ['Autofix', rows.filter(({ rule }) => rule.fixable).length],
-  ['Suggestions', rows.filter(({ rule }) => rule.hasSuggestions).length],
+  ['autofix', rows.filter(({ rule }) => rule.fixable).length],
+  ['suggestions', rows.filter(({ rule }) => rule.hasSuggestions).length],
 ] as const;
-/** `noctcore-react/` for a plugin, `lint-meta-rules/` for the catalog: with the name, the id a reader searches for. */
-const namespaceOf = (pkg: (typeof packages)[number]) =>
-  pkg.kind === 'eslint-plugin' ? `${pkg.namespace}/` : `${pkg.short}/`;
+const presetToggles = [
+  ['all', 'All'],
+  ['recommended', 'recommended'],
+  ['strict', 'strict only'],
+  ['opt-in', 'opt-in'],
+] as const;
 ---
 
-<dl class="nc-stats">
+<dl class="rule-stats not-content">
   {
     stats.map(([label, count]) => (
       <div>
@@ -62,58 +70,87 @@ const namespaceOf = (pkg: (typeof packages)[number]) =>
   ))}
 </p>
 
-<div class="rule-table-wrap">
-  <table class="rule-table rule-table-all">
-    <thead>
-      <tr>
-        <th scope="col">Rule</th>
-        <th scope="col">What it reports</th>
-        <th scope="col">Preset</th>
-        <th scope="col">Fix</th>
-        <th scope="col">Types</th>
-      </tr>
-    </thead>
-    <tbody>
+<div class="all-rules not-content" data-all-rules>
+  <div class="filters">
+    <label class="field">
+      <span class="sr-only">Filter rules</span>
+      <Glyph name="search" />
+      <input
+        id="rule-filter"
+        type="search"
+        placeholder="Filter by name, package or description"
+        autocomplete="off"
+        spellcheck="false"
+      />
+    </label>
+    <div class="toggles" role="group" aria-label="Preset">
       {
-        packages.map((pkg) => (
-          <>
-            <tr class="nc-group">
-              <th colspan="5" scope="colgroup">
-                {pkg.short}
-                <span class="nc-group-count">
-                  {plural(pkg.rules.length, 'rule')} · v{pkg.version}
-                </span>
-              </th>
-            </tr>
-            {pkg.rules.map((rule) => (
-              <tr>
-                <td data-label="Rule">
-                  <a href={href(rule.route)}>
-                    <code><span class="nc-id-ns">{namespaceOf(pkg)}</span>{rule.name}</code>
-                  </a>
-                  <DeprecatedNote rule={rule} />
-                </td>
-                <td data-label="What it reports">
-                  {codeSpans(rule.description).map(({ part, code }) => (code ? <code>{part}</code> : part))}
-                </td>
-                <td data-label="Preset">
-                  {pkg.kind === 'eslint-plugin' ? (
-                    <RuleBadges rule={rule} column="preset" />
-                  ) : (
-                    <span class="chip chip-harness">harness</span>
-                  )}
-                </td>
-                <td data-label="Fix"><RuleBadges rule={rule} column="fix" /></td>
-                <td data-label="Types"><RuleBadges rule={rule} column="types" /></td>
-              </tr>
-            ))}
-          </>
+        presetToggles.map(([value, label]) => (
+          <button type="button" class="tog" data-filter-preset={value} aria-pressed={String(value === 'all')}>
+            {label}
+          </button>
         ))
       }
-    </tbody>
-  </table>
+    </div>
+    <div class="toggles" role="group" aria-label="Capabilities">
+      <button type="button" class="tog" data-filter-flag="fix" aria-pressed="false">
+        <Glyph name="build" size={16} />
+        --fix
+      </button>
+      <button type="button" class="tog" data-filter-flag="types" aria-pressed="false">
+        <Glyph name="types" size={16} />
+        type info
+      </button>
+    </div>
+  </div>
+  <p class="result-count" aria-live="polite" data-result-count>Showing {total} of {total}</p>
+
+  {
+    packages.map((pkg) => (
+      <section class="rgroup" data-group={pkg.short} aria-label={`${pkg.short} rules`}>
+        <div class="rgroup-h">
+          <a href={href(`packages/${pkg.short}/`)}>{pkg.short}</a>
+          <span data-group-count data-total={pkg.rules.length}>
+            {plural(pkg.rules.length, 'rule')} · v{pkg.version}
+            {pkg.kind === 'lint-meta' && ' · whole-repo checks'}
+          </span>
+        </div>
+        {pkg.rules.map((rule) => (
+          <div class="irow" data-key={`${pkg.short}/${rule.name}`}>
+            <a class="rn" href={href(rule.route)}>
+              <span class="id-ns">{pkg.kind === 'eslint-plugin' ? `${pkg.namespace}/` : `${pkg.short}/`}</span>
+              {rule.name}
+            </a>
+            <span class="rd">
+              {codeSpans(rule.description).map(({ part, code }) => (code ? <code>{part}</code> : part))}
+              <DeprecatedNote rule={rule} />
+            </span>
+            <span class="chips">
+              {pkg.kind === 'eslint-plugin' ? (
+                <RuleBadges rule={rule} column="preset" />
+              ) : (
+                <span class="chip chip-harness">harness</span>
+              )}
+              <RuleBadges rule={rule} column="fix" />
+              <RuleBadges rule={rule} column="types" />
+            </span>
+          </div>
+        ))}
+      </section>
+    ))
+  }
+
+  <div class="empty" data-empty hidden>
+    <h3>No rule matches these filters</h3>
+    <p>
+      Try a package name like <code>prisma</code>, a concept like <code>timeout</code> or <code>tenant</code>, or clear
+      the preset and capability filters.
+    </p>
+    <button type="button" class="btn btn-ghost" data-clear-filters>Clear filters</button>
+  </div>
 </div>
-<p class="rule-table-legend">
+
+<p class="rules-legend">
   <strong>Preset</strong>: the rule's severity in its package's <code>configs.recommended</code>.{' '}
   <span class="chip chip-strict">strict</span> is on only in <code>configs.strict</code>, the package's
   <code>recommended</code> plus its house rules.{' '}
@@ -127,3 +164,101 @@ const namespaceOf = (pkg: (typeof packages)[number]) =>
   <span class="chip chip-suggest">suggestion</span> in your editor. <strong>Types</strong>: whether the
   rule needs a type-checked program (<code>parserOptions.projectService</code>), or uses one when present.
 </p>
+
+<script>
+  import { packages } from '../lib/catalog';
+  import { EMPTY_FILTER, filterRules, filterWords, ruleRows, type PresetFilter, type RuleFilter } from '../lib/rule-filters';
+
+  const root = document.querySelector<HTMLElement>('[data-all-rules]');
+  if (root) {
+    const rows = ruleRows(packages);
+    const input = root.querySelector<HTMLInputElement>('#rule-filter')!;
+    const count = root.querySelector<HTMLElement>('[data-result-count]')!;
+    const empty = root.querySelector<HTMLElement>('[data-empty]')!;
+    const rowEls = new Map([...root.querySelectorAll<HTMLElement>('.irow')].map((el) => [el.dataset.key!, el]));
+    const originals = new Map([...rowEls].map(([key, el]) => [key, [el.querySelector('.rn')!.innerHTML, el.querySelector('.rd')!.innerHTML]]));
+    let filter: RuleFilter = { ...EMPTY_FILTER };
+
+    /** Wrap each filter word in <mark>, in text nodes only, so markup and links stay intact. */
+    const mark = (el: Element, words: string[]) => {
+      if (words.length === 0) return;
+      const pattern = new RegExp(`(${words.map((w) => w.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')).join('|')})`, 'gi');
+      const walker = document.createTreeWalker(el, NodeFilter.SHOW_TEXT);
+      const nodes: Text[] = [];
+      while (walker.nextNode()) nodes.push(walker.currentNode as Text);
+      for (const node of nodes) {
+        const parts = node.data.split(pattern);
+        if (parts.length === 1) continue;
+        const fragment = document.createDocumentFragment();
+        parts.forEach((part, i) => {
+          if (part === '') return;
+          if (i % 2 === 1) {
+            const m = document.createElement('mark');
+            m.textContent = part;
+            fragment.append(m);
+          } else {
+            fragment.append(part);
+          }
+        });
+        node.replaceWith(fragment);
+      }
+    };
+
+    const apply = () => {
+      const shown = new Set(filterRules(rows, filter).map((row) => row.key));
+      const words = filterWords(filter.text).filter((word) => word.length > 1);
+      for (const [key, el] of rowEls) {
+        const visible = shown.has(key);
+        el.hidden = !visible;
+        const [rn, rd] = originals.get(key)!;
+        el.querySelector('.rn')!.innerHTML = rn!;
+        el.querySelector('.rd')!.innerHTML = rd!;
+        if (visible) {
+          mark(el.querySelector('.rn')!, words);
+          mark(el.querySelector('.rd')!, words);
+        }
+      }
+      for (const group of root.querySelectorAll<HTMLElement>('[data-group]')) {
+        const visible = group.querySelectorAll('.irow:not([hidden])').length;
+        group.hidden = visible === 0;
+        const label = group.querySelector<HTMLElement>('[data-group-count]')!;
+        if (visible < Number(label.dataset.total)) label.textContent = `${visible} of ${label.dataset.total}`;
+        else label.textContent = label.dataset.full ?? label.textContent;
+      }
+      count.textContent = `Showing ${shown.size} of ${rows.length}`;
+      empty.hidden = shown.size > 0;
+      for (const button of root.querySelectorAll<HTMLElement>('[data-filter-preset]')) {
+        button.setAttribute('aria-pressed', String(button.dataset.filterPreset === filter.preset));
+      }
+      for (const button of root.querySelectorAll<HTMLElement>('[data-filter-flag]')) {
+        button.setAttribute('aria-pressed', String(filter[button.dataset.filterFlag as 'fix' | 'types']));
+      }
+    };
+
+    for (const label of root.querySelectorAll<HTMLElement>('[data-group-count]')) label.dataset.full = label.textContent ?? '';
+
+    input.addEventListener('input', () => {
+      filter = { ...filter, text: input.value };
+      apply();
+    });
+    root.addEventListener('click', (event) => {
+      const target = event.target as Element;
+      const preset = target.closest<HTMLElement>('[data-filter-preset]');
+      const flag = target.closest<HTMLElement>('[data-filter-flag]');
+      if (preset) filter = { ...filter, preset: preset.dataset.filterPreset as PresetFilter };
+      else if (flag) {
+        const name = flag.dataset.filterFlag as 'fix' | 'types';
+        filter = { ...filter, [name]: !filter[name] };
+      } else if (target.closest('[data-clear-filters]')) {
+        filter = { ...EMPTY_FILTER };
+        input.value = '';
+        input.focus();
+      } else return;
+      apply();
+    });
+    if (input.value) {
+      filter = { ...filter, text: input.value };
+      apply();
+    }
+  }
+</script>

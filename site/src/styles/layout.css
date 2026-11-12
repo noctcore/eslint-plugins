@@ -151,18 +151,14 @@ html:not([data-has-toc]) {
     display: none;
   }
 
+  /* Name, then description, then chips: three chips beside a long rule
+     name would squeeze the name to a letter per line. */
   .irow {
-    grid-template-columns: minmax(0, 1fr) auto;
-  }
-
-  .irow .rd {
-    grid-column: 1 / -1;
-    grid-row: 2;
+    grid-template-columns: minmax(0, 1fr);
   }
 
   .irow .chips {
-    grid-row: 1;
-    grid-column: 2;
+    justify-content: flex-start;
   }
 
   .state-row {
