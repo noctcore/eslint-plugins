@@ -19,9 +19,10 @@ Not a good fit if you are not running the harness.
 - **testing**: every tested package is enrolled in the aggregate test script, and test runners are
   not mixed within a package.
 - **ci**: GitHub Actions pinned by SHA and to named runners, no template injection, least-privilege
-  permissions, jobs running a paths-filter action granted `pull-requests: read`, pip installs pinned
-  to exact versions (reported, not failing, by default), container images pinned by digest, and the
-  secret scanner pinned to one version.
+  permissions, a fork guard on self-hosted runners in `pull_request` workflows, jobs running a
+  paths-filter action granted `pull-requests: read`, pip installs pinned to exact versions (reported,
+  not failing, by default), container images pinned by digest, and the secret scanner pinned to one
+  version.
 
 Every check is listed in [Rules](#rules), with a page per rule.
 
@@ -69,7 +70,7 @@ over the whole catalog.
 
 ## Rules
 
-The main entry exports 32 factories. `createFileSizeRatchetRule` covers any number of capped areas:
+The main entry exports 33 factories. `createFileSizeRatchetRule` covers any number of capped areas:
 create one instance per area, each with its own `id`.
 
 <!-- begin generated rules -->
@@ -91,6 +92,7 @@ create one instance per area, each with its own `id`.
 | [`github-actions-pip-install-pinned`](https://noctcore.github.io/eslint-plugins/rules/lint-meta-rules/github-actions-pip-install-pinned/) | Packages installed with pip, uv pip or pipx in a GitHub Actions run step must be pinned to an exact version with ==. | `createGithubActionsPipInstallPinnedRule` | `@noctcore/lint-meta-rules` | `ci` | no |
 | [`github-actions-runner-pinned`](https://noctcore.github.io/eslint-plugins/rules/lint-meta-rules/github-actions-runner-pinned/) | GitHub Actions jobs must run on a pinned runner image (for example ubuntu-24.04), never a *-latest label. | `createGithubActionsRunnerPinnedRule` | `@noctcore/lint-meta-rules` | `ci` | yes |
 | [`github-actions-security-no-cancel`](https://noctcore.github.io/eslint-plugins/rules/lint-meta-rules/github-actions-security-no-cancel/) | Security scan workflows (file name matching securityWorkflowPattern) never set a literal `cancel-in-progress: true` in a workflow-level or job-level `concurrency`, so a newer run cannot cancel a scan halfway. | `createGithubActionsSecurityNoCancelRule` | `@noctcore/lint-meta-rules` | `ci` | yes |
+| [`github-actions-self-hosted-fork-guard`](https://noctcore.github.io/eslint-plugins/rules/lint-meta-rules/github-actions-self-hosted-fork-guard/) | A GitHub Actions job triggered by pull_request must not run on a self-hosted runner unless runs-on carries a fork guard. | `createGithubActionsSelfHostedForkGuardRule` | `@noctcore/lint-meta-rules` | `ci` | yes |
 | [`github-actions-sha-pinned`](https://noctcore.github.io/eslint-plugins/rules/lint-meta-rules/github-actions-sha-pinned/) | GitHub Actions `uses:` refs must be pinned to a 40-character commit SHA with a `# vN` comment (local ./ actions exempt). | `createGithubActionsShaPinnedRule` | `@noctcore/lint-meta-rules` | `ci` | yes |
 | [`github-actions-timeout-required`](https://noctcore.github.io/eslint-plugins/rules/lint-meta-rules/github-actions-timeout-required/) | GitHub Actions jobs must declare a job-level timeout-minutes (reusable-workflow calls are exempt). | `createGithubActionsTimeoutRequiredRule` | `@noctcore/lint-meta-rules` | `ci` | yes |
 | [`layer-rank`](https://noctcore.github.io/eslint-plugins/rules/lint-meta-rules/layer-rank/) | Fixed dependency direction by rank: a module imports only strictly-lower-ranked &lt;scope&gt; packages (equal/upward forbidden). | `createLayerRankRule` | `@noctcore/lint-meta-rules` | `source-text` | yes |
