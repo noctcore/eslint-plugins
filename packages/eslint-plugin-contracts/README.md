@@ -73,8 +73,8 @@ export default [
 Seven rules are not on in `recommended`: `require-registered-keys`, `env-var-schema-parity`,
 `translation-key-exists` and `route-handler-order` do nothing until their `sinks` / `schema` /
 `catalogs` / `groups` options are set, `restrict-throw-to-taxonomy` reports every framework
-exception and built-in until `allow` names your error classes, `require-schema-parse-at-boundary` is a conservative syntactic slice of a
-type-aware concern, and `zod-field-describe` is a documentation convention that reports every
+exception and built-in until `allow` names your error classes, `require-schema-parse-at-boundary` is a
+conservative syntactic slice of a type-aware concern, and `zod-field-describe` is a documentation convention that reports every
 undescribed field of the schemas it is scoped to.
 
 ```js
