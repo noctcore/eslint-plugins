@@ -124,6 +124,7 @@ export default [
 
 | Rule | Description | Preset | ⚙️ | 🔧 | 💡 | 💭 |
 | --- | --- | :-: | :-: | :-: | :-: | :-: |
+| [`describe-auth-matches-middleware`](https://noctcore.github.io/eslint-plugins/rules/contracts/describe-auth-matches-middleware/) | Require the auth kind a route docs call declares to match the middleware in the same route chain, using a configured map from kind to middleware names. | 🔘 | ⚙️ |  |  |  |
 | [`env-var-schema-parity`](https://noctcore.github.io/eslint-plugins/rules/contracts/env-var-schema-parity/) | Require every `process.env.FOO` / `import.meta.env.FOO` key to be declared in a schema file (`.env.example` or a zod-env module), so config access and config declaration cannot drift apart. | 🔘 | ⚙️ |  |  |  |
 | [`fetch-must-check-ok`](https://noctcore.github.io/eslint-plugins/rules/contracts/fetch-must-check-ok/) | Require a fetch response to be checked with `.ok` or a status comparison before `.json()` parses its body. | ✅ |  |  |  |  |
 | [`money-must-be-decimal`](https://noctcore.github.io/eslint-plugins/rules/contracts/money-must-be-decimal/) | Disallow monetary values typed as the JS primitive `number`. Money-named fields explicitly typed `: number` lose precision to float rounding; use a Decimal money type instead. | ✅ |  |  |  |  |
