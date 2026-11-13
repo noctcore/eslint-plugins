@@ -15,6 +15,7 @@ const OMITTED_FROM_PRESETS: readonly string[] = [
   'job-options-must-set-attempts',
   'queue-add-requires-dedup-key',
   'queue-options-must-set-retention',
+  'redis-client-from-factory',
   'worker-concurrency',
 ];
 

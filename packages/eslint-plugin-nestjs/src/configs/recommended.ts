@@ -16,6 +16,9 @@
  *   decision per queue, and defaults set outside the file
  *   (`BullModule.registerQueue`, a shared config) are invisible to it, so a
  *   stranger's repo would see reports on queues that already clean up.
+ * - `redis-client-from-factory`: it needs `factoryFunctions`, the name of the
+ *   project's Redis options factory, which is a per-project fact, so it does
+ *   nothing until configured and a preset cannot supply it.
  * - `worker-concurrency`: a literal `concurrency` that is 0, negative or
  *   fractional is rare, and `requireExplicit` (asking every worker to state
  *   it) is a team convention, so it is left for a repo to opt into.

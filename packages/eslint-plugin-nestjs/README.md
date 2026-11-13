@@ -50,7 +50,9 @@ in its queue's `defaultJobOptions` in the same file, so they suit repos that con
 next to the code that fills them. The worker rule, `worker-concurrency`, reports a literal
 `concurrency` of 0 or below or a fraction on a `new Worker` imported from `bullmq` and on
 `@Processor(queue, options)`, and with `requireExplicit` a worker that does not state it. Turn them
-on once producers and workers agree on keys, names, retries, retention and concurrency:
+on once producers and workers agree on keys, names, retries, retention and concurrency.
+`redis-client-from-factory` is opt-in too and needs `factoryFunctions`, the names of the functions
+that build your Redis options; it does nothing until you set them:
 
 ```js
 // eslint.config.js
@@ -64,6 +66,7 @@ export default [
       'noctcore-nestjs/job-name-must-be-constant': ['error', { decorators: ['Processor', 'InjectQueue'] }],
       'noctcore-nestjs/job-options-must-set-attempts': ['error', { requireBackoff: true }],
       'noctcore-nestjs/queue-options-must-set-retention': ['error', { require: ['removeOnComplete', 'removeOnFail'] }],
+      'noctcore-nestjs/redis-client-from-factory': ['error', { factoryFunctions: ['getRedisOptions'] }],
       'noctcore-nestjs/worker-concurrency': ['error', { requireExplicit: true }],
     },
   },
@@ -83,6 +86,7 @@ export default [
 | [`job-options-must-set-attempts`](https://noctcore.github.io/eslint-plugins/rules/nestjs/job-options-must-set-attempts/) | Require every BullMQ `.add` / `.addBulk` job to state `attempts`, and a `backoff` when it retries, in its options or its queue's `defaultJobOptions`. | 🔘 |  |  |  |  |
 | [`queue-add-requires-dedup-key`](https://noctcore.github.io/eslint-plugins/rules/nestjs/queue-add-requires-dedup-key/) | Require every BullMQ `.add` / `.addBulk` job to carry a `jobId` or `deduplication` in literal options, so a producer retry cannot enqueue the same work twice. | 🔘 |  |  |  |  |
 | [`queue-options-must-set-retention`](https://noctcore.github.io/eslint-plugins/rules/nestjs/queue-options-must-set-retention/) | Require every BullMQ `.add` job to state `removeOnComplete` and `removeOnFail` in its options or its queue's `defaultJobOptions`, so finished jobs do not pile up in Redis. | 🔘 |  |  |  |  |
+| [`redis-client-from-factory`](https://noctcore.github.io/eslint-plugins/rules/nestjs/redis-client-from-factory/) | Require every Redis client and every inline BullMQ `connection` to take its options from a configured factory function, not from literal host, port or URL values. | 🔘 | ⚙️ |  |  |  |
 | [`schedule-states-time-zone`](https://noctcore.github.io/eslint-plugins/rules/nestjs/schedule-states-time-zone/) | Require a `@Cron` to state `timeZone` (or `utcOffset`) and a BullMQ cron schedule to state `tz`, so it does not run in whatever zone the host has. | ✅ |  |  |  |  |
 | [`worker-concurrency`](https://noctcore.github.io/eslint-plugins/rules/nestjs/worker-concurrency/) | Require a literal BullMQ worker `concurrency`, on `new Worker(...)` or `@Processor(queue, options)`, to be a positive integer, and with `requireExplicit` require it to be stated. | 🔘 |  |  |  |  |
 | [`worker-must-implement-close`](https://noctcore.github.io/eslint-plugins/rules/nestjs/worker-must-implement-close/) | Require a class that creates a BullMQ `Worker` in a field to call `.close()` on it in a shutdown method such as `onModuleDestroy`, so in-flight jobs are not abandoned. | ✅ |  |  |  |  |
