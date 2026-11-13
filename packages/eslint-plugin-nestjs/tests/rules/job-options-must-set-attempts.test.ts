@@ -194,6 +194,37 @@ queue.addBulk([{ name: 'x', data: d }]);`,
       code: INJECTED(`this.queue.addBulk([{ name: 'x', queueName: 'q', data: d }, { name: 'y', data: d, children: [] }]);`),
     },
     {
+      name: 'a bulk job whose payload holds a data key',
+      code: INJECTED(
+        `this.queue.addBulk([{ name: 'x', data: { data: 1 }, opts: { attempts: 3, backoff: 1000 } }]);`,
+      ),
+    },
+    {
+      name: 'an addBulk argument built by a helper call',
+      code: INJECTED(`this.queue.addBulk(buildJobs(ids, { data: payload }));`),
+    },
+    {
+      name: 'an addBulk list handed through a helper inside the array',
+      code: INJECTED(`this.queue.addBulk([wrap({ name: 'x', data: d })]);`),
+    },
+    {
+      name: 'an injected FlowProducer called with a flow object and options',
+      code: `import { FlowProducer } from 'bullmq';
+class P {
+  constructor(private flowQueue: FlowProducer) {}
+  send() { this.flowQueue.add({ name: 'x', queueName: 'q', data: d }, { queuesOptions }); }
+}`,
+    },
+    {
+      name: 'defaults on a queue with a listener chained before it is stored',
+      code: `${IMPORT}const queue = new Queue('m', { defaultJobOptions: { attempts: 3, backoff: 1000 } }).on('error', onError);
+queue.add('x', d);`,
+    },
+    {
+      name: 'an attempts literal that is not a number',
+      code: INJECTED(`this.queue.add('x', d, { attempts: '3' });`),
+    },
+    {
       name: 'bulk jobs with attempts and backoff',
       code: INJECTED(
         `this.queue.addBulk(ids.map((id) => ({ name: 'x', data: { id }, opts: { attempts: 5, backoff: 1000 } })));`,
@@ -307,6 +338,31 @@ class P extends Base {
       name: 'bulk jobs built by map',
       code: INJECTED(`this.queue.addBulk(ids.map((id) => ({ name: 'x', data: { id }, opts: { attempts: 5 } })));`),
       errors: [{ messageId: 'missingBackoff' }],
+    },
+    {
+      name: 'explicit undefined options',
+      code: INJECTED(`this.queue.add('x', d, undefined);`),
+      errors: [{ messageId: 'missingAttempts', line: 3, column: 12 }],
+    },
+    {
+      name: 'bulk job with undefined opts',
+      code: INJECTED(`this.queue.addBulk([{ name: 'x', data: d, opts: undefined }]);`),
+      errors: [{ messageId: 'missingAttempts', line: 3, column: 32 }],
+    },
+    {
+      name: 'a bulk job whose payload holds a data key is reported once',
+      code: INJECTED(`this.queue.addBulk([{ name: 'x', data: { data: 1 } }]);`),
+      errors: [{ messageId: 'missingAttempts', line: 3, column: 32 }],
+    },
+    {
+      name: 'bulk jobs returned from a block-bodied map callback',
+      code: INJECTED(`this.queue.addBulk(ids.map((id) => { return { name: 'x', data: { id } }; }));`),
+      errors: [{ messageId: 'missingAttempts', line: 3, column: 56 }],
+    },
+    {
+      name: 'bulk jobs spread from a conditional list',
+      code: INJECTED(`this.queue.addBulk([...(urgent ? [{ name: 'x', data: d }] : [])]);`),
+      errors: [{ messageId: 'missingAttempts', line: 3, column: 46 }],
     },
     {
       name: 'bulk job without opts and queue defaults with attempts but no backoff',

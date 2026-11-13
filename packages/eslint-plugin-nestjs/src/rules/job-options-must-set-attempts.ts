@@ -1,3 +1,4 @@
+import { enclosingFunction, isFunctionNode, type FunctionNode } from '@noctcore/eslint-utils';
 import { AST_NODE_TYPES, type TSESTree } from '@typescript-eslint/utils';
 
 import { createRule } from '../createRule';
@@ -7,6 +8,7 @@ import {
   createQueueDefaultsIndex,
   isBullmqNew,
   listenerChain,
+  outermostTypeWrapper,
   stripTypeWrappers,
   workerBinding,
   type QueueDefaults,
@@ -25,7 +27,7 @@ const RULE_NAME = 'job-options-must-set-attempts';
 export interface JobOptionsMustSetAttemptsOptions {
   /** Case-insensitive pattern a receiver name must match to count as a queue. */
   readonly queuePattern?: string;
-  /** Whether a literal `attempts` other than 1 also needs a `backoff`. */
+  /** Whether a number literal `attempts` other than 1 also needs a `backoff`. */
   readonly requireBackoff?: boolean;
 }
 
@@ -72,6 +74,57 @@ function objectLiteral(node: TSESTree.Node): TSESTree.ObjectExpression | null {
   return inner.type === AST_NODE_TYPES.ObjectExpression ? inner : null;
 }
 
+/** The array methods whose callback returns the jobs of an `addBulk` list. */
+const JOB_LIST_METHODS: ReadonlySet<string> = new Set(['map', 'flatMap']);
+
+/** A callback passed first to `<list>.map(...)` or `<list>.flatMap(...)`. */
+function isJobListCallback(fn: FunctionNode): boolean {
+  const call = fn.parent;
+  if (call.type !== AST_NODE_TYPES.CallExpression || call.arguments[0] !== fn) return false;
+  const callee = call.callee;
+  return (
+    callee.type === AST_NODE_TYPES.MemberExpression &&
+    callee.property.type === AST_NODE_TYPES.Identifier &&
+    !callee.computed &&
+    JOB_LIST_METHODS.has(callee.property.name)
+  );
+}
+
+/** The next node up when `node` stands where an `addBulk` list holds a job, or null. */
+function jobListParent(node: TSESTree.Node): TSESTree.Node | null {
+  const parent = node.parent;
+  if (parent == null) return null;
+  if (isFunctionNode(node)) return isJobListCallback(node) ? parent : null;
+  switch (parent.type) {
+    case AST_NODE_TYPES.ArrayExpression:
+    case AST_NODE_TYPES.SpreadElement:
+    case AST_NODE_TYPES.ChainExpression:
+      return parent;
+    case AST_NODE_TYPES.ConditionalExpression:
+      return parent.test === node ? null : parent;
+    case AST_NODE_TYPES.ArrowFunctionExpression:
+      return parent.body === node ? parent : null;
+    case AST_NODE_TYPES.ReturnStatement:
+      return enclosingFunction(parent);
+    default:
+      return null;
+  }
+}
+
+/**
+ * True when `job` is an element of the `addBulk` list itself: an array element,
+ * or what a `map` / `flatMap` callback returns, all the way up to `argument`.
+ * A job's own `data` payload or an object handed to a helper call is not a job.
+ */
+function isListedJob(job: TSESTree.ObjectExpression, argument: TSESTree.Node): boolean {
+  for (let node: TSESTree.Node = outermostTypeWrapper(job); node !== argument; ) {
+    const next = jobListParent(node);
+    if (next === null) return false;
+    node = outermostTypeWrapper(next);
+  }
+  return true;
+}
+
 /** A job object shaped for a FlowProducer flow: it names its queue or its children. */
 function isFlowJob(job: TSESTree.ObjectExpression): boolean {
   return directProperty(job, 'queueName') !== undefined || directProperty(job, 'children') !== undefined;
@@ -103,7 +156,7 @@ export const jobOptionsMustSetAttemptsRule = createRule<RuleOptions, MessageIds>
           requireBackoff: {
             type: 'boolean',
             description:
-              'When true, a job whose `attempts` is a literal other than 1 must also set `backoff`, in its options or its queue defaults. Default `true`.',
+              'When true, a job whose `attempts` is a number literal other than 1 must also set `backoff`, in its options or its queue defaults. Default `true`.',
           },
         },
       },
@@ -139,7 +192,8 @@ export const jobOptionsMustSetAttemptsRule = createRule<RuleOptions, MessageIds>
         return;
       }
       const value = stripTypeWrappers(attempts.value);
-      if (value.type !== AST_NODE_TYPES.Literal || value.value === 1 || !requireBackoff) return;
+      if (!requireBackoff || value.type !== AST_NODE_TYPES.Literal) return;
+      if (typeof value.value !== 'number' || value.value === 1) return;
       if (resolveKey('backoff', job, defaults).kind === 'missing') {
         context.report({ node: reportOn, messageId: 'missingBackoff' });
       }
@@ -153,7 +207,7 @@ export const jobOptionsMustSetAttemptsRule = createRule<RuleOptions, MessageIds>
     function checkAdd(call: TSESTree.CallExpression, queue: QueueDefaults | null): void {
       const [name, , jobOptions] = call.arguments;
       if (call.arguments.length < 2 || name?.type === AST_NODE_TYPES.ObjectExpression) return;
-      if (jobOptions === undefined) {
+      if (jobOptions === undefined || isUndefined(jobOptions)) {
         check(undefined, queue, call);
         return;
       }
@@ -165,9 +219,9 @@ export const jobOptionsMustSetAttemptsRule = createRule<RuleOptions, MessageIds>
       const [argument] = call.arguments;
       if (argument === undefined) return;
       for (const job of bulkJobs(argument, sourceCode.visitorKeys)) {
-        if (isFlowJob(job)) continue;
+        if (!isListedJob(job, argument) || isFlowJob(job)) continue;
         const opts = directProperty(job, 'opts');
-        if (opts === undefined) {
+        if (opts === undefined || isUndefined(opts.value)) {
           if (job.properties.some((member) => member.type === AST_NODE_TYPES.SpreadElement)) continue;
           check(undefined, queue, job);
           continue;
