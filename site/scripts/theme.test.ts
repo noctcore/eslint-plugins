@@ -6,6 +6,9 @@
  *   and for dark (`:root[data-theme='dark']`). A token a theme forgets does not
  *   fail the build: the `var()` resolves to nothing and a colour silently
  *   drops out, so this is the only thing that notices.
+ * - Every other custom property a stylesheet reads is declared somewhere in
+ *   those stylesheets, unless Starlight (`--sl-*`) or Expressive Code
+ *   (`--ec-*`) owns it.
  * - Every colour token is an `oklch()` literal, and every declared text and
  *   background pair meets WCAG AA in both themes, computed from those values.
  * - The code theme's hex colours are the code tokens, converted.
@@ -96,6 +99,13 @@ function themes(tokensCss: string): { light: Theme; dark: Theme } {
 }
 
 const readsOf = (css: string) => new Set([...css.matchAll(/var\(\s*(--sheet-[\w-]+)/g)].map((m) => m[1]!));
+
+/** Custom properties the site reads but neither declares nor gets from Starlight or Expressive Code. */
+function undeclaredLocals(css: string): string[] {
+  const declared = new Set([...css.matchAll(/(--[\w-]+)\s*:/g)].map((m) => m[1]!));
+  const read = new Set([...css.matchAll(/var\(\s*(--[\w-]+)/g)].map((m) => m[1]!));
+  return [...read].filter((name) => !/^--(?:sheet|sl|ec)-/.test(name) && !declared.has(name)).sort();
+}
 
 /**
  * Tokens with one value for both themes: type, shape, and the code panel
@@ -244,6 +254,13 @@ describe('inspection-sheet token contract', () => {
     expect(missingTokens(css, noDarkInk3)).toEqual({ light: [], dark: ['--sheet-ink-3'] });
     const noRadius = tokens.replace(/--sheet-radius:[^;]*;/, '');
     expect(missingTokens(css, noRadius)).toEqual({ light: ['--sheet-radius'], dark: [] });
+  });
+
+  test('every other custom property the site reads is declared in its stylesheets', () => {
+    expect([...css.matchAll(/var\(\s*--verdict\b/g)].length).toBeGreaterThan(0);
+    expect(undeclaredLocals(css)).toEqual([]);
+    expect(undeclaredLocals(`${css}\n.x { color: var(--tint, red); }`)).toEqual(['--tint']);
+    expect(undeclaredLocals(css.replace(/--verdict-mark:[^;]*;/g, ''))).toEqual(['--verdict-mark']);
   });
 
   test('every colour token is an oklch() literal', () => {
