@@ -10,6 +10,7 @@ import { createGithubActionsExpressionSyntaxRule } from './github-actions-expres
 import { createGithubActionsLeastPrivilegePermissionsRule } from './github-actions-least-privilege-permissions';
 import { createGithubActionsNoTemplateInjectionRule } from './github-actions-no-template-injection';
 import { createGithubActionsRunnerPinnedRule } from './github-actions-runner-pinned';
+import { createGithubActionsSecurityNoCancelRule } from './github-actions-security-no-cancel';
 import { createGithubActionsShaPinnedRule } from './github-actions-sha-pinned';
 import { createGithubActionsTimeoutRequiredRule } from './github-actions-timeout-required';
 import { createLayerRankRule } from './layer-rank';
@@ -49,6 +50,8 @@ export { createGithubActionsNoTemplateInjectionRule } from './github-actions-no-
 export type { GithubActionsNoTemplateInjectionOptions } from './github-actions-no-template-injection';
 export { createGithubActionsRunnerPinnedRule } from './github-actions-runner-pinned';
 export type { GithubActionsRunnerPinnedOptions } from './github-actions-runner-pinned';
+export { createGithubActionsSecurityNoCancelRule } from './github-actions-security-no-cancel';
+export type { GithubActionsSecurityNoCancelOptions } from './github-actions-security-no-cancel';
 export { createGithubActionsShaPinnedRule } from './github-actions-sha-pinned';
 export type { GithubActionsShaPinnedOptions } from './github-actions-sha-pinned';
 export { createGithubActionsTimeoutRequiredRule } from './github-actions-timeout-required';
@@ -111,6 +114,7 @@ export const RULE_FACTORIES = {
   'github-actions-least-privilege-permissions': createGithubActionsLeastPrivilegePermissionsRule,
   'github-actions-no-template-injection': createGithubActionsNoTemplateInjectionRule,
   'github-actions-runner-pinned': createGithubActionsRunnerPinnedRule,
+  'github-actions-security-no-cancel': createGithubActionsSecurityNoCancelRule,
   'github-actions-sha-pinned': createGithubActionsShaPinnedRule,
   'github-actions-timeout-required': createGithubActionsTimeoutRequiredRule,
   'layer-rank': createLayerRankRule,
