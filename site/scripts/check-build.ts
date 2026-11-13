@@ -22,7 +22,8 @@
  *    carries the generated config and the "bad fit" line.
  * 9. dist/404.html is the site's own not-found page (check 3 already walks its
  *    links, as it does for every page).
- * 10. Nothing emitted loads Google Fonts: every font is self-hosted.
+ * 10. Nothing emitted loads Google Fonts: every font is self-hosted, and each
+ *     of the three families ships its woff2 files.
  */
 import { existsSync, readdirSync, readFileSync, statSync } from 'node:fs';
 import { dirname, join, resolve } from 'node:path';
@@ -226,7 +227,11 @@ for (const file of files.filter((f) => TEXT_FILE.test(f))) {
   }
 }
 const fontFiles = files.filter((f) => f.endsWith('.woff2')).length;
-if (fontFiles === 0) failures.push('no .woff2 font emitted; the self-hosted fonts are missing');
+for (const family of ['martian-mono', 'schibsted-grotesk', 'jetbrains-mono']) {
+  if (!files.some((f) => f.endsWith('.woff2') && f.toLowerCase().includes(family))) {
+    failures.push(`no ${family} .woff2 emitted; that self-hosted font is missing`);
+  }
+}
 
 console.log(
   `check-build: ${pages.length} HTML pages, ${rulePages.length} rule pages for ${docs.length} docs, ` +
