@@ -98,8 +98,8 @@ function memberClass(fn: FunctionValue): ClassNode | null {
  * The class whose instance `this` refers to at `node`: the nearest enclosing
  * function that is not an arrow must be an instance method (or an
  * arrow-valued field) of it, or `node` sits in an instance field initialiser.
- * A plain nested `function`, a static member and a static block bind `this`
- * to something else, so they give null.
+ * A plain nested `function`, a static member, a static block and the top
+ * level of the file bind `this` to something else, so they give null.
  */
 export function thisClass(node: TSESTree.Node): ClassNode | null {
   let child = node;
@@ -118,6 +118,7 @@ export function thisClass(node: TSESTree.Node): ClassNode | null {
       case AST_NODE_TYPES.FunctionDeclaration:
       case AST_NODE_TYPES.StaticBlock:
       case AST_NODE_TYPES.ClassBody:
+      case AST_NODE_TYPES.Program:
         return null;
       default:
         break;
