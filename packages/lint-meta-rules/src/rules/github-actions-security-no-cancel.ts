@@ -1,6 +1,7 @@
 import type { IMetaRule, IViolation } from '@noctcore/harness';
 
 import { DEFAULT_WORKFLOW_GLOBS, baseName, globFiles, stripYamlComment, unquote } from './shared';
+import { cancelInProgressEntry, concurrencyKeys, type ConcurrencyKey } from './workflow-concurrency';
 
 /** Options for {@link createGithubActionsSecurityNoCancelRule}. */
 export interface GithubActionsSecurityNoCancelOptions {
@@ -19,87 +20,14 @@ const RULE_ID = 'github-actions-security-no-cancel';
 
 const DEFAULT_SECURITY_WORKFLOW_PATTERN = /security|sast|secrets|codeql|scan/iu;
 
-const KEY = /^(\s*)("[^"]+"|'[^']+'|[\w.-]+):(.*)$/u;
-const CONCURRENCY = /^(\s*)concurrency:(.*)$/u;
-const CANCEL_IN_PROGRESS = /^cancel-in-progress:(.*)$/u;
-const FLOW_CANCEL_IN_PROGRESS = /(?:^|[{,])\s*["']?cancel-in-progress["']?\s*:\s*([^,}]*)/u;
-
-interface ConcurrencyKey {
-  readonly index: number;
-  readonly indent: number;
-  readonly value: string;
-  readonly job: string | null;
-}
-
-function indentOf(line: string): number {
-  return /^\s*/u.exec(line)?.[0].length ?? 0;
-}
-
 function isYamlTrue(raw: string): boolean {
   return /^(?:true|True|TRUE)$/u.test(unquote(raw));
 }
 
-/*
- * The workflow-level `concurrency:` key (column 0) and the job-level ones (at the column of a job's
- * own keys). A key deeper than that belongs to a step or a nested structure and is not read.
- */
-function concurrencyKeys(lines: readonly string[]): ConcurrencyKey[] {
-  const keys: ConcurrencyKey[] = [];
-  const jobsStart = lines.findIndex((line) => /^jobs:\s*$/u.test(line));
-
-  lines.forEach((line, index) => {
-    const match = CONCURRENCY.exec(line);
-    if (match?.[1] === '') {
-      keys.push({ index, indent: 0, value: (match[2] ?? '').trim(), job: null });
-    }
-  });
-  if (jobsStart === -1) return keys;
-
-  let jobIndent = -1;
-  let keyIndent = -1;
-  let job: string | null = null;
-  for (let index = jobsStart + 1; index < lines.length; index += 1) {
-    const line = lines[index] ?? '';
-    if (line.trim() === '') continue;
-    const indent = indentOf(line);
-    if (indent === 0) break;
-    if (jobIndent === -1) jobIndent = indent;
-
-    if (indent === jobIndent) {
-      const match = KEY.exec(line);
-      job = match === null ? null : unquote(match[2] ?? '');
-      keyIndent = -1;
-      continue;
-    }
-    if (job === null || indent < jobIndent) continue;
-    if (keyIndent === -1) keyIndent = indent;
-    if (indent !== keyIndent) continue;
-    const match = CONCURRENCY.exec(line);
-    if (match !== null) keys.push({ index, indent, value: (match[2] ?? '').trim(), job });
-  }
-  return keys;
-}
-
 /** The 0-based line of a literal-true `cancel-in-progress` under `key`, or `null`. */
 function cancelInProgressTrue(lines: readonly string[], key: ConcurrencyKey): number | null {
-  if (key.value.startsWith('{')) {
-    const raw = FLOW_CANCEL_IN_PROGRESS.exec(key.value)?.[1];
-    return raw !== undefined && isYamlTrue(raw) ? key.index : null;
-  }
-  if (key.value !== '') return null;
-
-  let childIndent = -1;
-  for (let index = key.index + 1; index < lines.length; index += 1) {
-    const line = lines[index] ?? '';
-    if (line.trim() === '') continue;
-    const indent = indentOf(line);
-    if (indent <= key.indent) break;
-    if (childIndent === -1) childIndent = indent;
-    if (indent !== childIndent) continue;
-    const raw = CANCEL_IN_PROGRESS.exec(line.trim())?.[1];
-    if (raw !== undefined && isYamlTrue(raw)) return index;
-  }
-  return null;
+  const entry = cancelInProgressEntry(lines, key);
+  return entry !== null && isYamlTrue(entry.raw) ? entry.index : null;
 }
 
 /** Check one security workflow's text. The caller has already matched the file name. */
