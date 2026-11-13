@@ -10,7 +10,11 @@ function severityOf(entry: unknown): unknown {
 // Rules the preset leaves out on purpose; `src/configs/recommended.ts` says why.
 // A new rule must land in the preset or here, so leaving one out is a decision.
 // Every rule that needs options (`meta.docs.requiresOptions`) must be here.
-const OMITTED_FROM_PRESETS: readonly string[] = ['mutation-requires-error-handling', 'query-key-must-be-constant'];
+const OMITTED_FROM_PRESETS: readonly string[] = [
+  'mutation-requires-error-handling',
+  'prefix-query-key-must-use-set-queries-data',
+  'query-key-must-be-constant',
+];
 
 type Preset = { name?: string; rules: Record<string, unknown> };
 type RuleMeta = { meta?: { docs?: { requiresOptions?: boolean } } };

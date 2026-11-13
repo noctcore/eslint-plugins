@@ -1,5 +1,6 @@
 import { effectFiredMutationMustBindCallbacksRule } from './effect-fired-mutation-must-bind-callbacks';
 import { mutationRequiresErrorHandlingRule } from './mutation-requires-error-handling';
+import { prefixQueryKeyMustUseSetQueriesDataRule } from './prefix-query-key-must-use-set-queries-data';
 import { queryKeyMustBeConstantRule } from './query-key-must-be-constant';
 import { trpcInvalidateWithPathKeyRule } from './trpc-invalidate-with-path-key';
 
@@ -7,6 +8,7 @@ import { trpcInvalidateWithPathKeyRule } from './trpc-invalidate-with-path-key';
 export const rules = {
   'effect-fired-mutation-must-bind-callbacks': effectFiredMutationMustBindCallbacksRule,
   'mutation-requires-error-handling': mutationRequiresErrorHandlingRule,
+  'prefix-query-key-must-use-set-queries-data': prefixQueryKeyMustUseSetQueriesDataRule,
   'query-key-must-be-constant': queryKeyMustBeConstantRule,
   'trpc-invalidate-with-path-key': trpcInvalidateWithPathKeyRule,
 };
