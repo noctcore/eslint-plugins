@@ -28,7 +28,7 @@ export const CODE_COLORS = {
 
 /* TextMate scopes per token role, for the TypeScript, JavaScript, shell and
    JSON grammars the docs use. */
-const SCOPES = [
+const ROLE_SCOPES = [
   ['--sheet-code-dim', ['comment', 'punctuation.definition.comment'], 'italic'],
   ['--sheet-code-kw', ['keyword', 'storage', 'storage.type', 'storage.modifier', 'keyword.control', 'constant.language', 'variable.language']],
   ['--sheet-code-str', ['string', 'string.template', 'punctuation.definition.string', 'punctuation.definition.template-expression']],
@@ -38,6 +38,13 @@ const SCOPES = [
   ['--sheet-code-dim', ['punctuation', 'meta.brace', 'keyword.operator']],
 ];
 
+function colorRules() {
+  return ROLE_SCOPES.map(([role, scope, fontStyle]) => ({
+    scope,
+    settings: fontStyle ? { foreground: CODE_COLORS[role], fontStyle } : { foreground: CODE_COLORS[role] },
+  }));
+}
+
 function sheetTheme() {
   return new ExpressiveCodeTheme({
     name: 'sheet-ink',
@@ -46,10 +53,7 @@ function sheetTheme() {
       'editor.background': CODE_COLORS['--sheet-code-bg'],
       'editor.foreground': CODE_COLORS['--sheet-code-fg'],
     },
-    tokenColors: SCOPES.map(([token, scope, fontStyle]) => ({
-      scope,
-      settings: fontStyle ? { foreground: CODE_COLORS[token], fontStyle } : { foreground: CODE_COLORS[token] },
-    })),
+    tokenColors: colorRules(),
   });
 }
 
