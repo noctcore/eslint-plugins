@@ -1,3 +1,4 @@
+import { describeAuthMatchesMiddlewareRule } from './describe-auth-matches-middleware';
 import { envVarSchemaParityRule } from './env-var-schema-parity';
 import { fetchMustCheckOkRule } from './fetch-must-check-ok';
 import { moneyMustBeDecimalRule } from './money-must-be-decimal';
@@ -31,4 +32,5 @@ export const rules = {
   'translation-key-exists': translationKeyExistsRule,
   'zod-field-describe': zodFieldDescribeRule,
   'route-handler-order': routeHandlerOrderRule,
+  'describe-auth-matches-middleware': describeAuthMatchesMiddlewareRule,
 };

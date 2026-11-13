@@ -70,9 +70,9 @@ export default [
 
 ## Opt-in rules
 
-Seven rules are not on in `recommended`: `require-registered-keys`, `env-var-schema-parity`,
-`translation-key-exists` and `route-handler-order` do nothing until their `sinks` / `schema` /
-`catalogs` / `groups` options are set, `restrict-throw-to-taxonomy` reports every framework
+Eight rules are not on in `recommended`: `require-registered-keys`, `env-var-schema-parity`,
+`translation-key-exists`, `route-handler-order` and `describe-auth-matches-middleware` do nothing
+until their `sinks` / `schema` / `catalogs` / `groups` / `map` options are set, `restrict-throw-to-taxonomy` reports every framework
 exception and built-in until `allow` names your error classes, `require-schema-parse-at-boundary` is a
 conservative syntactic slice of a type-aware concern, and `zod-field-describe` is a documentation convention that reports every
 undescribed field of the schemas it is scoped to.
@@ -102,6 +102,9 @@ export default [
           { name: 'validate', callees: ['body'] },
         ],
       }],
+      'noctcore-contracts/describe-auth-matches-middleware': ['error', {
+        map: { session: ['requireSession'], apiKey: ['requireApiKey'], public: [] },
+      }],
       'noctcore-contracts/require-schema-parse-at-boundary': 'error',
     },
   },
@@ -124,6 +127,7 @@ export default [
 
 | Rule | Description | Preset | ⚙️ | 🔧 | 💡 | 💭 |
 | --- | --- | :-: | :-: | :-: | :-: | :-: |
+| [`describe-auth-matches-middleware`](https://noctcore.github.io/eslint-plugins/rules/contracts/describe-auth-matches-middleware/) | Require the auth kind a route docs call declares to match the middleware in the same route chain, using a configured map from kind to middleware names. | 🔘 | ⚙️ |  |  |  |
 | [`env-var-schema-parity`](https://noctcore.github.io/eslint-plugins/rules/contracts/env-var-schema-parity/) | Require every `process.env.FOO` / `import.meta.env.FOO` key to be declared in a schema file (`.env.example` or a zod-env module), so config access and config declaration cannot drift apart. | 🔘 | ⚙️ |  |  |  |
 | [`fetch-must-check-ok`](https://noctcore.github.io/eslint-plugins/rules/contracts/fetch-must-check-ok/) | Require a fetch response to be checked with `.ok` or a status comparison before `.json()` parses its body. | ✅ |  |  |  |  |
 | [`money-must-be-decimal`](https://noctcore.github.io/eslint-plugins/rules/contracts/money-must-be-decimal/) | Disallow monetary values typed as the JS primitive `number`. Money-named fields explicitly typed `: number` lose precision to float rounding; use a Decimal money type instead. | ✅ |  |  |  |  |

@@ -11,6 +11,7 @@ function severityOf(entry: unknown): unknown {
 // A new rule must land in the preset or here, so leaving one out is a decision.
 // Every rule that needs options (`meta.docs.requiresOptions`) must be here.
 const OMITTED_FROM_PRESETS: readonly string[] = [
+  'describe-auth-matches-middleware',
   'env-var-schema-parity',
   'require-registered-keys',
   'restrict-throw-to-taxonomy',
