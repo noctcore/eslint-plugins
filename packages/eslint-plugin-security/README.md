@@ -78,6 +78,7 @@ export default [
 
 | Rule | Description | Preset | ⚙️ | 🔧 | 💡 | 💭 |
 | --- | --- | :-: | :-: | :-: | :-: | :-: |
+| [`auth-cookie-flags`](https://noctcore.github.io/eslint-plugins/rules/security/auth-cookie-flags/) | An auth cookie (`session`, `sid`, `auth_token`, `authToken` by default) must be written with `httpOnly: true`, `secure` and a valid `sameSite`. | 🔘 |  |  |  |  |
 | [`bcrypt-rounds-min`](https://noctcore.github.io/eslint-plugins/rules/security/bcrypt-rounds-min/) | A bcrypt `hash` / `hashSync` / `genSalt` / `genSaltSync` call must not pass a literal cost below `minRounds` (default 10). | 🔘 |  |  |  |  |
 | [`no-shell-interpolation`](https://noctcore.github.io/eslint-plugins/rules/security/no-shell-interpolation/) | A dynamically-interpolated command string must not flow into a shell runner (`exec`/`execSync`, or `spawn`/`execFile` with a `shell` option that is not `false`), including through `promisify(exec)`. Pass the program and arguments separately. | ✅ |  |  |  |  |
 | [`no-timing-unsafe-compare`](https://noctcore.github.io/eslint-plugins/rules/security/no-timing-unsafe-compare/) | An HMAC digest or signature must not be compared with `===` / `!==` / `==` / `!=` or `Buffer#equals`; use `crypto.timingSafeEqual`. | ✅ |  |  |  |  |
