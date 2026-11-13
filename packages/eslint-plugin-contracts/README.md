@@ -70,10 +70,10 @@ export default [
 
 ## Opt-in rules
 
-Six rules are not on in `recommended`: `require-registered-keys`, `env-var-schema-parity` and
-`translation-key-exists` do nothing until their `sinks` / `schema` / `catalogs` options are set,
-`restrict-throw-to-taxonomy` reports every framework exception and built-in until `allow` names
-your error classes, `require-schema-parse-at-boundary` is a conservative syntactic slice of a
+Seven rules are not on in `recommended`: `require-registered-keys`, `env-var-schema-parity`,
+`translation-key-exists` and `route-handler-order` do nothing until their `sinks` / `schema` /
+`catalogs` / `groups` options are set, `restrict-throw-to-taxonomy` reports every framework
+exception and built-in until `allow` names your error classes, `require-schema-parse-at-boundary` is a conservative syntactic slice of a
 type-aware concern, and `zod-field-describe` is a documentation convention that reports every
 undescribed field of the schemas it is scoped to.
 
@@ -94,6 +94,13 @@ export default [
       }],
       'noctcore-contracts/restrict-throw-to-taxonomy': ['error', {
         allow: ['AppError', 'ValidationError', 'TypeError'],
+      }],
+      'noctcore-contracts/route-handler-order': ['error', {
+        groups: [
+          { name: 'docs', callees: ['describe'] },
+          { name: 'auth', callees: ['signedInOnly'] },
+          { name: 'validate', callees: ['body'] },
+        ],
       }],
       'noctcore-contracts/require-schema-parse-at-boundary': 'error',
     },
