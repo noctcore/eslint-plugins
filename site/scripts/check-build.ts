@@ -12,7 +12,9 @@
  *    (see src/lib/rules-index.ts), and a generated contract with no check rots.
  * 5. dist/llms.txt exists and points at rules.json.
  * 6. Every page carries the search palette, and no Pagefind index is emitted
- *    (the palette replaces it).
+ *    (the palette replaces it). The palette's script reaches the catalog only
+ *    through a dynamic import, so pages that never open it do not load every
+ *    rule's text.
  * 7. Every rule page carries the facts panel with its copyable rule id and the
  *    "on this page" column, and its previous and next links point at the
  *    neighbouring rules in catalog order (none before the first rule, none
@@ -164,6 +166,38 @@ for (const page of pages) {
   else failures.push(`${page.slice(DIST.length)}: no search palette`);
 }
 if (existsSync(join(DIST, 'pagefind'))) failures.push('dist/pagefind was emitted; the search palette replaces it');
+
+const ASSET = join(DIST, '_astro');
+const STATIC_IMPORT = /(?:\bfrom|\bimport)\s*["']\.\/([^"']+\.js)["']/g;
+const DYNAMIC_IMPORT = /\bimport\(\s*["'`]\.\/([^"'`]+\.js)["'`]\s*\)/g;
+const chunksFrom = (code: string, pattern: RegExp) => [...code.matchAll(pattern)].map((match) => match[1]!);
+const staticClosure = (roots: readonly string[]): Map<string, string> => {
+  const seen = new Map<string, string>();
+  const queue = [...roots];
+  for (let name = queue.shift(); name !== undefined; name = queue.shift()) {
+    if (seen.has(name) || !existsSync(join(ASSET, name))) continue;
+    const code = readFileSync(join(ASSET, name), 'utf8');
+    seen.set(name, code);
+    queue.push(...chunksFrom(code, STATIC_IMPORT));
+  }
+  return seen;
+};
+const ruleIds = inventory.flatMap((pkg) => pkg.rules.map((rule) => rule.id));
+const holdsCatalog = (code: string) => ruleIds.filter((id) => code.includes(id)).length === ruleIds.length;
+const overview = readFileSync(join(DIST, 'index.html'), 'utf8');
+const paletteScript = [...overview.matchAll(/<script type="module" src="[^"]*\/_astro\/([^"]+\.js)">/g)]
+  .map((match) => match[1]!)
+  .find((name) => existsSync(join(ASSET, name)) && readFileSync(join(ASSET, name), 'utf8').includes('#search-palette'));
+if (!paletteScript) {
+  failures.push('index.html: no external module script that drives #search-palette');
+} else {
+  const eager = staticClosure([paletteScript]);
+  for (const [name, code] of eager) {
+    if (holdsCatalog(code)) failures.push(`_astro/${name}: the palette script loads the whole catalog with every page`);
+  }
+  const lazy = staticClosure([...eager.values()].flatMap((code) => chunksFrom(code, DYNAMIC_IMPORT)));
+  if (![...lazy.values()].some(holdsCatalog)) failures.push(`_astro/${paletteScript}: no dynamic import reaches the catalog`);
+}
 
 // 7. The rule page frame: facts panel, rule id, contents column, pager.
 const ruleOrder = inventory.flatMap((pkg) => pkg.rules.map((rule) => ({ short: pkg.short, name: rule.name, id: rule.id })));

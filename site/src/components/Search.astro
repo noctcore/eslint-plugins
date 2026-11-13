@@ -3,9 +3,10 @@
  * The header's search: a trigger button and the palette dialog, replacing
  * Pagefind (astro.config.mjs sets `pagefind: false`). The index is every
  * package, rule and lint-meta check from the catalog (src/lib/search.ts), so
- * it needs no build step and no request: the client script bundles it once and
- * every page shares the cached file. Ctrl+K or Cmd+K toggles the palette, `/`
- * opens it outside a text field, Escape closes it.
+ * it needs no build step. The catalog chunk loads the first time the palette
+ * opens (or the trigger is hovered or focused), not with every page. Ctrl+K or
+ * Cmd+K toggles the palette, `/` opens it outside a text field, Escape closes
+ * it.
  */
 import Glyph from './Glyph.astro';
 import { packages } from '../lib/catalog';
@@ -51,7 +52,6 @@ const total = packages.reduce((sum, pkg) => sum + pkg.rules.length, 0);
 </dialog>
 
 <script>
-  import { packages } from '../lib/catalog';
   import { escapeHtml } from '../lib/format';
   import { filterWords } from '../lib/rule-filters';
   import { buildSearchIndex, highlightHtml, paletteShortcut, searchIndex, type SearchEntry } from '../lib/search';
@@ -60,7 +60,19 @@ const total = packages.reduce((sum, pkg) => sum + pkg.rules.length, 0);
   if (dialog) {
     const input = dialog.querySelector<HTMLInputElement>('input')!;
     const list = dialog.querySelector<HTMLElement>('#search-results')!;
-    const index = buildSearchIndex(packages, import.meta.env.BASE_URL);
+    let index: SearchEntry[] | null = null;
+    let loading: Promise<void> | null = null;
+    const load = () =>
+      (loading ??= import('../lib/catalog').then(
+        ({ packages }) => {
+          index = buildSearchIndex(packages, import.meta.env.BASE_URL);
+          if (dialog.open) draw();
+        },
+        () => {
+          loading = null;
+          if (dialog.open) list.innerHTML = '<div class="pal-empty">Search could not load. Close it and try again.</div>';
+        },
+      ));
     let results: SearchEntry[] = [];
     let selected = 0;
     let returnFocus: HTMLElement | null = null;
@@ -85,7 +97,8 @@ const total = packages.reduce((sum, pkg) => sum + pkg.rules.length, 0);
       }
     };
 
-    const draw = () => {
+    function draw() {
+      if (!index) return;
       const query = input.value;
       const words = filterWords(query);
       results = searchIndex(index, query);
@@ -110,15 +123,19 @@ const total = packages.reduce((sum, pkg) => sum + pkg.rules.length, 0);
           )
           .join('');
       select(0, false);
-    };
+    }
 
     const open = () => {
       if (dialog.open) return;
       returnFocus = document.activeElement instanceof HTMLElement ? document.activeElement : null;
       input.value = '';
+      results = [];
+      list.innerHTML = '';
+      select(-1, false);
       draw();
       dialog.showModal();
       input.focus();
+      void load();
     };
 
     const close = () => {
@@ -161,7 +178,10 @@ const total = packages.reduce((sum, pkg) => sum + pkg.rules.length, 0);
       }
     });
 
-    for (const trigger of document.querySelectorAll('[data-open-search]')) trigger.addEventListener('click', open);
+    for (const trigger of document.querySelectorAll('[data-open-search]')) {
+      trigger.addEventListener('click', open);
+      for (const warm of ['pointerenter', 'focus']) trigger.addEventListener(warm, () => void load(), { once: true });
+    }
 
     document.addEventListener('keydown', (event) => {
       const target = event.target instanceof HTMLElement ? event.target : null;
