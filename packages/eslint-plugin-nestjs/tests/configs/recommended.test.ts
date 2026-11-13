@@ -16,6 +16,7 @@ const OMITTED_FROM_PRESETS: readonly string[] = [
   'queue-add-requires-dedup-key',
   'queue-options-must-set-retention',
   'redis-client-from-factory',
+  'worker-concurrency',
 ];
 
 type Preset = { name?: string; rules: Record<string, unknown> };
