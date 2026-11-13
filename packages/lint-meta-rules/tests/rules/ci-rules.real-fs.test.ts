@@ -96,6 +96,25 @@ describe('CI rules on a real tree with a dot-directory', () => {
   );
 
   test(
+    'github-actions-paths-filter-permissions reaches .github/workflows',
+    () => {
+      const run = runLintMetaOnRealTree(
+        {
+          '.github/workflows/ci.yml': `name: ci\non: pull_request\npermissions:\n  contents: read\njobs:\n  changes:\n    runs-on: ubuntu-24.04\n    steps:\n      - uses: dorny/paths-filter@v3\n`,
+        },
+        'createGithubActionsPathsFilterPermissionsRule',
+      );
+
+      expect(run.stdout).toContain('github-actions-paths-filter-permissions');
+      expect(run.violations).toHaveLength(1);
+      expect(run.violations[0]).toContain('(.github/workflows/ci.yml)');
+      expect(run.violations[0]).toContain('dorny/paths-filter');
+      expect(run.code).toBe(1);
+    },
+    TIMEOUT_MS,
+  );
+
+  test(
     'github-actions-expression-syntax reaches .github/workflows',
     () => {
       const run = runLintMetaOnRealTree(
