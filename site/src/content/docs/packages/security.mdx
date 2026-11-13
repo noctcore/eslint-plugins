@@ -13,11 +13,11 @@ Injection, path traversal, SSRF, open redirect, unsanitized HTML and timing-unsa
 
 ## What it solves
 
-A small set of sinks where a user-controlled string becomes a vulnerability: a shell command built by interpolation, a fetch URL whose host comes from a request, a redirect to an arbitrary origin, a path joined from `req.params`, HTML handed to `dangerouslySetInnerHTML` unsanitized, an HMAC signature compared with `===`, a password hashed with a cheap bcrypt cost, a `'use server'` action exported without its action client.
+A small set of sinks where a user-controlled string becomes a vulnerability: a shell command built by interpolation, a fetch URL whose host comes from a request, a redirect to an arbitrary origin, a path joined from `req.params`, HTML handed to `dangerouslySetInnerHTML` unsanitized, an HMAC signature compared with `===`, a password hashed with a cheap bcrypt cost, an auth cookie written without `httpOnly`, `secure` or `sameSite`, a `'use server'` action exported without its action client.
 
 ## What it will yell at you about
 
-It will yell at you **rarely, and on purpose**: precision is the point. Each rule matches a narrow syntactic shape and stays silent when it cannot prove the value is dynamic, so it will miss taint that flows through a helper. Treat it as a tripwire, not a security audit, and keep a real SAST tool. Four rules are exported but left out of the preset: `bcrypt-rounds-min` because a rule entering the preset is a breaking change on 1.x, `require-path-containment` because it has a high false-positive rate, `require-sanitized-html` because a real codebase has trusted HTML only you can list, and `server-action-through-client` because it needs your action-client names. **It is a bad fit** if you want broad taint tracking; this plugin trades recall for reports you can trust.
+It will yell at you **rarely, and on purpose**: precision is the point. Each rule matches a narrow syntactic shape and stays silent when it cannot prove the value is dynamic, so it will miss taint that flows through a helper. Treat it as a tripwire, not a security audit, and keep a real SAST tool. Five rules are exported but left out of the preset: `auth-cookie-flags` because a rule entering the preset is a breaking change on 1.x and it matches cookies by name, `bcrypt-rounds-min` for the same 1.x reason, `require-path-containment` because it has a high false-positive rate, `require-sanitized-html` because a real codebase has trusted HTML only you can list, and `server-action-through-client` because it needs your action-client names. **It is a bad fit** if you want broad taint tracking; this plugin trades recall for reports you can trust.
 
 ## Install and configure
 

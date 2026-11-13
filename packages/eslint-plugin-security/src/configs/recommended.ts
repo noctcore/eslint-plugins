@@ -25,6 +25,12 @@
  * breaking change, so it ships opt-in. Enable it, with your own minimum if your
  * policy is stricter, e.g.
  *   'noctcore-security/bcrypt-rounds-min': ['error', { minRounds: 12 }]
+ *
+ * `auth-cookie-flags` needs no options either, and is omitted for the same 1.x
+ * reason. It also picks auth cookies by name, so a cookie called `session` that
+ * holds no credential is reported until `authCookieNames` is narrowed. Enable
+ * it, naming your shared cookie config, e.g.
+ *   'noctcore-security/auth-cookie-flags': ['error', { trustedConfigNames: ['AUTH_COOKIE_OPTIONS'] }]
  */
 export const recommended = {
   'noctcore-security/no-shell-interpolation': 'error',
