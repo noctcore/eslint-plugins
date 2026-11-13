@@ -98,3 +98,19 @@ export function bulkJobs(
 export function isUndefined(node: TSESTree.Node): boolean {
   return node.type === AST_NODE_TYPES.Identifier && node.name === 'undefined';
 }
+
+/** The decorator's name for `@Name(...)` and `@ns.Name(...)`, else null. */
+export function decoratorCallName(decorator: TSESTree.Decorator): string | null {
+  const expression = decorator.expression;
+  if (expression.type !== AST_NODE_TYPES.CallExpression) return null;
+  const callee = expression.callee;
+  if (callee.type === AST_NODE_TYPES.Identifier) return callee.name;
+  if (
+    callee.type === AST_NODE_TYPES.MemberExpression &&
+    !callee.computed &&
+    callee.property.type === AST_NODE_TYPES.Identifier
+  ) {
+    return callee.property.name;
+  }
+  return null;
+}

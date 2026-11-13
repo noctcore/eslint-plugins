@@ -1,7 +1,12 @@
 import { AST_NODE_TYPES, type TSESTree } from '@typescript-eslint/utils';
 
 import { createRule } from '../createRule';
-import { queueMethod, queuePatternRegExp, queuePatternSchema } from '../utils/queue';
+import {
+  decoratorCallName,
+  queueMethod,
+  queuePatternRegExp,
+  queuePatternSchema,
+} from '../utils/queue';
 
 const RULE_NAME = 'job-name-must-be-constant';
 
@@ -22,22 +27,6 @@ function isInlineName(node: TSESTree.Node | undefined): node is TSESTree.Express
   if (node === undefined) return false;
   if (node.type === AST_NODE_TYPES.Literal) return typeof node.value === 'string';
   return node.type === AST_NODE_TYPES.TemplateLiteral && node.expressions.length === 0;
-}
-
-/** The decorator's name for `@Name(...)` and `@ns.Name(...)`, else null. */
-function decoratorCallName(decorator: TSESTree.Decorator): string | null {
-  const expression = decorator.expression;
-  if (expression.type !== AST_NODE_TYPES.CallExpression) return null;
-  const callee = expression.callee;
-  if (callee.type === AST_NODE_TYPES.Identifier) return callee.name;
-  if (
-    callee.type === AST_NODE_TYPES.MemberExpression &&
-    !callee.computed &&
-    callee.property.type === AST_NODE_TYPES.Identifier
-  ) {
-    return callee.property.name;
-  }
-  return null;
 }
 
 /*

@@ -1,0 +1,5 @@
+---
+'@noctcore/eslint-plugin-nestjs': minor
+---
+
+Add `worker-concurrency`, an opt-in rule that reports a literal BullMQ worker `concurrency` of 0 or below (`0`, `-0`, `-1`) or that is not a whole number (`2.5`), in the options of a `new Worker(name, processor, options)` imported from `bullmq` (renamed imports count, a `Worker` from elsewhere does not) and in the second argument of `@Processor(queue, options)`. With `requireExplicit` (default `false`), a worker whose options literal has no `concurrency` key, or that has no options, is reported too. Values that are not number literals (identifiers, member accesses, calls, strings), options passed by name, a spread that may hold the key, `new bullmq.Worker(...)` through a namespace import, the `worker.concurrency = n` setter and the first-argument object of `@Processor({ name, ... })` are skipped. The rule is not in `recommended`, so a project spreading `recommended` sees no new errors; turn it on with `'noctcore-nestjs/worker-concurrency': 'error'`.
