@@ -33,7 +33,7 @@ const total = packages.reduce((sum, pkg) => sum + pkg.rules.length, 0);
       type="text"
       role="combobox"
       aria-label="Search rules, packages and checks"
-      aria-expanded="true"
+      aria-expanded="false"
       aria-controls="search-results"
       aria-autocomplete="list"
       autocomplete="off"
@@ -54,7 +54,7 @@ const total = packages.reduce((sum, pkg) => sum + pkg.rules.length, 0);
   import { packages } from '../lib/catalog';
   import { escapeHtml } from '../lib/format';
   import { filterWords } from '../lib/rule-filters';
-  import { buildSearchIndex, paletteShortcut, searchIndex, type SearchEntry } from '../lib/search';
+  import { buildSearchIndex, highlightHtml, paletteShortcut, searchIndex, type SearchEntry } from '../lib/search';
 
   const dialog = document.querySelector<HTMLDialogElement>('#search-palette');
   if (dialog) {
@@ -70,13 +70,6 @@ const total = packages.reduce((sum, pkg) => sum + pkg.rules.length, 0);
     }
 
     const kindLabel = { package: 'package', rule: 'rule', check: 'repo check' } as const;
-
-    const highlight = (text: string, words: readonly string[]) => {
-      let html = escapeHtml(text);
-      const usable = words.filter((word) => word.length > 1).map((word) => escapeHtml(word).replace(/[.*+?^${}()|[\]\\]/g, '\\$&'));
-      if (usable.length > 0) html = html.replace(new RegExp(`(${usable.join('|')})`, 'gi'), '<mark>$1</mark>');
-      return html;
-    };
 
     const select = (i: number, scroll: boolean) => {
       selected = i;
@@ -96,6 +89,7 @@ const total = packages.reduce((sum, pkg) => sum + pkg.rules.length, 0);
       const query = input.value;
       const words = filterWords(query);
       results = searchIndex(index, query);
+      input.setAttribute('aria-expanded', String(results.length > 0));
       if (results.length === 0) {
         list.innerHTML =
           `<div class="pal-empty">Nothing matches <b>${escapeHtml(query.trim())}</b>. Try a package like ` +
@@ -110,8 +104,8 @@ const total = packages.reduce((sum, pkg) => sum + pkg.rules.length, 0);
           .map(
             (entry, i) =>
               `<a class="pal-item" id="search-option-${i}" role="option" aria-selected="false" data-i="${i}" href="${escapeHtml(entry.href)}">` +
-              `<span class="a">${highlight(entry.label, words)}</span>` +
-              `<span class="b">${highlight(entry.detail, words)}</span>` +
+              `<span class="a">${highlightHtml(entry.label, words)}</span>` +
+              `<span class="b">${highlightHtml(entry.detail, words)}</span>` +
               `<span class="c">${kindLabel[entry.kind]} · ${escapeHtml(entry.meta)}</span></a>`,
           )
           .join('');
@@ -132,7 +126,10 @@ const total = packages.reduce((sum, pkg) => sum + pkg.rules.length, 0);
       dialog.close();
     };
 
-    dialog.addEventListener('close', () => returnFocus?.focus());
+    dialog.addEventListener('close', () => {
+      input.setAttribute('aria-expanded', 'false');
+      returnFocus?.focus();
+    });
     // A click on the backdrop lands on the dialog itself, outside its box.
     dialog.addEventListener('click', (event) => {
       if (event.target !== dialog) return;

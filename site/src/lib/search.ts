@@ -4,6 +4,7 @@
  * implementation; it takes catalog-shaped data and never imports the
  * generated catalog itself.
  */
+import { escapeHtml } from './format';
 import { filterWords } from './rule-filters';
 import { STARTER } from './stacks';
 
@@ -102,6 +103,33 @@ export function searchIndex(index: readonly SearchEntry[], query: string, limit 
     )
     .slice(0, limit)
     .map(({ entry }) => entry);
+}
+
+/**
+ * A result line as HTML with every query word of two or more characters
+ * marked. Matches are found in the raw text and each piece is escaped
+ * afterwards, so a word such as `amp` or `lt` never lands inside an entity.
+ */
+export function highlightHtml(text: string, words: readonly string[]): string {
+  const lower = text.toLowerCase();
+  const marked = new Array<boolean>(text.length).fill(false);
+  for (const word of words) {
+    if (word.length < 2) continue;
+    const needle = word.toLowerCase();
+    for (let at = lower.indexOf(needle); at !== -1; at = lower.indexOf(needle, at + 1)) {
+      marked.fill(true, at, at + needle.length);
+    }
+  }
+  let html = '';
+  let start = 0;
+  for (let i = 1; i <= text.length; i++) {
+    if (i === text.length || marked[i] !== marked[start]) {
+      const piece = escapeHtml(text.slice(start, i));
+      html += marked[start] ? `<mark>${piece}</mark>` : piece;
+      start = i;
+    }
+  }
+  return html;
 }
 
 /**
