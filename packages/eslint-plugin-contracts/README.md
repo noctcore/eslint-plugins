@@ -70,11 +70,11 @@ export default [
 
 ## Opt-in rules
 
-Six rules are not on in `recommended`: `require-registered-keys`, `env-var-schema-parity` and
-`translation-key-exists` do nothing until their `sinks` / `schema` / `catalogs` options are set,
-`restrict-throw-to-taxonomy` reports every framework exception and built-in until `allow` names
-your error classes, `require-schema-parse-at-boundary` is a conservative syntactic slice of a
-type-aware concern, and `zod-field-describe` is a documentation convention that reports every
+Seven rules are not on in `recommended`: `require-registered-keys`, `env-var-schema-parity`,
+`translation-key-exists` and `route-handler-order` do nothing until their `sinks` / `schema` /
+`catalogs` / `groups` options are set, `restrict-throw-to-taxonomy` reports every framework
+exception and built-in until `allow` names your error classes, `require-schema-parse-at-boundary` is a
+conservative syntactic slice of a type-aware concern, and `zod-field-describe` is a documentation convention that reports every
 undescribed field of the schemas it is scoped to.
 
 ```js
@@ -94,6 +94,13 @@ export default [
       }],
       'noctcore-contracts/restrict-throw-to-taxonomy': ['error', {
         allow: ['AppError', 'ValidationError', 'TypeError'],
+      }],
+      'noctcore-contracts/route-handler-order': ['error', {
+        groups: [
+          { name: 'docs', callees: ['describe'] },
+          { name: 'auth', callees: ['signedInOnly'] },
+          { name: 'validate', callees: ['body'] },
+        ],
       }],
       'noctcore-contracts/require-schema-parse-at-boundary': 'error',
     },
@@ -126,6 +133,7 @@ export default [
 | [`require-registered-keys`](https://noctcore.github.io/eslint-plugins/rules/contracts/require-registered-keys/) | Require the key/name argument of configured sink APIs (storage, event channels, cache keys) to be an imported constant from a registry module, not a raw string literal. | 🔘 | ⚙️ |  |  |  |
 | [`require-schema-parse-at-boundary`](https://noctcore.github.io/eslint-plugins/rules/contracts/require-schema-parse-at-boundary/) | Disallow asserting external boundary data with `as T` instead of parsing it at runtime. Flags casts of `JSON.parse`, `res.json()`, web storage, URL search params, message-event data and LLM tool input, directly or through a `const`; use a zod/valibot parse. | 🔘 |  |  |  |  |
 | [`restrict-throw-to-taxonomy`](https://noctcore.github.io/eslint-plugins/rules/contracts/restrict-throw-to-taxonomy/) | Restrict `throw` to an approved error taxonomy. Flags throwing a non-allowlisted error class and throwing a non-Error value (string, object, number, ...). | 🔘 | ⚙️ |  |  |  |
+| [`route-handler-order`](https://noctcore.github.io/eslint-plugins/rules/contracts/route-handler-order/) | Require the middleware arguments of a route method call to follow a configured group order (for example docs, auth, validation), with the handler last. | 🔘 | ⚙️ |  |  |  |
 | [`schema-enum-field-consistency`](https://noctcore.github.io/eslint-plugins/rules/contracts/schema-enum-field-consistency/) | Disallow a zod field that is an enum in one object schema of a module from being `z.string()` in another, which widens the wire type every consumer then narrows by hand. | ✅ |  |  |  |  |
 | [`translation-key-exists`](https://noctcore.github.io/eslint-plugins/rules/contracts/translation-key-exists/) | Require every static i18next / react-i18next translation key (`t(...)`, `i18n.t(...)`, `<Trans i18nKey>`) to exist in the catalog of the namespace in scope. | 🔘 | ⚙️ |  |  |  |
 | [`wire-message-naming`](https://noctcore.github.io/eslint-plugins/rules/contracts/wire-message-naming/) | A message-schema const ending in a role suffix (default Event/Command/Query) whose zod object declares `type: z.literal(...)` must set that literal to kebab-case(const name minus its role suffix). | ☑️ |  | 🔧 |  |  |

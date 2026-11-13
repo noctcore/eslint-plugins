@@ -7,6 +7,7 @@ import { requireErrorCauseRule } from './require-error-cause';
 import { requireRegisteredKeysRule } from './require-registered-keys';
 import { requireSchemaParseAtBoundaryRule } from './require-schema-parse-at-boundary';
 import { restrictThrowToTaxonomyRule } from './restrict-throw-to-taxonomy';
+import { routeHandlerOrderRule } from './route-handler-order';
 import { schemaEnumFieldConsistencyRule } from './schema-enum-field-consistency';
 import { translationKeyExistsRule } from './translation-key-exists';
 import { wireMessageNamingRule } from './wire-message-naming';
@@ -29,4 +30,5 @@ export const rules = {
   'fetch-must-check-ok': fetchMustCheckOkRule,
   'translation-key-exists': translationKeyExistsRule,
   'zod-field-describe': zodFieldDescribeRule,
+  'route-handler-order': routeHandlerOrderRule,
 };
