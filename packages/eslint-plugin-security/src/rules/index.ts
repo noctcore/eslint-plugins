@@ -1,3 +1,4 @@
+import { authCookieFlagsRule } from './auth-cookie-flags';
 import { bcryptRoundsMinRule } from './bcrypt-rounds-min';
 import { noShellInterpolationRule } from './no-shell-interpolation';
 import { noTimingUnsafeCompareRule } from './no-timing-unsafe-compare';
@@ -10,6 +11,8 @@ import { serverActionThroughClientRule } from './server-action-through-client';
 
 /** Every rule this plugin exposes, keyed by its (unprefixed) rule id. */
 export const rules = {
+  // Available but omitted from `recommended` (a rule entering it is a major in 1.x, and it matches cookies by name; opt-in).
+  'auth-cookie-flags': authCookieFlagsRule,
   // Available but omitted from `recommended` (a rule entering it is a major in 1.x; opt-in).
   'bcrypt-rounds-min': bcryptRoundsMinRule,
   'no-shell-interpolation': noShellInterpolationRule,
