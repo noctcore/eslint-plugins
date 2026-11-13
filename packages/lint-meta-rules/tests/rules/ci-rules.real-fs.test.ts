@@ -115,6 +115,27 @@ describe('CI rules on a real tree with a dot-directory', () => {
   );
 
   test(
+    'github-actions-security-no-cancel reaches .github/workflows',
+    () => {
+      const flagged = 'name: scan\non: push\nconcurrency:\n  group: scan\n  cancel-in-progress: true\njobs:\n  scan:\n    runs-on: ubuntu-24.04\n';
+      const run = runLintMetaOnRealTree(
+        {
+          '.github/workflows/security-scan.yml': flagged,
+          '.github/workflows/ci.yml': flagged,
+        },
+        'createGithubActionsSecurityNoCancelRule',
+      );
+
+      expect(run.stdout).toContain('github-actions-security-no-cancel');
+      expect(run.violations).toHaveLength(1);
+      expect(run.violations[0]).toContain('(.github/workflows/security-scan.yml)');
+      expect(run.violations[0]).toContain('line 5:');
+      expect(run.code).toBe(1);
+    },
+    TIMEOUT_MS,
+  );
+
+  test(
     'service-image-digest-pin reaches .github/workflows and a compose file in .devcontainer',
     () => {
       const run = runLintMetaOnRealTree(
