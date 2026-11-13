@@ -1,7 +1,13 @@
-import type { IMetaCtx, IMetaRule, IViolation } from '@noctcore/harness';
+import type { IMetaRule, IViolation } from '@noctcore/harness';
 
-import { stripTrailingSlashes } from '../rules/shared';
-import { resolveRules, severityOf } from './resolve';
+import {
+  DEFAULT_CONFIG_FILES,
+  DEFAULT_PACKAGES,
+  DEFAULT_PROBES,
+  findConfigDirs,
+  resolveRules,
+  severityOf,
+} from './resolve';
 
 /**
  * Options for {@link createEslintConfigNoWarnRule}.
@@ -34,45 +40,6 @@ export interface EslintConfigNoWarnOptions {
 }
 
 const DEFAULT_ID = 'eslint-config-no-warn';
-const DEFAULT_PACKAGES = ['.', 'apps/*', 'packages/*'];
-const DEFAULT_CONFIG_FILES = ['eslint.config.js', 'eslint.config.mjs', 'eslint.config.cjs'];
-const DEFAULT_PROBES = [
-  'src/__lint_meta_probe__.ts',
-  'src/__lint_meta_probe__.tsx',
-  'src/__lint_meta_probe__.test.ts',
-  'src/__lint_meta_probe__.test.tsx',
-];
-
-/**
- * Every directory matched by `packages` that owns a config, with that config's
- * file. Globs the config file itself (`<pattern>/eslint.config.js`) rather than the
- * directory, so a match never depends on whether a glob returns directories.
- */
-function findConfigDirs(
-  ctx: IMetaCtx,
-  packages: readonly string[],
-  configFiles: readonly string[],
-): { dir: string; configFile: string }[] {
-  const byDir = new Map<string, string>();
-  for (const pattern of packages) {
-    const base = stripTrailingSlashes(pattern);
-    for (const name of configFiles) {
-      // The harness glob drops a bare `.`, so the root is checked literally.
-      const matches =
-        base === '.' || base === '' ? (ctx.exists(name) ? [name] : []) : ctx.glob(`${base}/${name}`);
-      for (const configFile of matches) {
-        const slash = configFile.lastIndexOf('/');
-        const dir = slash === -1 ? '.' : configFile.slice(0, slash);
-        // `configFiles` order decides which file names a directory owning two.
-        if (!byDir.has(dir)) byDir.set(dir, configFile);
-      }
-    }
-  }
-  return [...byDir]
-    .sort(([a], [b]) => (a < b ? -1 : a > b ? 1 : 0))
-    .map(([dir, configFile]) => ({ dir, configFile }));
-}
-
 /**
  * ESLint severities must be `error` or `off`, never `warn`, as RESOLVED.
  *

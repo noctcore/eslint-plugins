@@ -64,6 +64,7 @@ function harnessCli(): string {
 const SUBPATH_ENTRIES: Partial<Record<RuleFactoryName, string>> = {
   createTranslationDeadKeysRule: 'i18n',
   createEslintConfigNoWarnRule: 'resolved-config',
+  createEslintRulesNotWeakenedRule: 'resolved-config',
   createPrismaMethodSurfaceRule: 'prisma',
   createTenantModelRegistryParityRule: 'prisma',
   createSessionEpochCapturedRule: 'session',

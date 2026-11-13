@@ -1,7 +1,10 @@
 import { realpathSync } from 'node:fs';
 import path from 'node:path';
 
+import type { IMetaCtx } from '@noctcore/harness';
 import { ESLint } from 'eslint';
+
+import { stripTrailingSlashes } from '../rules/shared';
 
 /** A resolved config's rule map: rule id to its normalised `[severity, ...options]` entry. */
 export type ResolvedRules = Readonly<Record<string, unknown>>;
@@ -25,8 +28,59 @@ export function firstOptionOf(entry: unknown): Record<string, unknown> | null {
 
 /** Outcome of resolving one package's config for a set of probe files. */
 export type ResolveOutcome =
-  | { readonly ok: true; readonly rules: readonly ResolvedRules[] }
+  | {
+      readonly ok: true;
+      readonly rules: readonly ResolvedRules[];
+      /** The probe each entry of `rules` was resolved for, index for index. */
+      readonly resolvedProbes: readonly string[];
+    }
   | { readonly ok: false; readonly error: string };
+
+/** The directories the resolved-config rules check by default. */
+export const DEFAULT_PACKAGES: readonly string[] = ['.', 'apps/*', 'packages/*'];
+/** The file names that mark a directory as owning a flat config, by default. */
+export const DEFAULT_CONFIG_FILES: readonly string[] = [
+  'eslint.config.js',
+  'eslint.config.mjs',
+  'eslint.config.cjs',
+];
+/** The files a config is resolved for by default: one per common file shape under `src/`. */
+export const DEFAULT_PROBES: readonly string[] = [
+  'src/__lint_meta_probe__.ts',
+  'src/__lint_meta_probe__.tsx',
+  'src/__lint_meta_probe__.test.ts',
+  'src/__lint_meta_probe__.test.tsx',
+];
+
+/**
+ * Every directory matched by `packages` that owns a config, with that config's
+ * file. Globs the config file itself (`<pattern>/eslint.config.js`) rather than the
+ * directory, so a match never depends on whether a glob returns directories.
+ */
+export function findConfigDirs(
+  ctx: IMetaCtx,
+  packages: readonly string[],
+  configFiles: readonly string[],
+): { dir: string; configFile: string }[] {
+  const byDir = new Map<string, string>();
+  for (const pattern of packages) {
+    const base = stripTrailingSlashes(pattern);
+    for (const name of configFiles) {
+      // The harness glob drops a bare `.`, so the root is checked literally.
+      const matches =
+        base === '.' || base === '' ? (ctx.exists(name) ? [name] : []) : ctx.glob(`${base}/${name}`);
+      for (const configFile of matches) {
+        const slash = configFile.lastIndexOf('/');
+        const dir = slash === -1 ? '.' : configFile.slice(0, slash);
+        // `configFiles` order decides which file names a directory owning two.
+        if (!byDir.has(dir)) byDir.set(dir, configFile);
+      }
+    }
+  }
+  return [...byDir]
+    .sort(([a], [b]) => (a < b ? -1 : a > b ? 1 : 0))
+    .map(([dir, configFile]) => ({ dir, configFile }));
+}
 
 /**
  * Resolve the EFFECTIVE flat config `packageDir` applies to each probe, through
@@ -59,6 +113,7 @@ export async function resolveRules(
   }
   const eslint = new ESLint({ cwd, errorOnUnmatchedPattern: false });
   const rules: ResolvedRules[] = [];
+  const resolvedProbes: string[] = [];
   const ignored: string[] = [];
 
   for (const probe of probes) {
@@ -72,10 +127,13 @@ export async function resolveRules(
     }
     // `undefined` means the config ignores the probe, or no block matches it.
     if (config === undefined) ignored.push(probe);
-    else rules.push(config.rules ?? {});
+    else {
+      rules.push(config.rules ?? {});
+      resolvedProbes.push(probe);
+    }
   }
 
-  if (rules.length > 0) return { ok: true, rules };
+  if (rules.length > 0) return { ok: true, rules, resolvedProbes };
   return {
     ok: false,
     error:
