@@ -68,7 +68,7 @@ over the whole catalog.
 
 ## Rules
 
-The main entry exports 30 factories. `createFileSizeRatchetRule` covers any number of capped areas:
+The main entry exports 31 factories. `createFileSizeRatchetRule` covers any number of capped areas:
 create one instance per area, each with its own `id`.
 
 <!-- begin generated rules -->
