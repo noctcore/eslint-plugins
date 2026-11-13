@@ -6,6 +6,7 @@ import { createCanonicalHelpersSingleHomeRule } from './canonical-helpers-single
 import { createDockerfileBaseImageDigestPinRule } from './dockerfile-base-image-digest-pin';
 import { createEslintOverridePathsExistRule } from './eslint-override-paths-exist';
 import { createFileSizeRatchetRule } from './file-size-ratchet';
+import { createGithubActionsConcurrencyExplicitRule } from './github-actions-concurrency-explicit';
 import { createGithubActionsExpressionSyntaxRule } from './github-actions-expression-syntax';
 import { createGithubActionsLeastPrivilegePermissionsRule } from './github-actions-least-privilege-permissions';
 import { createGithubActionsNoTemplateInjectionRule } from './github-actions-no-template-injection';
@@ -42,6 +43,8 @@ export { createEslintOverridePathsExistRule } from './eslint-override-paths-exis
 export type { EslintOverridePathsExistOptions } from './eslint-override-paths-exist';
 export { createFileSizeRatchetRule } from './file-size-ratchet';
 export type { FileSizeRatchetOptions } from './file-size-ratchet';
+export { createGithubActionsConcurrencyExplicitRule } from './github-actions-concurrency-explicit';
+export type { GithubActionsConcurrencyExplicitOptions } from './github-actions-concurrency-explicit';
 export { createGithubActionsExpressionSyntaxRule } from './github-actions-expression-syntax';
 export type { GithubActionsExpressionSyntaxOptions } from './github-actions-expression-syntax';
 export { createGithubActionsLeastPrivilegePermissionsRule } from './github-actions-least-privilege-permissions';
@@ -110,6 +113,7 @@ export const RULE_FACTORIES = {
   'dockerfile-base-image-digest-pin': createDockerfileBaseImageDigestPinRule,
   'eslint-override-paths-exist': createEslintOverridePathsExistRule,
   'file-size-ratchet': createFileSizeRatchetRule,
+  'github-actions-concurrency-explicit': createGithubActionsConcurrencyExplicitRule,
   'github-actions-expression-syntax': createGithubActionsExpressionSyntaxRule,
   'github-actions-least-privilege-permissions': createGithubActionsLeastPrivilegePermissionsRule,
   'github-actions-no-template-injection': createGithubActionsNoTemplateInjectionRule,
