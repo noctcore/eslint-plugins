@@ -60,6 +60,10 @@ const worker = new Worker('mail', handler, { connection: { host: 'localhost' } }
 - An identifier or member expression passed as the options or as `connection` (`new Redis(options)`,
   `{ connection }`, `{ connection: this.redis }`). The rule has no type information and does not
   follow a variable to where it was built.
+- A client call with several arguments where one is a factory call, a factory spread, or a value the
+  rule cannot see into (an identifier, a member expression, a spread argument): such a call is
+  accepted, so `new Redis('redis://cache', getRedisOptions())` and `new Redis('redis://cache', options)`
+  pass. Only a call whose arguments are all inline is reported.
 - `new Redis.Cluster(...)` and other member constructors: classes are matched by the callee
   identifier only.
 - `BullModule.forRoot({ connection })`, `QueueEvents` and `FlowProducer` connections.
