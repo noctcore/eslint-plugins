@@ -40,9 +40,13 @@ export default [
 
 ## Opt-in rules
 
-`recommended` leaves out the two queue conventions: each is a team decision before it is a defect,
-and a repo that has not made it would see every `queue.add` reported. Turn them on together once
-producers and workers agree on keys and names:
+`recommended` leaves out the two queue conventions and the retry rule: each is a team decision
+before it is a defect, and a repo that has not made it would see every `queue.add` reported. The
+conventions ask for a dedup key on every job and for shared queue and job names; the retry rule,
+`job-options-must-set-attempts`, asks every job to state `attempts` (and a `backoff` when it
+retries) in its options or in its queue's `defaultJobOptions` in the same file, so it suits repos
+that construct their queues next to the code that fills them. Turn them on once producers and
+workers agree on keys, names and retries:
 
 ```js
 // eslint.config.js
@@ -54,6 +58,7 @@ export default [
     rules: {
       'noctcore-nestjs/queue-add-requires-dedup-key': ['error', { queuePattern: 'queue' }],
       'noctcore-nestjs/job-name-must-be-constant': ['error', { decorators: ['Processor', 'InjectQueue'] }],
+      'noctcore-nestjs/job-options-must-set-attempts': ['error', { requireBackoff: true }],
     },
   },
 ];
