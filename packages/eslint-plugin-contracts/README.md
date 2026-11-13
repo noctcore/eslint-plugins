@@ -70,9 +70,9 @@ export default [
 
 ## Opt-in rules
 
-Seven rules are not on in `recommended`: `require-registered-keys`, `env-var-schema-parity`,
-`translation-key-exists` and `route-handler-order` do nothing until their `sinks` / `schema` /
-`catalogs` / `groups` options are set, `restrict-throw-to-taxonomy` reports every framework
+Eight rules are not on in `recommended`: `require-registered-keys`, `env-var-schema-parity`,
+`translation-key-exists`, `route-handler-order` and `describe-auth-matches-middleware` do nothing
+until their `sinks` / `schema` / `catalogs` / `groups` / `map` options are set, `restrict-throw-to-taxonomy` reports every framework
 exception and built-in until `allow` names your error classes, `require-schema-parse-at-boundary` is a
 conservative syntactic slice of a type-aware concern, and `zod-field-describe` is a documentation convention that reports every
 undescribed field of the schemas it is scoped to.
@@ -101,6 +101,9 @@ export default [
           { name: 'auth', callees: ['signedInOnly'] },
           { name: 'validate', callees: ['body'] },
         ],
+      }],
+      'noctcore-contracts/describe-auth-matches-middleware': ['error', {
+        map: { session: ['requireSession'], apiKey: ['requireApiKey'], public: [] },
       }],
       'noctcore-contracts/require-schema-parse-at-boundary': 'error',
     },
