@@ -10,6 +10,7 @@ import { createGithubActionsConcurrencyExplicitRule } from './github-actions-con
 import { createGithubActionsExpressionSyntaxRule } from './github-actions-expression-syntax';
 import { createGithubActionsLeastPrivilegePermissionsRule } from './github-actions-least-privilege-permissions';
 import { createGithubActionsNoTemplateInjectionRule } from './github-actions-no-template-injection';
+import { createGithubActionsPipInstallPinnedRule } from './github-actions-pip-install-pinned';
 import { createGithubActionsRunnerPinnedRule } from './github-actions-runner-pinned';
 import { createGithubActionsSecurityNoCancelRule } from './github-actions-security-no-cancel';
 import { createGithubActionsShaPinnedRule } from './github-actions-sha-pinned';
@@ -51,6 +52,8 @@ export { createGithubActionsLeastPrivilegePermissionsRule } from './github-actio
 export type { GithubActionsLeastPrivilegePermissionsOptions } from './github-actions-least-privilege-permissions';
 export { createGithubActionsNoTemplateInjectionRule } from './github-actions-no-template-injection';
 export type { GithubActionsNoTemplateInjectionOptions } from './github-actions-no-template-injection';
+export { createGithubActionsPipInstallPinnedRule } from './github-actions-pip-install-pinned';
+export type { GithubActionsPipInstallPinnedOptions } from './github-actions-pip-install-pinned';
 export { createGithubActionsRunnerPinnedRule } from './github-actions-runner-pinned';
 export type { GithubActionsRunnerPinnedOptions } from './github-actions-runner-pinned';
 export { createGithubActionsSecurityNoCancelRule } from './github-actions-security-no-cancel';
@@ -117,6 +120,7 @@ export const RULE_FACTORIES = {
   'github-actions-expression-syntax': createGithubActionsExpressionSyntaxRule,
   'github-actions-least-privilege-permissions': createGithubActionsLeastPrivilegePermissionsRule,
   'github-actions-no-template-injection': createGithubActionsNoTemplateInjectionRule,
+  'github-actions-pip-install-pinned': createGithubActionsPipInstallPinnedRule,
   'github-actions-runner-pinned': createGithubActionsRunnerPinnedRule,
   'github-actions-security-no-cancel': createGithubActionsSecurityNoCancelRule,
   'github-actions-sha-pinned': createGithubActionsShaPinnedRule,
