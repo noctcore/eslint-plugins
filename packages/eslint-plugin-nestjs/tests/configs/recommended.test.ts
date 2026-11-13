@@ -14,6 +14,7 @@ const OMITTED_FROM_PRESETS: readonly string[] = [
   'job-name-must-be-constant',
   'job-options-must-set-attempts',
   'queue-add-requires-dedup-key',
+  'queue-options-must-set-retention',
 ];
 
 type Preset = { name?: string; rules: Record<string, unknown> };

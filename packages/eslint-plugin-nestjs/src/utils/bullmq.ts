@@ -529,3 +529,43 @@ export function createQueueDefaultsIndex(
     },
   };
 }
+
+/** How one job option resolves once the call's options are laid over the queue defaults. */
+export type JobOption =
+  | { readonly kind: 'set'; readonly value: TSESTree.Node }
+  | { readonly kind: 'missing' }
+  | { readonly kind: 'unknown' };
+
+const MISSING_OPTION: JobOption = { kind: 'missing' };
+const UNKNOWN_OPTION: JobOption = { kind: 'unknown' };
+
+/**
+ * `name` in one options literal: a direct key whose value is not `undefined`
+ * is set, and a spread may hold the key, so it makes the value unknown.
+ */
+export function jobOptionIn(name: string, options: TSESTree.ObjectExpression): JobOption {
+  const property = directProperty(options, name);
+  if (property !== undefined && !isUndefined(property.value)) {
+    return { kind: 'set', value: property.value };
+  }
+  return options.properties.some((member) => member.type === AST_NODE_TYPES.SpreadElement)
+    ? UNKNOWN_OPTION
+    : MISSING_OPTION;
+}
+
+/** `name` read from the job's options first, then from the queue's `defaultJobOptions`. */
+export function resolveJobOption(
+  name: string,
+  job: TSESTree.ObjectExpression | undefined,
+  defaults: TSESTree.ObjectExpression | null,
+): JobOption {
+  const own = job === undefined ? MISSING_OPTION : jobOptionIn(name, job);
+  if (own.kind !== 'missing' || defaults === null) return own;
+  return jobOptionIn(name, defaults);
+}
+
+/** The object literal `node` is once type wrappers are removed, or null. */
+export function jobOptionsLiteral(node: TSESTree.Node): TSESTree.ObjectExpression | null {
+  const inner = stripTypeWrappers(node);
+  return inner.type === AST_NODE_TYPES.ObjectExpression ? inner : null;
+}

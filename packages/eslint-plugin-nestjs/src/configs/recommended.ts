@@ -12,6 +12,10 @@
  *   gets is a decision per queue, and defaults set outside the file
  *   (`BullModule.registerQueue`, a shared config) are invisible to it, so a
  *   stranger's repo would see reports on queues that already retry.
+ * - `queue-options-must-set-retention`: how long finished jobs stay is a
+ *   decision per queue, and defaults set outside the file
+ *   (`BullModule.registerQueue`, a shared config) are invisible to it, so a
+ *   stranger's repo would see reports on queues that already clean up.
  *
  * The worker rules are in: a worker nobody listens to or nobody closes is a
  * defect in any repo, and they need no options.
