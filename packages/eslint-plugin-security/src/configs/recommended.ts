@@ -19,6 +19,12 @@
  * `trustedSources` list, which is the mark of an opt-in rule. Enable it with
  * your own producers, e.g.
  *   'noctcore-security/require-sanitized-html': ['error', { trustedSources: ['highlighter.codeToHtml()'] }]
+ *
+ * `bcrypt-rounds-min` needs no options and its default of 10 holds for most
+ * projects, but the package is at 1.x, where a rule entering `recommended` is a
+ * breaking change, so it ships opt-in. Enable it, with your own minimum if your
+ * policy is stricter, e.g.
+ *   'noctcore-security/bcrypt-rounds-min': ['error', { minRounds: 12 }]
  */
 export const recommended = {
   'noctcore-security/no-shell-interpolation': 'error',
