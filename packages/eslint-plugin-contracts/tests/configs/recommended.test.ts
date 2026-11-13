@@ -14,6 +14,7 @@ const OMITTED_FROM_PRESETS: readonly string[] = [
   'env-var-schema-parity',
   'require-registered-keys',
   'restrict-throw-to-taxonomy',
+  'route-handler-order',
   'translation-key-exists',
   'zod-field-describe',
 ];
