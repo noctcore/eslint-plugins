@@ -64,10 +64,12 @@ key:
 
 - `<queue>.add(name, data)` or `<queue>.add(name, data, options)` where neither the options nor the
   queue defaults set `attempts` (a value of `undefined` counts as not set);
-- with `requireBackoff` on (the default), an `attempts` written as a literal other than `1` with no
+- with `requireBackoff` on (the default), an `attempts` written as a number other than `1` with no
   `backoff` in the options or the queue defaults;
-- each job object of `<queue>.addBulk([...])` (an object literal with `data`), checked on its own
-  `opts`, or on the queue defaults alone when it has no `opts`.
+- each job object of `<queue>.addBulk([...])` (an object literal with `data` that is an element of
+  the list, or what a `map` / `flatMap` callback returns for it), checked on its own `opts`, or on
+  the queue defaults alone when it has no `opts`. Options or `opts` written as `undefined` count as
+  none.
 
 ```ts bad
 await this.mailQueue.add(JOBS.WELCOME, { userId }, { priority: 1 });
@@ -83,10 +85,13 @@ await this.mailQueue.addBulk(users.map((user) => ({ name: JOBS.WELCOME, data: { 
 - Options passed by name instead of an object literal, job `opts` passed by name, and an `addBulk`
   argument that is not built from object literals here. The rule cannot read them, so it stays
   quiet rather than guess.
+- An object literal with a `data` key that is not itself an element of the `addBulk` list: a
+  job's own payload (`data: { data: ... }`) or an object handed to a helper call
+  (`addBulk(buildJobs(ids, { data }))`).
 - An options literal holding a spread when the key it needs is missing: the spread may supply it.
   The same holds for a spread in the queue's options or in its `defaultJobOptions`.
-- An `attempts` that is not a literal (`attempts: MAX_ATTEMPTS`): the rule cannot know it is above
-  1, so it asks for no `backoff` either.
+- An `attempts` that is not a number literal (`attempts: MAX_ATTEMPTS`): the rule cannot know it
+  is above 1, so it asks for no `backoff` either.
 - Calls on receivers that do not look like a queue: `set.add(value)`, `this.repository.add(...)`.
 
 ```ts good
@@ -105,7 +110,7 @@ seen.add(userId);
 | Option | Type | Default | Meaning |
 | --- | --- | --- | --- |
 | `queuePattern` | `string` (regular expression, case-insensitive) | `'queue'` | A receiver (`this.<name>` or a bare `<name>`) whose name matches counts as a BullMQ queue. |
-| `requireBackoff` | `boolean` | `true` | A literal `attempts` other than `1` must also come with a `backoff`, in the options or the queue defaults. |
+| `requireBackoff` | `boolean` | `true` | A number `attempts` other than `1` must also come with a `backoff`, in the options or the queue defaults. |
 
 ```js
 'noctcore-nestjs/job-options-must-set-attempts': ['error', { queuePattern: 'queue', requireBackoff: true }]
