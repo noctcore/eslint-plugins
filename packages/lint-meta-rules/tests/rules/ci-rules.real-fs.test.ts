@@ -155,6 +155,44 @@ describe('CI rules on a real tree with a dot-directory', () => {
   );
 
   test(
+    'github-actions-pip-install-pinned reaches .github/workflows and reports without failing CI by default',
+    () => {
+      const run = runLintMetaOnRealTree(
+        {
+          '.github/workflows/ci.yml': `${WORKFLOW_HEAD}    runs-on: ubuntu-24.04\n    steps:\n      - run: pip install yamllint\n`,
+        },
+        'createGithubActionsPipInstallPinnedRule',
+      );
+
+      expect(run.stderr).toContain('[info] github-actions-pip-install-pinned');
+      expect(run.violations).toHaveLength(1);
+      expect(run.violations[0]).toContain('(.github/workflows/ci.yml)');
+      expect(run.violations[0]).toContain('yamllint');
+      expect(run.violations[0]).toContain('line 7:');
+      expect(run.code).toBe(0);
+    },
+    TIMEOUT_MS,
+  );
+
+  test(
+    'github-actions-pip-install-pinned fails CI with ciCritical true',
+    () => {
+      const run = runLintMetaOnRealTree(
+        {
+          '.github/workflows/ci.yml': `${WORKFLOW_HEAD}    runs-on: ubuntu-24.04\n    steps:\n      - run: pip install yamllint\n`,
+        },
+        'createGithubActionsPipInstallPinnedRule',
+        { ciCritical: true },
+      );
+
+      expect(run.stderr).toContain('[ERROR] github-actions-pip-install-pinned');
+      expect(run.violations).toHaveLength(1);
+      expect(run.code).toBe(1);
+    },
+    TIMEOUT_MS,
+  );
+
+  test(
     'service-image-digest-pin reaches .github/workflows and a compose file in .devcontainer',
     () => {
       const run = runLintMetaOnRealTree(
