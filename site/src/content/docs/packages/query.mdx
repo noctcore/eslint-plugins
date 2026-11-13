@@ -17,7 +17,7 @@ The client cache fails in ways that pass type checks and unit tests that mock th
 
 ## What it will yell at you about
 
-It will yell at you about **tRPC invalidations through an input-less `queryKey()`** (with an autofix to `pathKey()`) and **per-call mutation callbacks inside `useEffect`**, both on in `recommended`. **Mutations with no error handling anywhere** is opt-in, because a global `MutationCache({ onError })` handles errors where the rule cannot see. **Inline query keys** (`queryKey: ['user', id]`) is opt-in too, a convention for codebases that keep keys in a constant or key factory. **It is a bad fit** for tRPC's classic `utils.x.invalidate()` integration, where the first rule has nothing to check.
+It will yell at you about **tRPC invalidations through an input-less `queryKey()`** (with an autofix to `pathKey()`) and **per-call mutation callbacks inside `useEffect`**, both on in `recommended`. **Mutations with no error handling anywhere** is opt-in, because a global `MutationCache({ onError })` handles errors where the rule cannot see. **Inline query keys** (`queryKey: ['user', id]`) is opt-in too, a convention for codebases that keep keys in a constant or key factory. **An exact-key `setQueryData(PREFIX, ...)` or `getQueryData(PREFIX)` where the hooks key entries as `[...PREFIX, id]`** is opt-in as well, because the rule reads one file at a time. **It is a bad fit** for tRPC's classic `utils.x.invalidate()` integration, where the first rule has nothing to check.
 
 ## Install and configure
 
