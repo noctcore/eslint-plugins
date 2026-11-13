@@ -1,0 +1,5 @@
+---
+'@noctcore/lint-meta-rules': minor
+---
+
+Add the `github-actions-security-no-cancel` rule and its factory `createGithubActionsSecurityNoCancelRule`. It reports a literal `cancel-in-progress: true` (`true`, `True` or `TRUE`, quoted or not) in a workflow-level or job-level `concurrency`, written as a block or as a flow mapping, in a security scan workflow, because a newer run then cancels the scan part way and a commit can merge with no finished scan. Only workflows whose file base name matches `securityWorkflowPattern` (default `/security|sast|secrets|codeql|scan/iu`) are read. An expression value, the string form `concurrency: ${{ github.workflow }}`, and `cancel-in-progress` text outside a `concurrency` mapping are left alone. It takes `workflowGlobs` (default `.github/workflows/*.y(a)ml`), `securityWorkflowPattern` and `ciCritical` (default `true`). lint-meta has no `recommended` preset, and a caller that picks factories one by one sees nothing new. The factory is part of `RULE_FACTORIES`, so `createAllRules()` now includes it: a caller of `createAllRules()` sees a new violation only on a security-named workflow that sets `cancel-in-progress: true`.
