@@ -28,6 +28,25 @@ describe('repo-hygiene rules on a real tree', () => {
   );
 
   test(
+    'github-actions-concurrency-explicit reads .github/workflows',
+    () => {
+      const run = runLintMetaOnRealTree(
+        {
+          '.github/workflows/ci.yml':
+            'name: ci\non: push\nconcurrency:\n  group: ci\njobs:\n  build:\n    runs-on: ubuntu-24.04\n',
+        },
+        'createGithubActionsConcurrencyExplicitRule',
+      );
+      expect(run.stdout).toContain('github-actions-concurrency-explicit');
+      expect(run.violations).toHaveLength(1);
+      expect(run.violations[0]).toContain('(.github/workflows/ci.yml)');
+      expect(run.violations[0]).toContain('line 3:');
+      expect(run.code).toBe(1);
+    },
+    TIMEOUT_MS,
+  );
+
+  test(
     'eslint-override-paths-exist reads a nested flat config and resolves against it',
     () => {
       const run = runLintMetaOnRealTree(
