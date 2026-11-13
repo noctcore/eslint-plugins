@@ -104,10 +104,12 @@ describe('sub-path entry points', () => {
     const resolvedConfig = await import('../src/resolved-config');
     const prisma = await import('../src/prisma');
     expect(typeof resolvedConfig.createEslintConfigNoWarnRule).toBe('function');
+    expect(typeof resolvedConfig.createEslintRulesNotWeakenedRule).toBe('function');
     expect(typeof prisma.createTenantModelRegistryParityRule).toBe('function');
     expect(typeof prisma.createPrismaMethodSurfaceRule).toBe('function');
     for (const name of [
       'createEslintConfigNoWarnRule',
+      'createEslintRulesNotWeakenedRule',
       'createTenantModelRegistryParityRule',
       'createPrismaMethodSurfaceRule',
     ]) {

@@ -12,3 +12,9 @@ export {
   createEslintConfigNoWarnRule,
   type EslintConfigNoWarnOptions,
 } from './resolved-config/eslint-config-no-warn';
+export {
+  createEslintRulesNotWeakenedRule,
+  type EslintRulesNotWeakenedOptions,
+  type PinnedRule,
+  type PinnedSeverity,
+} from './resolved-config/eslint-rules-not-weakened';
