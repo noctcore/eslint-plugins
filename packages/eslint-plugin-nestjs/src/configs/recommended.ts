@@ -16,8 +16,11 @@
  *   decision per queue, and defaults set outside the file
  *   (`BullModule.registerQueue`, a shared config) are invisible to it, so a
  *   stranger's repo would see reports on queues that already clean up.
+ * - `worker-concurrency`: a literal `concurrency` that is 0, negative or
+ *   fractional is rare, and `requireExplicit` (asking every worker to state
+ *   it) is a team convention, so it is left for a repo to opt into.
  *
- * The worker rules are in: a worker nobody listens to or nobody closes is a
+ * The `worker-must-*` rules are in: a worker nobody listens to or nobody closes is a
  * defect in any repo, and they need no options.
  */
 export const recommended = {
