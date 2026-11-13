@@ -9,7 +9,7 @@
 ## Why
 
 bcrypt's cost is a power of two: every step down halves the work an attacker needs to try a guess
-against a leaked hash. A cost of 8 is sixteen times cheaper to crack than the library default of 10,
+against a leaked hash. A cost of 8 is four times cheaper to crack than the library default of 10,
 and a cost of 4 is close to free.
 
 ```ts bad
@@ -89,7 +89,7 @@ reassigned. Those shapes are rare in password code and are left to review.
 | Option          | Type       | Default                  | Description                                                                                |
 | --------------- | ---------- | ------------------------ | ------------------------------------------------------------------------------------------ |
 | `minRounds`     | `number`   | `10`                     | The lowest cost accepted. A literal cost strictly below it is reported.                    |
-| `bcryptModules` | `string[]` | `['bcrypt', 'bcryptjs']` | Module names whose bcrypt functions are tracked. A configured list replaces the default. |
+| `bcryptModules` | `string[]` | `['bcrypt', 'bcryptjs']` | Module names whose bcrypt functions are tracked. A configured list replaces the default.   |
 
 ```js
 // eslint.config.js
