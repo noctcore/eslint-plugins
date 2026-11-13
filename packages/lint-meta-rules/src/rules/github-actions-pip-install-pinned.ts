@@ -235,12 +235,7 @@ function pinOf(token: string): Pin | null {
   return { name: match[1] ?? '', operator: match[3] ?? null };
 }
 
-function unpinnedMessage(
-  line: number,
-  installer: string,
-  token: string,
-  pin: Pin,
-): string {
+function unpinnedMessage(line: number, installer: string, token: string, pin: Pin): string {
   if (pin.operator === '>=' || pin.operator === '~=') {
     return `line ${line}: \`${installer} install\` installs "${stripQuotes(token)}", a \`${pin.operator}\` range that a new release still satisfies. Pin an exact version with \`==\` instead.`;
   }
