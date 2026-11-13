@@ -13,6 +13,11 @@
  * field. It is not in `strict` either, so spreading either preset adds no new
  * errors.
  *
+ * `route-params-validated` is left out too: it needs no options, but it
+ * recognises routers and param validators by name (`new Hono()`, `param`,
+ * `zValidator('param', ...)`), so a project on another router or validator would
+ * see nothing or false reports. It is not in `strict` either.
+ *
  * The naming conventions (`zod-schema-naming`, `wire-message-naming`) are in
  * `strict` (`./strict.ts`), not here.
  */

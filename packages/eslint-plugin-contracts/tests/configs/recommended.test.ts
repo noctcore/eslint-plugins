@@ -16,6 +16,7 @@ const OMITTED_FROM_PRESETS: readonly string[] = [
   'require-registered-keys',
   'restrict-throw-to-taxonomy',
   'route-handler-order',
+  'route-params-validated',
   'translation-key-exists',
   'zod-field-describe',
 ];
