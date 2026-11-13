@@ -40,9 +40,13 @@ export default [
 
 ## Opt-in rules
 
-`recommended` leaves out the two queue conventions: each is a team decision before it is a defect,
-and a repo that has not made it would see every `queue.add` reported. Turn them on together once
-producers and workers agree on keys and names:
+`recommended` leaves out the two queue conventions and the retry rule: each is a team decision
+before it is a defect, and a repo that has not made it would see every `queue.add` reported. The
+conventions ask for a dedup key on every job and for shared queue and job names; the retry rule,
+`job-options-must-set-attempts`, asks every job to state `attempts` (and a `backoff` when it
+retries) in its options or in its queue's `defaultJobOptions` in the same file, so it suits repos
+that construct their queues next to the code that fills them. Turn them on once producers and
+workers agree on keys, names and retries:
 
 ```js
 // eslint.config.js
@@ -54,6 +58,7 @@ export default [
     rules: {
       'noctcore-nestjs/queue-add-requires-dedup-key': ['error', { queuePattern: 'queue' }],
       'noctcore-nestjs/job-name-must-be-constant': ['error', { decorators: ['Processor', 'InjectQueue'] }],
+      'noctcore-nestjs/job-options-must-set-attempts': ['error', { requireBackoff: true }],
     },
   },
 ];
@@ -69,6 +74,7 @@ export default [
 | Rule | Description | Preset | ⚙️ | 🔧 | 💡 | 💭 |
 | --- | --- | :-: | :-: | :-: | :-: | :-: |
 | [`job-name-must-be-constant`](https://noctcore.github.io/eslint-plugins/rules/nestjs/job-name-must-be-constant/) | Require queue and job names passed to `@Processor(...)`, `@InjectQueue(...)` and `<queue>.add(...)` to be shared constants, not inline string literals. | 🔘 |  |  |  |  |
+| [`job-options-must-set-attempts`](https://noctcore.github.io/eslint-plugins/rules/nestjs/job-options-must-set-attempts/) | Require every BullMQ `.add` / `.addBulk` job to state `attempts`, and a `backoff` when it retries, in its options or its queue's `defaultJobOptions`. | 🔘 |  |  |  |  |
 | [`queue-add-requires-dedup-key`](https://noctcore.github.io/eslint-plugins/rules/nestjs/queue-add-requires-dedup-key/) | Require every BullMQ `.add` / `.addBulk` job to carry a `jobId` or `deduplication` in literal options, so a producer retry cannot enqueue the same work twice. | 🔘 |  |  |  |  |
 | [`schedule-states-time-zone`](https://noctcore.github.io/eslint-plugins/rules/nestjs/schedule-states-time-zone/) | Require a `@Cron` to state `timeZone` (or `utcOffset`) and a BullMQ cron schedule to state `tz`, so it does not run in whatever zone the host has. | ✅ |  |  |  |  |
 | [`worker-must-implement-close`](https://noctcore.github.io/eslint-plugins/rules/nestjs/worker-must-implement-close/) | Require a class that creates a BullMQ `Worker` in a field to call `.close()` on it in a shutdown method such as `onModuleDestroy`, so in-flight jobs are not abandoned. | ✅ |  |  |  |  |

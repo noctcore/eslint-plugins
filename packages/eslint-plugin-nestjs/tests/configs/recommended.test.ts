@@ -12,6 +12,7 @@ function severityOf(entry: unknown): unknown {
 // Every rule that needs options (`meta.docs.requiresOptions`) must be here.
 const OMITTED_FROM_PRESETS: readonly string[] = [
   'job-name-must-be-constant',
+  'job-options-must-set-attempts',
   'queue-add-requires-dedup-key',
 ];
 
