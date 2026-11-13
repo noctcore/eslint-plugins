@@ -11,6 +11,7 @@ function severityOf(entry: unknown): unknown {
 // A new rule must land in the preset or here, so leaving one out is a decision.
 // Every rule that needs options (`meta.docs.requiresOptions`) must be here.
 const OMITTED_FROM_PRESETS: readonly string[] = [
+  'bcrypt-rounds-min',
   'require-path-containment',
   'require-sanitized-html',
   'server-action-through-client',
