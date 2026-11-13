@@ -16,6 +16,9 @@
  *   decision per queue, and defaults set outside the file
  *   (`BullModule.registerQueue`, a shared config) are invisible to it, so a
  *   stranger's repo would see reports on queues that already clean up.
+ * - `redis-client-from-factory`: it needs `factoryFunctions`, the name of the
+ *   project's Redis options factory, which is a per-project fact, so it does
+ *   nothing until configured and a preset cannot supply it.
  *
  * The worker rules are in: a worker nobody listens to or nobody closes is a
  * defect in any repo, and they need no options.
