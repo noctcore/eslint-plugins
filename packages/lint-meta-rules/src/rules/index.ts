@@ -14,6 +14,7 @@ import { createGithubActionsPathsFilterPermissionsRule } from './github-actions-
 import { createGithubActionsPipInstallPinnedRule } from './github-actions-pip-install-pinned';
 import { createGithubActionsRunnerPinnedRule } from './github-actions-runner-pinned';
 import { createGithubActionsSecurityNoCancelRule } from './github-actions-security-no-cancel';
+import { createGithubActionsSelfHostedForkGuardRule } from './github-actions-self-hosted-fork-guard';
 import { createGithubActionsShaPinnedRule } from './github-actions-sha-pinned';
 import { createGithubActionsTimeoutRequiredRule } from './github-actions-timeout-required';
 import { createLayerRankRule } from './layer-rank';
@@ -61,6 +62,8 @@ export { createGithubActionsRunnerPinnedRule } from './github-actions-runner-pin
 export type { GithubActionsRunnerPinnedOptions } from './github-actions-runner-pinned';
 export { createGithubActionsSecurityNoCancelRule } from './github-actions-security-no-cancel';
 export type { GithubActionsSecurityNoCancelOptions } from './github-actions-security-no-cancel';
+export { createGithubActionsSelfHostedForkGuardRule } from './github-actions-self-hosted-fork-guard';
+export type { GithubActionsSelfHostedForkGuardOptions } from './github-actions-self-hosted-fork-guard';
 export { createGithubActionsShaPinnedRule } from './github-actions-sha-pinned';
 export type { GithubActionsShaPinnedOptions } from './github-actions-sha-pinned';
 export { createGithubActionsTimeoutRequiredRule } from './github-actions-timeout-required';
@@ -127,6 +130,7 @@ export const RULE_FACTORIES = {
   'github-actions-pip-install-pinned': createGithubActionsPipInstallPinnedRule,
   'github-actions-runner-pinned': createGithubActionsRunnerPinnedRule,
   'github-actions-security-no-cancel': createGithubActionsSecurityNoCancelRule,
+  'github-actions-self-hosted-fork-guard': createGithubActionsSelfHostedForkGuardRule,
   'github-actions-sha-pinned': createGithubActionsShaPinnedRule,
   'github-actions-timeout-required': createGithubActionsTimeoutRequiredRule,
   'layer-rank': createLayerRankRule,

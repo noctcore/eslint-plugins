@@ -41,6 +41,46 @@ describe('CI rules on a real tree with a dot-directory', () => {
   );
 
   test(
+    'github-actions-self-hosted-fork-guard reaches .github/workflows',
+    () => {
+      const job = '    runs-on: self-hosted\n';
+      const run = runLintMetaOnRealTree(
+        {
+          '.github/workflows/ci.yml': `name: ci\non: pull_request\njobs:\n  build:\n${job}`,
+          '.github/workflows/push.yml': `name: push\non: push\njobs:\n  build:\n${job}`,
+        },
+        'createGithubActionsSelfHostedForkGuardRule',
+      );
+
+      expect(run.stdout).toContain('github-actions-self-hosted-fork-guard');
+      expect(run.violations).toHaveLength(1);
+      expect(run.violations[0]).toContain('(.github/workflows/ci.yml)');
+      expect(run.violations[0]).toContain('line 5:');
+      expect(run.code).toBe(1);
+    },
+    TIMEOUT_MS,
+  );
+
+  test(
+    'github-actions-self-hosted-fork-guard takes selfHostedExpressions through the harness',
+    () => {
+      const run = runLintMetaOnRealTree(
+        {
+          '.github/workflows/ci.yml':
+            'name: ci\non: pull_request\njobs:\n  build:\n    runs-on: ${{ vars.CI_RUNNER }}\n',
+        },
+        'createGithubActionsSelfHostedForkGuardRule',
+        { selfHostedExpressions: ['vars.CI_RUNNER'] },
+      );
+
+      expect(run.violations).toHaveLength(1);
+      expect(run.violations[0]).toContain('vars.CI_RUNNER');
+      expect(run.code).toBe(1);
+    },
+    TIMEOUT_MS,
+  );
+
+  test(
     'github-actions-runner-pinned reaches .github/workflows',
     () => {
       const run = runLintMetaOnRealTree(

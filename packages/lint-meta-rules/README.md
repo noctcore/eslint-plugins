@@ -19,9 +19,10 @@ Not a good fit if you are not running the harness.
 - **testing**: every tested package is enrolled in the aggregate test script, and test runners are
   not mixed within a package.
 - **ci**: GitHub Actions pinned by SHA and to named runners, no template injection, least-privilege
-  permissions, jobs running a paths-filter action granted `pull-requests: read`, pip installs pinned
-  to exact versions (reported, not failing, by default), container images pinned by digest, and the
-  secret scanner pinned to one version.
+  permissions, a fork guard on self-hosted runners in `pull_request` workflows, jobs running a
+  paths-filter action granted `pull-requests: read`, pip installs pinned to exact versions (reported,
+  not failing, by default), container images pinned by digest, and the secret scanner pinned to one
+  version.
 
 Every check is listed in [Rules](#rules), with a page per rule.
 
@@ -69,7 +70,7 @@ over the whole catalog.
 
 ## Rules
 
-The main entry exports 32 factories. `createFileSizeRatchetRule` covers any number of capped areas:
+The main entry exports 33 factories. `createFileSizeRatchetRule` covers any number of capped areas:
 create one instance per area, each with its own `id`.
 
 <!-- begin generated rules -->
