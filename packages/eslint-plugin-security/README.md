@@ -46,7 +46,7 @@ export default [
 
 ## Opt-in rules
 
-Three rules are exported but left out of `recommended`. Enable them with your own options:
+Four rules are exported but left out of `recommended`. Enable them, with your own options where a rule needs them:
 
 ```js
 // eslint.config.js
@@ -56,6 +56,8 @@ export default [
     files: ['**/*.{ts,tsx}'],
     languageOptions: { parser: tsParser },
     rules: {
+      // Opt-in only because a rule entering `recommended` is a major in 1.x; raise minRounds to your policy.
+      'noctcore-security/bcrypt-rounds-min': ['error', { minRounds: 12 }],
       // High false-positive rate; enable where request objects reach the filesystem.
       'noctcore-security/require-path-containment': ['error', { requestObjects: ['req', 'ctx'] }],
       // Name the HTML producers you trust.
