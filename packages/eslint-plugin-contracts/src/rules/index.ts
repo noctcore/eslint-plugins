@@ -9,6 +9,7 @@ import { requireRegisteredKeysRule } from './require-registered-keys';
 import { requireSchemaParseAtBoundaryRule } from './require-schema-parse-at-boundary';
 import { restrictThrowToTaxonomyRule } from './restrict-throw-to-taxonomy';
 import { routeHandlerOrderRule } from './route-handler-order';
+import { routeParamsValidatedRule } from './route-params-validated';
 import { schemaEnumFieldConsistencyRule } from './schema-enum-field-consistency';
 import { translationKeyExistsRule } from './translation-key-exists';
 import { wireMessageNamingRule } from './wire-message-naming';
@@ -33,4 +34,5 @@ export const rules = {
   'zod-field-describe': zodFieldDescribeRule,
   'route-handler-order': routeHandlerOrderRule,
   'describe-auth-matches-middleware': describeAuthMatchesMiddlewareRule,
+  'route-params-validated': routeParamsValidatedRule,
 };
