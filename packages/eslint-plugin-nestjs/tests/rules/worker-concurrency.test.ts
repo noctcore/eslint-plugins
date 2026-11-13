@@ -60,6 +60,11 @@ ruleTester.run('worker-concurrency', workerConcurrencyRule, {
       code: `@Processor({ name: QUEUE, concurrency: 0 }) class P extends WorkerHost {}`,
     },
     {
+      name: 'Processor object first argument with requireExplicit',
+      code: `@Processor({ name: QUEUE, concurrency: 4 }) class P extends WorkerHost {}`,
+      options: EXPLICIT,
+    },
+    {
       name: 'other decorator',
       code: `class S { constructor(@InjectQueue(Q, { concurrency: 0 }) private queue: Queue) {} }`,
     },
