@@ -1,10 +1,12 @@
 import { ASTUtils, AST_NODE_TYPES, type TSESLint, type TSESTree } from '@typescript-eslint/utils';
 
+import { directProperty, isUndefined } from './queue';
+
 /** The module the worker rules recognise imports from. */
 export const BULLMQ_MODULE = 'bullmq';
 
 /** The BullMQ classes the rules can ask about. */
-export type BullmqClass = 'Worker' | 'Queue' | 'QueueEvents';
+export type BullmqClass = 'Worker' | 'Queue' | 'QueueEvents' | 'FlowProducer';
 
 export type ClassNode = TSESTree.ClassDeclaration | TSESTree.ClassExpression;
 
@@ -429,4 +431,101 @@ export function workerBinding(top: TSESTree.Node, resolver: BindingResolver): Wo
     if (refs.length === 0) return { kind };
     return kind === 'escapes' ? { kind } : bound();
   }
+}
+
+/**
+ * Every key a binding can be stored under in this file: its own key and, for a
+ * `this` binding, the same member path on each base class this file declares,
+ * so `this.queue` read in a subclass finds the field its base assigns.
+ */
+export function bindingKeys(
+  ref: BindingRef,
+  resolver: BindingResolver,
+  sourceCode: Readonly<TSESLint.SourceCode>,
+): string[] {
+  const keys = [ref.key];
+  if (ref.owner === undefined) return keys;
+  for (const owner of classChain(ref.owner, sourceCode).classes) {
+    const key = resolver.keyIn(ref, owner);
+    if (key !== null && !keys.includes(key)) keys.push(key);
+  }
+  return keys;
+}
+
+/**
+ * The `defaultJobOptions` a queue is constructed with: `known` with the
+ * object literal, or with null when the queue states none, and `unknown` when
+ * the options are built in a way the rule cannot read.
+ */
+export type QueueDefaults =
+  | { readonly kind: 'known'; readonly options: TSESTree.ObjectExpression | null }
+  | { readonly kind: 'unknown' };
+
+const UNKNOWN_DEFAULTS: QueueDefaults = { kind: 'unknown' };
+const NO_DEFAULTS: QueueDefaults = { kind: 'known', options: null };
+
+/**
+ * Reads `defaultJobOptions` off `new Queue(name, options)`. Only an options
+ * object literal is read; a spread argument, options passed by name, a spread
+ * in the options that may carry the key, and a `defaultJobOptions` value that
+ * is not an object literal all give `unknown`.
+ */
+export function queueDefaultJobOptions(node: TSESTree.NewExpression): QueueDefaults {
+  if (node.arguments.some((argument) => argument.type === AST_NODE_TYPES.SpreadElement)) {
+    return UNKNOWN_DEFAULTS;
+  }
+  const second = node.arguments[1];
+  if (second === undefined) return NO_DEFAULTS;
+  const options = stripTypeWrappers(second);
+  if (options.type !== AST_NODE_TYPES.ObjectExpression) return UNKNOWN_DEFAULTS;
+  const property = directProperty(options, 'defaultJobOptions');
+  if (property === undefined) {
+    const spread = options.properties.some((member) => member.type === AST_NODE_TYPES.SpreadElement);
+    return spread ? UNKNOWN_DEFAULTS : NO_DEFAULTS;
+  }
+  if (property.shorthand) return UNKNOWN_DEFAULTS;
+  const value = stripTypeWrappers(property.value);
+  if (value.type === AST_NODE_TYPES.ObjectExpression) return { kind: 'known', options: value };
+  return isUndefined(value) ? NO_DEFAULTS : UNKNOWN_DEFAULTS;
+}
+
+/** The bullmq queues a file constructs, keyed by the bindings they are stored in. */
+export interface QueueDefaultsIndex {
+  /** Records `node` when it is a bullmq `new Queue(...)` stored in a binding; anything else is ignored. */
+  record(node: TSESTree.NewExpression): void;
+  /**
+   * The defaults of the queue `receiver` reads, or null when no recorded queue
+   * is stored in that binding. A binding two queues are stored in gives
+   * `unknown`. Only meaningful once the whole file has been visited, since a
+   * queue may be constructed after the code that uses it.
+   */
+  lookup(receiver: TSESTree.Node): QueueDefaults | null;
+}
+
+export function createQueueDefaultsIndex(
+  sourceCode: Readonly<TSESLint.SourceCode>,
+  resolver: BindingResolver,
+): QueueDefaultsIndex {
+  const byKey = new Map<string, QueueDefaults>();
+
+  return {
+    record(node): void {
+      if (!isBullmqNew(node, 'Queue', sourceCode.getScope(node))) return;
+      const binding = workerBinding(listenerChain(node).top, resolver);
+      if (binding.kind !== 'bound') return;
+      const defaults = queueDefaultJobOptions(node);
+      for (const ref of binding.refs) {
+        byKey.set(ref.key, byKey.has(ref.key) ? UNKNOWN_DEFAULTS : defaults);
+      }
+    },
+    lookup(receiver): QueueDefaults | null {
+      const ref = resolver.ref(receiver);
+      if (ref === null) return null;
+      for (const key of bindingKeys(ref, resolver, sourceCode)) {
+        const defaults = byKey.get(key);
+        if (defaults !== undefined) return defaults;
+      }
+      return null;
+    },
+  };
 }
