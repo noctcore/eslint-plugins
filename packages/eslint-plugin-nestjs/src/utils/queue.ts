@@ -1,3 +1,4 @@
+import { forEachDescendant, type VisitorKeys } from '@noctcore/eslint-utils';
 import { AST_NODE_TYPES, type TSESTree } from '@typescript-eslint/utils';
 
 /** Default receiver pattern: `this.queue`, `emailQueue`, `this.billingQueue`. */
@@ -72,6 +73,25 @@ export function directProperty(
     (member): member is TSESTree.Property =>
       member.type === AST_NODE_TYPES.Property && propertyName(member) === name,
   );
+}
+
+/** The job objects of an `addBulk` argument: the object literals holding `data`. */
+export function bulkJobs(
+  argument: TSESTree.Node,
+  visitorKeys: VisitorKeys,
+): TSESTree.ObjectExpression[] {
+  const jobs: TSESTree.ObjectExpression[] = [];
+  forEachDescendant(argument, visitorKeys, (node) => {
+    if (
+      node.type === AST_NODE_TYPES.ObjectExpression &&
+      node.properties.some(
+        (property) => property.type === AST_NODE_TYPES.Property && propertyName(property) === 'data',
+      )
+    ) {
+      jobs.push(node);
+    }
+  });
+  return jobs;
 }
 
 /** True for the identifier `undefined`. */

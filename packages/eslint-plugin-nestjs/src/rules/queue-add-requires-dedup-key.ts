@@ -1,8 +1,8 @@
-import { forEachDescendant, type VisitorKeys } from '@noctcore/eslint-utils';
 import { AST_NODE_TYPES, type TSESTree } from '@typescript-eslint/utils';
 
 import { createRule } from '../createRule';
 import {
+  bulkJobs,
   isUndefined,
   propertyName,
   queueMethod,
@@ -55,25 +55,6 @@ function carriesDedupKey(options: TSESTree.ObjectExpression): boolean {
     }
     return branches.some((branch) => branchObject(branch)?.properties.some(isDedupKey) ?? false);
   });
-}
-
-/** The job objects of an `addBulk` argument: the object literals holding `data`. */
-function bulkJobs(
-  argument: TSESTree.Node,
-  visitorKeys: VisitorKeys,
-): TSESTree.ObjectExpression[] {
-  const jobs: TSESTree.ObjectExpression[] = [];
-  forEachDescendant(argument, visitorKeys, (node) => {
-    if (
-      node.type === AST_NODE_TYPES.ObjectExpression &&
-      node.properties.some(
-        (property) => property.type === AST_NODE_TYPES.Property && propertyName(property) === 'data',
-      )
-    ) {
-      jobs.push(node);
-    }
-  });
-  return jobs;
 }
 
 /*
