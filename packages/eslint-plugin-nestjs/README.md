@@ -40,14 +40,17 @@ export default [
 
 ## Opt-in rules
 
-`recommended` leaves out the two queue conventions and the two queue-option rules: each is a team
-decision before it is a defect, and a repo that has not made it would see every `queue.add`
-reported. The conventions ask for a dedup key on every job and for shared queue and job names. The
-option rules, `job-options-must-set-attempts` and `queue-options-must-set-retention`, ask every job
-to state `attempts` (and a `backoff` when it retries), and `removeOnComplete` and `removeOnFail` (a
-literal `false` included), in its options or in its queue's `defaultJobOptions` in the same file,
-so they suit repos that construct their queues next to the code that fills them. Turn them on once
-producers and workers agree on keys, names, retries and retention:
+`recommended` leaves out the two queue conventions, the two queue-option rules and the worker
+concurrency rule: each is a team decision before it is a defect, and a repo that has not made it
+would see every `queue.add` reported. The conventions ask for a dedup key on every job and for
+shared queue and job names. The option rules, `job-options-must-set-attempts` and
+`queue-options-must-set-retention`, ask every job to state `attempts` (and a `backoff` when it
+retries), and `removeOnComplete` and `removeOnFail` (a literal `false` included), in its options or
+in its queue's `defaultJobOptions` in the same file, so they suit repos that construct their queues
+next to the code that fills them. The worker rule, `worker-concurrency`, reports a literal
+`concurrency` of 0 or below or a fraction on a `new Worker` imported from `bullmq` and on
+`@Processor(queue, options)`, and with `requireExplicit` a worker that does not state it. Turn them
+on once producers and workers agree on keys, names, retries, retention and concurrency:
 
 ```js
 // eslint.config.js
@@ -61,6 +64,7 @@ export default [
       'noctcore-nestjs/job-name-must-be-constant': ['error', { decorators: ['Processor', 'InjectQueue'] }],
       'noctcore-nestjs/job-options-must-set-attempts': ['error', { requireBackoff: true }],
       'noctcore-nestjs/queue-options-must-set-retention': ['error', { require: ['removeOnComplete', 'removeOnFail'] }],
+      'noctcore-nestjs/worker-concurrency': ['error', { requireExplicit: true }],
     },
   },
 ];
