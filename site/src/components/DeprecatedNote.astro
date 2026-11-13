@@ -1,6 +1,6 @@
 ---
 /**
- * The mark a deprecated rule gets in a rule table: a pill, and the rules to
+ * The mark a deprecated rule gets in a rule table: a chip, and the rules to
  * use instead when its `meta` names any. Renders nothing for a live rule.
  */
 import { href, replacementsOf, type CatalogRule } from '../lib/catalog';
@@ -16,7 +16,7 @@ const replacements = rule.deprecated ? replacementsOf(rule) : [];
 {
   rule.deprecated && (
     <span class="deprecated-note">
-      <span class="pill pill-deprecated">deprecated</span>
+      <span class="chip chip-deprecated">deprecated</span>
       {replacements.length > 0 && (
         <>
           {' '}use{' '}

@@ -1,0 +1,139 @@
+/* The inspection-sheet token layer. Cool blue-tinted neutrals, error red as
+   the only loud colour, dark ink code panels in both themes.
+
+   Every colour is an oklch() literal, so scripts/theme.test.ts can compute
+   each declared text and background pair's WCAG contrast from the values
+   themselves. Light is :root, dark is :root[data-theme='dark']: Starlight's
+   inline theme script always sets data-theme to light or dark before paint,
+   so no prefers-color-scheme block is needed here. Load first in customCss. */
+
+@import '@fontsource-variable/martian-mono/standard.css';
+@import '@fontsource-variable/schibsted-grotesk/index.css';
+@import '@fontsource-variable/schibsted-grotesk/wght-italic.css';
+@import '@fontsource-variable/jetbrains-mono/index.css';
+
+:root,
+::backdrop {
+  --sheet-bg: oklch(98.4% 0.004 262);
+  --sheet-bg-2: oklch(96.2% 0.007 262);
+  --sheet-bg-3: oklch(93.6% 0.01 262);
+  --sheet-line: oklch(89.5% 0.011 262);
+  --sheet-line-2: oklch(81% 0.015 262);
+  --sheet-field-line: oklch(64% 0.02 262);
+  --sheet-ink: oklch(23% 0.035 266);
+  --sheet-ink-2: oklch(41% 0.028 266);
+  --sheet-ink-3: oklch(50% 0.022 266);
+  --sheet-signal: oklch(55% 0.215 27);
+  --sheet-signal-ink: oklch(48% 0.19 27);
+  --sheet-signal-wash: oklch(95.2% 0.028 27);
+  --sheet-signal-fill: oklch(51% 0.205 27);
+  --sheet-on-signal: oklch(99% 0.006 27);
+  --sheet-pass: oklch(46% 0.085 186);
+  --sheet-pass-wash: oklch(95.4% 0.022 186);
+  --sheet-code-bg: oklch(23.5% 0.034 266);
+  --sheet-code-bg-2: oklch(27.5% 0.036 266);
+  --sheet-code-line: oklch(33% 0.035 266);
+  --sheet-code-fg: oklch(91% 0.012 262);
+  --sheet-code-dim: oklch(66% 0.022 262);
+  --sheet-code-kw: oklch(79% 0.095 286);
+  --sheet-code-str: oklch(84% 0.095 152);
+  --sheet-code-num: oklch(84% 0.105 72);
+  --sheet-code-fn: oklch(84% 0.075 228);
+  --sheet-code-squiggle: oklch(70% 0.19 27);
+  --sheet-scrim: oklch(23% 0.035 266 / 0.42);
+  --sheet-shadow: 0 1px 0 oklch(23% 0.035 266 / 0.04), 0 12px 40px -12px oklch(23% 0.035 266 / 0.22);
+  --sheet-focus: oklch(52% 0.2 266);
+
+  --sheet-font-display: 'Martian Mono Variable', 'Martian Mono', ui-monospace, 'SF Mono', Menlo, Consolas, monospace;
+  --sheet-font-ui: 'Schibsted Grotesk Variable', 'Schibsted Grotesk', ui-sans-serif, system-ui, -apple-system, 'Segoe UI', sans-serif;
+  --sheet-font-code: 'JetBrains Mono Variable', 'JetBrains Mono', ui-monospace, 'SF Mono', Menlo, Consolas, monospace;
+  --sheet-radius: 6px;
+
+  color-scheme: light;
+}
+
+:root[data-theme='dark'],
+[data-theme='dark'] ::backdrop {
+  --sheet-bg: oklch(18.6% 0.026 266);
+  --sheet-bg-2: oklch(21.4% 0.029 266);
+  --sheet-bg-3: oklch(25% 0.032 266);
+  --sheet-line: oklch(29.5% 0.03 266);
+  --sheet-line-2: oklch(38% 0.032 266);
+  --sheet-field-line: oklch(56% 0.03 266);
+  --sheet-ink: oklch(94.5% 0.01 262);
+  --sheet-ink-2: oklch(80% 0.02 262);
+  --sheet-ink-3: oklch(70% 0.022 262);
+  --sheet-signal: oklch(68% 0.18 27);
+  --sheet-signal-ink: oklch(76% 0.14 27);
+  --sheet-signal-wash: oklch(27% 0.06 27);
+  --sheet-signal-fill: oklch(69% 0.175 27);
+  --sheet-on-signal: oklch(17% 0.03 266);
+  --sheet-pass: oklch(78% 0.095 186);
+  --sheet-pass-wash: oklch(26% 0.04 186);
+  --sheet-code-bg: oklch(14.8% 0.022 266);
+  --sheet-code-bg-2: oklch(18% 0.025 266);
+  --sheet-code-line: oklch(26% 0.03 266);
+  --sheet-scrim: oklch(8% 0.02 266 / 0.6);
+  --sheet-shadow: 0 1px 0 oklch(0% 0 0 / 0.2), 0 16px 48px -12px oklch(0% 0 0 / 0.6);
+  --sheet-focus: oklch(76% 0.13 266);
+
+  color-scheme: dark;
+}
+
+/* Starlight's own variables, mapped onto the tokens once. Starlight keeps its
+   defaults in cascade layers and customCss is unlayered, so these win, and
+   both themes follow from the token flip above. Starlight names its grey ramp
+   for dark mode: white is the strongest ink, black the page. */
+:root,
+::backdrop {
+  --sl-font: var(--sheet-font-ui);
+  --sl-font-mono: var(--sheet-font-code);
+
+  --sl-color-white: var(--sheet-ink);
+  --sl-color-gray-1: var(--sheet-ink);
+  --sl-color-gray-2: var(--sheet-ink-2);
+  --sl-color-gray-3: var(--sheet-ink-3);
+  --sl-color-gray-4: var(--sheet-field-line);
+  --sl-color-gray-5: var(--sheet-line);
+  --sl-color-gray-6: var(--sheet-bg-2);
+  --sl-color-gray-7: var(--sheet-bg-2);
+  --sl-color-black: var(--sheet-bg);
+
+  --sl-color-accent-low: var(--sheet-signal-wash);
+  --sl-color-accent: var(--sheet-signal);
+  --sl-color-accent-high: var(--sheet-signal-ink);
+
+  --sl-color-text: var(--sheet-ink-2);
+  --sl-color-text-accent: var(--sheet-signal-ink);
+  --sl-color-text-invert: var(--sheet-on-signal);
+  --sl-color-bg: var(--sheet-bg);
+  --sl-color-bg-nav: var(--sheet-bg);
+  --sl-color-bg-sidebar: var(--sheet-bg);
+  --sl-color-bg-inline-code: var(--sheet-bg-3);
+  --sl-color-bg-accent: var(--sheet-signal-fill);
+  --sl-color-hairline-light: var(--sheet-line);
+  --sl-color-hairline: var(--sheet-line);
+  --sl-color-hairline-shade: var(--sheet-line);
+  --sl-color-backdrop-overlay: var(--sheet-scrim);
+
+  /* Asides: notes and tips stay neutral, a caution or danger takes the signal. */
+  --sl-color-blue-low: var(--sheet-bg-2);
+  --sl-color-blue: var(--sheet-line-2);
+  --sl-color-blue-high: var(--sheet-ink);
+  --sl-color-purple-low: var(--sheet-bg-2);
+  --sl-color-purple: var(--sheet-line-2);
+  --sl-color-purple-high: var(--sheet-ink);
+  --sl-color-green-low: var(--sheet-pass-wash);
+  --sl-color-green: var(--sheet-pass);
+  --sl-color-green-high: var(--sheet-pass);
+  --sl-color-orange-low: var(--sheet-signal-wash);
+  --sl-color-orange: var(--sheet-signal);
+  --sl-color-orange-high: var(--sheet-signal-ink);
+  --sl-color-red-low: var(--sheet-signal-wash);
+  --sl-color-red: var(--sheet-signal);
+  --sl-color-red-high: var(--sheet-signal-ink);
+
+  --sl-shadow-sm: none;
+  --sl-shadow-md: none;
+  --sl-shadow-lg: var(--sheet-shadow);
+}

@@ -1,14 +1,19 @@
 /**
- * The header a rule page gets from sync.ts: the doc's summary as the lead
- * paragraph, then the facts strip. Same cells in the same order on every page,
- * a badge where a value is a state, plain text for a yes or no, and `is-no` on
- * a negative. Proven on fixtures so every branch is covered, then on the real
+ * A rule page's header: the doc's summary as the lead paragraph (sync.ts),
+ * and the facts panel the page's components render beside it
+ * (src/lib/facts.ts). Same cells in the same order on every page, a chip
+ * where a value is a state, plain text for a yes or no, and `is-no` on a
+ * negative. Proven on fixtures so every branch is covered, then on the real
  * inventory so no rule falls outside them.
  */
 import { describe, expect, test } from 'bun:test';
+import { readFileSync } from 'node:fs';
+import { join } from 'node:path';
 
-import { SITE_BASE, loadInventory, type PackageEntry, type RuleEntry } from './inventory';
-import { factsStrip, renderRuleDoc } from './sync';
+import { factsPanel } from '../src/lib/facts';
+import { HERO } from '../src/lib/stacks';
+import { REPO_ROOT, SITE_BASE, loadInventory, type PackageEntry, type RuleEntry } from './inventory';
+import { heroExample, renderRuleDoc } from './sync';
 
 const inventory = await loadInventory('src');
 
@@ -44,58 +49,67 @@ const plugin: PackageEntry = {
   rules: [],
 };
 
-/** The strip as `label: value` pairs, with ` (no)` after a quiet value. */
+/** The panel's cells as `label: value` pairs, with ` (no)` after a quiet value. */
 function cells(html: string): string[] {
   return [...html.matchAll(/<div><dt>([^<]+)<\/dt><dd( class="is-no")?>(.*?)<\/dd><\/div>/g)].map(
     ([, label, quiet, value]) => `${label}: ${value}${quiet ? ' (no)' : ''}`,
   );
 }
 
-describe('facts strip', () => {
-  test('a rule on in the preset, with nothing else set', () => {
-    expect(cells(factsStrip(plugin, rule()))).toEqual([
-      `Package: <a href="${SITE_BASE}/packages/fixture/"><code>fixture</code></a><wbr><span class="nc-facts-note">v1.2.3</span>`,
-      'Recommended preset: <span class="nc-badge nc-badge--on">error</span>',
+const panel = (pkg: PackageEntry, entry: RuleEntry) => factsPanel(pkg, entry, SITE_BASE);
+
+describe('facts panel', () => {
+  test('a rule on in the recommended preset, with nothing else set', () => {
+    expect(cells(panel(plugin, rule()))).toEqual([
+      `Package: <a href="${SITE_BASE}/packages/fixture/">fixture</a> <span class="facts-note">v1.2.3</span>`,
+      'Preset: recommended',
+      'Severity: <span class="chip chip-error">error</span>',
       'Autofix: No (no)',
       'Suggestions: No (no)',
       'Options: None (no)',
-      'Type information: Not needed (no)',
+      'Type info: Not needed (no)',
     ]);
   });
 
   test('an opt-in rule with every capability', () => {
-    const html = factsStrip(
+    const html = panel(
       plugin,
       rule({ recommended: 'off', fixable: true, hasSuggestions: true, requiresOptions: true, hasOptions: true, typeInfo: 'required' }),
     );
     expect(cells(html).slice(1)).toEqual([
-      'Recommended preset: <span class="nc-badge nc-badge--off">off</span><span class="nc-optin">opt-in</span>',
-      'Autofix: Yes',
+      'Preset: none <span class="chip chip-opt">opt-in</span> (no)',
+      'Severity: <span class="chip chip-off">off</span>',
+      'Autofix: <code>--fix</code>',
       'Suggestions: Yes',
-      'Options: <span class="nc-badge nc-badge--options">Required</span>',
-      'Type information: <span class="nc-badge nc-badge--types">required</span>',
+      'Options: <span class="chip chip-options">Required</span>',
+      'Type info: <span class="chip chip-types">required</span>',
     ]);
   });
 
   test('a rule left out of the preset, with optional options and optional types', () => {
-    const html = factsStrip(plugin, rule({ recommended: null, hasOptions: true, typeInfo: 'optional' }));
-    expect(cells(html)).toContain(
-      'Recommended preset: <span class="nc-badge nc-badge--out">not listed</span><span class="nc-optin">opt-in</span>',
-    );
+    const html = panel(plugin, rule({ recommended: null, hasOptions: true, typeInfo: 'optional' }));
+    expect(cells(html)).toContain('Preset: none <span class="chip chip-opt">opt-in</span> (no)');
+    expect(cells(html)).toContain('Severity: <span class="chip chip-off">off</span>');
     expect(cells(html)).toContain('Options: Optional');
-    expect(cells(html)).toContain('Type information: <span class="nc-badge nc-badge--types">optional</span>');
+    expect(cells(html)).toContain('Type info: <span class="chip chip-types">optional</span>');
   });
 
   test('a house rule on only in the strict preset', () => {
-    const html = factsStrip(plugin, rule({ recommended: null, strict: 'error' }));
-    expect(cells(html)).toContain(
-      'Recommended preset: <span class="nc-badge nc-badge--out">not listed</span> <span class="nc-badge nc-badge--strict">on in strict</span>',
-    );
+    const html = panel(plugin, rule({ recommended: null, strict: 'error' }));
+    expect(cells(html)).toContain('Preset: strict');
+    expect(cells(html)).toContain('Severity: <span class="chip chip-error">error</span>');
+  });
+
+  test('the rule id is shown and copyable', () => {
+    const html = panel(plugin, rule());
+    expect(html).toContain('<span class="rule-id-label">Rule id</span>');
+    expect(html).toContain('data-copy-text="noctcore-fixture/some-rule" aria-label="Copy rule id"');
+    expect(html).toContain('<code>noctcore-fixture/some-rule</code>');
   });
 
   test('a lint-meta rule gets the harness cells', () => {
     const lintMeta: PackageEntry = { ...plugin, short: 'lint-meta-rules', kind: 'lint-meta', namespace: null };
-    const html = factsStrip(
+    const html = panel(
       lintMeta,
       rule({ factory: 'createThingRule', entry: '@noctcore/lint-meta-rules/i18n', category: 'source-text', ciCritical: false }),
     );
@@ -110,27 +124,71 @@ describe('facts strip', () => {
     expect(cells(html)).toContain('Fails CI by default: No (no)');
   });
 
-  test('every real rule gets a complete strip', () => {
+  test('every real rule gets a complete panel', () => {
     for (const pkg of inventory) {
       for (const entry of pkg.rules) {
-        const html = factsStrip(pkg, entry);
-        expect(html.startsWith('<dl class="nc-facts">')).toBe(true);
-        expect(cells(html)).toHaveLength(entry.deprecated ? 7 : 6);
+        const html = panel(pkg, entry);
+        expect(html.startsWith('<div class="rule-facts">')).toBe(true);
+        expect(html).toContain(`data-copy-text="${entry.id}"`);
+        const expected = (pkg.kind === 'lint-meta' ? 6 : 7) + (entry.deprecated ? 1 : 0);
+        expect(cells(html)).toHaveLength(expected);
       }
     }
   });
 });
 
 describe('rule page header', () => {
-  test('the summary becomes the lead, above the facts strip, and the blockquote is gone', () => {
+  test('the summary becomes the lead, the blockquote is gone, and the facts stay out of the body', () => {
     const sections = ['Why', 'What it flags', 'What it does not flag', 'When not to use it'];
     const body = sections.map((section) => `## ${section}\n\nText.\n`).join('\n');
     const doc = `# \`noctcore-fixture/some-rule\`\n\n> Checks \`x\` twice.\n> **Opt-in.**\n\n${body}`;
     const page = renderRuleDoc(doc, '/repo/packages/eslint-plugin-fixture/docs/rules/some-rule.md', plugin, rule());
     const rendered = page.slice(page.indexOf('---\n', 4) + 4);
-    expect(rendered.startsWith('\n<div class="nc-lead">\n\nChecks `x` twice.\n**Opt-in.**\n\n</div>\n\n<dl class="nc-facts">')).toBe(
-      true,
-    );
+    expect(rendered.startsWith('\n<div class="rule-lead">\n\nChecks `x` twice.\n**Opt-in.**\n\n</div>\n\n## Why')).toBe(true);
     expect(rendered).not.toMatch(/^>/m);
+    expect(rendered).not.toContain('rule-facts');
+  });
+});
+
+describe('overview hero example', () => {
+  const doc = [
+    '# `noctcore-fixture/some-rule`',
+    '',
+    '> Checks `x` before **use**.',
+    '',
+    '## What it flags',
+    '',
+    '```ts good',
+    'const ok = res.json();',
+    '```',
+    '',
+    '```ts bad reports=2',
+    '// a leading comment',
+    'export function f() {',
+    '  return res.json();',
+    '}',
+    '',
+    'const second = res.json();',
+    '```',
+  ].join('\n');
+
+  test('the first block of the first Incorrect fence, comments dropped, with the 1-based position', () => {
+    expect(heroExample(doc, 'res.json()')).toEqual({
+      code: 'export function f() {\n  return res.json();\n}',
+      line: 2,
+      column: 10,
+      summary: 'Checks `x` before use.',
+    });
+  });
+
+  test('a doc that loses its example fails instead of drifting', () => {
+    expect(() => heroExample(doc, 'res.text()')).toThrow('no longer contains "res.text()"');
+    expect(() => heroExample(doc.replace('ts bad reports=2', 'ts good'), 'res.json()')).toThrow('no Incorrect');
+  });
+
+  test('the real hero rule still yields its example', () => {
+    const source = readFileSync(join(REPO_ROOT, 'packages', `eslint-plugin-${HERO.short}`, 'docs', 'rules', `${HERO.rule}.md`), 'utf8');
+    const hero = heroExample(source, HERO.highlight);
+    expect(hero.code.split('\n')[hero.line - 1]!.slice(hero.column - 1)).toStartWith(HERO.highlight);
   });
 });

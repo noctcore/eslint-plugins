@@ -1,0 +1,42 @@
+---
+/**
+ * Getting started's "Add / When" table, from src/lib/stacks.ts: the starter
+ * set first, then each stack group's plugins with when to add them. The same
+ * data drives the overview and the rail, so the three cannot disagree.
+ */
+import { codeSpans, href } from '../lib/catalog';
+import { STACK_GROUPS, STARTER, STARTER_WHEN } from '../lib/stacks';
+
+const rows = [
+  { shorts: STARTER.map((p) => p.short), when: STARTER_WHEN },
+  ...STACK_GROUPS.flatMap((group) => group.packages.map(({ short, when }) => ({ shorts: [short], when }))),
+];
+---
+
+<table>
+  <thead>
+    <tr>
+      <th scope="col">Add</th>
+      <th scope="col">When</th>
+    </tr>
+  </thead>
+  <tbody>
+    {
+      rows.map(({ shorts, when }) => (
+        <tr>
+          <td>
+            {shorts.map((short, i) => (
+              <>
+                {i > 0 && ', '}
+                <a href={href(`packages/${short}/`)}>
+                  <code>{short}</code>
+                </a>
+              </>
+            ))}
+          </td>
+          <td>{codeSpans(when).map(({ part, code }) => (code ? <code>{part}</code> : part))}</td>
+        </tr>
+      ))
+    }
+  </tbody>
+</table>

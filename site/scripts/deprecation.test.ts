@@ -9,9 +9,11 @@ import { describe, expect, test } from 'bun:test';
 import { readFileSync } from 'node:fs';
 
 import { deprecatedRulesSection } from '../src/lib/deprecations';
+import { factsPanel } from '../src/lib/facts';
 import { deprecationProblems } from './deprecation';
 import {
   deprecationOf,
+  SITE_BASE,
   listRuleDocs,
   loadInventory,
   ruleUrl,
@@ -174,9 +176,10 @@ describe('rendering a deprecated rule', () => {
         'client. Use [`noctcore-fixture/new-rule`](../../fixture/new-rule/) instead.\n:::',
     );
     expect(page).toContain('  badge:\n    text: Deprecated\n    variant: caution');
-    expect(page).toContain('<div><dt>Status</dt><dd><span class="nc-badge nc-badge--deprecated">deprecated</span></dd></div>');
-    expect(page).not.toContain('nc-optin');
     expect(page).not.toContain('<!-- begin generated rule header -->');
+    const facts = factsPanel(pkg, oldRule, SITE_BASE);
+    expect(facts).toContain('<div><dt>Status</dt><dd><span class="chip chip-deprecated">deprecated</span></dd></div>');
+    expect(facts).not.toContain('chip-opt');
   });
 
   test('a live rule gets no banner and no badge', () => {
@@ -184,7 +187,7 @@ describe('rendering a deprecated rule', () => {
     const page = renderRuleDoc(doc, '/repo/packages/eslint-plugin-fixture/docs/rules/new-rule.md', pkg, newRule);
     expect(page).not.toContain(':::caution');
     expect(page).not.toContain('badge:');
-    expect(page).not.toContain('<dt>Status</dt>');
+    expect(factsPanel(pkg, newRule, SITE_BASE)).not.toContain('<dt>Status</dt>');
   });
 
   test('llms.txt lists deprecated rules with their replacement, and nothing when there are none', () => {

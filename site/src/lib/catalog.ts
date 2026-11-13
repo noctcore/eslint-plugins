@@ -5,6 +5,8 @@
  */
 import catalog from '../generated/catalog.json';
 
+export { codeSpans, importName, plural, presetLabel } from './format';
+
 export type Catalog = typeof catalog;
 export type CatalogPackage = Catalog[number];
 export type CatalogRule = CatalogPackage['rules'][number];
@@ -23,36 +25,8 @@ export function href(route: string): string {
   return `${base}${route.replace(/^\//, '')}`;
 }
 
-/** `code-quality` -> `codeQuality`, the import name the snippets use. */
-export function importName(short: string): string {
-  return short.replace(/-([a-z])/g, (_, c: string) => c.toUpperCase());
-}
-
 export function enabledInPreset(pkg: CatalogPackage): number {
   return pkg.rules.filter((rule) => rule.recommended === 'error').length;
-}
-
-/** `1 rule`, `2 rules`: a count with its noun, singular when the count is one. */
-export function plural(count: number, noun: string): string {
-  return `${count} ${noun}${count === 1 ? '' : 's'}`;
-}
-
-/**
- * Rule descriptions use Markdown code spans. Split on the backtick: odd
- * segments are code. Shared by every table that renders a description.
- */
-export function codeSpans(text: string): { part: string; code: boolean }[] {
-  return text.split('`').map((part, i) => ({ part, code: i % 2 === 1 }));
-}
-
-/** The preset column's state: on in `recommended`, on in `strict` only, registered off, or left out. */
-export function presetLabel(rule: {
-  recommended: string | null;
-  strict?: string | null;
-}): 'error' | 'strict' | 'off' | 'not listed' {
-  if (rule.recommended === 'error') return 'error';
-  if (rule.strict === 'error') return 'strict';
-  return rule.recommended === 'off' ? 'off' : 'not listed';
 }
 
 /**
@@ -64,4 +38,36 @@ export function replacementsOf(rule: CatalogRule): { id: string; route: string |
   const routes = new Map<string, string>();
   for (const pkg of packages) for (const candidate of pkg.rules) routes.set(candidate.id, candidate.route);
   return (rule.replacedBy as readonly string[]).map((id) => ({ id, route: routes.get(id) ?? null }));
+}
+
+/** The rule a Starlight route id (`rules/contracts/fetch-must-check-ok`) renders, or null. */
+export function ruleForRoute(routeId: string): { pkg: CatalogPackage; rule: CatalogRule } | null {
+  const route = `${routeId.replace(/\/$/, '')}/`;
+  for (const pkg of packages) {
+    const rule = pkg.rules.find((candidate) => candidate.route === route);
+    if (rule) return { pkg, rule };
+  }
+  return null;
+}
+
+/** The package a Starlight route id (`packages/contracts`) renders, or null. */
+export function packageForRoute(routeId: string): CatalogPackage | null {
+  const match = /^packages\/([^/]+)\/?$/.exec(routeId);
+  return match ? (packages.find((pkg) => pkg.short === match[1]) ?? null) : null;
+}
+
+/**
+ * The rules before and after one, in catalog order: packages in display
+ * order, rules by name, across package boundaries (llm and rsc have one rule
+ * each, so a pager kept inside a package would give them no link at all).
+ */
+export function ruleNeighbours(routeId: string): {
+  prev: { pkg: CatalogPackage; rule: CatalogRule } | null;
+  next: { pkg: CatalogPackage; rule: CatalogRule } | null;
+} {
+  const order = packages.flatMap((pkg) => pkg.rules.map((rule) => ({ pkg, rule })));
+  const route = `${routeId.replace(/\/$/, '')}/`;
+  const i = order.findIndex(({ rule }) => rule.route === route);
+  if (i === -1) return { prev: null, next: null };
+  return { prev: order[i - 1] ?? null, next: order[i + 1] ?? null };
 }

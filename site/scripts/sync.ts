@@ -25,7 +25,6 @@ import {
   PACKAGES_DIR,
   REPO_ROOT,
   REPO_URL,
-  SITE_BASE,
   listRuleDocs,
   loadInventory,
   ruleRoute,
@@ -33,11 +32,13 @@ import {
   type RuleEntry,
 } from './inventory';
 import { deprecationSentence, stripRuleHeader } from './readmes';
+import { HERO } from '../src/lib/stacks';
 import { checkRuleDocSections } from './structure';
 
 const SITE_DIR = resolve(dirname(fileURLToPath(import.meta.url)), '..');
 const RULES_OUT = join(SITE_DIR, 'src', 'content', 'docs', 'rules');
 const CATALOG_OUT = join(SITE_DIR, 'src', 'generated', 'catalog.json');
+const HERO_OUT = join(SITE_DIR, 'src', 'generated', 'hero.json');
 
 const FENCE = /^(\s*)```(\S*)[ \t]*(.*)$/;
 const VERDICTS = new Set(['bad', 'good', 'prose']);
@@ -145,70 +146,6 @@ function plainText(markdown: string): string {
     .trim();
 }
 
-function escapeHtml(text: string): string {
-  return text.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
-}
-
-/** One cell of the facts strip. `quiet` marks a negative value, so it reads quieter. */
-function fact(label: string, value: string, quiet = false): string {
-  return `  <div><dt>${label}</dt><dd${quiet ? ' class="is-no"' : ''}>${value}</dd></div>`;
-}
-
-const badge = (kind: string, text: string) => `<span class="nc-badge nc-badge--${kind}">${text}</span>`;
-const yesNo = (label: string, yes: boolean) => fact(label, yes ? 'Yes' : 'No', !yes);
-
-function presetFact(rule: RuleEntry): string {
-  if (rule.recommended === 'error') return badge('on', 'error');
-  // Not in `recommended`, but on in the package's `strict` preset (the house rules).
-  if (rule.strict === 'error') return `${badge('out', 'not listed')} ${badge('strict', 'on in strict')}`;
-  const state = rule.recommended === 'off' ? badge('off', 'off') : badge('out', 'not listed');
-  // A deprecated rule is in no preset on purpose; it is not one to turn on.
-  return rule.deprecated ? state : `${state}<span class="nc-optin">opt-in</span>`;
-}
-
-/**
- * The facts strip under a rule's title and summary: the same cells in the same
- * place on every rule page, with a badge where a value is a state and plain
- * text for a yes or no. Markup and classes are the noctcore theme's
- * (`.nc-facts` in src/styles/noctcore/components.css).
- */
-export function factsStrip(pkg: PackageEntry, rule: RuleEntry): string {
-  const packageLink =
-    `<a href="${SITE_BASE}/packages/${pkg.short}/"><code>${pkg.short}</code></a><wbr>` +
-    `<span class="nc-facts-note">v${pkg.version}</span>`;
-  let cells: string[];
-  if (pkg.kind === 'lint-meta') {
-    // A reader who lands here from search has no other route to what runs a
-    // lint-meta rule: not ESLint, the harness. The package page explains it.
-    cells = [
-      fact('Package', packageLink),
-      fact('Runs under', `<code>@noctcore/harness</code> lint-meta, not ESLint`),
-      fact('Factory', `<code>${escapeHtml(rule.factory ?? '')}</code>`),
-      fact('Entry point', `<code>${escapeHtml(rule.entry ?? '')}</code>`),
-      fact('Category', `<code>${escapeHtml(rule.category ?? '')}</code>`),
-      yesNo('Fails CI by default', rule.ciCritical === true),
-    ];
-  } else {
-    const options = rule.requiresOptions
-      ? fact('Options', badge('options', 'Required'))
-      : fact('Options', rule.hasOptions ? 'Optional' : 'None', !rule.hasOptions);
-    const typeInfo =
-      rule.typeInfo === 'none'
-        ? fact('Type information', 'Not needed', true)
-        : fact('Type information', badge('types', rule.typeInfo));
-    cells = [
-      fact('Package', packageLink),
-      fact('Recommended preset', presetFact(rule)),
-      yesNo('Autofix', rule.fixable),
-      yesNo('Suggestions', rule.hasSuggestions),
-      options,
-      typeInfo,
-    ];
-  }
-  if (rule.deprecated) cells.push(fact('Status', badge('deprecated', 'deprecated')));
-  return ['<dl class="nc-facts">', ...cells, '</dl>'].join('\n');
-}
-
 /**
  * The doc's `> summary` blockquote as the page's lead paragraph. The summary is
  * Markdown (code spans, bold), so it stays Markdown inside the wrapper and the
@@ -217,7 +154,7 @@ export function factsStrip(pkg: PackageEntry, rule: RuleEntry): string {
  */
 function lead(quote: readonly string[]): string[] {
   const text = quote.map((line) => line.replace(/^>\s?/, ''));
-  return ['<div class="nc-lead">', '', ...text, '', '</div>'];
+  return ['<div class="rule-lead">', '', ...text, '', '</div>'];
 }
 
 /** A replacement rule's page, relative to a rule page at rules/<short>/<rule>/. */
@@ -233,31 +170,81 @@ function deprecationBanner(rule: RuleEntry): string[] {
 }
 
 /**
- * Render one rule doc as a Starlight page. Throws on a doc out of shape. The
- * doc's generated status header is dropped: the page states the same facts in
- * its own facts strip, and showing both would say everything twice.
+ * The page description: the blockquote summary as plain text, without its
+ * bold status lines (`**Opt-in.**`).
  */
-export function renderRuleDoc(source: string, docPath: string, pkg: PackageEntry, rule: RuleEntry): string {
-  const lines = stripRuleHeader(source.replace(/\r\n/g, '\n')).split('\n');
+export function docSummary(quote: readonly string[]): string {
+  return plainText(summaryMarkdown(quote));
+}
+
+function summaryMarkdown(quote: readonly string[]): string {
+  return quote
+    .map((line) => line.replace(/^>\s?/, ''))
+    .filter((line) => !/^\*\*.*\*\*\.?$/.test(line.trim()))
+    .join(' ');
+}
+
+/** The heading's rule id and the blockquote summary of a rule doc, with the line after the quote. */
+function docHead(lines: readonly string[], docPath: string): { title: string; quote: string[]; end: number } {
   const heading = /^# `([^`]+)`\s*$/.exec(lines[0] ?? '');
   if (!heading) throw new Error(`${docPath}: first line must be "# \`<rule id>\`"`);
-  const title = heading[1]!;
-
-  // The blockquote summary: the first run of `>` lines after the heading.
   let i = 1;
   while (i < lines.length && lines[i]!.trim() === '') i++;
   const quoteStart = i;
   while (i < lines.length && lines[i]!.startsWith('>')) i++;
   if (i === quoteStart) throw new Error(`${docPath}: expected a "> summary" blockquote after the title`);
-  const quote = lines.slice(quoteStart, i);
-  const summary = plainText(
-    quote
-      .map((line) => line.replace(/^>\s?/, ''))
-      .filter((line) => !/^\*\*.*\*\*\.?$/.test(line.trim()))
-      .join(' '),
-  );
+  return { title: heading[1]!, quote: lines.slice(quoteStart, i), end: i };
+}
 
-  const body: string[] = [...lead(quote), ...deprecationBanner(rule), '', factsStrip(pkg, rule)];
+/**
+ * The overview's hero diagnostic, read from a rule doc so it cannot drift from
+ * the rule: the first block of the doc's first Incorrect fence (up to its first
+ * blank line, leading `//` comment lines dropped), where `highlight` first
+ * appears in it (1-based line and column, as ESLint reports them), and the
+ * summary with its code spans kept. Throws when the doc has no Incorrect fence
+ * or the block no longer contains `highlight`, so a doc edit fails the build.
+ */
+export function heroExample(
+  source: string,
+  highlight: string,
+  docPath = 'rule doc',
+): { code: string; line: number; column: number; summary: string } {
+  const lines = stripRuleHeader(source.replace(/\r\n/g, '\n')).split('\n');
+  const { quote, end } = docHead(lines, docPath);
+  const open = lines.findIndex((line, i) => {
+    const fence = i >= end ? FENCE.exec(line) : null;
+    return fence !== null && parseFenceMeta(fence[3] ?? '').verdict === 'bad';
+  });
+  if (open === -1) throw new Error(`${docPath}: no Incorrect (\`bad\`) fence for the hero example`);
+  const block: string[] = [];
+  for (const line of lines.slice(open + 1)) {
+    if (FENCE.test(line) || line.trim() === '') break;
+    block.push(line);
+  }
+  while (block.length > 0 && /^\s*\/\//.test(block[0]!)) block.shift();
+  const row = block.findIndex((line) => line.includes(highlight));
+  if (row === -1) throw new Error(`${docPath}: the first Incorrect block no longer contains "${highlight}"`);
+  const summary = summaryMarkdown(quote)
+    .replace(/\*\*([^*]*)\*\*/g, '$1')
+    .replace(/\[([^\]]*)\]\([^)]*\)/g, '$1')
+    .replace(/\s+/g, ' ')
+    .trim();
+  return { code: block.join('\n'), line: row + 1, column: block[row]!.indexOf(highlight) + 1, summary };
+}
+
+/**
+ * Render one rule doc as a Starlight page. Throws on a doc out of shape. The
+ * doc's generated status header is dropped: the page shows the same facts in
+ * its facts panel (src/lib/facts.ts, rendered by the page's components), and
+ * showing both would say everything twice.
+ */
+export function renderRuleDoc(source: string, docPath: string, _pkg: PackageEntry, rule: RuleEntry): string {
+  const lines = stripRuleHeader(source.replace(/\r\n/g, '\n')).split('\n');
+  // The blockquote summary: the first run of `>` lines after the heading.
+  const { title, quote, end: i } = docHead(lines, docPath);
+  const summary = docSummary(quote);
+
+  const body: string[] = [...lead(quote), ...deprecationBanner(rule)];
   let inFence = false;
   for (const line of lines.slice(i)) {
     const fence = FENCE.exec(line);
@@ -308,6 +295,21 @@ export function renderRuleDoc(source: string, docPath: string, pkg: PackageEntry
   return [...frontmatter, ...body].join('\n').replace(/\n{3,}/g, '\n\n');
 }
 
+/**
+ * The catalog the components read (src/generated/catalog.json): the inventory
+ * with each package's repo path and each rule's route. Exported so the site
+ * tests build the same shape from source, without a sync having run.
+ */
+export function catalogOf(inventory: readonly PackageEntry[]) {
+  return inventory.map(({ dir, ...pkg }) => ({
+    ...pkg,
+    repoDir: relative(REPO_ROOT, dir),
+    rules: pkg.rules.map((rule) => ({ ...rule, route: ruleRoute(pkg.short, rule.name) })),
+  }));
+}
+
+export type CatalogEntry = ReturnType<typeof catalogOf>[number];
+
 async function main(): Promise<void> {
   const inventory = await loadInventory();
   const docs = listRuleDocs();
@@ -334,13 +336,20 @@ async function main(): Promise<void> {
     writeFileSync(out, renderRuleDoc(readFileSync(doc.path, 'utf8'), doc.path, pkg, rule));
   }
 
-  const catalog = inventory.map(({ dir, ...pkg }) => ({
-    ...pkg,
-    repoDir: relative(REPO_ROOT, dir),
-    rules: pkg.rules.map((rule) => ({ ...rule, route: ruleRoute(pkg.short, rule.name) })),
-  }));
   mkdirSync(dirname(CATALOG_OUT), { recursive: true });
-  writeFileSync(CATALOG_OUT, `${JSON.stringify(catalog, null, 2)}\n`);
+  writeFileSync(CATALOG_OUT, `${JSON.stringify(catalogOf(inventory), null, 2)}\n`);
+
+  const heroDoc = docs.find((doc) => doc.short === HERO.short && doc.rule === HERO.rule);
+  const heroRule = byKey.get(`${HERO.short}/${HERO.rule}`);
+  if (!heroDoc || !heroRule) throw new Error(`the hero rule ${HERO.short}/${HERO.rule} has no doc`);
+  const hero = {
+    id: heroRule.rule.id,
+    route: ruleRoute(HERO.short, HERO.rule),
+    file: HERO.file,
+    highlight: HERO.highlight,
+    ...heroExample(readFileSync(heroDoc.path, 'utf8'), HERO.highlight, heroDoc.path),
+  };
+  writeFileSync(HERO_OUT, `${JSON.stringify(hero, null, 2)}\n`);
 
   const counts = inventory.map((pkg) => `${pkg.short}=${pkg.rules.length}`).join(' ');
   console.log(`sync: ${docs.length} rule pages, ${inventory.length} packages (${counts})`);

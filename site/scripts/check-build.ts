@@ -11,6 +11,21 @@
  *    every `url` in it resolves to an emitted page. It is a public contract
  *    (see src/lib/rules-index.ts), and a generated contract with no check rots.
  * 5. dist/llms.txt exists and points at rules.json.
+ * 6. Every page carries the search palette, and no Pagefind index is emitted
+ *    (the palette replaces it). The palette's script reaches the catalog only
+ *    through a dynamic import, so pages that never open it do not load every
+ *    rule's text.
+ * 7. Every rule page carries the facts panel with its copyable rule id and the
+ *    "on this page" column, and its previous and next links point at the
+ *    neighbouring rules in catalog order (none before the first rule, none
+ *    after the last).
+ * 8. The rules board offers strict on exactly the package pages whose plugin
+ *    ships a strict preset (and there is at least one), and every plugin page
+ *    carries the generated config and the "bad fit" line.
+ * 9. dist/404.html is the site's own not-found page (check 3 already walks its
+ *    links, as it does for every page).
+ * 10. Nothing emitted loads Google Fonts: every font is self-hosted, and each
+ *     of the three families ships its woff2 files.
  */
 import { existsSync, readdirSync, readFileSync, statSync } from 'node:fs';
 import { dirname, join, resolve } from 'node:path';
@@ -50,8 +65,9 @@ if (rulePages.length !== docs.length) {
   failures.push(`${rulePages.length} rule pages emitted for ${docs.length} rule docs`);
 }
 
+const inventory = await loadInventory();
 let urlsChecked = 0;
-for (const pkg of await loadInventory()) {
+for (const pkg of inventory) {
   for (const rule of pkg.rules) {
     if (rule.docsUrl === null) continue;
     urlsChecked++;
@@ -143,10 +159,121 @@ if (!existsSync(LLMS_TXT)) {
   }
 }
 
+// 6. The search palette on every page, and no Pagefind output beside it.
+let pagesWithPalette = 0;
+for (const page of pages) {
+  if (readFileSync(page, 'utf8').includes('id="search-palette"')) pagesWithPalette++;
+  else failures.push(`${page.slice(DIST.length)}: no search palette`);
+}
+if (existsSync(join(DIST, 'pagefind'))) failures.push('dist/pagefind was emitted; the search palette replaces it');
+
+const ASSET = join(DIST, '_astro');
+const STATIC_IMPORT = /(?:\bfrom|\bimport)\s*["']\.\/([^"']+\.js)["']/g;
+const DYNAMIC_IMPORT = /\bimport\(\s*["'`]\.\/([^"'`]+\.js)["'`]\s*\)/g;
+const chunksFrom = (code: string, pattern: RegExp) => [...code.matchAll(pattern)].map((match) => match[1]!);
+const staticClosure = (roots: readonly string[]): Map<string, string> => {
+  const seen = new Map<string, string>();
+  const queue = [...roots];
+  for (let name = queue.shift(); name !== undefined; name = queue.shift()) {
+    if (seen.has(name) || !existsSync(join(ASSET, name))) continue;
+    const code = readFileSync(join(ASSET, name), 'utf8');
+    seen.set(name, code);
+    queue.push(...chunksFrom(code, STATIC_IMPORT));
+  }
+  return seen;
+};
+const ruleIds = inventory.flatMap((pkg) => pkg.rules.map((rule) => rule.id));
+const holdsCatalog = (code: string) => ruleIds.filter((id) => code.includes(id)).length === ruleIds.length;
+const overview = readFileSync(join(DIST, 'index.html'), 'utf8');
+const paletteScript = [...overview.matchAll(/<script type="module" src="[^"]*\/_astro\/([^"]+\.js)">/g)]
+  .map((match) => match[1]!)
+  .find((name) => existsSync(join(ASSET, name)) && readFileSync(join(ASSET, name), 'utf8').includes('#search-palette'));
+if (!paletteScript) {
+  failures.push('index.html: no external module script that drives #search-palette');
+} else {
+  const eager = staticClosure([paletteScript]);
+  for (const [name, code] of eager) {
+    if (holdsCatalog(code)) failures.push(`_astro/${name}: the palette script loads the whole catalog with every page`);
+  }
+  const lazy = staticClosure([...eager.values()].flatMap((code) => chunksFrom(code, DYNAMIC_IMPORT)));
+  if (![...lazy.values()].some(holdsCatalog)) failures.push(`_astro/${paletteScript}: no dynamic import reaches the catalog`);
+}
+
+// 7. The rule page frame: facts panel, rule id, contents column, pager.
+const ruleOrder = inventory.flatMap((pkg) => pkg.rules.map((rule) => ({ short: pkg.short, name: rule.name, id: rule.id })));
+const pagerHref = (html: string, rel: 'prev' | 'next'): string | null => {
+  const anchor = new RegExp(`<a\\b[^>]*\\brel="${rel}"[^>]*>`).exec(html)?.[0];
+  return anchor ? (/\bhref="([^"]*)"/.exec(anchor)?.[1] ?? '') : null;
+};
+let rulePagesFramed = 0;
+for (const [i, rule] of ruleOrder.entries()) {
+  const page = join(DIST, 'rules', rule.short, rule.name, 'index.html');
+  if (!existsSync(page)) continue;
+  const html = readFileSync(page, 'utf8');
+  const where = `rules/${rule.short}/${rule.name}`;
+  rulePagesFramed++;
+  if (!html.includes('class="rule-facts"')) failures.push(`${where}: no facts panel`);
+  if (!html.includes(`data-copy-text="${rule.id}"`)) failures.push(`${where}: no copyable rule id ${rule.id}`);
+  if (!html.includes('<starlight-toc')) failures.push(`${where}: no "on this page" column`);
+  for (const [rel, neighbour] of [
+    ['prev', ruleOrder[i - 1]],
+    ['next', ruleOrder[i + 1]],
+  ] as const) {
+    const expected = neighbour ? `${SITE_BASE}/rules/${neighbour.short}/${neighbour.name}/` : null;
+    const actual = pagerHref(html, rel);
+    if (actual !== expected) failures.push(`${where}: ${rel} link is ${actual ?? 'missing'}, expected ${expected ?? 'none'}`);
+  }
+}
+
+// 8. Package pages: strict switch, config output, bad fit line.
+const plugins = inventory.filter((pkg) => pkg.kind === 'eslint-plugin');
+const strictExpected = plugins.filter((pkg) => pkg.rules.some((rule) => rule.strict !== null)).map((pkg) => pkg.short);
+const strictFound: string[] = [];
+for (const pkg of inventory) {
+  const page = join(DIST, 'packages', pkg.short, 'index.html');
+  if (!existsSync(page)) {
+    failures.push(`packages/${pkg.short}: no page emitted`);
+    continue;
+  }
+  const html = readFileSync(page, 'utf8');
+  if (html.includes('data-preset="strict"')) strictFound.push(pkg.short);
+  if (!html.includes('class="pkg-notfit"')) failures.push(`packages/${pkg.short}: no "bad fit" line`);
+  if (pkg.kind === 'eslint-plugin' && !html.includes('data-config-output')) failures.push(`packages/${pkg.short}: no generated config`);
+}
+if (strictExpected.length === 0) failures.push('no plugin ships a strict preset, so the strict switch check proves nothing');
+if (strictFound.join() !== strictExpected.join()) {
+  failures.push(`strict is offered on [${strictFound.join(', ')}], expected [${strictExpected.join(', ')}]`);
+}
+
+// 9. The not-found page.
+const NOT_FOUND = join(DIST, '404.html');
+if (!existsSync(NOT_FOUND)) failures.push('dist/404.html was not emitted');
+else if (!readFileSync(NOT_FOUND, 'utf8').includes('class="not-found')) failures.push('dist/404.html is not the site\'s own 404 page');
+
+// 10. Self-hosted fonts only.
+const TEXT_FILE = /\.(?:html|css|js|mjs|json|txt|xml|svg)$/;
+let textFilesScanned = 0;
+for (const file of files.filter((f) => TEXT_FILE.test(f))) {
+  textFilesScanned++;
+  const text = readFileSync(file, 'utf8');
+  for (const host of ['fonts.googleapis.com', 'fonts.gstatic.com']) {
+    if (text.includes(host)) failures.push(`${file.slice(DIST.length)}: mentions ${host}`);
+  }
+}
+const fontFiles = files.filter((f) => f.endsWith('.woff2')).length;
+for (const family of ['martian-mono', 'schibsted-grotesk', 'jetbrains-mono']) {
+  if (!files.some((f) => f.endsWith('.woff2') && f.toLowerCase().includes(family))) {
+    failures.push(`no ${family} .woff2 emitted; that self-hosted font is missing`);
+  }
+}
+
 console.log(
   `check-build: ${pages.length} HTML pages, ${rulePages.length} rule pages for ${docs.length} docs, ` +
     `${urlsChecked} meta.docs.url checked, ${linksChecked} root-relative links checked, ` +
-    `rules.json ${indexEntries} entries with ${indexUrlsChecked} urls checked`,
+    `rules.json ${indexEntries} entries with ${indexUrlsChecked} urls checked, ` +
+    `search palette on ${pagesWithPalette} pages, ${rulePagesFramed} rule page frames checked, ` +
+    `strict offered on ${strictFound.length} package pages, ` +
+    `${textFilesScanned} text files free of Google Fonts, ${fontFiles} woff2 fonts`,
 );
 if (failures.length > 0) {
   const unique = [...new Set(failures)];

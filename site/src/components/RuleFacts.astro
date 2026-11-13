@@ -1,0 +1,26 @@
+---
+/**
+ * The facts panel for the rule this route renders (src/lib/facts.ts).
+ * `inline` is the copy under the title, shown below 72rem where the right
+ * column is gone. Renders nothing on any other page.
+ */
+import { ruleForRoute } from '../lib/catalog';
+import { factsPanel } from '../lib/facts';
+
+interface Props {
+  inline?: boolean;
+}
+
+const hit = ruleForRoute(Astro.locals.starlightRoute.id);
+const base = import.meta.env.BASE_URL.replace(/\/$/, '');
+---
+
+{
+  hit && (
+    <aside
+      class:list={['not-content', { 'rule-facts-inline': Astro.props.inline }]}
+      aria-label="Rule facts"
+      set:html={factsPanel(hit.pkg, hit.rule, base)}
+    />
+  )
+}

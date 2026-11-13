@@ -1,0 +1,25 @@
+---
+/**
+ * One interface icon from src/lib/glyphs.ts, inlined as SVG. Decorative:
+ * every use sits next to a text label or an aria-label.
+ */
+import { GLYPHS, type GlyphName } from '../lib/glyphs';
+
+interface Props {
+  name: GlyphName;
+  class?: string;
+  size?: number;
+}
+
+const { name, class: className, size = 20 } = Astro.props;
+---
+
+<svg
+  class:list={['glyph', className]}
+  viewBox="0 0 24 24"
+  width={size}
+  height={size}
+  fill="currentColor"
+  aria-hidden="true"
+  focusable="false"><path d={GLYPHS[name]}></path></svg
+>

@@ -1,0 +1,41 @@
+---
+/**
+ * The not-found page in the site's frame, with the rail, the search palette
+ * and the footer. Starlight's own 404 route is switched off
+ * (`disable404Route: true` in astro.config.mjs) so this one is emitted as
+ * dist/404.html, which GitHub Pages serves for any unknown path.
+ */
+import StarlightPage from '@astrojs/starlight/components/StarlightPage.astro';
+
+import Glyph from '../components/Glyph.astro';
+import { href } from '../lib/catalog';
+---
+
+<StarlightPage
+  frontmatter={{
+    title: 'That page is not in these docs',
+    description: 'The page you asked for does not exist on this site.',
+    tableOfContents: false,
+    prev: false,
+    next: false,
+    editUrl: false,
+  }}
+>
+  <div class="not-found not-content">
+    <p>
+      The link may point at a rule that was renamed or a package page that moved. Search for it, or start from the
+      overview or the list of every rule.
+    </p>
+    <div class="hero-cta">
+      <a class="btn btn-primary" href={href('')}>
+        Go to the overview
+        <Glyph name="forward" size={18} />
+      </a>
+      <a class="btn btn-ghost" href={href('rules/')}>Browse all rules</a>
+      <button type="button" class="btn btn-ghost" data-open-search>
+        <Glyph name="search" size={18} />
+        Search
+      </button>
+    </div>
+  </div>
+</StarlightPage>

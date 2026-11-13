@@ -1,12 +1,89 @@
 ---
 /**
- * A rule id reads as its namespace, quiet, over the rule name
- * (`noctcore-contracts/` then `fetch-must-check-ok`). Every other page keeps
- * the plain title. components.css restores the h1 styles Starlight scopes to
- * its own PageTitle.
+ * The page heading, by route:
+ * - the overview renders none here: Overview.astro holds its h1;
+ * - a package page gets the package header: the npm scope, quiet, over the
+ *   short name, a facts row from the catalog, and the page's own "bad fit"
+ *   sentence lifted out of its prose (src/lib/package-page.ts);
+ * - a rule id reads as its namespace, quiet, over the rule name
+ *   (`noctcore-contracts/` then `fetch-must-check-ok`), with the facts panel
+ *   under it below 72rem;
+ * - every other page keeps the plain title.
+ * base.css restores the h1 styles Starlight scopes to its own PageTitle.
  */
-const title = Astro.locals.starlightRoute.entry.data.title;
-const match = /^([\w-]+\/)(.+)$/.exec(title);
+import RuleFacts from './RuleFacts.astro';
+import { codeSpans, packageForRoute } from '../lib/catalog';
+import { presetsOffered } from '../lib/config-builder';
+import { badFitLine, presetCounts } from '../lib/package-page';
+
+const route = Astro.locals.starlightRoute;
+const title = route.entry.data.title;
+const isOverview = route.id === '' || route.id === 'index';
+const pkg = packageForRoute(route.id);
+const match = pkg ? null : /^([\w-]+\/)(.+)$/.exec(title);
+
+const isPlugin = pkg?.kind === 'eslint-plugin';
+const counts = pkg && isPlugin ? presetCounts(pkg) : null;
+const hasStrict = pkg && isPlugin ? presetsOffered(pkg).includes('strict') : false;
+const badFit = pkg ? codeSpans(badFitLine(route.entry.body ?? '')) : [];
 ---
 
-<h1 id="_top">{match ? (<><span class="nc-title-ns">{match[1]}</span>{match[2]}</>) : title}</h1>
+{
+  isOverview ? null : pkg ? (
+    <header class="pkg-head">
+      <h1 id="_top" class="pkg-name">
+        <span class="scope">{pkg.npmName.slice(0, -pkg.short.length)}</span>
+        {pkg.short}
+      </h1>
+      <div class="pkg-facts">
+        <span>
+          v<b>{pkg.version}</b>
+        </span>
+        <span>
+          <b>{pkg.rules.length}</b> rules
+        </span>
+        {counts && (
+          <>
+            <span>
+              <b>{counts.recommended}</b> recommended
+            </span>
+            {hasStrict && (
+              <span>
+                <b>{counts.strictOnly}</b> strict only
+              </span>
+            )}
+            <span>
+              <b>{counts.optIn}</b> opt-in
+            </span>
+          </>
+        )}
+        {pkg.namespace ? (
+          <span>
+            namespace <b>{pkg.namespace}</b>
+          </span>
+        ) : (
+          <span>
+            runs under <b>@noctcore/harness</b>
+          </span>
+        )}
+      </div>
+      <p class="pkg-notfit">
+        <strong>A bad fit</strong> {badFit.map(({ part, code }) => (code ? <code>{part}</code> : part))}.
+      </p>
+    </header>
+  ) : (
+    <>
+      <h1 id="_top">
+        {match ? (
+          <>
+            <span class="title-ns">{match[1]}</span>
+            {match[2]}
+          </>
+        ) : (
+          title
+        )}
+      </h1>
+      <RuleFacts inline />
+    </>
+  )
+}
