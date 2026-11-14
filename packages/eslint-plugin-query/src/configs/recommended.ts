@@ -9,6 +9,9 @@
  * - `prefix-query-key-must-use-set-queries-data`: it reads one file, so a prefix
  *   that hooks in another file also use as a bare key looks unused here; with that
  *   blind spot it is a check to opt into, not a default error.
+ * - `query-fn-must-not-swallow-error`: returning `null` from a `queryFn` for an optional
+ *   resource is a legitimate contract, so the rule is an opt-in check for codebases that want
+ *   every fallback marked.
  * - `query-key-must-be-constant`: keeping keys in a constant or key factory is a
  *   convention, not a defect, so a codebase whose inline keys work has nothing
  *   broken to fix.

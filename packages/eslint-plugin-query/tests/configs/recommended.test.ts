@@ -13,6 +13,7 @@ function severityOf(entry: unknown): unknown {
 const OMITTED_FROM_PRESETS: readonly string[] = [
   'mutation-requires-error-handling',
   'prefix-query-key-must-use-set-queries-data',
+  'query-fn-must-not-swallow-error',
   'query-key-must-be-constant',
 ];
 
