@@ -3,7 +3,7 @@ import { readFileSync } from 'node:fs';
 import { describe, expect, test } from 'bun:test';
 
 import * as pkg from '../src/index';
-import { RULE_FACTORIES, RULE_IDS, createAllRules } from '../src/index';
+import { OPT_IN_RULE_IDS, RULE_FACTORIES, RULE_IDS, createAllRules } from '../src/index';
 
 describe('package export surface', () => {
   test('RULE_FACTORIES covers every rule id and each is a factory', () => {
@@ -37,6 +37,7 @@ describe('package export surface', () => {
         'package-shape',
         'security-scanner-version-parity',
         'service-image-digest-pin',
+        'test-files-require-source-sibling',
         'test-runner-segregation',
         'test-sibling-enforcement',
         'test-workspace-enrollment',
@@ -56,8 +57,26 @@ describe('package export surface', () => {
     expect(Number(stated)).toBe(RULE_IDS.length);
   });
 
+  test('OPT_IN_RULE_IDS lists exactly the opt-in catalog rules', () => {
+    expect([...OPT_IN_RULE_IDS]).toEqual(['test-files-require-source-sibling']);
+    for (const id of OPT_IN_RULE_IDS) {
+      expect(RULE_IDS).toContain(id);
+    }
+  });
+
+  test('createAllRules() skips the opt-in rules', () => {
+    const ids = createAllRules().map((rule) => rule.id);
+    expect(ids.sort()).toEqual(RULE_IDS.filter((id) => !OPT_IN_RULE_IDS.includes(id)).sort());
+    expect(ids).not.toContain('test-files-require-source-sibling');
+  });
+
+  test('createAllRules({ optIn }) adds a named opt-in rule', () => {
+    const ids = createAllRules({ optIn: ['test-files-require-source-sibling'] }).map((rule) => rule.id);
+    expect(ids.sort()).toEqual([...RULE_IDS].sort());
+  });
+
   test('createAllRules() instantiates every factory with defaults', () => {
-    const rules = createAllRules();
+    const rules = createAllRules({ optIn: [...OPT_IN_RULE_IDS] });
     expect(rules).toHaveLength(RULE_IDS.length);
     for (const r of rules) {
       expect(typeof r.id).toBe('string');
@@ -96,6 +115,7 @@ describe('package export surface', () => {
       'createPackageShapeRule',
       'createSecurityScannerVersionParityRule',
       'createServiceImageDigestPinRule',
+      'createTestFilesRequireSourceSiblingRule',
       'createTestRunnerSegregationRule',
       'createTestSiblingEnforcementRule',
       'createTestWorkspaceEnrollmentRule',

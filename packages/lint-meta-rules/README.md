@@ -16,8 +16,8 @@ Not a good fit if you are not running the harness.
   imports and tsconfig references, ESLint severities.
 - **source-text**: layering between packages, a file-size ratchet, agent-doc presence, colocated
   tests, one home per helper, no cloned component folders, UI primitive shape.
-- **testing**: every tested package is enrolled in the aggregate test script, and test runners are
-  not mixed within a package.
+- **testing**: every tested package is enrolled in the aggregate test script, test runners are not
+  mixed within a package, and, opt-in, every colocated test sits next to its source.
 - **ci**: GitHub Actions pinned by SHA and to named runners, no template injection, least-privilege
   permissions, a fork guard on self-hosted runners in `pull_request` workflows, jobs running a
   paths-filter action granted `pull-requests: read`, pip installs pinned to exact versions (reported,
@@ -66,11 +66,14 @@ const rules = [
 ```
 
 `RULE_FACTORIES` (an id → factory map), `RULE_IDS`, and `createAllRules()` are exported for iteration
-over the whole catalog.
+over the whole catalog. `OPT_IN_RULE_IDS` lists the catalog rules a bare `createAllRules()` skips; enable them with
+`createAllRules({ optIn: ['test-files-require-source-sibling'] })` or by calling their factory. Code
+that builds the catalog by iterating `RULE_FACTORIES` or `RULE_IDS` itself does build these rules: filter
+out `OPT_IN_RULE_IDS` there to get the same set as a bare `createAllRules()`.
 
 ## Rules
 
-The main entry exports 33 factories. `createFileSizeRatchetRule` covers any number of capped areas:
+The main entry exports 34 factories. `createFileSizeRatchetRule` covers any number of capped areas:
 create one instance per area, each with its own `id`.
 
 <!-- begin generated rules -->
@@ -105,6 +108,7 @@ create one instance per area, each with its own `id`.
 | [`pnpm-override-ledger`](https://noctcore.github.io/eslint-plugins/rules/lint-meta-rules/pnpm-override-ledger/) | Every pnpm override needs an entry in overrides.ledger.json with a reason and a reviewBy that has not passed, a security pin must target its own firstPatched or higher, and the lockfile must honour the override. | `createPnpmOverrideLedgerRule` | `@noctcore/lint-meta-rules` | `supply-chain` | yes |
 | [`security-scanner-version-parity`](https://noctcore.github.io/eslint-plugins/rules/lint-meta-rules/security-scanner-version-parity/) | The gitleaks version pinned in the workflows must equal the one in scripts/ci/pre-push.sh, and the hook must compare a native gitleaks against it at run time. | `createSecurityScannerVersionParityRule` | `@noctcore/lint-meta-rules` | `ci` | yes |
 | [`service-image-digest-pin`](https://noctcore.github.io/eslint-plugins/rules/lint-meta-rules/service-image-digest-pin/) | Workflow service and container images, and docker-compose images, must be pinned by `@sha256:` digest (a service that builds locally is exempt). | `createServiceImageDigestPinRule` | `@noctcore/lint-meta-rules` | `ci` | yes |
+| [`test-files-require-source-sibling`](https://noctcore.github.io/eslint-plugins/rules/lint-meta-rules/test-files-require-source-sibling/) | Every colocated test file must sit next to the source it covers: a same-named source file, or a directory module's index. | `createTestFilesRequireSourceSiblingRule` | `@noctcore/lint-meta-rules` | `testing` | yes |
 | [`test-runner-segregation`](https://noctcore.github.io/eslint-plugins/rules/lint-meta-rules/test-runner-segregation/) | Bun-side packages use 'bun:test'; foreign-side packages use 'vitest'. Never mix runners. | `createTestRunnerSegregationRule` | `@noctcore/lint-meta-rules` | `testing` | yes |
 | [`test-sibling-enforcement`](https://noctcore.github.io/eslint-plugins/rules/lint-meta-rules/test-sibling-enforcement/) | Every source file matched by `include` must have a colocated sibling test. Pure helpers must ship a test. | `createTestSiblingEnforcementRule` | `@noctcore/lint-meta-rules` | `source-text` | yes |
 | [`test-workspace-enrollment`](https://noctcore.github.io/eslint-plugins/rules/lint-meta-rules/test-workspace-enrollment/) | Every candidate package with test files must be enumerated in the root 'test:node' script. | `createTestWorkspaceEnrollmentRule` | `@noctcore/lint-meta-rules` | `testing` | yes |
@@ -127,7 +131,8 @@ create one instance per area, each with its own `id`.
 <!-- end generated rules -->
 
 Every factory is callable with no arguments (all options default), so `createAllRules()` and
-per-factory defaults work out of the box; supply options to retarget a rule at your own repo.
+per-factory defaults work out of the box; supply options to retarget a rule at your own repo. Ids in
+`OPT_IN_RULE_IDS` (`test-files-require-source-sibling`) run only when named in `optIn`.
 
 ### `@noctcore/lint-meta-rules/i18n`
 
