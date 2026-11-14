@@ -313,7 +313,10 @@ questions, and answering them first saves the round trip.
 
 `packages/lint-meta-rules` holds whole-repo checks for `@noctcore/harness`, not ESLint rules. A
 rule there is a factory, `create<Name>Rule(options): IMetaRule`, in `src/rules/<id>.ts`, exported
-from `src/rules/index.ts` and added to `RULE_FACTORIES`. Tests use `bun test` (not Vitest) with the
+from `src/rules/index.ts` and added to `RULE_FACTORIES`. A main-entry rule that must not start
+running for existing `createAllRules()` callers (so it ships as a 1.x minor) is also listed in
+`OPT_IN_RULE_IDS`, which a bare `createAllRules()` skips unless the id is named in
+`createAllRules({ optIn })`. Tests use `bun test` (not Vitest) with the
 fake context helpers in `tests/test-utils/`, and `tests/index.test.ts` lists every rule id and
 factory name by hand, so it changes with each addition. Rules that need ESLint at runtime go on a
 sub-entry point (`src/resolved-config.ts`, `src/prisma.ts`, `src/i18n.ts`) so the main entry never
