@@ -1,6 +1,6 @@
 {
   "name": "@noctcore/eslint-plugin-query",
-  "version": "0.2.0",
+  "version": "0.3.0",
   "description": "TanStack Query and tRPC rules: cache invalidations that miss infinite queries, mutation callbacks that a detached observer drops, mutations with no error handling.",
   "license": "MIT",
   "type": "module",

@@ -1,5 +1,15 @@
 # @noctcore/eslint-plugin-contracts
 
+## 1.2.0
+
+### Minor Changes
+
+- [#245](https://github.com/noctcore/eslint-plugins/pull/245) [`b3411b3`](https://github.com/noctcore/eslint-plugins/commit/b3411b3f90a5d9224ca30a374e4fc06d4b1de18e) Thanks [@Shironex](https://github.com/Shironex)! - Add `route-params-validated`, an opt-in rule that reports a route call (`get`, `post`, `put`, `patch`, `delete` or `all` with a literal path) on a router the file proves, `new Hono()` or a `const` bound to one, when the path declares `:name` parameters and no argument in the chain is a param validator. A call to a name in `validators` (default `param`, so `v.param(Schema)` counts) or to a name in `validatorFactories` (default `zValidator` and `validator`) whose first argument is `'param'` counts as one; `routerNames` (default none) adds identifier names treated as routers. A `.use(...)` call carrying a param validator on the same router binding silences its routes. The rule is in neither `recommended` nor `strict`, so a project spreading either preset sees no new errors.
+
+- [#240](https://github.com/noctcore/eslint-plugins/pull/240) [`e02b49c`](https://github.com/noctcore/eslint-plugins/commit/e02b49cf13d44746345522e7357964d69e779d6d) Thanks [@Shironex](https://github.com/Shironex)! - Add `route-handler-order`, an opt-in rule that reports an argument of a route method call (`get`, `post`, `put`, `patch`, `delete`, `all` with a literal path) that comes after an argument of a later group, so an auth check cannot sit behind a body validator and a docs middleware cannot sit behind the handler. It needs `groups`, an ordered list of `{ name, callees }`, and does nothing without it; the last argument is the handler and is never classified. The rule is in neither `recommended` nor `strict`, so a project spreading either preset sees no new errors.
+
+- [#244](https://github.com/noctcore/eslint-plugins/pull/244) [`3b3eeff`](https://github.com/noctcore/eslint-plugins/commit/3b3eeffc55af1c3f5ed3c41228313284eefd14e3) Thanks [@Shironex](https://github.com/Shironex)! - Add `describe-auth-matches-middleware`, an opt-in rule that reads the docs call of a route method call (`describe({ auth: 'session' })`, with `get`, `post`, `put`, `patch`, `delete` or `all` and a literal path) and checks it against the chain: it reports a declared kind whose middleware is missing, middleware that is mapped only to another kind, and a declared kind that is not a key of `map`. It needs `map`, from each auth kind to the middleware names that satisfy it, and does nothing without it; `docsCallee` and `authProperty` change which call and property are read. The rule is in neither `recommended` nor `strict`, so a project spreading either preset sees no new errors.
+
 ## 1.1.0
 
 ### Minor Changes
