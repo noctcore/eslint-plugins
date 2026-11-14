@@ -27,6 +27,7 @@ import { createPnpmHardeningSettingsRule } from './pnpm-hardening-settings';
 import { createPnpmOverrideLedgerRule } from './pnpm-override-ledger';
 import { createSecurityScannerVersionParityRule } from './security-scanner-version-parity';
 import { createServiceImageDigestPinRule } from './service-image-digest-pin';
+import { createTestFilesRequireSourceSiblingRule } from './test-files-require-source-sibling';
 import { createTestRunnerSegregationRule } from './test-runner-segregation';
 import { createTestSiblingEnforcementRule } from './test-sibling-enforcement';
 import { createTestWorkspaceEnrollmentRule } from './test-workspace-enrollment';
@@ -88,6 +89,8 @@ export { createSecurityScannerVersionParityRule } from './security-scanner-versi
 export type { SecurityScannerVersionParityOptions } from './security-scanner-version-parity';
 export { createServiceImageDigestPinRule } from './service-image-digest-pin';
 export type { ServiceImageDigestPinOptions } from './service-image-digest-pin';
+export { createTestFilesRequireSourceSiblingRule } from './test-files-require-source-sibling';
+export type { TestFilesRequireSourceSiblingOptions } from './test-files-require-source-sibling';
 export { createTestRunnerSegregationRule } from './test-runner-segregation';
 export type { TestRunnerSegregationOptions } from './test-runner-segregation';
 export { createTestSiblingEnforcementRule } from './test-sibling-enforcement';
@@ -114,6 +117,9 @@ export { countLines } from './shared';
  * {@link IMetaRule}; the concrete options type is per-factory (see each
  * `create*` export). `as const` preserves each factory's precise type at the
  * call site while still allowing zero-argument iteration.
+ *
+ * Ids in {@link OPT_IN_RULE_IDS} are in this map but are skipped by a bare
+ * `createAllRules()`.
  */
 export const RULE_FACTORIES = {
   'agents-doc-presence': createAgentsDocPresenceRule,
@@ -143,6 +149,7 @@ export const RULE_FACTORIES = {
   'pnpm-override-ledger': createPnpmOverrideLedgerRule,
   'security-scanner-version-parity': createSecurityScannerVersionParityRule,
   'service-image-digest-pin': createServiceImageDigestPinRule,
+  'test-files-require-source-sibling': createTestFilesRequireSourceSiblingRule,
   'test-runner-segregation': createTestRunnerSegregationRule,
   'test-sibling-enforcement': createTestSiblingEnforcementRule,
   'test-workspace-enrollment': createTestWorkspaceEnrollmentRule,
@@ -154,7 +161,22 @@ export const RULE_FACTORIES = {
 /** The catalog rule ids (keys of {@link RULE_FACTORIES}). */
 export const RULE_IDS = Object.keys(RULE_FACTORIES) as (keyof typeof RULE_FACTORIES)[];
 
-/** Instantiate every catalog rule with its default options. */
-export function createAllRules(): IMetaRule[] {
-  return Object.values(RULE_FACTORIES).map((factory) => factory());
+/**
+ * Catalog rules that run only when named in `createAllRules({ optIn })`, so
+ * adding one to the catalog never gives an existing caller a new violation.
+ */
+export const OPT_IN_RULE_IDS: readonly (keyof typeof RULE_FACTORIES)[] = ['test-files-require-source-sibling'];
+
+/**
+ * Instantiate every catalog rule with its default options, except the ids in
+ * {@link OPT_IN_RULE_IDS}, which run only when listed in `optIn`.
+ */
+export function createAllRules(
+  options: { readonly optIn?: readonly (keyof typeof RULE_FACTORIES)[] } = {},
+): IMetaRule[] {
+  const optIn = new Set<string>(options.optIn ?? []);
+  const skipped = new Set<string>(OPT_IN_RULE_IDS.filter((id) => !optIn.has(id)));
+  return Object.entries(RULE_FACTORIES)
+    .filter(([id]) => !skipped.has(id))
+    .map(([, factory]) => factory());
 }
