@@ -2,7 +2,7 @@ import { fileMatchesAnyGlob, resolveAllowIn, unwrapTypeWrappers } from '@noctcor
 import { AST_NODE_TYPES, type TSESTree } from '@typescript-eslint/utils';
 
 import { createRule } from '../createRule';
-import { calleeName, staticName } from '../utils/ast';
+import { calleeName, queriesElements, staticName } from '../utils/ast';
 
 const RULE_NAME = 'query-key-must-be-constant';
 
@@ -84,23 +84,6 @@ function checkKeyObject(
     const array = inlineStringKey(property.value);
     if (array !== undefined) report(array, `\`${name}\``);
   }
-}
-
-/** The `queries` array of `useQueries({ queries: [...] })`, as its element nodes. */
-function queriesElements(node: TSESTree.Node): readonly TSESTree.Node[] {
-  const object = unwrapTypeWrappers(node);
-  if (object.type !== AST_NODE_TYPES.ObjectExpression) return [];
-  for (const property of object.properties) {
-    if (property.type !== AST_NODE_TYPES.Property) continue;
-    if (staticName(property.key, property.computed) !== 'queries') continue;
-    const value = unwrapTypeWrappers(property.value);
-    if (value.type !== AST_NODE_TYPES.ArrayExpression) return [];
-    return value.elements.filter(
-      (element): element is TSESTree.Expression =>
-        element !== null && element.type !== AST_NODE_TYPES.SpreadElement,
-    );
-  }
-  return [];
 }
 
 export const queryKeyMustBeConstantRule = createRule<RuleOptions, MessageIds>({
