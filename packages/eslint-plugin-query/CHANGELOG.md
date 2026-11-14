@@ -1,5 +1,19 @@
 # @noctcore/eslint-plugin-query
 
+## 0.3.0
+
+### Minor Changes
+
+- [#256](https://github.com/noctcore/eslint-plugins/pull/256) [`7969cc7`](https://github.com/noctcore/eslint-plugins/commit/7969cc7245710ceda5909e80c8f481769c68778a) Thanks [@Shironex](https://github.com/Shironex)! - Add the opt-in `prefix-query-key-must-use-set-queries-data` rule. In a file where a query hook (`useQuery`, `useInfiniteQuery`, `useSuspenseQuery`, `useSuspenseInfiniteQuery` or `queryOptions`) builds its key as `[...PREFIX, extra]`, it reports `setQueryData(PREFIX, ...)` and `getQueryData(PREFIX)`, which address an exact key no hook reads, and suggests `setQueriesData` / `getQueriesData`. The rule stays silent when the bare `PREFIX` is itself the `queryKey` of a hook in the file, and it never reports `cancelQueries`, `removeQueries`, `resetQueries` or `invalidateQueries`. The analysis is per file and lexical, which the rule doc states. `methods` replaces the default exact-key methods and `queryHooks` adds hook names.
+  
+  The rule is not in `recommended`, so a project spreading `recommended` sees no new errors. Enable it with `'noctcore-query/prefix-query-key-must-use-set-queries-data': 'error'`.
+
+- [#257](https://github.com/noctcore/eslint-plugins/pull/257) [`9847a7b`](https://github.com/noctcore/eslint-plugins/commit/9847a7b2479681b38f710957e4e688b7f19b7024) Thanks [@Shironex](https://github.com/Shironex)! - Add the opt-in `query-fn-must-not-swallow-error` rule. It reports a `return <value>` inside a `catch` clause of an inline `queryFn`, and a `.catch(() => value)` handler that returns a value on the promise the `queryFn` returns, because either turns a failed request into cached data: the query reports success, never reaches its error state and never retries. It reads `useQuery`, `useInfiniteQuery`, `useSuspenseQuery`, `useSuspenseInfiniteQuery`, `queryOptions` and each element of `useQueries({ queries: [...] })`. A rethrow, `Promise.reject(...)`, a bare or `undefined` return, a return inside a nested function, and a `queryFn` given by name are left alone.
+  
+  `allowComment` (default `allow-silent`) sets the escape marker: a `// allow-silent: <reason>` comment with a non-empty reason on the line directly above the reported node silences it. `queryFnProperties` (default `['queryFn']`) lists the option keys that are checked, and a configured list replaces the default rather than adding to it.
+  
+  The rule is not in `recommended`, so a project spreading `recommended` sees no new errors. Enable it with `'noctcore-query/query-fn-must-not-swallow-error': 'error'`.
+
 ## 0.2.0
 
 ### Minor Changes

@@ -1,5 +1,0 @@
----
-'@noctcore/eslint-plugin-nestjs': minor
----
-
-Add `queue-options-must-set-retention`, an opt-in rule that reports a BullMQ `<queue>.add(name, data, options)` job whose options and queue defaults leave out `removeOnComplete` or `removeOnFail`, so finished jobs would pile up in Redis. One report per call names every missing key, and the `require` option (default both keys) narrows which keys are checked. A literal `false` counts as set, since keeping finished jobs on purpose is a valid choice; only a missing key, or a value of `undefined`, is reported. The call's options are laid over the `defaultJobOptions` of a `new Queue(...)` imported from `bullmq` and stored in the same binding in the same file; defaults set anywhere else (`BullModule.registerQueue`, another file) are not seen. Options or `defaultJobOptions` that are not object literals, a spread that may hold the key, `addBulk` calls and flow objects passed to `add` are skipped; `queuePattern` picks which receivers count as queues, as in the other queue rules. The rule is not in `recommended`, so a project spreading `recommended` sees no new errors.
