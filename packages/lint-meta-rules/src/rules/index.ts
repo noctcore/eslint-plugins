@@ -162,8 +162,9 @@ export const RULE_FACTORIES = {
 export const RULE_IDS = Object.keys(RULE_FACTORIES) as (keyof typeof RULE_FACTORIES)[];
 
 /**
- * Catalog rules that run only when named in `createAllRules({ optIn })`, so
- * adding one to the catalog never gives an existing caller a new violation.
+ * Catalog rules that a bare `createAllRules()` skips; they run there only when
+ * named in `optIn`. Code that iterates {@link RULE_FACTORIES} or
+ * {@link RULE_IDS} itself still builds them unless it filters these ids out.
  */
 export const OPT_IN_RULE_IDS: readonly (keyof typeof RULE_FACTORIES)[] = ['test-files-require-source-sibling'];
 

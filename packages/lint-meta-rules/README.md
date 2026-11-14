@@ -66,9 +66,10 @@ const rules = [
 ```
 
 `RULE_FACTORIES` (an id → factory map), `RULE_IDS`, and `createAllRules()` are exported for iteration
-over the whole catalog. `OPT_IN_RULE_IDS` lists the catalog rules a bare `createAllRules()` skips, so
-adding one never gives an existing caller a new violation; enable them with
-`createAllRules({ optIn: ['test-files-require-source-sibling'] })` or by calling their factory.
+over the whole catalog. `OPT_IN_RULE_IDS` lists the catalog rules a bare `createAllRules()` skips; enable them with
+`createAllRules({ optIn: ['test-files-require-source-sibling'] })` or by calling their factory. Code
+that builds the catalog by iterating `RULE_FACTORIES` or `RULE_IDS` itself does build these rules: filter
+out `OPT_IN_RULE_IDS` there to get the same set as a bare `createAllRules()`.
 
 ## Rules
 

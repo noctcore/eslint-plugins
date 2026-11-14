@@ -16,8 +16,9 @@ file has a test.
 
 ### Opt-in
 
-The rule is in `RULE_FACTORIES` and in `OPT_IN_RULE_IDS`, so a bare `createAllRules()` skips it and no
-existing caller sees a new violation. Enable it by naming it in `optIn`, or by calling its factory:
+The rule is in `RULE_FACTORIES` and in `OPT_IN_RULE_IDS`, so a bare `createAllRules()` skips it. Code
+that iterates `RULE_FACTORIES` or `RULE_IDS` itself does build it, at `ciCritical: true`: filter out
+`OPT_IN_RULE_IDS` there if you do not want it. Enable it by naming it in `optIn`, or by calling its factory:
 
 ```ts prose
 import { createAllRules, createTestFilesRequireSourceSiblingRule } from '@noctcore/lint-meta-rules';
