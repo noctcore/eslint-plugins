@@ -1,4 +1,4 @@
-import { calleePath } from '@noctcore/eslint-utils';
+import { calleePath, unwrapTypeWrappers } from '@noctcore/eslint-utils';
 import { AST_NODE_TYPES, type TSESTree } from '@typescript-eslint/utils';
 
 /** The name of a non-computed `.name` member or a `name:` / `'name':` object key. */
@@ -20,4 +20,21 @@ export function calleeName(node: TSESTree.CallExpression): string | undefined {
   const path = calleePath(node.callee, { allowThis: true });
   if (path === null) return undefined;
   return path.slice(path.lastIndexOf('.') + 1);
+}
+
+/** The `queries` array of `useQueries({ queries: [...] })`, as its element nodes. */
+export function queriesElements(node: TSESTree.Node): readonly TSESTree.Node[] {
+  const object = unwrapTypeWrappers(node);
+  if (object.type !== AST_NODE_TYPES.ObjectExpression) return [];
+  for (const property of object.properties) {
+    if (property.type !== AST_NODE_TYPES.Property) continue;
+    if (staticName(property.key, property.computed) !== 'queries') continue;
+    const value = unwrapTypeWrappers(property.value);
+    if (value.type !== AST_NODE_TYPES.ArrayExpression) return [];
+    return value.elements.filter(
+      (element): element is TSESTree.Expression =>
+        element !== null && element.type !== AST_NODE_TYPES.SpreadElement,
+    );
+  }
+  return [];
 }
