@@ -371,9 +371,9 @@
       "name": "@noctcore/lint-meta-rules",
       "version": "1.1.0",
       "dependencies": {
-        "@noctcore/eslint-plugin-contracts": "^1.0.0",
+        "@noctcore/eslint-plugin-contracts": "^1.1.0",
         "@noctcore/eslint-plugin-prisma": "^1.0.0",
-        "@noctcore/harness": "^0.3.0",
+        "@noctcore/harness": "^0.6.0",
         "@typescript-eslint/utils": "^8.72.1",
       },
       "devDependencies": {
@@ -756,7 +756,7 @@
 
     "@noctcore/eslint-utils": ["@noctcore/eslint-utils@workspace:packages/eslint-utils"],
 
-    "@noctcore/harness": ["@noctcore/harness@0.3.0", "", { "bin": { "harness": "dist/cli.js" } }, "sha512-0AEu+R9IH21jALFUfT/OJdwZfaK1ljrHaQiPY7hDf4Ajqh5qE6rg4Ha+6S+PzkF//5vvZ38cU10XMIFz5LXk4Q=="],
+    "@noctcore/harness": ["@noctcore/harness@0.6.0", "", { "bin": { "harness": "dist/cli.js" } }, "sha512-tkFLBv32H6oS9tBqIVKcTz/DQzBF3bFvQaMtr0DqY6KzIM59myLyifHiUM2/uuhem/ljhvVgthHlIR9Z10jRYQ=="],
 
     "@noctcore/lint-meta-rules": ["@noctcore/lint-meta-rules@workspace:packages/lint-meta-rules"],
 
