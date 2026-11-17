@@ -17,6 +17,14 @@
 <p align="center"><strong><a href="https://noctcore.github.io/eslint-plugins/">Documentation: noctcore.github.io/eslint-plugins</a></strong><br/>
 What each plugin is for, when it is a bad fit, and every rule with its options and examples.</p>
 
+<p align="center">
+  <a href="./CONTRIBUTING.md"><strong>Contributing</strong></a>
+  &nbsp;·&nbsp;
+  <a href="./SECURITY.md"><strong>Security</strong></a>
+  &nbsp;·&nbsp;
+  <a href="./CODE_OF_CONDUCT.md"><strong>Code of Conduct</strong></a>
+</p>
+
 ---
 
 ## Packages
@@ -150,7 +158,8 @@ bun run docs:dev    # the docs site (site/), at http://localhost:4321/eslint-plu
 
 [CONTRIBUTING.md](./CONTRIBUTING.md) has the rest: where a rule lives, the severity policy, the
 executable rule docs, the generated README tables, and what a changeset means here. Read it before
-adding a rule.
+adding a rule. Report vulnerabilities as [SECURITY.md](./SECURITY.md) describes, never in a public issue, and
+everyone taking part follows the [Code of Conduct](./CODE_OF_CONDUCT.md).
 
 ## Releasing
 
@@ -159,4 +168,4 @@ Packages" PR, and merging that publishes the touched packages to npm with proven
 
 ## License
 
-MIT
+MIT, see [LICENSE](./LICENSE).
