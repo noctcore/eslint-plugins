@@ -1,6 +1,6 @@
 {
   "name": "@noctcore/eslint-plugin-contracts",
-  "version": "1.1.0",
+  "version": "1.2.0",
   "description": "ESLint rules for IO contracts and config: checked fetch responses, parsed boundary data, error cause and taxonomy, zod schema and wire naming, env access, decimal money and translation keys.",
   "license": "MIT",
   "type": "module",
