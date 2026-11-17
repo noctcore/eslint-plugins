@@ -1,5 +1,0 @@
----
-'@noctcore/eslint-plugin-nestjs': minor
----
-
-Add `redis-client-from-factory`, an opt-in rule that reports a `new Redis(...)` or `new IORedis(...)`, and the inline `connection: { ... }` object of a BullMQ `new Queue(name, options)` or `new Worker(name, processor, options)`, whose options do not come from a configured factory call. A factory call is accepted directly or as a spread inside an object literal (`new Redis(getRedisOptions())`, `new Redis({ ...getRedisOptions(), db: 1 })`). A client with no argument, a literal or template literal, a call to an unlisted function, or an object literal with no factory spread is reported; an identifier or member expression is not followed and not reported. `Queue` and `Worker` are recognised by their `bullmq` import, renamed or not. The rule needs `factoryFunctions` (the names of your options factories) and does nothing until it is set; `clientClasses` replaces the default `Redis`, `IORedis`, and `allowIn` replaces the default of test files, so add the module that defines the factory to it. The rule is not in `recommended`, so a project spreading `recommended` sees no new errors.

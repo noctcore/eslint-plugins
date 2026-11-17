@@ -3,7 +3,7 @@ import { rules } from './rules';
 
 /** Flat-config namespace: rule ids are keyed `noctcore-nestjs/<rule>`. */
 const NAMESPACE = 'noctcore-nestjs';
-const VERSION = '0.2.0';
+const VERSION = '0.3.0';
 
 const plugin = {
   meta: { name: '@noctcore/eslint-plugin-nestjs', version: VERSION },
