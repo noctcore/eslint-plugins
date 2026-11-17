@@ -1,3 +1,9 @@
+<picture>
+  <source media="(prefers-color-scheme: dark)" srcset="assets/brand/readme-header-dark.svg">
+  <source media="(prefers-color-scheme: light)" srcset="assets/brand/readme-header-light.svg">
+  <img src="assets/brand/readme-header-light.svg" width="1280" height="360" alt="noctcore/eslint-plugins. Catch bugs that compile. Focused rule families for what generic linters miss.">
+</picture>
+
 <h1 align="center">@noctcore/eslint-plugins</h1>
 
 <p align="center">
