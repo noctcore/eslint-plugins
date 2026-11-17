@@ -5,7 +5,7 @@ import { countLines } from '../../src/rules/shared';
 import { createFakeCtx } from '../test-utils/createFakeCtx';
 
 const ID = 'web-file-size-ratchet';
-const BASELINE = `.nightcore/lint-meta/baselines/${ID}.json`;
+const BASELINE = `.noctcore/lint-meta/baselines/${ID}.json`;
 const rule = createFileSizeRatchetRule({ id: ID, roots: ['apps/web/src'], cap: 5 });
 
 /** A file body with exactly `n` physical lines. */

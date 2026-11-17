@@ -11,11 +11,11 @@
  *
  * This is a rule-source catalog, NOT a runtime dependency you `require()` from a
  * consumer's registry. Nightcore's harness `lint-meta` subcommand runs a bounded
- * eval that executes only one local `.nightcore/lint-meta/registry.js` and never
+ * eval that executes only one local `.noctcore/lint-meta/registry.js` and never
  * resolves arbitrary imports (a deliberate security boundary — that file runs
  * inside a foreign CI). So the intended integration point is the harness EXPORT
  * pipeline: it reads a rule's source here, inlines/transforms it, and emits flat
- * JavaScript directly into a consumer's `.nightcore/lint-meta/`. No consumer
+ * JavaScript directly into a consumer's `.noctcore/lint-meta/`. No consumer
  * registry ever imports `@noctcore/lint-meta-rules` at runtime. (The export
  * pipeline itself is separate, out-of-scope wiring.)
  *
