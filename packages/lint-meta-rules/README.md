@@ -43,10 +43,12 @@ from `@noctcore/harness`: a pure function of an `IMetaCtx` returning `IViolation
 `lint-meta` subcommand runs them.
 
 You do not `require()` this package from your repo. The harness executes only one local file,
-`.nightcore/lint-meta/registry.js`, and never resolves arbitrary imports, because that file runs
+`.noctcore/lint-meta/registry.js`, and never resolves arbitrary imports, because that file runs
 inside CI. Its **export pipeline** reads a rule's source from this package, inlines it and writes
-plain JavaScript into your repo's `.nightcore/lint-meta/`. The package is on npm for versioning and
+plain JavaScript into your repo's `.noctcore/lint-meta/`. The package is on npm for versioning and
 discoverability.
+
+From `@noctcore/harness` 0.6 the config directory is `.noctcore/`; a repo that still keeps its registry or baselines under `.nightcore/` is read with a deprecation warning until harness 1.0.
 
 ### Every rule is a factory
 
@@ -86,7 +88,7 @@ create one instance per area, each with its own `id`.
 | [`canonical-helpers-single-home`](https://noctcore.github.io/eslint-plugins/rules/lint-meta-rules/canonical-helpers-single-home/) | Pure helpers must live in one canonical home (flag the same exported symbol appearing in multiple homes). | `createCanonicalHelpersSingleHomeRule` | `@noctcore/lint-meta-rules` | `source-text` | yes |
 | [`dockerfile-base-image-digest-pin`](https://noctcore.github.io/eslint-plugins/rules/lint-meta-rules/dockerfile-base-image-digest-pin/) | Dockerfile FROM base images must be pinned by `@sha256:` digest (scratch and earlier build stages exempt). | `createDockerfileBaseImageDigestPinRule` | `@noctcore/lint-meta-rules` | `ci` | yes |
 | [`eslint-override-paths-exist`](https://noctcore.github.io/eslint-plugins/rules/lint-meta-rules/eslint-override-paths-exist/) | Paths written in an ESLint flat config `files` or `ignores` entry (and the directory a `files` glob starts in) must exist, so a moved folder cannot leave an override that applies to nothing. | `createEslintOverridePathsExistRule` | `@noctcore/lint-meta-rules` | `config` | yes |
-| [`file-size-ratchet`](https://noctcore.github.io/eslint-plugins/rules/lint-meta-rules/file-size-ratchet/) | Source files stay at or under 400 raw lines. Today's offenders are grandfathered by .nightcore/lint-meta/baselines/file-size-ratchet.json; a new/grown offender fails, and a stale/shrunk baseline entry demands tightening. | `createFileSizeRatchetRule` | `@noctcore/lint-meta-rules` | `source-text` | yes |
+| [`file-size-ratchet`](https://noctcore.github.io/eslint-plugins/rules/lint-meta-rules/file-size-ratchet/) | Source files stay at or under 400 raw lines. Today's offenders are grandfathered by .noctcore/lint-meta/baselines/file-size-ratchet.json; a new/grown offender fails, and a stale/shrunk baseline entry demands tightening. | `createFileSizeRatchetRule` | `@noctcore/lint-meta-rules` | `source-text` | yes |
 | [`github-actions-concurrency-explicit`](https://noctcore.github.io/eslint-plugins/rules/lint-meta-rules/github-actions-concurrency-explicit/) | A workflow-level or job-level `concurrency` mapping must state `cancel-in-progress`; the string form passes unless requireMappingForm is set. | `createGithubActionsConcurrencyExplicitRule` | `@noctcore/lint-meta-rules` | `ci` | yes |
 | [`github-actions-expression-syntax`](https://noctcore.github.io/eslint-plugins/rules/lint-meta-rules/github-actions-expression-syntax/) | GitHub Actions workflows never hold a malformed `${{` (an opener followed by another `{`, or one with no closing `}}`), which fails the whole workflow before any job runs. | `createGithubActionsExpressionSyntaxRule` | `@noctcore/lint-meta-rules` | `ci` | yes |
 | [`github-actions-least-privilege-permissions`](https://noctcore.github.io/eslint-plugins/rules/lint-meta-rules/github-actions-least-privilege-permissions/) | GitHub Actions workflows declare a read-only top-level `permissions:` (no `write-all`/`read-all`, no `<scope>: write`); writes go on the job that needs them. | `createGithubActionsLeastPrivilegePermissionsRule` | `@noctcore/lint-meta-rules` | `ci` | yes |
