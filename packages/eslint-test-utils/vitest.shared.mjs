@@ -8,12 +8,16 @@
  * worker: nothing uses `vi.mock`, fixtures on disk are read-only, and tests
  * that write do so under their own `mkdtemp` directory. Run with
  * `--sequence.shuffle` if a new test ever starts to depend on file order.
+ *
+ * Fixture folders are read by rules as files on disk, and a doc fixture can
+ * hold a `*.test.ts` sibling on purpose, so they are never collected as tests.
  */
 import { defineConfig } from 'vitest/config';
 
 export default defineConfig({
   test: {
     include: ['tests/**/*.test.ts'],
+    exclude: ['**/node_modules/**', 'tests/fixtures/**'],
     environment: 'node',
     globals: false,
     restoreMocks: true,

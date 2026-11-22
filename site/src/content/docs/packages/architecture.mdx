@@ -7,6 +7,7 @@ sidebar:
 ---
 
 import QuickStart from '../../../components/QuickStart.astro';
+import RuleDiagram from '../../../components/RuleDiagram.astro';
 import RuleTable from '../../../components/RuleTable.astro';
 
 Folder-per-component, barrels and feature boundaries, anchored on a configurable directory.
@@ -14,6 +15,15 @@ Folder-per-component, barrels and feature boundaries, anchored on a configurable
 ## What it solves
 
 Folder structure that nobody enforces decays one convenient shortcut at a time: a barrel that grows a helper function, a component folder missing its test, a feature importing another feature's internals, a relative import that climbs five parents. These rules make the layout a checked property of the codebase instead of a paragraph in a contributing guide.
+
+## Where each rule looks
+
+<RuleDiagram
+  pkg="architecture"
+  name="overview"
+  description="Seven rules look at files and folders. Under src/components/board/, the folder TaskCard/ is checked by component-folder-structure, which wants its full sibling set. TaskCard.tsx is checked by filename-matches-export, which wants it named after its export. TaskCard.hooks.ts is checked by single-semantic-module, which wants its exports to be one kind of thing. TaskCard.test.tsx is what colocated-test-required looks for beside the file it tests. index.ts is checked by barrel-purity, which allows re-exports only, and by index-must-reexport-default, which wants it to re-export the component. src/modules/account/account.routes.ts is checked by file-naming-pattern, which wants it named after its folder. Three rules look at what a file imports: no-cross-feature-imports stops a runtime import from board/ into the sibling feature projects/, no-restricted-imports-layered applies ban sets per file layer, merged per file, such as lib/ importing @/features, and max-import-depth allows at most 3 parent hops by default, so '../../../../shared' is reported."
+  caption="**Seven rules check where a file sits and what it is called; three check what it imports.** Each rule's page shows the exact message it prints and the fix."
+/>
 
 ## What it will yell at you about
 

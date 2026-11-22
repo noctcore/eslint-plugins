@@ -1,0 +1,26 @@
+---
+/**
+ * A package's diagram on a hand-written page (a package page): the same
+ * figure scripts/sync.ts builds for a diagram embedded in a rule doc, read
+ * from packages/<pkg>/docs/diagrams/<name>.svg. See src/lib/diagrams.ts.
+ */
+import { resolve } from 'node:path';
+
+import { getPackage } from '../lib/catalog';
+import { diagramFigure } from '../lib/diagrams';
+
+interface Props {
+  pkg: string;
+  name: string;
+  /** Everything the drawing shows, in sentences. */
+  description: string;
+  /** The takeaway. Inline Markdown: code spans and bold. */
+  caption: string;
+}
+
+const { pkg, name, description, caption } = Astro.props;
+// Astro builds from site/, so the repo root is one level up.
+const path = resolve(process.cwd(), '..', getPackage(pkg).repoDir, 'docs', 'diagrams', `${name}.svg`);
+---
+
+<Fragment set:html={diagramFigure({ path, description, caption })} />
