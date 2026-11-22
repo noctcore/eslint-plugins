@@ -88,6 +88,33 @@ export function back(req, res) {
 - A value read from an in-file table of literal destinations: `TABLE[key]`, `TABLE.key` or
   `MAP.get(key)` on a `const` object or `new Map([...])` whose values are all literals, never
   exported or changed (also with a literal fallback, `TABLE[key] ?? '/'`).
+- A value checked against a literal allowlist (`if (!TARGETS.has(to)) return`, with `TARGETS` an
+  in-file `new Set([...])` or array of literals that never changes), alone or followed by text that
+  starts a query or a fragment (`${to}?from=login`).
+- A literal origin with no path followed by a value known to start with `/`:
+  `'https://app.example.com' + (next.startsWith('/') ? next : '/')`. The literal fixes the host,
+  so `//` or `/\` after it only changes the path.
+- The path of a URL object compared to a literal origin, with `//` paths refused, and not changed
+  after the check: `u.origin === ORIGIN && !u.pathname.startsWith('//')`, then `u.pathname`
+  (optionally `+ u.search` / `+ u.hash`). A URL object built with `new URL(...)` in every
+  assignment (`try { u = new URL(x, base) } catch { u = new URL(FALLBACK) }`) can also be
+  host-pinned through `u.hostname`.
+
+Checks are read where the value is used: a check in `ok ? target : '/'` counts for `target`, a
+`const` boolean (`const ok = LOCAL.test(next)`) stands for its test, and a `const` holding the target
+(`const target = ok ? next : '/'`) is followed, each branch on its own. A local-path regex may use a
+lookahead for the second character (`^\/(?![\/\\])[\x21-\x7e]*$`); the characters after it must
+then be a plain class that admits no tab or line break unless the lookahead refuses them.
+
+```ts good
+const LOCAL = /^\/(?![\/\\])[\x21-\x7e]*$/;
+
+export function back(req, res) {
+  const next = String(req.query.next);
+  const ok = LOCAL.test(next);
+  res.writeHead(302, { Location: ok ? next : '/' });
+}
+```
 
 ```ts bad
 // `/\evil.com` passes this check and leaves the site
