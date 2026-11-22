@@ -174,10 +174,8 @@ A `Layer`:
 }]
 ```
 
-### In `recommended`
-
-Left out of `recommended`. The rule does nothing without your own ban sets and layers, so there is no
-default the preset could enable.
+**In `recommended`:** Left out of `recommended`. The rule does nothing without your own ban sets and
+layers, so there is no default the preset could enable.
 
 ## When not to use it
 

@@ -91,10 +91,9 @@ files](https://noctcore.github.io/eslint-plugins/filesystem-rules/).
 }]
 ```
 
-### In `recommended`
-
-Left out of `recommended`. There is no universal "everything needs a colocated test" default, so the
-`recommended` preset cannot safely enable it. Turn it on with your own `include` globs.
+**In `recommended`:** Left out of `recommended`. There is no universal "everything needs a colocated
+test" default, so the `recommended` preset cannot safely enable it. Turn it on with your own
+`include` globs.
 
 ## When not to use it
 

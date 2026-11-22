@@ -93,10 +93,8 @@ export const billing = {};
 }]
 ```
 
-### In `recommended`
-
-Left out of `recommended` and `strict`. It does nothing until you set `folders` and `pattern`, so a
-preset entry would read as coverage the project does not have.
+**In `recommended`:** Left out of `recommended` and `strict`. It does nothing until you set
+`folders` and `pattern`, so a preset entry would read as coverage the project does not have.
 
 ## When not to use it
 
