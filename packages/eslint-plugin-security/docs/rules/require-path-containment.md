@@ -1,6 +1,6 @@
 # `noctcore-security/require-path-containment`
 
-> Request-shaped input passed directly into `path.join` / `path.resolve` without a containment test on the result is a path-traversal sink.
+> Request-shaped input reaching `path.join` / `path.resolve` or the path of an `fs` call without a containment test is a path-traversal sink.
 
 <!-- begin generated rule header -->
 🔘 Opt-in: not in `recommended` · 💭 Type information: not needed
@@ -57,6 +57,68 @@ function serve(req) {
 `path.normalize` on its own is not a test: it resolves `..` segments, so it happily returns a path
 outside the base directory.
 
+### Filesystem sinks
+
+The path argument of an `fs` call that reads, writes or deletes is followed back through the
+function: `readFile`, `writeFile`, `appendFile`, `unlink`, `rm`, `rmdir`, `mkdir`, `readdir`,
+`stat`, `lstat`, `open`, `opendir`, `access`, `truncate`, `chmod`, `chown`, `createReadStream`,
+`createWriteStream`, `readlink`, `realpath` and their `Sync` forms, both paths of `copyFile`, `cp`,
+`rename`, `link` and `symlink`, and Express `res.sendFile` / `res.download`. The fs module is
+recognised as `fs`, `fsp`, `fsPromises`, `fs.promises`, a `require` or import of `fs`,
+`node:fs`, `fs/promises` or `node:fs/promises` under any name, and named imports of those
+functions.
+
+The path is reported when request-shaped input reaches it through:
+
+- `const` and `let` bindings (every assignment, including in `try` / `catch`), destructuring and
+  `for...of`;
+- string building (`+`, templates, `?:`, `||`, `??`);
+- member access (`JSON.parse(x).value`, `parts[0]`) and object or array literals holding it,
+  getters included;
+- any call that takes it as an argument, receiver or callee (`decodeURIComponent(x)`,
+  `x.split(',').join(' ')`, a closure `read()` built from it);
+- `arr.push(x)` into an array that later becomes the path.
+
+```ts bad
+import fs from 'node:fs';
+
+export function read(req, res) {
+  const name = String(req.query.file).trim();
+  res.send(fs.readFileSync('/srv/files/' + name, 'utf8'));
+}
+```
+
+The flow stops at `path.basename(x)`, a number conversion (`Number`, `parseInt`, `parseFloat`), a
+callee named in `sanitizers`, and at a binding the function checked before the call with an `if`
+that exits (or an `if` around the call): an allowlist (`includes` / `has` on in-file literals,
+`===` against literals) or a regex anchored at both ends, without the `m` flag or a `.`, that
+admits no `/`, `\` or `:`. A path built by `join` / `resolve` passes when the containment test
+above takes it.
+
+```ts good
+import fs from 'node:fs';
+import path from 'node:path';
+
+export function read(req, res) {
+  const name = String(req.query.file).trim();
+  res.send(fs.readFileSync('/srv/files/' + path.basename(name), 'utf8'));
+}
+```
+
+```ts good
+import fs from 'node:fs';
+
+const FILES = new Set(['terms.md', 'privacy.md']);
+
+export function read(req, res) {
+  const name = String(req.query.file).trim();
+  if (!FILES.has(name)) return res.status(404).end();
+  res.send(fs.readFileSync('/srv/files/' + name, 'utf8'));
+}
+```
+
+A `join` with a direct `req.*` argument is reported once, at the join, not again at the fs call.
+
 ### Escape hatch
 
 If a flagged site is already safe, add a comment containing `path-containment` anywhere in the
@@ -81,6 +143,10 @@ return path.join(base, safe);
 ```
 
 A `join` or `resolve` imported from any other module (lodash, a DI container) is not a path builder.
+
+A `readFile` that is not the fs module's (`storage.readFile`, a local function) is not a sink. Flow
+across functions is not followed: a handler that passes `req.params.file` to a helper which builds
+the path is not seen.
 
 Broader user-input sources (arbitrary handler parameters, decoded JWT or payload fields) are not
 tracked by default. Proving them user-shaped needs type or dataflow analysis this syntactic rule
@@ -113,16 +179,18 @@ export async function clearSprite(settings) {
 | --- | --- | --- | --- |
 | `requestObjects` | `string[]` | `['req', 'request']` | Root object names treated as request-shaped input. |
 | `containmentGuards` | `string[]` | `[]` | Names of project helpers that verify containment; a call to one that takes the joined value counts as a test. |
+| `sanitizers` | `string[]` | `[]` | Callees (source text) whose result is a safe file name, so request input passed through one does not reach an fs path. `path.basename` always counts. |
 
 ```js
 'noctcore-security/require-path-containment': [
   'error',
-  { requestObjects: ['req', 'request', 'ctx'], containmentGuards: ['assertInside'] },
+  { requestObjects: ['req', 'request', 'ctx'], containmentGuards: ['assertInside'], sanitizers: ['toSafeName'] },
 ]
 ```
 
 ## When not to use it
 
 This is a **high-false-positive family**, which is why it is omitted from the `recommended` preset.
-Enable it explicitly at `error` once you have confirmed your codebase's `req.*`-into-`path` call
-sites are worth auditing; scope it with `files` to the directories you are ready to fix.
+Enable it explicitly at `error` once you have confirmed your codebase's `req.*`-into-`path` and
+`req.*`-into-`fs` call sites are worth auditing; scope it with `files` to the directories you are
+ready to fix.
