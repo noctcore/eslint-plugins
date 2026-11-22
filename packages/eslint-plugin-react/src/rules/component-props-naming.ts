@@ -172,7 +172,7 @@ export const componentPropsNamingRule = createRule<RuleOptions, MessageIds>({
     schema: [optionSchema],
     messages: {
       propsNaming:
-        'Props type for `{{component}}` should be named `{{expected}}`, not `{{actual}}` — a `<Component>Props` name keeps the contract discoverable.',
+        'Props type for `{{component}}` should be named `{{expected}}`, not `{{actual}}`: a `<Component>Props` name keeps the contract discoverable.',
     },
   },
   defaultOptions: [{ requireExported: false, pattern: DEFAULT_PATTERN }],

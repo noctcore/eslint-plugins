@@ -52,7 +52,7 @@ export const maxPropsPerComponentRule = createRule<RuleOptions, MessageIds>({
     schema: [optionSchema],
     messages: {
       tooManyProps:
-        "'{{name}}' declares {{count}} props (max {{max}}). A props contract this wide means the component does too much — split the component or group related props into cohesive objects.",
+        "'{{name}}' declares {{count}} props (max {{max}}). A props contract this wide means the component does too much. Split the component or group related props into cohesive objects.",
     },
   },
   defaultOptions: [{ max: DEFAULT_MAX }],
