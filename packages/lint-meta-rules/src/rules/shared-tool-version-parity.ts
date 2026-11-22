@@ -2,7 +2,7 @@ import type { IMetaRule, IViolation } from '@noctcore/harness';
 
 import { matchesAnyGlob } from './glob-match';
 import { workspaceList } from './pnpm-workspace-yaml';
-import { asRecord, escapeRegExp, readManifests, stripTrailingSlashes } from './shared';
+import { asRecord, DEFAULT_SKIP_DIRS, escapeRegExp, readSourceText, stripTrailingSlashes } from './shared';
 
 /** Options for {@link createSharedToolVersionParityRule}. */
 export interface SharedToolVersionParityOptions {
@@ -51,6 +51,9 @@ function trimSlashes(glob: string): string {
   return stripTrailingSlashes(glob.replace(/^\.\//u, ''));
 }
 
+/** Directories a workspace match is never taken from: an installed or built package is not a workspace package. */
+const SKIPPED_DIRS: ReadonlySet<string> = new Set(DEFAULT_SKIP_DIRS);
+
 /** The `package.json` files of the workspace packages, plus the root one when asked for. */
 function manifestFiles(
   glob: (pattern: string) => string[],
@@ -65,6 +68,7 @@ function manifestFiles(
   for (const entry of include) {
     for (const file of glob(`${entry}/package.json`)) {
       const dir = file.replace(/\/?package\.json$/u, '');
+      if (dir.split('/').some((segment) => SKIPPED_DIRS.has(segment))) continue;
       if (!matchesAnyGlob(dir, exclude)) files.add(file);
     }
   }
@@ -116,16 +120,24 @@ export function createSharedToolVersionParityRule(options: SharedToolVersionPari
       const byTool = new Map<string, Declaration[]>();
       const violations: IViolation[] = [];
 
-      for (const manifest of readManifests(ctx, files)) {
-        if (!manifest.ok) continue;
-        const text = ctx.read(manifest.file) ?? '';
+      for (const file of files) {
+        // One read per manifest: the parsed object gives the versions, the text their lines.
+        const text = readSourceText((rel) => ctx.read(rel), file);
+        if (text === null) continue;
+        let pkg: Record<string, unknown> | null;
+        try {
+          pkg = asRecord(JSON.parse(text));
+        } catch {
+          continue;
+        }
+        if (pkg === null) continue;
         for (const field of fields) {
-          const deps = asRecord(manifest.pkg[field]);
+          const deps = asRecord(pkg[field]);
           if (deps === null) continue;
           for (const [name, version] of Object.entries(deps)) {
             if (typeof version !== 'string' || !isTool(name) || SKIPPED_SPECIFIERS.test(version)) continue;
             const list = byTool.get(name) ?? [];
-            list.push({ file: manifest.file, field, version, line: declarationLine(text, field, name) });
+            list.push({ file, field, version, line: declarationLine(text, field, name) });
             byTool.set(name, list);
           }
         }

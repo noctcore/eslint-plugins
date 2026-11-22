@@ -17,6 +17,38 @@ function run(files: Record<string, string>, options = {}) {
 }
 
 describe('shared-tool-version-parity', () => {
+  test('a ** workspace glob never takes a manifest from node_modules or a build folder', () => {
+    const root = JSON.stringify({ name: 'root', private: true, workspaces: ['packages/**'] });
+    const violations = createSharedToolVersionParityRule().run(
+      createFakeCtx({
+        files: {
+          'package.json': root,
+          'packages/a/package.json': manifest('a', { typescript: '5.6.3' }),
+          'packages/b/package.json': manifest('b', { typescript: '5.6.3' }),
+          'packages/a/node_modules/dep/package.json': manifest('dep', { typescript: '4.9.5' }),
+          'packages/b/dist/package.json': manifest('b-dist', { typescript: '4.9.5' }),
+        },
+      }),
+    );
+
+    expect(violations).toEqual([]);
+  });
+
+  test('reads each manifest once', () => {
+    const files: Record<string, string> = {
+      'package.json': ROOT,
+      'apps/web/package.json': manifest('web', { typescript: '5.6.3' }),
+      'apps/api/package.json': manifest('api', { typescript: '5.7.2' }),
+    };
+    const reads = new Map<string, number>();
+    const ctx = createFakeCtx({ files });
+    const counted = { ...ctx, read: (rel: string) => { reads.set(rel, (reads.get(rel) ?? 0) + 1); return ctx.read(rel); } };
+
+    expect(createSharedToolVersionParityRule({ includeRoot: false }).run(counted)).toHaveLength(2);
+    expect(reads.get('apps/web/package.json')).toBe(1);
+    expect(reads.get('apps/api/package.json')).toBe(1);
+  });
+
   test('reports every declarer when two packages declare typescript at different versions, with file and line', () => {
     const violations = run({
       'apps/web/package.json': manifest('web', { typescript: '5.6.3' }),
