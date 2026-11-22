@@ -383,6 +383,7 @@ export function shapeRulePage(body: readonly string[]): string[] {
   let inTable = false;
   for (const line of body) {
     if (line.startsWith('## ')) {
+      if (inSee) out.push('<p class="rule-jump"><a href="#code-that-triggers-it">See the code that triggers it, and the fix</a></p>', '');
       inSee = line.trim() === '## What you will see';
       inOptions = line.trim() === '## Options';
     }

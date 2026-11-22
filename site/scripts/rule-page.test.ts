@@ -157,6 +157,7 @@ describe('shaped HTML', () => {
     expect(html).toContain('<ul class="rule-messages" role="list">');
     expect(html).toContain('Report');
     expect(html).not.toContain(MESSAGES_BEGIN);
+    expect(html).toContain('href="#code-that-triggers-it"');
     expect(html).toContain('<span class="rule-fix-label">The fix</span> Call the quiet one.');
     const named = shapeRulePage([...page.split('\n').slice(0, 9), '`{{what}}` is the thing.', '']).join('\n');
     expect(named).toContain('<var class="ph">what</var> is the thing.');
