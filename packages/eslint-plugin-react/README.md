@@ -70,9 +70,10 @@ export default [
 
 ## Opt-in rules
 
-Two rules are left out of `recommended`: `enforce-context-consumption` does nothing until its
-`contexts` registry is set, and `no-native-date-input` enforces a house convention (use the design
-system's date picker) rather than a defect every codebase has.
+Three rules are left out of `recommended`: `enforce-context-consumption` does nothing until its
+`contexts` registry is set, `no-native-date-input` enforces a house convention (use the design
+system's date picker) rather than a defect every codebase has, and `no-hardcoded-design-values` is
+for design system and UI library packages that theme through tokens.
 
 ```js
 // eslint.config.js
@@ -92,6 +93,15 @@ export default [
       'noctcore-react/no-native-date-input': ['error', {
         replacement: '`DateField` from `@/shared/components/DateField`',
         allowIn: ['**/DateField/**'],
+      }],
+    },
+  },
+  {
+    // The component library only: an app may use the palette directly.
+    files: ['packages/ui/src/**/*.tsx'],
+    rules: {
+      'noctcore-react/no-hardcoded-design-values': ['error', {
+        allowedVarPrefixes: ['--color-', '--radius-', '--space-', '--font-', '--shadow-', '--motion-'],
       }],
     },
   },
@@ -115,6 +125,7 @@ export default [
 | [`max-props-per-component`](https://noctcore.github.io/eslint-plugins/rules/react/max-props-per-component/) | A `*Props` interface/type-literal may declare at most `max` (default 12) local members. `extends` clauses are not counted. | ☑️ |  |  |  |  |
 | [`max-state-per-hook`](https://noctcore.github.io/eslint-plugins/rules/react/max-state-per-hook/) | A `use*` hook in a hook file may keep at most `max` (default 4) `useState` / `useReducer` slots, and a function inside it may call at most `maxSettersPerFunction` (default 3) distinct setters. Group the rest in a reducer. | ☑️ |  |  |  |  |
 | [`no-effect-derived-state`](https://noctcore.github.io/eslint-plugins/rules/react/no-effect-derived-state/) | An effect whose entire body is `setState` calls with values derived purely from its dependencies is the "you might not need an effect" anti-pattern — compute the value during render (or with `useMemo`) instead. | ✅ |  |  |  |  |
+| [`no-hardcoded-design-values`](https://noctcore.github.io/eslint-plugins/rules/react/no-hardcoded-design-values/) | Disallow hardcoded colours, spacing, font sizes and families, radii, shadows and motion in class strings, inline styles and CSS-in-JS, so a theme can restyle components through design tokens. | 🔘 |  |  |  |  |
 | [`no-jsx-computation`](https://noctcore.github.io/eslint-plugins/rules/react/no-jsx-computation/) | Disallow array methods, arithmetic, and chained logical expressions directly inside JSX `{...}`. Lift them to a const above the return or into the hook. | ☑️ |  |  |  |  |
 | [`no-jsx-in-hooks`](https://noctcore.github.io/eslint-plugins/rules/react/no-jsx-in-hooks/) | A `use*`-named function must not return JSX — that is a component wearing a hook costume. Rename it to a PascalCase component, or return values instead of elements. | ✅ |  |  |  |  |
 | [`no-native-date-input`](https://noctcore.github.io/eslint-plugins/rules/react/no-native-date-input/) | Disallow native date inputs (`type="date"` and friends): Chromium formats them in the browser UI language and ignores `lang`, so the date order can contradict the page. | 🔘 |  |  |  |  |
