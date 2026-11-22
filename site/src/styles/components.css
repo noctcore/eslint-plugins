@@ -2267,3 +2267,68 @@
     overflow-wrap: anywhere;
   }
 }
+
+/* ---------- frame titles and sideways scroll (ec.config.mjs) ----------
+   A verdict title is split into verdict, path head, path tail and count.
+   It stays on one line: when it does not fit, the head of the path shrinks
+   to an ellipsis and the file name stays whole. */
+.expressive-code :is(.verdict-bad, .verdict-good) .header .title:has(.t-head) {
+  display: flex;
+  align-items: center;
+  gap: 0;
+  min-width: 0;
+  max-width: 100%;
+  white-space: pre;
+  overflow: hidden;
+}
+
+.expressive-code .header .title :is(.t-verdict, .t-tail, .t-rest) {
+  flex-shrink: 0;
+}
+
+.expressive-code .header .title .t-head {
+  min-width: 1.5em;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+/* Code that runs past the frame shows a soft edge on the side that has more:
+   the covers scroll with the code and hide each edge once it is reached. */
+.expressive-code :is(.verdict-bad, .verdict-good, .verdict-report) pre {
+  background:
+    linear-gradient(to right, var(--sheet-code-bg) 40%, transparent) left center / 2.5rem 100% no-repeat local,
+    linear-gradient(to left, var(--sheet-code-bg) 40%, transparent) right center / 2.5rem 100% no-repeat local,
+    linear-gradient(to right, color-mix(in oklab, var(--sheet-code-dim) 50%, transparent), transparent) left center / 1rem 100% no-repeat scroll,
+    linear-gradient(to left, color-mix(in oklab, var(--sheet-code-dim) 50%, transparent), transparent) right center / 1rem 100% no-repeat scroll,
+    var(--sheet-code-bg);
+}
+
+.expressive-code pre[tabindex]:focus-visible {
+  outline: 2px solid var(--sheet-code-fg);
+  outline-offset: -2px;
+}
+
+/* Each shape under "Code that triggers it" is one block: a hairline and air
+   between shapes, tighter spacing inside one, so a long page scans by shape. */
+.sl-markdown-content .rule-shape {
+  margin-top: 2.25rem;
+  padding-top: 1.75rem;
+  border-top: 1px solid var(--sheet-line);
+}
+
+.sl-markdown-content .rule-shape > .sl-heading-wrapper {
+  margin-top: 0;
+}
+
+.sl-markdown-content .rule-shape .expressive-code :is(.verdict-bad, .verdict-good) + * {
+  margin-top: 0.5rem;
+}
+
+.sl-markdown-content .rule-shape .rule-fix {
+  margin: 0.625rem 0;
+}
+
+.sl-markdown-content .rule-shape > p:not(.rule-example-options) + .expressive-code,
+.sl-markdown-content .rule-shape > ul + .expressive-code {
+  margin-top: 0.75rem;
+}
