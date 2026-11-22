@@ -181,7 +181,7 @@ export const filenameMatchesExportRule = createRule<RuleOptions, MessageIds>({
     schema: [optionSchema],
     messages: {
       filenameMismatch:
-        "File `{{basename}}` exports `{{name}}` as its primary export — the basename should match it (rename the file to `{{expected}}`, or the export).",
+        "File `{{basename}}` exports `{{name}}` as its primary export, so the basename should match it (rename the file to `{{expected}}`, or the export).",
       renameExport: 'Rename the export to `{{expected}}` to match the filename.',
     },
   },
