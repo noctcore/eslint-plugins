@@ -1,6 +1,6 @@
 import { AST_NODE_TYPES, ASTUtils, type TSESLint, type TSESTree } from '@typescript-eslint/utils';
 
-import { type GuardContext, isProvenSafeValue } from './guards';
+import { type GuardContext, isLiteralTableRead, isProvenSafeValue } from './guards';
 
 /*
  * In-function data flow from request-shaped input to a sink, without type
@@ -113,6 +113,15 @@ function carried(raw: TSESTree.Node, walk: Walk, depth: number): TSESTree.Node |
 
   if (isRequestMember(raw, walk.options.requestObjects)) {
     return raw;
+  }
+  // A value proven harmless (a confined schema's output, a literal table read)
+  // cuts the flow wherever it sits, not only behind a binding.
+  if (
+    raw.type !== AST_NODE_TYPES.Identifier &&
+    (isLiteralTableRead(raw, walk.sourceCode) ||
+      isProvenSafeValue(raw, walk.sink, walk.options.context, walk.sourceCode))
+  ) {
+    return null;
   }
   const node = raw;
   switch (node.type) {

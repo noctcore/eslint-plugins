@@ -157,6 +157,8 @@ interface PathBindings {
   readonly fsFunctions: Map<string, string>;
   /** Local names bound to `path.basename` (`import { basename } from 'node:path'`). */
   readonly basenames: Set<string>;
+  /** Local names bound to `path.extname`. */
+  readonly extnames: Set<string>;
 }
 
 /** The module a `require('<name>')` call loads, else null. */
@@ -206,6 +208,7 @@ function collectRequire(declarator: TSESTree.VariableDeclarator, bindings: PathB
     }
     if (isPath && BUILDERS.has(imported)) bindings.builders.set(local, imported);
     if (isPath && imported === 'basename') bindings.basenames.add(local);
+    if (isPath && imported === 'extname') bindings.extnames.add(local);
   }
 }
 
@@ -217,6 +220,7 @@ function collectPathBindings(program: TSESTree.Program): PathBindings {
     fsModules: new Set(CONVENTIONAL_FS),
     fsFunctions: new Map(),
     basenames: new Set(),
+    extnames: new Set(),
   };
   for (const statement of program.body) {
     if (statement.type === AST_NODE_TYPES.VariableDeclaration) {
@@ -246,6 +250,9 @@ function collectPathBindings(program: TSESTree.Program): PathBindings {
         }
         if (isPath && imported === 'basename') {
           bindings.basenames.add(local);
+        }
+        if (isPath && imported === 'extname') {
+          bindings.extnames.add(local);
         }
         if (isFs && imported === 'promises') {
           bindings.fsModules.add(local);
@@ -526,6 +533,9 @@ export const requirePathContainmentRule = createRule<RuleOptions, MessageIds>({
       const sanitizers = new Set([
         ...current.basenames,
         ...[...current.modules].map((name) => `${name}.basename`),
+        // `extname` keeps only the last `.ext` of the base name: no separator survives.
+        ...current.extnames,
+        ...[...current.modules].map((name) => `${name}.extname`),
         ...(options.sanitizers ?? []).map((name) => name.replace(/\s+/gu, '').replace(/\(\)$/u, '')),
       ]);
       for (const pathArgument of paths) {
