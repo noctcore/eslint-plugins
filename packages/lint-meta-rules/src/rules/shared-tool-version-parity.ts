@@ -2,7 +2,7 @@ import type { IMetaRule, IViolation } from '@noctcore/harness';
 
 import { matchesAnyGlob } from './glob-match';
 import { workspaceList } from './pnpm-workspace-yaml';
-import { asRecord, escapeRegExp, readManifests } from './shared';
+import { asRecord, escapeRegExp, readManifests, stripTrailingSlashes } from './shared';
 
 /** Options for {@link createSharedToolVersionParityRule}. */
 export interface SharedToolVersionParityOptions {
@@ -48,7 +48,7 @@ export function declaredWorkspaces(read: (rel: string) => string | null): string
 }
 
 function trimSlashes(glob: string): string {
-  return glob.replace(/^\.\//u, '').replace(/\/+$/u, '');
+  return stripTrailingSlashes(glob.replace(/^\.\//u, ''));
 }
 
 /** The `package.json` files of the workspace packages, plus the root one when asked for. */
