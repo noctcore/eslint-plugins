@@ -11,6 +11,14 @@ export interface NoctcoreRuleDocs {
    * list of models. The generated README table and rule-doc header mark it ⚙️.
    */
   readonly requiresOptions?: boolean;
+  /**
+   * The CWE ids of the weakness the rule reports, as `CWE-<n>` (`['CWE-78']`).
+   * A SARIF formatter can turn them into `external/cwe/cwe-<n>` tags, which is
+   * how code scanning tools and benchmark scorers classify a finding.
+   */
+  readonly cwe?: readonly string[];
+  /** The OWASP Top 10 categories the rule maps to, as `A<nn>:<year>` (`['A03:2021']`). */
+  readonly owasp?: readonly string[];
 }
 
 /**
