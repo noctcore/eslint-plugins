@@ -7,3 +7,5 @@ Add the opt-in `no-hardcoded-design-values` rule for design system and UI librar
 Theme-scale utilities (`bg-primary`, `p-4`, `rounded-md`), arbitrary values for geometry (`w-[200px]`), `0`, percentages, `inherit`, `currentColor`, `transparent`, values the rule cannot read, SVG attributes, DOM query strings, and tests and stories (default `allowIn`) are left alone. Any CSS variable is a token unless `allowedVarPrefixes` is set; then other variables are reported, except `allowedVars` (by default the runtime geometry variables Base UI sets). Other options: `categories`, `allowedValues`, `fontNames`, `classAttributes`, `classFunctions`, `styleAttributes`, `checkStyleObjects`, `cssTags`.
 
 The rule is not in `recommended` or `strict`, so a project spreading either preset sees no new errors. Enable it for the component package with `'noctcore-react/no-hardcoded-design-values': 'error'`.
+
+Arithmetic on a token (`calc(var(--radius) - 2px)`, `min(var(--radius-md), 10px)`), `url(...)` references such as `url(#fade)`, and `//` comments in CSS templates are not reported.
