@@ -1,0 +1,73 @@
+{
+  "name": "@noctcore/eslint-plugin-three",
+  "version": "0.0.0",
+  "description": "three.js and React Three Fiber rules: uncapped pixel ratios, undisposed GPU resources, stale camera projections, per-frame allocations and state updates, and instance buffers that never re-upload.",
+  "license": "MIT",
+  "type": "module",
+  "main": "./dist/index.cjs",
+  "module": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "exports": {
+    ".": {
+      "import": {
+        "types": "./dist/index.d.ts",
+        "default": "./dist/index.js"
+      },
+      "require": {
+        "types": "./dist/index.d.cts",
+        "default": "./dist/index.cjs"
+      }
+    },
+    "./package.json": "./package.json"
+  },
+  "files": [
+    "dist",
+    "docs",
+    "README.md"
+  ],
+  "sideEffects": false,
+  "keywords": [
+    "eslint",
+    "eslintplugin",
+    "eslint-plugin",
+    "three",
+    "threejs",
+    "react-three-fiber",
+    "r3f",
+    "webgl",
+    "noctcore"
+  ],
+  "publishConfig": {
+    "access": "public",
+    "provenance": true
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/noctcore/eslint-plugins.git",
+    "directory": "packages/eslint-plugin-three"
+  },
+  "homepage": "https://noctcore.github.io/eslint-plugins/packages/three/",
+  "bugs": "https://github.com/noctcore/eslint-plugins/issues",
+  "scripts": {
+    "build": "tsup src/index.ts --format esm,cjs --dts --clean",
+    "typecheck": "tsc --noEmit",
+    "test": "vitest run"
+  },
+  "dependencies": {
+    "@noctcore/eslint-utils": "^0.2.0",
+    "@typescript-eslint/utils": "^8.72.1"
+  },
+  "peerDependencies": {
+    "eslint": ">=9.0.0 <11",
+    "typescript": ">=5.0.0 <7"
+  },
+  "devDependencies": {
+    "@noctcore/eslint-test-utils": "workspace:*",
+    "@types/node": "^22.20.5",
+    "@typescript-eslint/parser": "^8.72.1",
+    "@typescript-eslint/rule-tester": "^8.72.1",
+    "tsup": "^9.0.0",
+    "typescript": "^5.6.0",
+    "vitest": "^5"
+  }
+}

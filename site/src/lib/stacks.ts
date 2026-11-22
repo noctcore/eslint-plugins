@@ -54,6 +54,7 @@ export const STACK_GROUPS: readonly StackGroup[] = [
       { short: 'rsc', when: 'You use the Next.js App Router / React Server Components' },
       { short: 'query', when: 'You use TanStack Query, with or without tRPC' },
       { short: 'electron', when: 'You ship an Electron app' },
+      { short: 'three', when: 'You render with three.js or React Three Fiber' },
     ],
   },
   {

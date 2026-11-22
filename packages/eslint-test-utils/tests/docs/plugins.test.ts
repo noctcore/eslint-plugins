@@ -26,6 +26,7 @@ import query from '../../../eslint-plugin-query/src/index';
 import react from '../../../eslint-plugin-react/src/index';
 import rsc from '../../../eslint-plugin-rsc/src/index';
 import security from '../../../eslint-plugin-security/src/index';
+import three from '../../../eslint-plugin-three/src/index';
 import { compareRulesToDocs, type DocPlugin, runPluginDocs } from '../../src';
 
 type DocStatus = 'executed' | 'pending';
@@ -46,6 +47,7 @@ const PLUGINS: Record<string, { readonly plugin: DocPlugin; readonly status: Doc
   react: { plugin: react, status: 'executed' },
   rsc: { plugin: rsc, status: 'executed' },
   security: { plugin: security, status: 'executed' },
+  three: { plugin: three, status: 'executed' },
 };
 
 const packagesDir = fileURLToPath(new URL('../../../', import.meta.url));

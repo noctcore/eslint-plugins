@@ -42,6 +42,7 @@ export const PLUGIN_SHORT_NAMES = [
   'query',
   'electron',
   'dates',
+  'three',
 ] as const;
 
 export const LINT_META = 'lint-meta-rules';

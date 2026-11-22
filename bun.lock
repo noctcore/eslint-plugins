@@ -346,6 +346,27 @@
         "typescript": ">=5.0.0 <7",
       },
     },
+    "packages/eslint-plugin-three": {
+      "name": "@noctcore/eslint-plugin-three",
+      "version": "0.0.0",
+      "dependencies": {
+        "@noctcore/eslint-utils": "^0.2.0",
+        "@typescript-eslint/utils": "^8.72.1",
+      },
+      "devDependencies": {
+        "@noctcore/eslint-test-utils": "workspace:*",
+        "@types/node": "^22.20.5",
+        "@typescript-eslint/parser": "^8.72.1",
+        "@typescript-eslint/rule-tester": "^8.72.1",
+        "tsup": "^9.0.0",
+        "typescript": "^5.6.0",
+        "vitest": "^5",
+      },
+      "peerDependencies": {
+        "eslint": ">=9.0.0 <11",
+        "typescript": ">=5.0.0 <7",
+      },
+    },
     "packages/eslint-test-utils": {
       "name": "@noctcore/eslint-test-utils",
       "version": "0.0.0",
@@ -769,6 +790,8 @@
     "@noctcore/eslint-plugin-rsc": ["@noctcore/eslint-plugin-rsc@workspace:packages/eslint-plugin-rsc"],
 
     "@noctcore/eslint-plugin-security": ["@noctcore/eslint-plugin-security@workspace:packages/eslint-plugin-security"],
+
+    "@noctcore/eslint-plugin-three": ["@noctcore/eslint-plugin-three@workspace:packages/eslint-plugin-three"],
 
     "@noctcore/eslint-test-utils": ["@noctcore/eslint-test-utils@workspace:packages/eslint-test-utils"],
 
