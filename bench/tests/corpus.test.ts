@@ -50,24 +50,24 @@ describe('loadCorpus', () => {
   it('loads a well-formed category', () => {
     const root = writeCorpus({
       'security/demo/category.json': SHELL_CATEGORY,
-      'security/demo/p.vuln.js': `${header('p')}\nexec(\`ls \${d}\`); // expect: security/no-shell-interpolation\n`,
-      'security/demo/p.safe.js': `${header('p')}\n// ok\nexecFile('ls', [d]);\n`,
+      'security/demo/p.vuln.js.case': `${header('p')}\nexec(\`ls \${d}\`); // expect: security/no-shell-interpolation\n`,
+      'security/demo/p.safe.js.case': `${header('p')}\n// ok\nexecFile('ls', [d]);\n`,
     });
     const [category] = loadCorpus(root).categories;
     expect(category?.id).toBe('security/demo');
     expect(category?.cases.map((c) => [c.file, c.kind])).toEqual([
-      ['security/demo/p.safe.js', 'safe'],
-      ['security/demo/p.vuln.js', 'vuln'],
+      ['security/demo/p.safe.js.case', 'safe'],
+      ['security/demo/p.vuln.js.case', 'vuln'],
     ]);
   });
 
   it('lists every problem at once', () => {
     const root = writeCorpus({
       'security/demo/category.json': SHELL_CATEGORY,
-      'security/demo/lonely.vuln.js': `${header('lonely')}\nexec(x); // expect: security/other-rule\n`,
-      'security/demo/twin.safe.js': `${header('twin')}\nexec(x);\n`,
-      'security/demo/wrong.vuln.js': `${header('other')}\n// ok\n`,
-      'security/demo/Bad_Name.js': 'x',
+      'security/demo/lonely.vuln.js.case': `${header('lonely')}\nexec(x); // expect: security/other-rule\n`,
+      'security/demo/twin.safe.js.case': `${header('twin')}\nexec(x);\n`,
+      'security/demo/wrong.vuln.js.case': `${header('other')}\n// ok\n`,
+      'security/demo/Bad_Name.js.case': 'x',
     });
     let problems: readonly string[] = [];
     try {
@@ -77,11 +77,11 @@ describe('loadCorpus', () => {
       problems = (error as CorpusError).problems;
     }
     const text = problems.join('\n');
-    expect(text).toContain('Bad_Name.js: the name must be');
+    expect(text).toContain('Bad_Name.js.case: the name must be');
     expect(text).toContain('"security/other-rule" is not one of this category\'s rules');
-    expect(text).toContain('twin.safe.js: a safe case needs a line that is only "// ok"');
+    expect(text).toContain('twin.safe.js.case: a safe case needs a line that is only "// ok"');
     expect(text).toContain('the header says pair=other but the file name says wrong');
-    expect(text).toContain('wrong.vuln.js: a vuln case needs an "// expect');
+    expect(text).toContain('wrong.vuln.js.case: a vuln case needs an "// expect');
     expect(text).toContain('pair "lonely" has no safe twin');
     expect(text).toContain('pair "twin" has no vuln case');
   });
@@ -89,8 +89,8 @@ describe('loadCorpus', () => {
   it('only loads the named plugins', () => {
     const root = writeCorpus({
       'security/demo/category.json': SHELL_CATEGORY,
-      'security/demo/p.vuln.js': `${header('p')}\nexec(\`ls \${d}\`); // expect: security/no-shell-interpolation\n`,
-      'security/demo/p.safe.js': `${header('p')}\n// ok\n`,
+      'security/demo/p.vuln.js.case': `${header('p')}\nexec(\`ls \${d}\`); // expect: security/no-shell-interpolation\n`,
+      'security/demo/p.safe.js.case': `${header('p')}\n// ok\n`,
     });
     expect(loadCorpus(root, ['electron']).categories).toEqual([]);
   });

@@ -8,9 +8,12 @@
  *   vuln     `// expect: <plugin>/<rule>` on each line the rule must report
  *   safe     a line that is only `// ok`; nothing in the file may be reported
  *
- * File names are `<pair>.vuln.<ext>` and `<pair>.safe[-<n>].<ext>`, so every
- * vulnerable case has a safe twin of the same shape that differs by its guard.
- * Labels live in the file, so a case and its answer cannot drift apart.
+ * File names are `<pair>.vuln.<ext>.case` and `<pair>.safe[-<n>].<ext>.case`,
+ * so every vulnerable case has a safe twin of the same shape that differs by
+ * its guard. Labels live in the file, so a case and its answer cannot drift
+ * apart. The trailing `.case` keeps code scanners (CodeQL on this public repo)
+ * and the repo's own lint from reading deliberately vulnerable samples as
+ * source; the scorer lints each one under its virtual `.<ext>` name.
  */
 import { readdirSync, readFileSync, statSync } from 'node:fs';
 import { join } from 'node:path';
@@ -35,6 +38,8 @@ export interface CorpusCase {
   /** Path under `corpus/`, always with `/`: `security/ssrf/express-link-preview.vuln.js`. */
   readonly file: string;
   readonly absolutePath: string;
+  /** The path the linter sees: {@link absolutePath} without `.case`, so parsers and `files` globs match the language. */
+  readonly lintPath: string;
   readonly plugin: string;
   readonly kind: CaseKind;
   readonly meta: CaseMeta;
@@ -74,7 +79,7 @@ export interface Corpus {
   readonly categories: readonly Category[];
 }
 
-const CASE_FILE = /^([a-z0-9]+(?:-[a-z0-9]+)*)\.(vuln|safe)(?:-(\d+))?\.(js|jsx|ts|tsx|mjs|cjs)$/u;
+const CASE_FILE = /^([a-z0-9]+(?:-[a-z0-9]+)*)\.(vuln|safe)(?:-(\d+))?\.(js|jsx|ts|tsx|mjs|cjs)\.case$/u;
 const HEADER = /^\s*\/\/\s*@bench\s+(.*)$/u;
 const HEADER_FIELD = /(\w+)=(?:"([^"]*)"|(\S+))/gu;
 const EXPECT = /(?:\/\/|\/\*)\s*expect:\s*([a-z0-9-]+\/[a-z0-9-]+(?:\s*,\s*[a-z0-9-]+\/[a-z0-9-]+)*)/gu;
@@ -184,7 +189,7 @@ function readCase(
   const file = `${plugin}/${category}/${fileName}`;
   const name = CASE_FILE.exec(fileName);
   if (name === null) {
-    problems.push(`${file}: the name must be <pair>.vuln.<ext> or <pair>.safe[-<n>].<ext>`);
+    problems.push(`${file}: the name must be <pair>.vuln.<ext>.case or <pair>.safe[-<n>].<ext>.case`);
     return null;
   }
   const [, pair = '', kind = 'vuln'] = name;
@@ -221,6 +226,7 @@ function readCase(
   return {
     file,
     absolutePath,
+    lintPath: absolutePath.slice(0, -'.case'.length),
     plugin,
     kind: kind as CaseKind,
     meta: {

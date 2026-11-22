@@ -32,7 +32,7 @@ describe('the committed corpus', () => {
     const cases = category?.cases ?? [];
     expect(new Set(cases.map((c) => c.meta.pair)).size).toBeGreaterThanOrEqual(MIN_PAIRS);
     expect(new Set(cases.map((c) => c.meta.framework))).toEqual(new Set(['express', 'koa', 'nest', 'node']));
-    const languages = new Set(cases.map((c) => (/\.tsx?$/u.test(c.file) ? 'ts' : 'js')));
+    const languages = new Set(cases.map((c) => (/\.tsx?\.case$/u.test(c.file) ? 'ts' : 'js')));
     expect(languages).toEqual(new Set(['js', 'ts']));
   });
 

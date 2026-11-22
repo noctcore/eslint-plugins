@@ -1,0 +1,19 @@
+// @bench category=cookie-flags cwe=CWE-1004 framework=express pair=express-preferences-auth-token title="auth token cookie set after login httpOnly, secure and sameSite lax"
+// ok
+const express = require('express');
+const { signIn } = require('./auth');
+
+const router = express.Router();
+
+router.post('/preferences', express.json(), async (req, res) => {
+  const user = await signIn(req);
+  if (!user) {
+    return res.sendStatus(401);
+  }
+  const token = await user.issueToken();
+  const theme = req.body.theme === 'dark' ? 'dark' : 'light';
+  res.cookie('auth_token', token, { maxAge: 3600 * 1000, httpOnly: true, secure: true, sameSite: 'lax' });
+  res.json({ saved: true });
+});
+
+module.exports = router;

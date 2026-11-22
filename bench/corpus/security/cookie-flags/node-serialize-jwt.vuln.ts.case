@@ -1,0 +1,14 @@
+// @bench category=cookie-flags cwe=CWE-1004 framework=node pair=node-serialize-jwt title="cookie package serializes a jwt with only path and sameSite"
+import { createServer } from 'node:http';
+import { randomBytes } from 'node:crypto';
+import { serialize } from 'cookie';
+import { signJwt } from './jwt';
+
+createServer(async (req, res) => {
+  const jwt: string = await signJwt({ sub: 'user-1' });
+  const csrf: string = randomBytes(24).toString('hex');
+  const header = serialize('jwt', jwt, { path: '/', sameSite: 'lax' }); // expect: security/auth-cookie-flags
+  res.setHeader('Set-Cookie', header);
+  res.statusCode = 204;
+  res.end();
+}).listen(3000);

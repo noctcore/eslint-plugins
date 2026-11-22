@@ -1,0 +1,17 @@
+// @bench category=cookie-flags cwe=CWE-1004 framework=nest pair=nest-session-auth-token title="auth token cookie set httpOnly, secure and sameSite strict after login"
+// ok
+import { Controller, Post, Res } from '@nestjs/common';
+import type { Response } from 'express';
+import { SessionService } from './session.service';
+
+@Controller('session')
+export class SessionController {
+  constructor(private readonly sessions: SessionService) {}
+
+  @Post()
+  async start(@Res({ passthrough: true }) res: Response) {
+    const token = await this.sessions.start();
+    res.cookie('auth_token', token, { httpOnly: true, secure: true, sameSite: 'strict' });
+    return { ok: true };
+  }
+}

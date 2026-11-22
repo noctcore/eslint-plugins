@@ -1,0 +1,20 @@
+// @bench category=open-redirect cwe=CWE-601 framework=node pair=node-writehead-next title="next accepted only as a printable same-site relative path"
+// ok
+const http = require('node:http');
+
+http
+  .createServer((req, res) => {
+    const url = new URL(req.url, 'http://localhost');
+    if (url.pathname !== '/login/done') {
+      res.writeHead(404);
+      return res.end('not found');
+    }
+    const next = url.searchParams.get('next') || '/';
+    // writeHead does not encode the header, and browsers drop tabs and newlines
+    // from a URL, so `/\t/evil.com` would act as `//evil.com`: printable ASCII only.
+    const local = /^\/(?![/\\])[\x21-\x7e]*$/.test(next);
+    const target = local ? next : '/';
+    res.writeHead(302, { Location: target });
+    res.end();
+  })
+  .listen(3000);

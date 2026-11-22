@@ -18,14 +18,14 @@ async function scoreDemo(files: Record<string, string>) {
 }
 
 const CAUGHT = {
-  'security/demo/caught.vuln.js': `${header('caught')}\nimport { exec } from 'node:child_process';\nexec(\`ls \${req.query.dir}\`); // expect: security/no-shell-interpolation\n`,
-  'security/demo/caught.safe.js': `${header('caught')}\n// ok\nimport { execFile } from 'node:child_process';\nexecFile('ls', [req.query.dir]);\n`,
+  'security/demo/caught.vuln.js.case': `${header('caught')}\nimport { exec } from 'node:child_process';\nexec(\`ls \${req.query.dir}\`); // expect: security/no-shell-interpolation\n`,
+  'security/demo/caught.safe.js.case': `${header('caught')}\n// ok\nimport { execFile } from 'node:child_process';\nexecFile('ls', [req.query.dir]);\n`,
 };
 const MISSED = {
   // The command is built in a variable, which a single-call rule cannot see.
-  'security/demo/missed.vuln.js': `${header('missed')}\nimport { exec } from 'node:child_process';\nconst cmd = 'ls ' + req.query.dir;\nexec(cmd); // expect: security/no-shell-interpolation\n`,
+  'security/demo/missed.vuln.js.case': `${header('missed')}\nimport { exec } from 'node:child_process';\nconst cmd = 'ls ' + req.query.dir;\nexec(cmd); // expect: security/no-shell-interpolation\n`,
   // Validated, then interpolated: safe, but the rule still reports it.
-  'security/demo/missed.safe.js': `${header('missed')}\n// ok\nimport { exec } from 'node:child_process';\nconst dir = req.query.dir;\nif (/^[a-z]+$/.test(dir)) exec(\`ls \${dir}\`);\n`,
+  'security/demo/missed.safe.js.case': `${header('missed')}\n// ok\nimport { exec } from 'node:child_process';\nconst dir = req.query.dir;\nif (/^[a-z]+$/.test(dir)) exec(\`ls \${dir}\`);\n`,
 };
 
 function outcomes(results: readonly CaseResult[]): Record<string, string> {
@@ -36,20 +36,20 @@ describe('scoring', () => {
   it('classifies every label and every safe twin', async () => {
     const { run } = await scoreDemo({ ...CAUGHT, ...MISSED });
     expect(outcomes(run.results)).toEqual({
-      'security/demo/caught.safe.js#security/no-shell-interpolation': 'TN',
-      'security/demo/caught.vuln.js#security/no-shell-interpolation': 'TP',
-      'security/demo/missed.safe.js#security/no-shell-interpolation': 'FP',
-      'security/demo/missed.vuln.js#security/no-shell-interpolation': 'FN',
+      'security/demo/caught.safe.js.case#security/no-shell-interpolation': 'TN',
+      'security/demo/caught.vuln.js.case#security/no-shell-interpolation': 'TP',
+      'security/demo/missed.safe.js.case#security/no-shell-interpolation': 'FP',
+      'security/demo/missed.vuln.js.case#security/no-shell-interpolation': 'FN',
     });
     expect(run.reports.map((r) => r.role).sort()).toEqual(['FP', 'TP']);
   });
 
   it('counts a report on an unlabelled line as an extra, not a TP', async () => {
     const { run } = await scoreDemo({
-      'security/demo/two.vuln.js': `${header('two')}\nimport { exec } from 'node:child_process';\nexec(\`a \${x}\`);\nexec(\`b \${y}\`); // expect: security/no-shell-interpolation\n`,
-      'security/demo/two.safe.js': `${header('two')}\n// ok\n`,
+      'security/demo/two.vuln.js.case': `${header('two')}\nimport { exec } from 'node:child_process';\nexec(\`a \${x}\`);\nexec(\`b \${y}\`); // expect: security/no-shell-interpolation\n`,
+      'security/demo/two.safe.js.case': `${header('two')}\n// ok\n`,
     });
-    expect(outcomes(run.results)['security/demo/two.vuln.js#security/no-shell-interpolation']).toBe('TP');
+    expect(outcomes(run.results)['security/demo/two.vuln.js.case#security/no-shell-interpolation']).toBe('TP');
     expect(run.reports.map((r) => [r.line, r.role])).toEqual([
       [3, 'extra'],
       [4, 'TP'],
@@ -113,8 +113,8 @@ describe('ratchet', () => {
     // The committed file said caught.* were FN/FP and missed.* were TP/TN; now
     // caught.* improved and missed.* regressed.
     expect(comparison.regressions.map((c) => [c.id.split('#')[0], c.from, c.to])).toEqual([
-      ['security/demo/missed.safe.js', 'TN', 'FP'],
-      ['security/demo/missed.vuln.js', 'TP', 'FN'],
+      ['security/demo/missed.safe.js.case', 'TN', 'FP'],
+      ['security/demo/missed.vuln.js.case', 'TP', 'FN'],
     ]);
     expect(comparison.improvements).toHaveLength(2);
     expect(comparison.upToDate).toBe(false);

@@ -205,7 +205,7 @@ export function scoreCategories(
     }
     const config = categoryConfig(category, plugin);
     for (const testCase of category.cases) {
-      const messages = linter.verify(testCase.lintSource, config, { filename: testCase.absolutePath });
+      const messages = linter.verify(testCase.lintSource, config, { filename: testCase.lintPath });
       const broken = messages.filter((m) => m.fatal === true || m.ruleId === null);
       if (broken.length > 0) {
         fatal.push(...broken.map((m) => `${testCase.file}:${m.line}: ${m.message}`));

@@ -1,0 +1,16 @@
+// @bench category=cookie-flags cwe=CWE-1004 framework=express pair=express-magic-link-jwt title="jwt cookie written httpOnly after magic link"
+// ok
+import { Router, Request, Response } from 'express';
+import { randomBytes } from 'node:crypto';
+import { consumeMagicLink } from './magic';
+
+const router = Router();
+
+router.get('/verify', async (req: Request, res: Response) => {
+  const jwt = await consumeMagicLink(String(req.query.t));
+  const csrf = randomBytes(24).toString('hex');
+  res.cookie('jwt', jwt, { sameSite: 'lax', secure: true, httpOnly: true });
+  res.redirect('/app');
+});
+
+export default router;

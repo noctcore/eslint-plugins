@@ -1,0 +1,25 @@
+// @bench category=command-injection cwe=CWE-78 framework=node pair=node-handler-rsync title="request target validated as a plain name and shell-quoted before exec rsync"
+// ok
+import { exec } from 'node:child_process';
+import { promisify } from 'node:util';
+import { quote } from 'shell-quote';
+
+const run = promisify(exec);
+
+// rsync hands the remote path to the remote shell, so quoting locally is not
+// enough on its own: only a plain directory name reaches either shell.
+const TARGET = /^[a-z0-9][a-z0-9_-]{0,63}$/i;
+
+interface SyncRequest {
+  body: { target: string };
+}
+
+export async function handleSync(req: SyncRequest): Promise<{ ok: boolean }> {
+  const target = req.body.target;
+  if (!TARGET.test(target)) {
+    throw new Error('invalid target');
+  }
+  const command = `rsync -az /srv/acme/public/ ${quote([`deploy@mirror.example.com:${target}`])}`;
+  await run(command);
+  return { ok: true };
+}

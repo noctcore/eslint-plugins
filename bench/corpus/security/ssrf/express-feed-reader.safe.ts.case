@@ -1,0 +1,27 @@
+// @bench category=ssrf cwe=CWE-918 framework=express pair=express-feed-reader title="provider key mapped to a fixed feed base URL"
+// ok
+import express, { Request, Response } from 'express';
+import { request } from 'undici';
+
+const app = express();
+const FEEDS: Record<string, string> = {
+  releases: 'https://feeds.example.com/releases.xml',
+  blog: 'https://feeds.example.com/blog.xml',
+};
+
+app.get('/feeds/read', async (req: Request, res: Response) => {
+  const key = String(req.query.feed);
+  const feedUrl = Object.hasOwn(FEEDS, key) ? FEEDS[key] : undefined;
+  if (!feedUrl) {
+    return res.status(404).json({ error: 'unknown feed' });
+  }
+  const { statusCode, body } = await request(feedUrl, { maxRedirections: 2 });
+  if (statusCode !== 200) {
+    return res.status(502).json({ error: 'feed unavailable' });
+  }
+  const xml = await body.text();
+  const items = xml.match(/<item>/g)?.length ?? 0;
+  res.json({ items });
+});
+
+app.listen(3000);

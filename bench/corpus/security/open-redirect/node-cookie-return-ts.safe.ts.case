@@ -1,0 +1,23 @@
+// @bench category=open-redirect cwe=CWE-601 framework=node pair=node-cookie-return-ts title="cookie value parsed, origin compared and a protocol-relative path refused"
+// ok
+import http from 'node:http';
+import type { IncomingMessage, ServerResponse } from 'node:http';
+
+const APP_ORIGIN = 'https://app.example.com';
+
+function readCookie(req: IncomingMessage, name: string): string | undefined {
+  const pair = (req.headers.cookie ?? '').split('; ').find((c) => c.startsWith(name + '='));
+  return pair?.slice(name.length + 1);
+}
+
+function finish(req: IncomingMessage, res: ServerResponse): void {
+  const returnTo = readCookie(req, 'return_to') ?? '/';
+  const url = new URL(returnTo, APP_ORIGIN);
+  // A pathname that starts with // (from `/.//x` or `/%2e//x`) would be protocol-relative.
+  const local = url.origin === APP_ORIGIN && !url.pathname.startsWith('//');
+  const target = local ? url.pathname + url.search : '/';
+  res.writeHead(302, { Location: target });
+  res.end();
+}
+
+http.createServer(finish).listen(3000);
