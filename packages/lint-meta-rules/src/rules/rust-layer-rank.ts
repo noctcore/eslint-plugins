@@ -2,7 +2,7 @@ import type { IMetaCtx, IMetaRule, IViolation } from '@noctcore/harness';
 
 import { matchesAnyGlob } from './glob-match';
 import { escapeRegExp, globFiles, stripTrailingSlashes, stripYamlComment } from './shared';
-import { lineAt, rustFiles, rustScanText } from './rust-source';
+import { lineLocator, rustFiles, rustScanText } from './rust-source';
 
 /** An edge that is reported whatever the ranks say, with the message to show. */
 export interface RustForbiddenEdge {
@@ -60,37 +60,122 @@ interface Edge {
   readonly kind: 'use' | 'dependency';
 }
 
-/** The top-level modules a scan text names through `crate::x` and `crate::{x, y::z}`, with the line of each. */
-export function crateModuleReferences(scan: string): { name: string; offset: number }[] {
+/** How far a grouped import (`crate::{ ... }`) is followed when no `;` or closing brace ends it. */
+const MAX_GROUP_LENGTH = 4096;
+/** Path keywords that never name a module of their own. */
+const PATH_KEYWORDS: ReadonlySet<string> = new Set(['crate', 'self', 'super']);
+
+/**
+ * The module depth of a file under the crate root: `lib.rs` and `main.rs` are
+ * the root (0), `foo.rs` and `foo/mod.rs` are `foo` (1), `foo/bar.rs` is
+ * `foo::bar` (2). `rel` is the path under the crate's source directory.
+ */
+export function rustModuleDepth(rel: string): number {
+  const segments = rel.replace(/\.rs$/u, '').split('/');
+  if (segments[segments.length - 1] === 'mod') segments.pop();
+  if (segments.length === 1 && (segments[0] === 'lib' || segments[0] === 'main')) return 0;
+  return segments.length;
+}
+
+/**
+ * The top-level modules a scan text names through `crate::x`, `crate::{x, y::z}`
+ * and leading `super::` segments that climb to the crate root, with the offset
+ * of each. `depth` is the file's module depth ({@link rustModuleDepth}): from
+ * depth 1, `super::ui` is `crate::ui`; a `super::` path that stays below the
+ * root stays inside the file's own top-level module and is not returned.
+ */
+export function crateModuleReferences(scan: string, depth = 0): { name: string; offset: number }[] {
   const out: { name: string; offset: number }[] = [];
-  for (const match of scan.matchAll(/\bcrate::(?:([a-z_][a-z0-9_]*)|\{)/gu)) {
-    const offset = match.index;
-    if (match[1] !== undefined) {
-      out.push({ name: match[1], offset });
+  const pattern = /(?<![\w:])(?:crate|((?:super\s*::\s*)*super))\s*::\s*(?:([a-z_][a-z0-9_]*)|\{)/gu;
+  for (let match = pattern.exec(scan); match !== null; match = pattern.exec(scan)) {
+    const climbs = match[1] === undefined ? depth : (match[1].match(/super/gu) ?? []).length;
+    if (climbs !== depth) continue;
+    const name = match[2];
+    if (name !== undefined) {
+      if (!PATH_KEYWORDS.has(name)) out.push({ name, offset: match.index });
       continue;
     }
-    let depth = 0;
+    // A group: read the first name of each top-level entry, up to its closing brace,
+    // a `;`, or a bounded distance, and resume the search after it.
+    let braces = 0;
     let expectName = true;
-    for (let index = offset + match[0].length - 1; index < scan.length; index += 1) {
+    const open = match.index + match[0].length - 1;
+    const limit = Math.min(scan.length, open + MAX_GROUP_LENGTH);
+    let index = open;
+    for (; index < limit; index += 1) {
       const char = scan[index] ?? '';
+      if (char === ';') break;
       if (char === '{') {
-        depth += 1;
-        expectName = depth === 1;
+        braces += 1;
+        expectName = braces === 1;
       } else if (char === '}') {
-        depth -= 1;
-        if (depth === 0) break;
-      } else if (char === ',' && depth === 1) {
+        braces -= 1;
+        if (braces === 0) break;
+      } else if (char === ',' && braces === 1) {
         expectName = true;
-      } else if (expectName && depth === 1 && /[a-z_]/u.test(char)) {
-        const name = /^[a-z_][a-z0-9_]*/u.exec(scan.slice(index))?.[0] ?? '';
-        if (name !== 'self') out.push({ name, offset: index });
-        index += name.length - 1;
+      } else if (expectName && braces === 1 && /[a-z_]/u.test(char)) {
+        let stop = index + 1;
+        while (stop < limit && /[a-z0-9_]/u.test(scan[stop] ?? '')) stop += 1;
+        const entry = scan.slice(index, stop);
+        if (!PATH_KEYWORDS.has(entry)) out.push({ name: entry, offset: index });
+        index = stop - 1;
         expectName = false;
       } else if (!/\s/u.test(char)) {
         expectName = false;
       }
     }
+    pattern.lastIndex = Math.max(pattern.lastIndex, index + 1);
   }
+  return out;
+}
+
+/** One dependency entry of a `Cargo.toml`: the crate it pulls in (its `package` when renamed) and the line of its key. */
+export interface CargoDependency {
+  readonly crate: string;
+  readonly line: number;
+}
+
+const DEPENDENCY_TABLE = /^\[\s*(?:[^\]]*\.)?(?:dev-|build-)?dependencies\s*\]$/u;
+const DEPENDENCY_SUBTABLE = /^\[\s*(?:[^\]]*\.)?(?:dev-|build-)?dependencies\s*\.\s*(?:"([^"]+)"|'([^']+)'|([\w-]+))\s*\]$/u;
+const DEPENDENCY_KEY = /^(?:"([^"]+)"|'([^']+)'|([\w-]+))\s*(?:\.\s*[\w-]+\s*)?=\s*(.*)$/u;
+const PACKAGE_VALUE = /\bpackage\s*=\s*(?:"([^"]+)"|'([^']+)')/u;
+
+/**
+ * The dependency entries of a `Cargo.toml`, read line by line: keys under a
+ * `[dependencies]`, `[dev-dependencies]`, `[build-dependencies]` or
+ * `[target.<cfg>.dependencies]` table (bare, quoted or dotted as in
+ * `acme-db.workspace = true`), and `[dependencies.<name>]` tables. A renamed
+ * dependency (`db = { package = "acme-db" }`) counts as the package it names.
+ */
+export function cargoDependencies(text: string): CargoDependency[] {
+  const out: CargoDependency[] = [];
+  let inTable = false;
+  let subtable: { crate: string; line: number } | null = null;
+  const flush = (): void => {
+    if (subtable !== null) out.push(subtable);
+    subtable = null;
+  };
+  text.split('\n').forEach((raw, index) => {
+    const line = stripYamlComment(raw).trim();
+    if (line.startsWith('[')) {
+      flush();
+      inTable = DEPENDENCY_TABLE.test(line);
+      const sub = DEPENDENCY_SUBTABLE.exec(line);
+      if (sub !== null) subtable = { crate: sub[1] ?? sub[2] ?? sub[3] ?? '', line: index + 1 };
+      return;
+    }
+    if (subtable !== null) {
+      const renamed = /^package\s*=\s*(?:"([^"]+)"|'([^']+)')/u.exec(line);
+      if (renamed !== null) subtable = { ...subtable, crate: renamed[1] ?? renamed[2] ?? subtable.crate };
+      return;
+    }
+    if (!inTable) return;
+    const key = DEPENDENCY_KEY.exec(line);
+    if (key === null) return;
+    const renamed = PACKAGE_VALUE.exec(key[4] ?? '');
+    out.push({ crate: renamed?.[1] ?? renamed?.[2] ?? key[1] ?? key[2] ?? key[3] ?? '', line: index + 1 });
+  });
+  flush();
   return out;
 }
 
@@ -161,16 +246,21 @@ export function createRustLayerRankRule(options: RustLayerRankOptions = {}): IMe
   function runModule(ctx: IMetaCtx, opts: RustModuleRankOptions): IViolation[] {
     const root = stripTrailingSlashes(opts.root ?? 'src');
     const facades = opts.facades ?? {};
+    // Own keys only: a module named `constructor` or `toString` is not a facade.
+    const facadeOf = (name: string): string =>
+      Object.prototype.hasOwnProperty.call(facades, name) ? (facades[name] ?? name) : name;
     const groups = opts.toleratedGroups ?? [];
     const tolerated = (from: string, to: string): boolean =>
       groups.some((group) => group.includes(from) && group.includes(to));
     const violations: IViolation[] = [];
     for (const file of rustFiles((pattern) => ctx.glob(pattern), [root], exempt)) {
-      const from = file.slice(root.length + 1).split('/')[0]?.replace(/\.rs$/u, '') ?? '';
+      const rel = file.slice(root.length + 1);
+      const from = rel.split('/')[0]?.replace(/\.rs$/u, '') ?? '';
       if (rankOf(from) === undefined && !forbiddenEdges.some((edge) => edge.from === from)) continue;
       const scan = rustScanText(ctx.read(file) ?? '', skipTestModules);
-      const edges: Edge[] = crateModuleReferences(scan)
-        .map(({ name, offset }) => ({ target: facades[name] ?? name, line: lineAt(scan, offset), kind: 'use' as const }))
+      const lineOf = lineLocator(scan);
+      const edges: Edge[] = crateModuleReferences(scan, rustModuleDepth(rel))
+        .map(({ name, offset }) => ({ target: facadeOf(name), line: lineOf(offset), kind: 'use' as const }))
         .filter((edge) => edge.target !== from);
       for (const edge of firstEdges(edges)) report(violations, file, from, edge, tolerated, (layer) => layer);
     }
@@ -188,16 +278,24 @@ export function createRustLayerRankRule(options: RustLayerRankOptions = {}): IMe
     const describe = (layer: string): string =>
       crateDirs.some(([, name]) => name === layer) ? layer : `${prefix}-${layer}`;
     const never = (): boolean => false;
-    const usePattern = new RegExp(`\\b${escapeRegExp(prefix.replace(/-/gu, '_'))}_([a-z0-9_]+)\\b`, 'gu');
-    const depPattern = new RegExp(`^\\s*${escapeRegExp(prefix)}-([a-z0-9-]+)\\s*[=.]`, 'u');
+    const identPrefix = escapeRegExp(prefix.replace(/-/gu, '_'));
+    // A path (`acme_db::x`, `::acme_db::x`) or a declaration (`use acme_db;`, `extern crate acme_db`),
+    // never a name that is only the crate's prefix (`acme_db_url`) or a submodule (`foo::acme_db`).
+    const usePattern = new RegExp(
+      `(?<!\\w)(?<!\\w::)(?:(?:use|extern\\s+crate)\\s+(?:::)?${identPrefix}_([a-z0-9_]+)(?![\\w])|${identPrefix}_([a-z0-9_]+)(?=\\s*::))`,
+      'gu',
+    );
+    const crateName = (name: string): string | null =>
+      name.startsWith(`${prefix}-`) ? name.slice(prefix.length + 1) : null;
     const violations: IViolation[] = [];
 
     for (const file of rustFiles((pattern) => ctx.glob(pattern), roots, exempt)) {
       const from = crateOf(file);
       if (from === null) continue;
       const scan = rustScanText(ctx.read(file) ?? '', skipTestModules);
+      const lineOf = lineLocator(scan);
       const edges: Edge[] = [...scan.matchAll(usePattern)]
-        .map((match) => ({ target: (match[1] ?? '').replace(/_/gu, '-'), line: lineAt(scan, match.index), kind: 'use' as const }))
+        .map((match) => ({ target: (match[1] ?? match[2] ?? '').replace(/_/gu, '-'), line: lineOf(match.index), kind: 'use' as const }))
         .filter((edge) => edge.target !== from);
       for (const edge of firstEdges(edges)) report(violations, file, from, edge, never, describe);
     }
@@ -207,10 +305,10 @@ export function createRustLayerRankRule(options: RustLayerRankOptions = {}): IMe
       const from = crateOf(file);
       if (from === null) continue;
       const edges: Edge[] = [];
-      (ctx.read(file) ?? '').split('\n').forEach((line, index) => {
-        const match = depPattern.exec(stripYamlComment(line));
-        if (match !== null) edges.push({ target: match[1] ?? '', line: index + 1, kind: 'dependency' });
-      });
+      for (const dependency of cargoDependencies(ctx.read(file) ?? '')) {
+        const target = crateName(dependency.crate);
+        if (target !== null) edges.push({ target, line: dependency.line, kind: 'dependency' });
+      }
       for (const edge of firstEdges(edges.filter((candidate) => candidate.target !== from))) {
         report(violations, file, from, edge, never, describe);
       }

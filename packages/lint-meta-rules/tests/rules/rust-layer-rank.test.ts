@@ -1,6 +1,11 @@
 import { describe, expect, test } from 'bun:test';
 
-import { crateModuleReferences, createRustLayerRankRule } from '../../src/rules/rust-layer-rank';
+import {
+  cargoDependencies,
+  crateModuleReferences,
+  createRustLayerRankRule,
+  rustModuleDepth,
+} from '../../src/rules/rust-layer-rank';
 import { createFakeCtx } from '../test-utils/createFakeCtx';
 
 const RULE_ID = 'rust-layer-rank';
@@ -85,6 +90,52 @@ describe('rust-layer-rank, module mode', () => {
 
     expect(run(files, { ranks })).toEqual([]);
     expect(run(files, { ranks, facades: { settings: 'storage' } })).toHaveLength(1);
+  });
+
+  test('resolves leading super:: segments from the module depth of the file', () => {
+    expect(['lib.rs', 'main.rs', 'store.rs', 'store/mod.rs', 'store/disk.rs', 'store/disk/mod.rs', 'a/b/c.rs'].map(rustModuleDepth)).toEqual([
+      0, 0, 1, 1, 2, 2, 3,
+    ]);
+
+    const violations = run(
+      {
+        'src/storage.rs': 'use super::engine::Runner;\nuse super::{types::Id, api};\n',
+        'src/storage/disk.rs': 'use super::super::engine::Job;\nuse super::cache::Lru;\n',
+        'src/storage/disk/mod.rs': 'use super::super::api::Router;\nuse super::files;\n',
+      },
+      { ranks },
+    );
+
+    expect(violations.map((violation) => [violation.file, violation.line])).toEqual([
+      ['src/storage.rs', 1],
+      ['src/storage.rs', 2],
+      ['src/storage/disk.rs', 1],
+      ['src/storage/disk/mod.rs', 1],
+    ]);
+    expect(violations[0]?.message ?? '').toContain('storage (rank 2) on engine (rank 3)');
+    expect(violations[1]?.message ?? '').toContain('on api (rank 4)');
+    // A super:: path that stays below the root, or climbs past it, names no top-level module.
+    expect(crateModuleReferences('use super::x;', 2)).toEqual([]);
+    expect(crateModuleReferences('use super::super::x;', 1)).toEqual([]);
+    expect(crateModuleReferences('use super::x;', 0)).toEqual([]);
+  });
+
+  test('stops a grouped import at a semicolon or a bounded distance, and stays fast on unclosed groups', () => {
+    expect(crateModuleReferences('use crate::{a, b;\nfn f() { other::{c, d} }').map((ref) => ref.name)).toEqual(['a', 'b']);
+    expect(crateModuleReferences(`use crate::{a, ${' '.repeat(5000)}b}`).map((ref) => ref.name)).toEqual(['a']);
+
+    const hostile = 'use crate::{'.repeat(20_000);
+    const start = performance.now();
+    run({ 'src/storage/x.rs': hostile }, { ranks });
+    crateModuleReferences(hostile);
+    expect(performance.now() - start).toBeLessThan(1000);
+  });
+
+  test('reads facades as own keys only', () => {
+    const files = { 'src/types.rs': 'use crate::constructor::X;\nuse crate::__proto__::Y;\n' };
+
+    expect(run(files, { ranks: Object.fromEntries([['types', 1], ['constructor', 2], ['__proto__', 2]]) })).toHaveLength(2);
+    expect(run(files, { ranks: { ...ranks, constructor: 2 }, facades: {} })).toHaveLength(1);
   });
 
   test('toleratedGroups allows equal-rank edges inside a group, and forbiddenEdges still reports', () => {
@@ -186,6 +237,53 @@ describe('rust-layer-rank, crate mode', () => {
     );
 
     expect(violations).toHaveLength(1);
+  });
+
+  test('a crate name counts only as a path or a use / extern crate declaration', () => {
+    const text = [
+      'const acme_library_url: &str = "x";',
+      'let acme_library_count = 1;',
+      'use foo::acme_library::Shelf;',
+      'mod acme_library {}',
+      '',
+    ].join('\n');
+
+    expect(run({ 'crates/acme-db/src/lib.rs': text }, base)).toEqual([]);
+    for (const line of ['use acme_library;', 'extern crate acme_library;', 'use ::acme_library::Shelf;', 'let s = acme_library :: Shelf::new();']) {
+      expect(run({ 'crates/acme-db/src/lib.rs': `${line}\n` }, base)).toHaveLength(1);
+    }
+  });
+
+  test('reads renamed, quoted and table-header dependencies, and only inside dependency tables', () => {
+    const toml = [
+      '[package]',
+      'name = "acme-net"',
+      '',
+      '[features]',
+      'acme-db = []',
+      '',
+      '[dependencies]',
+      'storage = { package = "acme-db", path = "../acme-db" }',
+      '"acme-library" = "1"',
+      '',
+      '[target.\'cfg(unix)\'.dependencies.lib]',
+      'package = "acme-app"',
+      'path = "../acme-app"',
+      '',
+      '[build-dependencies.acme-db]',
+      'path = "../acme-db"',
+      '',
+    ].join('\n');
+
+    expect(cargoDependencies(toml)).toEqual([
+      { crate: 'acme-db', line: 8 },
+      { crate: 'acme-library', line: 9 },
+      { crate: 'acme-app', line: 11 },
+      { crate: 'acme-db', line: 15 },
+    ]);
+    const violations = run({ 'crates/acme-net/Cargo.toml': toml }, base);
+    expect(violations.map((violation) => violation.line)).toEqual([8, 9, 11]);
+    expect(violations[2]?.message ?? '').toContain('on acme-app (rank 99)');
   });
 
   test('ciCritical defaults to true and can be turned off', () => {
