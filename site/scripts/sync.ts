@@ -276,6 +276,7 @@ export function renderRuleDoc(
       const attrs = [lang];
       if (title) attrs.push(`title=${JSON.stringify(title)}`);
       if (meta.verdict === 'bad' || meta.verdict === 'good') attrs.push(`verdict=${meta.verdict}`);
+      if (isRulePage(rule) && (meta.verdict === 'bad' || meta.verdict === 'good')) attrs.push('wrap');
       body.push(`${indent}\`\`\`${attrs.join(' ')}`);
       const comment = LINE_COMMENT[lang];
       if (meta.options && comment) {
@@ -389,7 +390,9 @@ export function shapeRulePage(body: readonly string[]): string[] {
   let inShort = false;
   let messages: string[] | null = null;
   let inFix = false;
+  let inSee = false;
   for (const line of body) {
+    if (line.startsWith('## ')) inSee = line.trim() === '## What you will see';
     if (inFix && line.trim() === '') {
       out.push('', '</div>');
       inFix = false;
@@ -406,6 +409,10 @@ export function shapeRulePage(body: readonly string[]): string[] {
       } else messages.push(line);
       continue;
     }
+    if (inSee && !line.startsWith('#') && line.trim() !== MESSAGES_BEGIN) {
+      out.push(line.replace(/`\{\{(\w+)\}\}`/g, '<var class="ph">$1</var>'));
+      continue;
+    }
     if (line.trim() === MESSAGES_BEGIN) {
       messages = [];
       continue;
@@ -420,7 +427,9 @@ export function shapeRulePage(body: readonly string[]): string[] {
       continue;
     }
     if (line.startsWith('**The fix:**')) {
-      out.push('<div class="rule-fix">', '', line.replace(/^\*\*The fix:\*\*\s*/, '<span class="rule-fix-label">The fix</span> '));
+      const note = line.replace(/^\*\*The fix:\*\*\s*/, '');
+      const sentence = note.charAt(0).toUpperCase() + note.slice(1);
+      out.push('<div class="rule-fix">', '', `<span class="rule-fix-label">The fix</span> ${sentence}`);
       inFix = true;
       continue;
     }

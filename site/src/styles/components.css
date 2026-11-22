@@ -1830,7 +1830,7 @@
 }
 
 /* A {{placeholder}} the rule fills in: a dashed slot, not literal text. */
-.rule-message var.ph {
+.sl-markdown-content var.ph {
   font-family: var(--sheet-font-code);
   font-style: normal;
   font-size: 0.875em;
@@ -2120,7 +2120,7 @@
 }
 
 .rule-diagram .d-kicker {
-  font-size: 10.5px;
+  font-size: 11px;
   letter-spacing: 0.08em;
   fill: var(--sheet-ink-3);
 }
@@ -2138,8 +2138,17 @@
 }
 
 /* Short tokens such as `--fix` never split across lines. */
-:is(.rule-inshort, .rule-fix, .rule-message, .rule-diagram figcaption) code {
+:is(.rule-inshort, .rule-fix, .rule-diagram figcaption) code {
   white-space: nowrap;
+}
+
+/* A message can quote a whole line of code: it wraps inside its card. */
+.sl-markdown-content .rule-messages > li {
+  min-width: 0;
+}
+
+.rule-message code {
+  overflow-wrap: anywhere;
 }
 
 .rule-diagram summary:focus-visible {
