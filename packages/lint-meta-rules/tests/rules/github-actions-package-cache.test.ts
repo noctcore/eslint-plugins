@@ -229,4 +229,23 @@ describe('github-actions-package-cache', () => {
     expect(violations).toHaveLength(1);
     expect(violations[0]?.message ?? '').toContain('caches `npm`,');
   });
+  test('keeps a comma inside quotes in a flow mapping value', () => {
+    const flow = (inputs: string) => `      - uses: ${SETUP_NODE}\n        with: { ${inputs} }\n      - run: pnpm install\n`;
+
+    const violations = run(workflow(flow('cache: "pnpm,npm", node-version: 22')));
+    expect(violations).toHaveLength(1);
+    expect(violations[0]?.message ?? '').toContain('caches `pnpm,npm`');
+    expect(run(workflow(flow("node-version: '22, lts', cache: pnpm")))).toEqual([]);
+  });
+
+  test('stays linear on long runs of spaces in step keys and with: inputs', () => {
+    const spaces = ' '.repeat(100_000);
+    const block = workflow(`${setupNode(`          cache:${spaces}pnpm${spaces}\n          x${spaces}\n`)}      - run:${spaces}pnpm install${spaces}\n`);
+    const flow = workflow(`      - uses: ${SETUP_NODE}\n        with: { cache:${spaces}pnpm${spaces}, a${spaces} }\n      - run: pnpm install\n`);
+    const start = performance.now();
+
+    expect(run(block)).toEqual([]);
+    expect(run(flow)).toEqual([]);
+    expect(performance.now() - start).toBeLessThan(500);
+  });
 });

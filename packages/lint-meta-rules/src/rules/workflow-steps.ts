@@ -78,10 +78,11 @@ export function stepKeys(lines: readonly string[], step: WorkflowStep): Map<stri
       open?.push(text.trimEnd());
       continue;
     }
-    const key = /^([\w-]+):\s*(.*?)\s*$/u.exec(text);
+    // `(.*?)\s*$` would backtrack quadratically on a run of spaces: take the rest and trim it.
+    const key = /^([\w-]+):([\s\S]*)$/u.exec(text);
     open = null;
     if (indent !== keyColumn || key === null) continue;
-    const value = key[2] ?? '';
+    const value = (key[2] ?? '').trim();
     // A block scalar header (`|`, `>-`, `|2+`) or nothing: the value is the lines under it.
     open = value === '' || /^[|>][+-]?\d*[+-]?$/u.test(value) ? [] : null;
     keys.set(key[1] ?? '', open ?? [value]);

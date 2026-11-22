@@ -100,17 +100,37 @@ function withInputs(step: JobStep): Map<string, string> | null {
   if (first?.startsWith('{') === true) {
     // A flow mapping: `with: { node-version: 22, cache: pnpm }`, on one line only.
     if (lines.length !== 1 || !first.endsWith('}')) return null;
-    for (const pair of first.slice(1, -1).split(',')) {
-      const match = /^\s*([\w-]+)\s*:\s*(.*?)\s*$/u.exec(pair);
-      if (match !== null) inputs.set(match[1] ?? '', unquote(match[2] ?? ''));
-    }
+    for (const pair of splitFlowPairs(first.slice(1, -1))) readPair(inputs, pair.trim());
     return inputs;
   }
-  for (const line of lines) {
-    const match = /^([\w-]+):\s*(.*?)\s*$/u.exec(line);
-    if (match !== null) inputs.set(match[1] ?? '', unquote(match[2] ?? ''));
-  }
+  for (const line of lines) readPair(inputs, line);
   return inputs;
+}
+
+/** `key: value` into `inputs`. No lazy group before a trailing `\s*$`: that backtracks quadratically on a run of spaces. */
+function readPair(inputs: Map<string, string>, pair: string): void {
+  const match = /^([\w-]+)\s*:([\s\S]*)$/u.exec(pair);
+  if (match !== null) inputs.set(match[1] ?? '', unquote((match[2] ?? '').trim()));
+}
+
+/** The entries of a flow mapping's body, split on commas outside quotes (`cache: "pnpm,npm"` stays one entry). */
+function splitFlowPairs(body: string): string[] {
+  const pairs: string[] = [];
+  let quote: string | null = null;
+  let start = 0;
+  for (let index = 0; index < body.length; index += 1) {
+    const char = body[index];
+    if (quote !== null) {
+      if (char === quote) quote = null;
+    } else if (char === '"' || char === "'") {
+      quote = char;
+    } else if (char === ',') {
+      pairs.push(body.slice(start, index));
+      start = index + 1;
+    }
+  }
+  pairs.push(body.slice(start));
+  return pairs;
 }
 
 type SetupVerdict = { readonly ok: true } | { readonly ok: false; readonly cache: string | undefined };
