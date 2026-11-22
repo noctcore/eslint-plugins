@@ -9,6 +9,8 @@ const RULE_NAME = 'no-shell-interpolation';
 
 export interface NoShellInterpolationOptions {
   readonly extraCallees?: readonly string[];
+  /** Treat values read from `process.env` with a fixed key as the operator's, not the requester's. */
+  readonly trustEnvironment?: boolean;
 }
 
 type RuleOptions = [NoShellInterpolationOptions];
@@ -57,6 +59,11 @@ const optionSchema: JSONSchema4 = {
       type: 'array',
       items: { type: 'string' },
       description: 'Extra callee names to treat as always-shell command runners, checked like `exec`.',
+    },
+    trustEnvironment: {
+      type: 'boolean',
+      description:
+        'Leave values read from `process.env` with a fixed key alone, as set by the operator. Off by default: in CI, variables such as `GITHUB_HEAD_REF` hold text an outsider chose.',
     },
   },
 };
@@ -213,7 +220,7 @@ export const noShellInterpolationRule = createRule<RuleOptions, MessageIds>({
         'A dynamically-built command string is passed to `{{callee}}`, which runs it through a shell (a command-injection sink). Pass the program and its arguments separately instead (e.g. `execFile(cmd, [arg1, arg2])`), where no shell re-parses the string.',
     },
   },
-  defaultOptions: [{ extraCallees: [] }],
+  defaultOptions: [{ extraCallees: [], trustEnvironment: false }],
   create(context, [options]) {
     const extra = options.extraCallees ?? [];
     const alwaysShell = new Set([...ALWAYS_SHELL, ...extra]);
@@ -255,9 +262,11 @@ export const noShellInterpolationRule = createRule<RuleOptions, MessageIds>({
         }
         // Every runtime part already proven harmless: checked against an
         // allowlist or a shell-inert anchored regex, a schema with such a
-        // pattern, an in-file constant, or a value from `process.env`.
+        // pattern, an in-file constant, or (with `trustEnvironment`) a value
+        // from `process.env`.
+        const trustEnvironment = options.trustEnvironment === true;
         const provenSafe = dynamicParts(command).every((part) =>
-          isProvenSafeValue(part, node, 'shell', context.sourceCode, { trustEnvironment: true }),
+          isProvenSafeValue(part, node, 'shell', context.sourceCode, { trustEnvironment }),
         );
         if (provenSafe) {
           return;

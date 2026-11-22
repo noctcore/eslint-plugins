@@ -90,10 +90,29 @@ ruleTester.run('no-shell-interpolation', noShellInterpolationRule, {
       code: "const Mode = z.enum(['fast', 'slow']); function run(x: string) { const mode = Mode.parse(x); exec(`tool ${mode}`); }",
       filename: TS,
     },
-    // Values the operator sets, and in-file constants.
-    { code: "exec('git -C ' + process.env.REPO_DIR);", filename: TS },
+    // Values the operator sets, with `trustEnvironment`, and in-file constants.
+    { code: "exec('git -C ' + process.env.REPO_DIR);", filename: TS, options: [{ trustEnvironment: true }] },
+    { code: "exec('git -C ' + process.env['REPO_DIR']);", filename: TS, options: [{ trustEnvironment: true }] },
     {
       code: "const dir = String(process.env.APP_DIR || '').replace(/\\0/g, ''); exec(`ls ${dir}`);",
+      filename: TS,
+      options: [{ trustEnvironment: true }],
+    },
+    // A list used only by `includes` / `has`, also through `new Set(list)`.
+    {
+      code: "const MODES = ['fast', 'slow']; const SET = new Set(MODES); function run(x: string) { if (!SET.has(x)) return; if (!MODES.includes(x)) return; exec(`tool ${x}`); }",
+      filename: TS,
+    },
+    // A check inside the callback that runs the command.
+    {
+      code: "function run(items: string[]) { items.forEach((x) => { if (!/^[a-z]+$/.test(x)) return; exec(`echo ${x}`); }); }",
+      filename: TS,
+    },
+    // Loose equality against a string literal.
+    { code: "function run(x: string) { if (x == 'a') { exec(`echo ${x}`); } }", filename: TS },
+    // A schema `regex` with a message.
+    {
+      code: "const S = z.string().regex(/^[a-z]+$/, 'letters only').max(20); function run(x: string) { exec(`tool ${S.parse(x)}`); }",
       filename: TS,
     },
     { code: "const BIN = '/usr/bin/git'; exec(`${BIN} status`);", filename: TS },
@@ -271,6 +290,107 @@ ruleTester.run('no-shell-interpolation', noShellInterpolationRule, {
     },
     {
       code: "exec('git -C ' + process.env.REPO_DIR + userInput);",
+      filename: TS,
+      errors: [{ messageId: 'shellInterpolation' }],
+    },
+    // The environment is not trusted by default: in CI it can carry a branch name an outsider chose.
+    {
+      code: "exec(`git checkout ${process.env.GITHUB_HEAD_REF}`);",
+      filename: TS,
+      errors: [{ messageId: 'shellInterpolation' }],
+    },
+    // With trust on, a computed key is still not the operator's.
+    {
+      code: "function run(k: string) { exec(`git -C ${process.env[k]}`); }",
+      filename: TS,
+      options: [{ trustEnvironment: true }],
+      errors: [{ messageId: 'shellInterpolation' }],
+    },
+    // A hoisted function can run before the check above its definition.
+    {
+      code: "function h(x: string) { run(); if (!['a'].includes(x)) return; function run() { exec(`echo ${x}`); } }",
+      filename: TS,
+      errors: [{ messageId: 'shellInterpolation' }],
+    },
+    // A nested function that writes the checked binding can run after the check.
+    {
+      code: "function h(x: string, evil: string) { const reset = () => { x = evil; }; if (!['a'].includes(x)) return; reset(); exec(`echo ${x}`); }",
+      filename: TS,
+      errors: [{ messageId: 'shellInterpolation' }],
+    },
+    // `const` fixes the binding, not the list: a list that is changed anywhere does not count.
+    {
+      code: "const ALLOWED = ['a']; function h(x: string) { ALLOWED.push(x); if (!ALLOWED.includes(x)) return; exec(`echo ${x}`); }",
+      filename: TS,
+      errors: [{ messageId: 'shellInterpolation' }],
+    },
+    {
+      code: "const ALLOWED = ['a']; function h(x: string) { ALLOWED[0] = x; if (!ALLOWED.includes(x)) return; exec(`echo ${x}`); }",
+      filename: TS,
+      errors: [{ messageId: 'shellInterpolation' }],
+    },
+    {
+      code: "const ALLOWED = new Set(['a']); export function add(v: string) { ALLOWED.add(v); } function h(x: string) { if (!ALLOWED.has(x)) return; exec(`echo ${x}`); }",
+      filename: TS,
+      errors: [{ messageId: 'shellInterpolation' }],
+    },
+    {
+      code: "export const ALLOWED = ['a']; function h(x: string) { if (!ALLOWED.includes(x)) return; exec(`echo ${x}`); }",
+      filename: TS,
+      errors: [{ messageId: 'shellInterpolation' }],
+    },
+    // Schema methods that can let another value through.
+    {
+      code: "const S = joi.string().pattern(/^[a-z]+$/, { invert: true }); function h(x: string) { const { error, value } = S.validate(x); if (error) return; exec(`echo ${value}`); }",
+      filename: TS,
+      errors: [{ messageId: 'shellInterpolation' }],
+    },
+    {
+      code: "const S = joi.string().pattern(/^[a-z]+$/).failover(y); function h(x: string) { const { error, value } = S.validate(x); if (error) return; exec(`echo ${value}`); }",
+      filename: TS,
+      errors: [{ messageId: 'shellInterpolation' }],
+    },
+    {
+      code: "const S = z.string().regex(/^[a-z]+$/).catch(y); function h(x: string) { exec(`echo ${S.parse(x)}`); }",
+      filename: TS,
+      errors: [{ messageId: 'shellInterpolation' }],
+    },
+    {
+      code: "const S = z.string().regex(/^[a-z]+$/).default(y); function h(x: string) { exec(`echo ${S.parse(x)}`); }",
+      filename: TS,
+      errors: [{ messageId: 'shellInterpolation' }],
+    },
+    {
+      code: "const S = z.string().regex(/^[a-z]+$/).pipe(z.string().overwrite((v) => v + y)); function h(x: string) { exec(`echo ${S.parse(x)}`); }",
+      filename: TS,
+      errors: [{ messageId: 'shellInterpolation' }],
+    },
+    // `[]` is an empty class in JavaScript, so this regex admits `.*`.
+    {
+      code: "function h(x: string) { if (!/^([]|.*|[a])$/.test(x)) return; exec(`echo ${x}`); }",
+      filename: TS,
+      errors: [{ messageId: 'shellInterpolation' }],
+    },
+    // Loose equality against a number admits `' 1\\n'`.
+    {
+      code: "function h(x: string) { if (x == 1) { exec(`echo ${x}`); } }",
+      filename: TS,
+      errors: [{ messageId: 'shellInterpolation' }],
+    },
+    // A local `String` or `Set` is not the global one.
+    {
+      code: "function h(x: string, String: (v: string) => string) { if (!/^[a-z]+$/.test(x)) return; exec(`echo ${String(x)}`); }",
+      filename: TS,
+      errors: [{ messageId: 'shellInterpolation' }],
+    },
+    {
+      code: "class Set { constructor(_: unknown) {} has() { return true; } } const OK = new Set(['a']); function h(x: string) { if (!OK.has(x)) return; exec(`echo ${x}`); }",
+      filename: TS,
+      errors: [{ messageId: 'shellInterpolation' }],
+    },
+    // An array changed in place after the check no longer holds the checked text.
+    {
+      code: "function h(x: string, y: string) { const parts = [x]; if (!/^[a-z,]+$/.test(String(parts))) return; parts.push(y); exec(`echo ${parts}`); }",
       filename: TS,
       errors: [{ messageId: 'shellInterpolation' }],
     },
