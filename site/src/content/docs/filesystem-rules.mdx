@@ -21,14 +21,19 @@ and two common setups will not notice.
 | [`noctcore-contracts/env-var-schema-parity`](/eslint-plugins/rules/contracts/env-var-schema-parity/) | the env schema file | no, the parsed keys are cached until the process exits |
 | [`noctcore-contracts/translation-key-exists`](/eslint-plugins/rules/contracts/translation-key-exists/) | the translation catalogs | yes, re-read when the modification time moves |
 | [`noctcore-monorepo/no-unexported-subpath-import`](/eslint-plugins/rules/monorepo/no-unexported-subpath-import/) | workspace manifests and their `exports` | no, cached until the process exits |
+| [`noctcore-nestjs/no-direct-rate-limit`](/eslint-plugins/rules/nestjs/no-direct-rate-limit/) | the `package.json` files from the linted file's directory up to the workspace root, to tell whether the project uses `@noctcore/jobs` | yes, re-read when the modification time moves |
+| [`noctcore-nestjs/no-raw-bullmq-queue-add`](/eslint-plugins/rules/nestjs/no-raw-bullmq-queue-add/) | the `package.json` files from the linted file's directory up to the workspace root, to tell whether the project uses `@noctcore/jobs` | yes, re-read when the modification time moves |
+| [`noctcore-nestjs/queue-registration-through-define-queue`](/eslint-plugins/rules/nestjs/queue-registration-through-define-queue/) | the `package.json` files from the linted file's directory up to the workspace root, to tell whether the project uses `@noctcore/jobs` | yes, re-read when the modification time moves |
+| [`noctcore-nestjs/worker-extends-job-host`](/eslint-plugins/rules/nestjs/worker-extends-job-host/) (the `@Processor` / `WorkerHost` half) | the `package.json` files from the linted file's directory up to the workspace root, to tell whether the project uses `@noctcore/jobs` | yes, re-read when the modification time moves |
 | [`noctcore-prisma/restrict-model-writes`](/eslint-plugins/rules/prisma/restrict-model-writes/) | the Prisma schema | yes, re-read when the modification time moves |
 
 ## `eslint --cache` keeps the old answer
 
 `--cache` (and tools that turn it on, such as some lint-staged setups) skips a file when the file
 and the config are unchanged. It does not know about the other file a rule read. Add a key to the
-env schema, create the missing test, or export a new subpath, and the files that were reported
-stay reported (or the ones that should now fail stay green) until each of them is edited.
+env schema, create the missing test, export a new subpath, or add `@noctcore/jobs` to a
+`package.json`, and the files that were reported stay reported (or the ones that should now fail
+stay green) until each of them is edited.
 
 What to do:
 
@@ -36,7 +41,8 @@ What to do:
 - If you want `--cache` locally, put a digest of the inputs in `settings`, so the config changes
   when they do. For example, a hash of the env schema file or the Prisma schema computed in
   `eslint.config.js`. ESLint's cache keys on the resolved config, so the cache drops the old
-  results when the digest moves.
+  results when the digest moves. For the `nestjs` rules that look for `@noctcore/jobs`, the input is
+  each workspace's `package.json`: a digest of their dependency lists covers it.
 - After a change to one of the read files, `rm .eslintcache` (or your `--cache-location`) is the
   blunt fix.
 

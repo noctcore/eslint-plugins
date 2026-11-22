@@ -25,9 +25,24 @@
  *
  * The `worker-must-*` rules are in: a worker nobody listens to or nobody closes is a
  * defect in any repo, and they need no options.
+ *
+ * The six `@noctcore/jobs` rules are in, because each one checks itself for the
+ * package and is silent in a repo that does not use it. `worker-extends-job-host`
+ * (for `@Worker`), `add-requires-dedupe` and `no-dynamic-job-name` only read
+ * code that imports `@noctcore/jobs`; `no-raw-bullmq-queue-add`,
+ * `queue-registration-through-define-queue`, `no-direct-rate-limit` and the
+ * `@Processor` half of `worker-extends-job-host` also run in files of a project
+ * whose `package.json` declares it, since a hand-built BullMQ queue has no
+ * reason to import it. In such a project each of them reports a defect.
  */
 export const recommended = {
+  'noctcore-nestjs/add-requires-dedupe': 'error',
+  'noctcore-nestjs/no-direct-rate-limit': 'error',
+  'noctcore-nestjs/no-dynamic-job-name': 'error',
+  'noctcore-nestjs/no-raw-bullmq-queue-add': 'error',
+  'noctcore-nestjs/queue-registration-through-define-queue': 'error',
   'noctcore-nestjs/schedule-states-time-zone': 'error',
+  'noctcore-nestjs/worker-extends-job-host': 'error',
   'noctcore-nestjs/worker-must-implement-close': 'error',
   'noctcore-nestjs/worker-must-listen-failed': 'error',
 } as const;

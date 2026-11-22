@@ -1,6 +1,7 @@
 import { AST_NODE_TYPES, type TSESTree } from '@typescript-eslint/utils';
 
 import { createRule } from '../createRule';
+import { fileImports, JOBS_MODULE } from '../utils/jobs';
 import {
   bulkJobs,
   isUndefined,
@@ -65,6 +66,11 @@ function carriesDedupKey(options: TSESTree.ObjectExpression): boolean {
  * object literal at the call, so the key is visible where the job is made: an
  * options object built elsewhere and passed by name is refused rather than
  * followed.
+ *
+ * A file that imports `@noctcore/jobs` is skipped: its queues are `JobQueue`s,
+ * which take `dedupe` and drop a `jobId`, and `add-requires-dedupe` checks
+ * them. A receiver the rule could know to be a `JobQueue` (an `@InjectQueue`
+ * or a `JobQueue` annotation) always comes with that import.
  */
 export const queueAddRequiresDedupKeyRule = createRule<RuleOptions, MessageIds>({
   name: RULE_NAME,
@@ -94,6 +100,7 @@ export const queueAddRequiresDedupKeyRule = createRule<RuleOptions, MessageIds>(
   },
   defaultOptions: [{}],
   create(context, [options]) {
+    if (fileImports(context.sourceCode, JOBS_MODULE)) return {};
     const pattern = queuePatternRegExp(options.queuePattern);
     const visitorKeys = context.sourceCode.visitorKeys;
 
