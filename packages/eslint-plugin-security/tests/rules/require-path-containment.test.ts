@@ -4,6 +4,7 @@ import { requirePathContainmentRule } from '../../src/rules/require-path-contain
 
 const TS = 'handler.ts';
 const ERR = [{ messageId: 'unguardedPathJoin' as const }];
+const FS = [{ messageId: 'unguardedFsPath' as const }];
 
 ruleTester.run('require-path-containment', requirePathContainmentRule, {
   valid: [
@@ -57,6 +58,52 @@ ruleTester.run('require-path-containment', requirePathContainmentRule, {
       code: `import { resolve } from './container'; function h(req) { return resolve(req.params.token); }`,
       filename: TS,
     },
+    // fs sinks: no request input, or a flow cut before the path.
+    { code: "import fs from 'node:fs'; function h() { return fs.readFileSync('/srv/files/' + name); }", filename: TS },
+    {
+      code: "const fs = require('fs'); function h(req) { const id = Number(req.params.id); return fs.readFileSync(`/srv/files/${id}.json`); }",
+      filename: TS,
+    },
+    {
+      code: "const fs = require('fs'); const path = require('path'); function h(req) { const name = String(req.query.file); return fs.readFileSync('/srv/files/' + path.basename(name)); }",
+      filename: TS,
+    },
+    {
+      code: "import { basename } from 'node:path'; import { readFile } from 'node:fs/promises'; async function h(req) { return readFile(`/srv/files/${basename(req.query.file)}`); }",
+      filename: TS,
+    },
+    {
+      code: "const fs = require('fs'); const FILES = new Set(['a.json', 'b.json']); function h(req) { const name = String(req.query.file).trim(); if (!FILES.has(name)) { res.status(403).end(); return; } const target = '/srv/files/' + name; fs.unlinkSync(target); }",
+      filename: TS,
+    },
+    {
+      code: "const fs = require('fs'); function h(req) { const name = decodeURIComponent(req.query.sort); if (!/^(asc|desc)$/.test(String(name))) return; fs.readFileSync('/srv/files/' + name); }",
+      filename: TS,
+    },
+    {
+      code: "const fs = require('fs'); function h(req) { const name = req.query.file; if (!/^[a-z0-9_.-]+$/i.test(name)) return; fs.readFileSync('/srv/files/' + name); }",
+      filename: TS,
+    },
+    {
+      code: "const fs = require('fs'); const path = require('path'); function h(req) { const resolved = path.resolve('/srv/files', String(req.query.file)); if (!resolved.startsWith('/srv/files/')) return; const checked = resolved; fs.writeFileSync(checked, 'data'); }",
+      filename: TS,
+    },
+    {
+      code: "import { join, sep } from 'node:path'; import { readFile } from 'node:fs/promises'; async function h(req) { const name = req.body.name; const full = join(base, name); if (!full.startsWith(base + sep)) throw new Error('outside'); return readFile(full); }",
+      filename: TS,
+    },
+    {
+      code: "const fs = require('fs'); function h(req) { const name = toSafeName(req.query.file); fs.readFileSync('/srv/files/' + name); }",
+      filename: TS,
+      options: [{ sanitizers: ['toSafeName'] }],
+    },
+    {
+      code: "const fs = require('fs'); function h(req) { // path-containment: name is an id minted by the server\n const name = req.query.file; fs.readFileSync('/srv/files/' + name); }",
+      filename: TS,
+    },
+    // A `readFile` that is not from fs is not a sink.
+    { code: "function h(req) { return storage.readFile('/srv/' + req.query.file); }", filename: TS },
+    { code: "function h(req) { return readFile('/srv/' + req.query.file); }", filename: TS },
   ],
   invalid: [
     // `req.*` straight into path.join with no guard.
@@ -130,6 +177,99 @@ ruleTester.run('require-path-containment', requirePathContainmentRule, {
     // A guard helper that is not configured does not count.
     {
       code: `function h(req) { const p = path.join(base, req.params.file); assertInside(base, p); return p; }`,
+      filename: TS,
+      errors: ERR,
+    },
+    // fs sinks reached by request input through local data flow.
+    {
+      code: "const fs = require('fs'); function h(req, res) { const name = String(req.query.file).replace(/\\0/g, ''); res.send(fs.readFileSync('/srv/files/' + name, 'utf8')); }",
+      filename: TS,
+      errors: FS,
+    },
+    {
+      code: "import fs from 'node:fs'; function h(req) { const name = decodeURIComponent(req.query.id); fs.writeFileSync(`/srv/uploads/${name}`, 'data'); }",
+      filename: TS,
+      errors: FS,
+    },
+    {
+      code: "const fs = require('fs'); function h(req) { const parts = []; for (const token of String(req.body.list).split(',')) { parts.push(token); } const name = parts.join(','); fs.unlinkSync('/srv/files/' + name); }",
+      filename: TS,
+      errors: FS,
+    },
+    {
+      code: "const fs = require('fs'); function h(req) { let name; try { name = JSON.parse(req.body.payload).value; } catch { name = String(req.body.payload); } fs.writeFileSync('/srv/uploads/' + name, 'x'); }",
+      filename: TS,
+      errors: FS,
+    },
+    {
+      code: "const fs = require('fs'); function h(req) { const input = req.body?.field || ''; const payload = { get value() { return input; } }; const name = payload.value; fs.readFileSync('/srv/files/' + name); }",
+      filename: TS,
+      errors: FS,
+    },
+    {
+      code: "const fs = require('fs'); function h(req) { const capture = (v) => () => String(v).trim(); const read = capture(req.query.id); const name = read(); fs.readFileSync('/srv/files/' + name); }",
+      filename: TS,
+      errors: FS,
+    },
+    {
+      code: "const { promises: fsp } = require('fs'); async function h(req) { const [name] = String(req.headers.authorization).split(','); await fsp.rm('/srv/files/' + name); }",
+      filename: TS,
+      errors: FS,
+    },
+    {
+      code: "import { createReadStream } from 'node:fs'; function h(req) { return createReadStream('/srv/files/' + req.params.file); }",
+      filename: TS,
+      errors: FS,
+    },
+    {
+      code: "import * as fs from 'node:fs'; async function h(req) { await fs.promises.readFile('/srv/' + req.query.f); }",
+      filename: TS,
+      errors: FS,
+    },
+    {
+      code: "const fs = require('fs'); function h(req) { fs.renameSync('/srv/tmp/a', '/srv/files/' + req.body.to); }",
+      filename: TS,
+      errors: FS,
+    },
+    {
+      code: "function h(req, res) { res.sendFile('/srv/files/' + req.params.file); }",
+      filename: TS,
+      errors: FS,
+    },
+    {
+      code: "const fs = require('fs'); function h(req) { const name = req.query.file; fs.readFileSync(name); }",
+      filename: TS,
+      errors: FS,
+    },
+    // Near misses of the guards.
+    {
+      code: "const fs = require('fs'); function h(req) { const name = req.query.file; if (!/^[a-z0-9_./-]+$/.test(name)) return; fs.readFileSync('/srv/files/' + name); }",
+      filename: TS,
+      errors: FS,
+    },
+    {
+      code: "const fs = require('fs'); function h(req) { const name = req.query.file; if (!/[a-z]+/.test(name)) return; fs.readFileSync('/srv/files/' + name); }",
+      filename: TS,
+      errors: FS,
+    },
+    {
+      code: "const fs = require('fs'); function h(req) { const name = req.query.file; fs.readFileSync('/srv/files/' + name); if (!['a'].includes(name)) return; }",
+      filename: TS,
+      errors: FS,
+    },
+    {
+      code: "const fs = require('fs'); const path = require('path'); function h(req) { const resolved = path.resolve('/srv/files', String(req.query.file)); fs.readFileSync(resolved); }",
+      filename: TS,
+      errors: FS,
+    },
+    {
+      code: "const fs = require('fs'); function h(req) { const name = clean(req.query.file); fs.readFileSync('/srv/files/' + name); }",
+      filename: TS,
+      errors: FS,
+    },
+    // A direct request argument to a join is reported once, at the join.
+    {
+      code: "const fs = require('fs'); function h(req) { fs.readFileSync(path.join(base, req.params.file)); }",
       filename: TS,
       errors: ERR,
     },
