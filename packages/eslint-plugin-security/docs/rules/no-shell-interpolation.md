@@ -113,16 +113,26 @@ the rule can read:
   `includes` / `indexOf` / `has` call (or `new Set(list)`), so no `push`, `add` or `list[0] = x`
   anywhere;
 - `test` with a regex (inline or in a `const`) anchored at both ends, without the `m` flag, whose
-  every character is shell-inert: no `.`, no `\s` (it admits a newline), no negated class, and
-  none of ``;&|$`()<>{}[]*?!~'"\^`` or a line break. Space, `-`, `%` and `#` are allowed;
+  every character is shell-inert: no `.`, no `\s`, no negated class, none of
+  ``;&|$`()<>{}[]*?!~'"\^``, and no whitespace or line break (a space splits the value into
+  several arguments). A regex that admits `-` or `#` must pin the first character to something
+  else (`^[a-z][a-z0-9-]*$`): a leading `-` turns the value into an option (argument injection,
+  CWE-88) and a leading `#` comments out the rest. A value glued to text before it in the same
+  word (`` `git log --author=${author}` ``) cannot start an option, so there `-` and `#` may lead. A regex in a `const` counts only if it is not
+  exported and every use of it is a `test` / `exec` call or an argument of `pattern`, `regex`,
+  `match` and the like, so no `RE.test = ...` or `RE.compile(...)`;
 - a schema with such a pattern or a literal set: `const { error, value } = schema.validate(x)`
   followed by an exiting `if (error)`, `schema.parse(x)` (which throws), or `result.data` of
   `const result = schema.safeParse(x)` after an exiting `if (!result.success)`; a field of a parsed
   object schema counts when that field's schema does (`Body.parse(body).mode`,
-  `const { mode } = Body.parse(body)` with `z.object({ mode: z.enum([...]) })`). The schema is an
-  in-file chain with `.pattern(re)` / `.regex(re)` (no options argument; a string name or message
-  is fine) or `.valid(...)` / `.enum([...])` / `.literal(...)`, and every other method in the chain
-  only narrows (`min`, `max`, `length`, `required`, `optional`, `trim`, `lowercase` and the like).
+  `const { mode } = Body.parse(body)` with `z.object({ mode: z.enum([...]) })`), as long as nothing
+  changes the parsed object (every use of `parsed` or `result.data` reads a field, so no
+  `parsed.mode = other` or `Object.assign(parsed, other)`) and no spread, computed key or later key
+  of the same name follows the field in the shape. The schema is an in-file chain that starts at
+  the zod or joi import (`import { z } from 'zod'`, `import Joi from 'joi'`, `require('joi')`),
+  possibly through `const` chains read under the same rules, with `.pattern(re)` / `.regex(re)`
+  (no options argument; a string name or message is fine) or `.valid(...)` / `.enum([...])` /
+  `.literal(...)`, and every other method in the chain only narrows (`min`, `max`, `length`, `required`, `optional`, `trim`, `lowercase` and the like).
   A chain with `default`, `catch`, `failover`, `pipe`, `transform`, `allow` or any other method
   can let another value through and is not read.
 
@@ -150,7 +160,7 @@ function list(sort: string) {
 ```ts good
 // an anchored, shell-inert pattern
 function list(name: string) {
-  if (!/^[a-z0-9_-]+$/.test(name)) throw new Error('bad name');
+  if (!/^[a-z0-9_][a-z0-9_-]*$/.test(name)) throw new Error('bad name');
   exec(`ls ${name}`);
 }
 ```
@@ -193,7 +203,8 @@ export function status() {
 In sloppy-mode scripts `arguments[0] = other` also changes the first parameter; ES modules and
 TypeScript output are strict, where it does not. A checked array changed in place after the check
 (`parts.push(y)`, `parts[0] = y`) cancels the check, but one handed to a function that changes it
-is not tracked; check the string you interpolate.
+is not tracked; check the string you interpolate. An imported binding (`import { mode } from
+'./state'`) is never treated as checked: the other module can reassign it after the check.
 
 ## Options
 

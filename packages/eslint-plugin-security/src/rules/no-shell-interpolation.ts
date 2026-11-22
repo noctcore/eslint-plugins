@@ -1,4 +1,9 @@
-import { AST_NODE_TYPES, unwrapTypeWrappers, type TSESLint, type TSESTree } from '@noctcore/eslint-utils';
+import {
+  AST_NODE_TYPES,
+  unwrapTypeWrappers,
+  type TSESLint,
+  type TSESTree,
+} from '@noctcore/eslint-utils';
 import { ASTUtils } from '@typescript-eslint/utils';
 import type { JSONSchema4 } from '@typescript-eslint/utils/json-schema';
 
@@ -58,7 +63,8 @@ const optionSchema: JSONSchema4 = {
     extraCallees: {
       type: 'array',
       items: { type: 'string' },
-      description: 'Extra callee names to treat as always-shell command runners, checked like `exec`.',
+      description:
+        'Extra callee names to treat as always-shell command runners, checked like `exec`.',
     },
     trustEnvironment: {
       type: 'boolean',
@@ -84,9 +90,7 @@ function getCalleeInfo(callee: TSESTree.Node): CalleeInfo | null {
     callee.property.type === AST_NODE_TYPES.Identifier
   ) {
     const objectName =
-      callee.object.type === AST_NODE_TYPES.Identifier
-        ? callee.object.name
-        : undefined;
+      callee.object.type === AST_NODE_TYPES.Identifier ? callee.object.name : undefined;
     return { name: callee.property.name, isMember: true, objectName };
   }
   return null;
@@ -94,13 +98,8 @@ function getCalleeInfo(callee: TSESTree.Node): CalleeInfo | null {
 
 /** True when a `+` tree contains at least one non-literal (dynamic) operand. */
 function concatHasDynamicPart(node: TSESTree.Node): boolean {
-  if (
-    node.type === AST_NODE_TYPES.BinaryExpression &&
-    node.operator === '+'
-  ) {
-    return (
-      concatHasDynamicPart(node.left) || concatHasDynamicPart(node.right)
-    );
+  if (node.type === AST_NODE_TYPES.BinaryExpression && node.operator === '+') {
+    return concatHasDynamicPart(node.left) || concatHasDynamicPart(node.right);
   }
   return node.type !== AST_NODE_TYPES.Literal;
 }
@@ -110,24 +109,52 @@ function isDynamicCommandString(node: TSESTree.Node): boolean {
   if (node.type === AST_NODE_TYPES.TemplateLiteral) {
     return node.expressions.length > 0;
   }
-  if (
-    node.type === AST_NODE_TYPES.BinaryExpression &&
-    node.operator === '+'
-  ) {
+  if (node.type === AST_NODE_TYPES.BinaryExpression && node.operator === '+') {
     return concatHasDynamicPart(node);
   }
   return false;
 }
 
 /** The runtime parts of a dynamic command string: template expressions and non-literal `+` operands. */
-function dynamicParts(node: TSESTree.Node): TSESTree.Node[] {
-  if (node.type === AST_NODE_TYPES.TemplateLiteral) {
-    return [...node.expressions];
-  }
-  if (node.type === AST_NODE_TYPES.BinaryExpression && node.operator === '+') {
-    return [...dynamicParts(node.left), ...dynamicParts(node.right)];
-  }
-  return node.type === AST_NODE_TYPES.Literal ? [] : [node];
+interface DynamicPart {
+  readonly node: TSESTree.Node;
+  /** True when static text right before it puts it inside a word (`--author=${x}`). */
+  readonly midWord: boolean;
+}
+
+/** Static text before a value glues it into a word when it ends in a plain word character. */
+const WORD_END = /[\w=:,./@%+-]$/u;
+
+function dynamicParts(node: TSESTree.Node): DynamicPart[] {
+  const segments: (string | TSESTree.Node)[] = [];
+  const collect = (part: TSESTree.Node): void => {
+    if (part.type === AST_NODE_TYPES.TemplateLiteral) {
+      part.quasis.forEach((quasi, index) => {
+        segments.push(quasi.value.cooked ?? '');
+        const expression = part.expressions[index];
+        if (expression !== undefined) {
+          segments.push(expression);
+        }
+      });
+    } else if (part.type === AST_NODE_TYPES.BinaryExpression && part.operator === '+') {
+      collect(part.left);
+      collect(part.right);
+    } else if (part.type === AST_NODE_TYPES.Literal) {
+      segments.push(String(part.value));
+    } else {
+      segments.push(part);
+    }
+  };
+  collect(node);
+  const parts: DynamicPart[] = [];
+  segments.forEach((segment, index) => {
+    if (typeof segment === 'string') {
+      return;
+    }
+    const before = segments[index - 1];
+    parts.push({ node: segment, midWord: typeof before === 'string' && WORD_END.test(before) });
+  });
+  return parts;
 }
 
 /**
@@ -155,10 +182,8 @@ function argsRequestShell(args: readonly TSESTree.Node[]): boolean {
         (prop) =>
           prop.type === AST_NODE_TYPES.Property &&
           !prop.computed &&
-          ((prop.key.type === AST_NODE_TYPES.Identifier &&
-            prop.key.name === 'shell') ||
-            (prop.key.type === AST_NODE_TYPES.Literal &&
-              prop.key.value === 'shell')) &&
+          ((prop.key.type === AST_NODE_TYPES.Identifier && prop.key.name === 'shell') ||
+            (prop.key.type === AST_NODE_TYPES.Literal && prop.key.value === 'shell')) &&
           isShellEnabled(prop.value),
       ),
   );
@@ -176,7 +201,10 @@ function childProcessRunner(node: TSESTree.Node): string | null {
   if (info === null) {
     return null;
   }
-  if (info.isMember && !(info.objectName !== undefined && CHILD_PROCESS_OBJECT.test(info.objectName))) {
+  if (
+    info.isMember &&
+    !(info.objectName !== undefined && CHILD_PROCESS_OBJECT.test(info.objectName))
+  ) {
     return null;
   }
   return ALWAYS_SHELL.has(info.name) || CONDITIONAL_SHELL.has(info.name) ? info.name : null;
@@ -265,8 +293,16 @@ export const noShellInterpolationRule = createRule<RuleOptions, MessageIds>({
         // pattern, an in-file constant, or (with `trustEnvironment`) a value
         // from `process.env`.
         const trustEnvironment = options.trustEnvironment === true;
+        // A value that starts a word must not start with `-` (an option) or
+        // `#` (a comment); one glued to text before it may.
         const provenSafe = dynamicParts(command).every((part) =>
-          isProvenSafeValue(part, node, 'shell', context.sourceCode, { trustEnvironment }),
+          isProvenSafeValue(
+            part.node,
+            node,
+            part.midWord ? 'shell-word' : 'shell',
+            context.sourceCode,
+            { trustEnvironment },
+          ),
         );
         if (provenSafe) {
           return;
