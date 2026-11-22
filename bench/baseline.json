@@ -9,6 +9,7 @@
         "bcrypt-rounds-min",
         "no-shell-interpolation",
         "no-timing-unsafe-compare",
+        "no-unescaped-html-response",
         "no-user-controlled-fetch-url",
         "no-user-controlled-redirect",
         "presigned-post-requires-policy",
@@ -54,6 +55,24 @@
       ],
       "description": "A dynamically-interpolated command string must not flow into a shell runner (`exec`/`execSync`, or `spawn`/`execFile` with a `shell` option that is not `false`), including through `promisify(exec)`. Pass the program and arguments separately.",
       "url": "https://noctcore.github.io/eslint-plugins/rules/security/no-shell-interpolation/"
+    },
+    "security/no-unescaped-html-response": {
+      "tp": 0,
+      "fn": 0,
+      "fp": 2,
+      "tn": 28,
+      "detection": null,
+      "falseAlarm": 0.0667,
+      "j": null,
+      "extra": 10,
+      "crossFp": 0,
+      "crossSafe": 0,
+      "enabledBy": "override",
+      "categories": [
+        "security/server-side-xss"
+      ],
+      "description": "HTML built from a runtime value and sent with `res.send` / `res.end` / `res.write`, or bound to a raw template variable (`| safe`, `<%-`), must escape or sanitize the value: unescaped, it is server-side XSS.",
+      "url": "https://noctcore.github.io/eslint-plugins/rules/security/no-unescaped-html-response/"
     },
     "security/no-user-controlled-fetch-url": {
       "tp": 23,
@@ -204,20 +223,22 @@
     "security/server-side-xss": {
       "tp": 7,
       "fn": 23,
-      "fp": 0,
-      "tn": 30,
+      "fp": 2,
+      "tn": 58,
       "detection": 0.2333,
-      "falseAlarm": 0,
-      "j": 0.2333,
-      "extra": 0,
+      "falseAlarm": 0.0333,
+      "j": 0.2,
+      "extra": 10,
       "title": "Server-side XSS",
       "cwe": "CWE-79",
       "rules": [
-        "security/require-sanitized-html"
+        "security/require-sanitized-html",
+        "security/no-unescaped-html-response"
       ],
       "pairs": 30,
       "overrides": {
-        "security/require-sanitized-html": "error"
+        "security/require-sanitized-html": "error",
+        "security/no-unescaped-html-response": "error"
       }
     },
     "security/ssrf": {
@@ -6355,6 +6376,17 @@
       "cwe": "CWE-79",
       "title": "cheerio .text(bio) keeps the bio as plain text"
     },
+    "security/server-side-xss/express-cheerio-bio.safe.js.case#security/no-unescaped-html-response": {
+      "outcome": "TN",
+      "category": "security/server-side-xss",
+      "rule": "security/no-unescaped-html-response",
+      "file": "security/server-side-xss/express-cheerio-bio.safe.js.case",
+      "line": null,
+      "pair": "express-cheerio-bio",
+      "framework": "express",
+      "cwe": "CWE-79",
+      "title": "cheerio .text(bio) keeps the bio as plain text"
+    },
     "security/server-side-xss/express-cheerio-bio.safe.js.case#security/no-user-controlled-fetch-url": {
       "outcome": "TN",
       "category": "security/server-side-xss",
@@ -6410,6 +6442,17 @@
       "cwe": "CWE-79",
       "title": "comment encoded with he.encode before the preview"
     },
+    "security/server-side-xss/express-comment-preview.safe.ts.case#security/no-unescaped-html-response": {
+      "outcome": "FP",
+      "category": "security/server-side-xss",
+      "rule": "security/no-unescaped-html-response",
+      "file": "security/server-side-xss/express-comment-preview.safe.ts.case",
+      "line": 18,
+      "pair": "express-comment-preview",
+      "framework": "express",
+      "cwe": "CWE-79",
+      "title": "comment encoded with he.encode before the preview"
+    },
     "security/server-side-xss/express-comment-preview.safe.ts.case#security/no-user-controlled-fetch-url": {
       "outcome": "TN",
       "category": "security/server-side-xss",
@@ -6458,6 +6501,17 @@
       "outcome": "TN",
       "category": "security/server-side-xss",
       "rule": "security/no-shell-interpolation",
+      "file": "security/server-side-xss/express-error-page-param.safe.ts.case",
+      "line": null,
+      "pair": "express-error-page-param",
+      "framework": "express",
+      "cwe": "CWE-79",
+      "title": "page param HTML-escaped with he.encode"
+    },
+    "security/server-side-xss/express-error-page-param.safe.ts.case#security/no-unescaped-html-response": {
+      "outcome": "TN",
+      "category": "security/server-side-xss",
+      "rule": "security/no-unescaped-html-response",
       "file": "security/server-side-xss/express-error-page-param.safe.ts.case",
       "line": null,
       "pair": "express-error-page-param",
@@ -6520,6 +6574,17 @@
       "cwe": "CWE-79",
       "title": "marked output passed through DOMPurify.sanitize"
     },
+    "security/server-side-xss/express-markdown-render.safe.js.case#security/no-unescaped-html-response": {
+      "outcome": "TN",
+      "category": "security/server-side-xss",
+      "rule": "security/no-unescaped-html-response",
+      "file": "security/server-side-xss/express-markdown-render.safe.js.case",
+      "line": null,
+      "pair": "express-markdown-render",
+      "framework": "express",
+      "cwe": "CWE-79",
+      "title": "marked output passed through DOMPurify.sanitize"
+    },
     "security/server-side-xss/express-markdown-render.safe.js.case#security/no-user-controlled-fetch-url": {
       "outcome": "TN",
       "category": "security/server-side-xss",
@@ -6568,6 +6633,17 @@
       "outcome": "TN",
       "category": "security/server-side-xss",
       "rule": "security/no-shell-interpolation",
+      "file": "security/server-side-xss/express-profile-bio.safe.js.case",
+      "line": null,
+      "pair": "express-profile-bio",
+      "framework": "express",
+      "cwe": "CWE-79",
+      "title": "stored bio cleaned with DOMPurify before rendering"
+    },
+    "security/server-side-xss/express-profile-bio.safe.js.case#security/no-unescaped-html-response": {
+      "outcome": "TN",
+      "category": "security/server-side-xss",
+      "rule": "security/no-unescaped-html-response",
       "file": "security/server-side-xss/express-profile-bio.safe.js.case",
       "line": null,
       "pair": "express-profile-bio",
@@ -6630,6 +6706,17 @@
       "cwe": "CWE-79",
       "title": "bio rendered as a React text child, no raw HTML"
     },
+    "security/server-side-xss/express-react-bio.safe.tsx.case#security/no-unescaped-html-response": {
+      "outcome": "TN",
+      "category": "security/server-side-xss",
+      "rule": "security/no-unescaped-html-response",
+      "file": "security/server-side-xss/express-react-bio.safe.tsx.case",
+      "line": null,
+      "pair": "express-react-bio",
+      "framework": "express",
+      "cwe": "CWE-79",
+      "title": "bio rendered as a React text child, no raw HTML"
+    },
     "security/server-side-xss/express-react-bio.safe.tsx.case#security/no-user-controlled-fetch-url": {
       "outcome": "TN",
       "category": "security/server-side-xss",
@@ -6678,6 +6765,17 @@
       "outcome": "TN",
       "category": "security/server-side-xss",
       "rule": "security/no-shell-interpolation",
+      "file": "security/server-side-xss/express-react-comment.safe.jsx.case",
+      "line": null,
+      "pair": "express-react-comment",
+      "framework": "express",
+      "cwe": "CWE-79",
+      "title": "comment sanitized with DOMPurify before __html"
+    },
+    "security/server-side-xss/express-react-comment.safe.jsx.case#security/no-unescaped-html-response": {
+      "outcome": "TN",
+      "category": "security/server-side-xss",
+      "rule": "security/no-unescaped-html-response",
       "file": "security/server-side-xss/express-react-comment.safe.jsx.case",
       "line": null,
       "pair": "express-react-comment",
@@ -6740,6 +6838,17 @@
       "cwe": "CWE-79",
       "title": "query shown as a text child inside the heading"
     },
+    "security/server-side-xss/express-react-search.safe.tsx.case#security/no-unescaped-html-response": {
+      "outcome": "TN",
+      "category": "security/server-side-xss",
+      "rule": "security/no-unescaped-html-response",
+      "file": "security/server-side-xss/express-react-search.safe.tsx.case",
+      "line": null,
+      "pair": "express-react-search",
+      "framework": "express",
+      "cwe": "CWE-79",
+      "title": "query shown as a text child inside the heading"
+    },
     "security/server-side-xss/express-react-search.safe.tsx.case#security/no-user-controlled-fetch-url": {
       "outcome": "TN",
       "category": "security/server-side-xss",
@@ -6788,6 +6897,17 @@
       "outcome": "TN",
       "category": "security/server-side-xss",
       "rule": "security/no-shell-interpolation",
+      "file": "security/server-side-xss/express-report-email.safe.ts.case",
+      "line": null,
+      "pair": "express-report-email",
+      "framework": "express",
+      "cwe": "CWE-79",
+      "title": "customer name cleaned with sanitize-html before the report"
+    },
+    "security/server-side-xss/express-report-email.safe.ts.case#security/no-unescaped-html-response": {
+      "outcome": "TN",
+      "category": "security/server-side-xss",
+      "rule": "security/no-unescaped-html-response",
       "file": "security/server-side-xss/express-report-email.safe.ts.case",
       "line": null,
       "pair": "express-report-email",
@@ -6850,6 +6970,17 @@
       "cwe": "CWE-79",
       "title": "query HTML-escaped before it is echoed"
     },
+    "security/server-side-xss/express-search-echo.safe.js.case#security/no-unescaped-html-response": {
+      "outcome": "TN",
+      "category": "security/server-side-xss",
+      "rule": "security/no-unescaped-html-response",
+      "file": "security/server-side-xss/express-search-echo.safe.js.case",
+      "line": null,
+      "pair": "express-search-echo",
+      "framework": "express",
+      "cwe": "CWE-79",
+      "title": "query HTML-escaped before it is echoed"
+    },
     "security/server-side-xss/express-search-echo.safe.js.case#security/no-user-controlled-fetch-url": {
       "outcome": "TN",
       "category": "security/server-side-xss",
@@ -6898,6 +7029,17 @@
       "outcome": "TN",
       "category": "security/server-side-xss",
       "rule": "security/no-shell-interpolation",
+      "file": "security/server-side-xss/koa-error-handler.safe.ts.case",
+      "line": null,
+      "pair": "koa-error-handler",
+      "framework": "koa",
+      "cwe": "CWE-79",
+      "title": "requested path encoded with he.encode"
+    },
+    "security/server-side-xss/koa-error-handler.safe.ts.case#security/no-unescaped-html-response": {
+      "outcome": "TN",
+      "category": "security/server-side-xss",
+      "rule": "security/no-unescaped-html-response",
       "file": "security/server-side-xss/koa-error-handler.safe.ts.case",
       "line": null,
       "pair": "koa-error-handler",
@@ -6960,6 +7102,17 @@
       "cwe": "CWE-79",
       "title": "jsdom textContent used for the query string"
     },
+    "security/server-side-xss/koa-jsdom-widget.safe.js.case#security/no-unescaped-html-response": {
+      "outcome": "TN",
+      "category": "security/server-side-xss",
+      "rule": "security/no-unescaped-html-response",
+      "file": "security/server-side-xss/koa-jsdom-widget.safe.js.case",
+      "line": null,
+      "pair": "koa-jsdom-widget",
+      "framework": "koa",
+      "cwe": "CWE-79",
+      "title": "jsdom textContent used for the query string"
+    },
     "security/server-side-xss/koa-jsdom-widget.safe.js.case#security/no-user-controlled-fetch-url": {
       "outcome": "TN",
       "category": "security/server-side-xss",
@@ -7008,6 +7161,17 @@
       "outcome": "TN",
       "category": "security/server-side-xss",
       "rule": "security/no-shell-interpolation",
+      "file": "security/server-side-xss/koa-markdown-preview.safe.ts.case",
+      "line": null,
+      "pair": "koa-markdown-preview",
+      "framework": "koa",
+      "cwe": "CWE-79",
+      "title": "marked output piped through DOMPurify.sanitize"
+    },
+    "security/server-side-xss/koa-markdown-preview.safe.ts.case#security/no-unescaped-html-response": {
+      "outcome": "TN",
+      "category": "security/server-side-xss",
+      "rule": "security/no-unescaped-html-response",
       "file": "security/server-side-xss/koa-markdown-preview.safe.ts.case",
       "line": null,
       "pair": "koa-markdown-preview",
@@ -7070,6 +7234,17 @@
       "cwe": "CWE-79",
       "title": "bio filtered through xss() before rendering"
     },
+    "security/server-side-xss/koa-profile-page.safe.js.case#security/no-unescaped-html-response": {
+      "outcome": "TN",
+      "category": "security/server-side-xss",
+      "rule": "security/no-unescaped-html-response",
+      "file": "security/server-side-xss/koa-profile-page.safe.js.case",
+      "line": null,
+      "pair": "koa-profile-page",
+      "framework": "koa",
+      "cwe": "CWE-79",
+      "title": "bio filtered through xss() before rendering"
+    },
     "security/server-side-xss/koa-profile-page.safe.js.case#security/no-user-controlled-fetch-url": {
       "outcome": "TN",
       "category": "security/server-side-xss",
@@ -7118,6 +7293,17 @@
       "outcome": "TN",
       "category": "security/server-side-xss",
       "rule": "security/no-shell-interpolation",
+      "file": "security/server-side-xss/koa-react-card.safe.jsx.case",
+      "line": null,
+      "pair": "koa-react-card",
+      "framework": "koa",
+      "cwe": "CWE-79",
+      "title": "headline escaped by React as a text child"
+    },
+    "security/server-side-xss/koa-react-card.safe.jsx.case#security/no-unescaped-html-response": {
+      "outcome": "TN",
+      "category": "security/server-side-xss",
+      "rule": "security/no-unescaped-html-response",
       "file": "security/server-side-xss/koa-react-card.safe.jsx.case",
       "line": null,
       "pair": "koa-react-card",
@@ -7180,6 +7366,17 @@
       "cwe": "CWE-79",
       "title": "query escaped with a local escapeHtml helper"
     },
+    "security/server-side-xss/koa-search-body.safe.js.case#security/no-unescaped-html-response": {
+      "outcome": "TN",
+      "category": "security/server-side-xss",
+      "rule": "security/no-unescaped-html-response",
+      "file": "security/server-side-xss/koa-search-body.safe.js.case",
+      "line": null,
+      "pair": "koa-search-body",
+      "framework": "koa",
+      "cwe": "CWE-79",
+      "title": "query escaped with a local escapeHtml helper"
+    },
     "security/server-side-xss/koa-search-body.safe.js.case#security/no-user-controlled-fetch-url": {
       "outcome": "TN",
       "category": "security/server-side-xss",
@@ -7228,6 +7425,17 @@
       "outcome": "TN",
       "category": "security/server-side-xss",
       "rule": "security/no-shell-interpolation",
+      "file": "security/server-side-xss/koa-text-plain.safe.ts.case",
+      "line": null,
+      "pair": "koa-text-plain",
+      "framework": "koa",
+      "cwe": "CWE-79",
+      "title": "echo route sends the note as text/plain"
+    },
+    "security/server-side-xss/koa-text-plain.safe.ts.case#security/no-unescaped-html-response": {
+      "outcome": "TN",
+      "category": "security/server-side-xss",
+      "rule": "security/no-unescaped-html-response",
       "file": "security/server-side-xss/koa-text-plain.safe.ts.case",
       "line": null,
       "pair": "koa-text-plain",
@@ -7290,6 +7498,17 @@
       "cwe": "CWE-79",
       "title": "posted comment passed through filterXSS first"
     },
+    "security/server-side-xss/nest-comment-preview.safe.ts.case#security/no-unescaped-html-response": {
+      "outcome": "TN",
+      "category": "security/server-side-xss",
+      "rule": "security/no-unescaped-html-response",
+      "file": "security/server-side-xss/nest-comment-preview.safe.ts.case",
+      "line": null,
+      "pair": "nest-comment-preview",
+      "framework": "nest",
+      "cwe": "CWE-79",
+      "title": "posted comment passed through filterXSS first"
+    },
     "security/server-side-xss/nest-comment-preview.safe.ts.case#security/no-user-controlled-fetch-url": {
       "outcome": "TN",
       "category": "security/server-side-xss",
@@ -7338,6 +7557,17 @@
       "outcome": "TN",
       "category": "security/server-side-xss",
       "rule": "security/no-shell-interpolation",
+      "file": "security/server-side-xss/nest-error-res-send.safe.ts.case",
+      "line": null,
+      "pair": "nest-error-res-send",
+      "framework": "nest",
+      "cwe": "CWE-79",
+      "title": "failed id encoded with he.encode in the error page"
+    },
+    "security/server-side-xss/nest-error-res-send.safe.ts.case#security/no-unescaped-html-response": {
+      "outcome": "TN",
+      "category": "security/server-side-xss",
+      "rule": "security/no-unescaped-html-response",
       "file": "security/server-side-xss/nest-error-res-send.safe.ts.case",
       "line": null,
       "pair": "nest-error-res-send",
@@ -7400,6 +7630,17 @@
       "cwe": "CWE-79",
       "title": "request tag sanitized with DOMPurify before insertAdjacentHTML"
     },
+    "security/server-side-xss/nest-insert-adjacent.safe.ts.case#security/no-unescaped-html-response": {
+      "outcome": "TN",
+      "category": "security/server-side-xss",
+      "rule": "security/no-unescaped-html-response",
+      "file": "security/server-side-xss/nest-insert-adjacent.safe.ts.case",
+      "line": null,
+      "pair": "nest-insert-adjacent",
+      "framework": "nest",
+      "cwe": "CWE-79",
+      "title": "request tag sanitized with DOMPurify before insertAdjacentHTML"
+    },
     "security/server-side-xss/nest-insert-adjacent.safe.ts.case#security/no-user-controlled-fetch-url": {
       "outcome": "TN",
       "category": "security/server-side-xss",
@@ -7448,6 +7689,17 @@
       "outcome": "TN",
       "category": "security/server-side-xss",
       "rule": "security/no-shell-interpolation",
+      "file": "security/server-side-xss/nest-json-search.safe.ts.case",
+      "line": null,
+      "pair": "nest-json-search",
+      "framework": "nest",
+      "cwe": "CWE-79",
+      "title": "search endpoint returns JSON instead of HTML"
+    },
+    "security/server-side-xss/nest-json-search.safe.ts.case#security/no-unescaped-html-response": {
+      "outcome": "TN",
+      "category": "security/server-side-xss",
+      "rule": "security/no-unescaped-html-response",
       "file": "security/server-side-xss/nest-json-search.safe.ts.case",
       "line": null,
       "pair": "nest-json-search",
@@ -7510,6 +7762,17 @@
       "cwe": "CWE-79",
       "title": "marked output piped through DOMPurify.sanitize"
     },
+    "security/server-side-xss/nest-markdown-render.safe.ts.case#security/no-unescaped-html-response": {
+      "outcome": "TN",
+      "category": "security/server-side-xss",
+      "rule": "security/no-unescaped-html-response",
+      "file": "security/server-side-xss/nest-markdown-render.safe.ts.case",
+      "line": null,
+      "pair": "nest-markdown-render",
+      "framework": "nest",
+      "cwe": "CWE-79",
+      "title": "marked output piped through DOMPurify.sanitize"
+    },
     "security/server-side-xss/nest-markdown-render.safe.ts.case#security/no-user-controlled-fetch-url": {
       "outcome": "TN",
       "category": "security/server-side-xss",
@@ -7558,6 +7821,17 @@
       "outcome": "TN",
       "category": "security/server-side-xss",
       "rule": "security/no-shell-interpolation",
+      "file": "security/server-side-xss/nest-profile-bio.safe.ts.case",
+      "line": null,
+      "pair": "nest-profile-bio",
+      "framework": "nest",
+      "cwe": "CWE-79",
+      "title": "stored bio cleaned by sanitize-html before it is returned"
+    },
+    "security/server-side-xss/nest-profile-bio.safe.ts.case#security/no-unescaped-html-response": {
+      "outcome": "TN",
+      "category": "security/server-side-xss",
+      "rule": "security/no-unescaped-html-response",
       "file": "security/server-side-xss/nest-profile-bio.safe.ts.case",
       "line": null,
       "pair": "nest-profile-bio",
@@ -7620,6 +7894,17 @@
       "cwe": "CWE-79",
       "title": "query escaped before it is returned in the page"
     },
+    "security/server-side-xss/nest-search-header.safe.ts.case#security/no-unescaped-html-response": {
+      "outcome": "TN",
+      "category": "security/server-side-xss",
+      "rule": "security/no-unescaped-html-response",
+      "file": "security/server-side-xss/nest-search-header.safe.ts.case",
+      "line": null,
+      "pair": "nest-search-header",
+      "framework": "nest",
+      "cwe": "CWE-79",
+      "title": "query escaped before it is returned in the page"
+    },
     "security/server-side-xss/nest-search-header.safe.ts.case#security/no-user-controlled-fetch-url": {
       "outcome": "TN",
       "category": "security/server-side-xss",
@@ -7668,6 +7953,17 @@
       "outcome": "TN",
       "category": "security/server-side-xss",
       "rule": "security/no-shell-interpolation",
+      "file": "security/server-side-xss/node-cheerio-comment.safe.js.case",
+      "line": null,
+      "pair": "node-cheerio-comment",
+      "framework": "node",
+      "cwe": "CWE-79",
+      "title": "cheerio .text(comment) keeps the comment inert"
+    },
+    "security/server-side-xss/node-cheerio-comment.safe.js.case#security/no-unescaped-html-response": {
+      "outcome": "TN",
+      "category": "security/server-side-xss",
+      "rule": "security/no-unescaped-html-response",
       "file": "security/server-side-xss/node-cheerio-comment.safe.js.case",
       "line": null,
       "pair": "node-cheerio-comment",
@@ -7730,6 +8026,17 @@
       "cwe": "CWE-79",
       "title": "request path encoded with he.encode before res.write"
     },
+    "security/server-side-xss/node-error-write.safe.ts.case#security/no-unescaped-html-response": {
+      "outcome": "TN",
+      "category": "security/server-side-xss",
+      "rule": "security/no-unescaped-html-response",
+      "file": "security/server-side-xss/node-error-write.safe.ts.case",
+      "line": null,
+      "pair": "node-error-write",
+      "framework": "node",
+      "cwe": "CWE-79",
+      "title": "request path encoded with he.encode before res.write"
+    },
     "security/server-side-xss/node-error-write.safe.ts.case#security/no-user-controlled-fetch-url": {
       "outcome": "TN",
       "category": "security/server-side-xss",
@@ -7785,6 +8092,17 @@
       "cwe": "CWE-79",
       "title": "bio checked with an anchored regex and rejected otherwise"
     },
+    "security/server-side-xss/node-profile-bio.safe.js.case#security/no-unescaped-html-response": {
+      "outcome": "FP",
+      "category": "security/server-side-xss",
+      "rule": "security/no-unescaped-html-response",
+      "file": "security/server-side-xss/node-profile-bio.safe.js.case",
+      "line": 23,
+      "pair": "node-profile-bio",
+      "framework": "node",
+      "cwe": "CWE-79",
+      "title": "bio checked with an anchored regex and rejected otherwise"
+    },
     "security/server-side-xss/node-profile-bio.safe.js.case#security/no-user-controlled-fetch-url": {
       "outcome": "TN",
       "category": "security/server-side-xss",
@@ -7833,6 +8151,17 @@
       "outcome": "TN",
       "category": "security/server-side-xss",
       "rule": "security/no-shell-interpolation",
+      "file": "security/server-side-xss/node-react-profile.safe.jsx.case",
+      "line": null,
+      "pair": "node-react-profile",
+      "framework": "node",
+      "cwe": "CWE-79",
+      "title": "bio escaped by React as a text child"
+    },
+    "security/server-side-xss/node-react-profile.safe.jsx.case#security/no-unescaped-html-response": {
+      "outcome": "TN",
+      "category": "security/server-side-xss",
+      "rule": "security/no-unescaped-html-response",
       "file": "security/server-side-xss/node-react-profile.safe.jsx.case",
       "line": null,
       "pair": "node-react-profile",
@@ -7895,6 +8224,17 @@
       "cwe": "CWE-79",
       "title": "title cleaned with sanitize-html before concatenation"
     },
+    "security/server-side-xss/node-report-concat.safe.ts.case#security/no-unescaped-html-response": {
+      "outcome": "TN",
+      "category": "security/server-side-xss",
+      "rule": "security/no-unescaped-html-response",
+      "file": "security/server-side-xss/node-report-concat.safe.ts.case",
+      "line": null,
+      "pair": "node-report-concat",
+      "framework": "node",
+      "cwe": "CWE-79",
+      "title": "title cleaned with sanitize-html before concatenation"
+    },
     "security/server-side-xss/node-report-concat.safe.ts.case#security/no-user-controlled-fetch-url": {
       "outcome": "TN",
       "category": "security/server-side-xss",
@@ -7943,6 +8283,17 @@
       "outcome": "TN",
       "category": "security/server-side-xss",
       "rule": "security/no-shell-interpolation",
+      "file": "security/server-side-xss/node-search-end.safe.js.case",
+      "line": null,
+      "pair": "node-search-end",
+      "framework": "node",
+      "cwe": "CWE-79",
+      "title": "query escaped before res.end"
+    },
+    "security/server-side-xss/node-search-end.safe.js.case#security/no-unescaped-html-response": {
+      "outcome": "TN",
+      "category": "security/server-side-xss",
+      "rule": "security/no-unescaped-html-response",
       "file": "security/server-side-xss/node-search-end.safe.js.case",
       "line": null,
       "pair": "node-search-end",
