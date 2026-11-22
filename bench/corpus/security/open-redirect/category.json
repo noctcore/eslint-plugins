@@ -1,0 +1,6 @@
+{
+  "title": "Open redirect",
+  "cwe": "CWE-601",
+  "rules": ["security/no-user-controlled-redirect"],
+  "overrides": {}
+}
