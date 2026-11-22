@@ -49,7 +49,7 @@ export const structuredLogArgumentsRule = createRule<RuleOptions, MessageIds>({
     schema: [optionSchema],
     messages: {
       interpolatedMessage:
-        'This `.{{method}}(...)` call interpolates dynamic values into the message string — they become unqueryable free text. Pass a static message plus a structured context object (e.g. `log.{{method}}(\'processing task\', { taskId })`) so each field stays indexable.',
+        'This `.{{method}}(...)` call interpolates dynamic values into the message string, so they become unqueryable free text. Pass a static message plus a structured context object (e.g. `log.{{method}}(\'processing task\', { taskId })`) so each field stays indexable.',
     },
   },
   defaultOptions: [{ loggers: DEFAULT_LOGGERS, methods: DEFAULT_LOG_METHODS }],

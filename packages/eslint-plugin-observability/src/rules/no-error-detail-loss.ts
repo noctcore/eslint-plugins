@@ -94,12 +94,12 @@ export const noErrorDetailLossRule = createRule<RuleOptions, MessageIds>({
     type: 'suggestion',
     docs: {
       description:
-        'A catch block that reports a failure must not reduce the error to only `e.message` / `String(e)` / `${e}` — log the error itself so its stack and cause survive.',
+        'A catch block that reports a failure must not reduce the error to only `e.message` / `String(e)` / `${e}`. Log the error itself so its stack and cause survive.',
     },
     schema: [optionSchema],
     messages: {
       detailLoss:
-        "This catch logs only the error message — its stack and `cause` are lost. Log the error object itself (e.g. `log.error('...', { err: {{name}} })`) so the failure is diagnosable.",
+        "This catch logs only the error message, so its stack and `cause` are lost. Log the error object itself (e.g. `log.error('...', { err: {{name}} })`) so the failure is diagnosable.",
     },
   },
   defaultOptions: [{ loggers: DEFAULT_LOGGERS, methods: DEFAULT_LOG_METHODS }],
