@@ -160,6 +160,41 @@ export function propertyCategory(property: string): DesignCategory | null {
   return PROPERTY_CATEGORIES.get(toKebabCase(property).toLowerCase()) ?? null;
 }
 
+const MATH_FUNCTION = /\b(?:calc|min|max|clamp)\(/giu;
+
+/**
+ * Remove every `calc()`, `min()`, `max()` or `clamp()` that reads a variable:
+ * `calc(var(--radius) - 2px)` derives a value from a token, and the literal
+ * offset in it is arithmetic, not a second design value.
+ */
+function stripVariableMath(value: string): string {
+  let result = '';
+  let index = 0;
+  for (;;) {
+    MATH_FUNCTION.lastIndex = index;
+    const match = MATH_FUNCTION.exec(value);
+    if (match === null) {
+      return result + value.slice(index);
+    }
+    const open = match.index + match[0].length - 1;
+    let depth = 0;
+    let end = open;
+    for (; end < value.length; end += 1) {
+      if (value[end] === '(') depth += 1;
+      else if (value[end] === ')') {
+        depth -= 1;
+        if (depth === 0) break;
+      }
+    }
+    const group = value.slice(match.index, end + 1);
+    result += value.slice(index, match.index) + (group.includes('var(') ? ' ' : group);
+    index = end + 1;
+    if (index >= value.length) {
+      return result;
+    }
+  }
+}
+
 /** Remove every `var(...)`, fallbacks included, so only the literal part is left. */
 function stripVariables(value: string): string {
   let result = '';
@@ -190,12 +225,38 @@ function variablesIn(value: string): string[] {
   return [...value.matchAll(CSS_VARIABLE)].map((match) => match[1] as string);
 }
 
-function hasColor(value: string): boolean {
+/**
+ * Remove every `url(...)`, so an SVG fragment reference (`url(#fade)`) or a
+ * file name is never read as a colour. One linear scan: an unclosed `url(`
+ * drops the rest of the value.
+ */
+function stripUrls(value: string): string {
+  const lower = value.toLowerCase();
+  let result = '';
+  let index = 0;
+  while (index < value.length) {
+    const start = lower.indexOf('url(', index);
+    if (start === -1) {
+      result += value.slice(index);
+      break;
+    }
+    result += `${value.slice(index, start)} `;
+    const end = value.indexOf(')', start + 4);
+    if (end === -1) {
+      break;
+    }
+    index = end + 1;
+  }
+  return result;
+}
+
+function hasColor(rawValue: string): boolean {
+  const value = stripUrls(rawValue);
   if (HEX_COLOR.test(value) || COLOR_FUNCTION.test(value)) {
     return true;
   }
-  // Named colours only as whole words, and never inside a url().
-  const words = value.replace(/url\([^)]*\)/giu, ' ').toLowerCase().split(/[^a-z-]+/u);
+  // Named colours only as whole words.
+  const words = value.toLowerCase().split(/[^a-z-]+/u);
   return words.some((word) => NAMED_COLORS.has(word));
 }
 
@@ -258,7 +319,7 @@ export function checkCssValue(
     name,
   }));
   if (category !== null && policy.categories.has(category)) {
-    const literal = stripVariables(value).replace(/!important/giu, '');
+    const literal = stripVariables(stripVariableMath(value)).replace(/!important/giu, '');
     if (!GLOBAL_KEYWORDS.has(literal.trim().toLowerCase()) && hardcodes(category, literal)) {
       findings.push({ kind: 'value', category });
     }
@@ -353,9 +414,53 @@ export function checkClassToken(token: string, policy: DesignPolicy): DesignFind
   return checkCssValue(arbitraryCategory(name, value, hint), value, policy);
 }
 
+/**
+ * `css` without its comments: block comments, and `//` line comments, which
+ * styled-components and Emotion accept. A `//` inside a string or inside
+ * parentheses (`url(https://...)`) is not a comment.
+ */
+function stripCssComments(css: string): string {
+  let result = '';
+  let quote: string | null = null;
+  let depth = 0;
+  let index = 0;
+  while (index < css.length) {
+    const char = css[index] as string;
+    const next = css[index + 1];
+    if (quote !== null) {
+      result += char;
+      if (char === '\\' && next !== undefined) {
+        result += next;
+        index += 2;
+        continue;
+      }
+      if (char === quote) quote = null;
+      index += 1;
+      continue;
+    }
+    if (char === '/' && next === '*') {
+      const end = css.indexOf('*/', index + 2);
+      index = end === -1 ? css.length : end + 2;
+      result += ' ';
+      continue;
+    }
+    if (char === '/' && next === '/' && depth === 0) {
+      const end = css.indexOf('\n', index + 2);
+      index = end === -1 ? css.length : end;
+      continue;
+    }
+    if (char === '"' || char === "'") quote = char;
+    else if (char === '(') depth += 1;
+    else if (char === ')' && depth > 0) depth -= 1;
+    result += char;
+    index += 1;
+  }
+  return result;
+}
+
 /** The declarations of a CSS block, comments removed: `[property, value]` pairs. */
 export function cssDeclarations(css: string): Array<readonly [string, string]> {
-  const text = css.replace(/\/\*[\s\S]*?\*\//gu, ' ');
+  const text = stripCssComments(css);
   const declarations: Array<readonly [string, string]> = [];
   for (const match of text.matchAll(/(?:^|[;{}\s])(-?[a-z][a-z-]*)\s*:\s*([^;{}]+)/gu)) {
     declarations.push([match[1] as string, match[2] as string]);

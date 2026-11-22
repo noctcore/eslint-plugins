@@ -19,6 +19,16 @@ ruleTester.run('no-hardcoded-design-values', noHardcodedDesignValuesRule, {
     { code: `<div className="bg-(--color-surface) text-[var(--color-fg)] rounded-[var(--radius-md)] p-[var(--space-3)] bg-[color:var(--brand)] duration-[var(--motion-fast)]" />`, filename: TSX },
     // A var() fallback is not read.
     { code: `<div className="rounded-[var(--radius,6px)]" />`, filename: TSX },
+    // Arithmetic on a token derives from it: the literal offset is not a second value.
+    { code: `<div className="rounded-[calc(var(--radius)-2px)] rounded-t-[calc(var(--radius)_-_4px)] mt-[calc(var(--header)+1px)] p-[max(var(--space-2),8px)] text-[clamp(1rem,var(--fluid),2rem)]" />`, filename: TSX },
+    { code: `<div style={{ borderRadius: 'min(var(--radius-md), 10px)', padding: 'calc(var(--space-2) * 2 + 1px)' }} />`, filename: TSX },
+    // SVG fragment references and file names in url() are not colours.
+    { code: `<svg className="fill-[url(#fade)] stroke-[url(#a1b2c3)]"><rect style={{ fill: 'url(#a1b2c3)', stroke: 'url(#red)' }} /></svg>`, filename: TSX },
+    { code: `<div style={{ background: 'url(/img/beef.png)' }} />`, filename: TSX },
+    // Many unclosed url( stay linear and hide nothing after them as a colour.
+    { name: 'many unclosed url( in one value', code: `<div style={{ background: '${'url(#abc '.repeat(20000)}' }} />`, filename: TSX },
+    // Line comments in a CSS template are not declarations; a // inside url() or a string is not a comment.
+    { code: 'const Box = styled.div`\n  // color: red;\n  color: var(--color-fg); // was #333\n  background-image: url(https://cdn.example.com/a.png);\n  content: "//";\n`;', filename: TSX },
     // Font weight, not a family.
     { code: `<p className="font-[550]" />`, filename: TSX },
     // Not class strings at all: SVG presentation attributes and other props.
@@ -100,6 +110,30 @@ ruleTester.run('no-hardcoded-design-values', noHardcodedDesignValuesRule, {
         { messageId: 'hardcodedClass', data: { token: 'bg-[oklch(0.7_0.1_200)]/50', category: 'colour' } },
         { messageId: 'hardcodedClass', data: { token: 'border-x-[#e5e5e5]', category: 'colour' } },
         { messageId: 'hardcodedClass', data: { token: '!bg-[red]', category: 'colour' } },
+      ],
+    },
+    // calc() without a variable is still a literal.
+    {
+      code: `<div className="rounded-[calc(6px+2px)]" style={{ padding: 'calc(4px * 3)' }} />`,
+      filename: TSX,
+      errors: [{ messageId: 'hardcodedClass', data: { token: 'rounded-[calc(6px+2px)]', category: 'radius' } }, { messageId: 'hardcodedStyle' }],
+    },
+    // A hex colour beside a url() is still read, and so is one before an unclosed url(.
+    {
+      code: `<div style={{ background: '#fff url(/a.png)', backgroundColor: 'red url(url(url(' }} />`,
+      filename: TSX,
+      errors: [
+        { messageId: 'hardcodedStyle', data: { property: 'background', value: "'#fff url(/a.png)'", category: 'colour' } },
+        { messageId: 'hardcodedStyle', data: { property: 'backgroundColor', value: "'red url(url(url('", category: 'colour' } },
+      ],
+    },
+    // A declaration after a line comment is still read.
+    {
+      code: 'const Box = styled.div`\n  // the brand blue\n  color: #1e40af;\n  background: url(http://x.test/a.png) #fff;\n`;',
+      filename: TSX,
+      errors: [
+        { messageId: 'hardcodedStyle', data: { property: 'color', value: '#1e40af', category: 'colour' } },
+        { messageId: 'hardcodedStyle', data: { property: 'background', value: 'url(http://x.test/a.png) #fff', category: 'colour' } },
       ],
     },
     // Type hints and arbitrary properties.

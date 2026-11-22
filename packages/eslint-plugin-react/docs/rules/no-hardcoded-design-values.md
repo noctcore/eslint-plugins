@@ -85,7 +85,8 @@ const Panel = ({ children }) => (
 
 **CSS-in-JS**: a tagged template whose tag starts with one of `cssTags` (`styled.div`,
 `styled(Button).attrs(...)`, `css`, `keyframes`). Its declarations are read like inline styles;
-an interpolated part of a value (`${(p) => p.color}`) is not.
+an interpolated part of a value (`${(p) => p.color}`) is not, and neither are `/* */` and `//`
+comments (a `//` inside `url(...)` or a string is not a comment).
 
 ```tsx bad reports=2
 const Card = styled.div`
@@ -127,6 +128,12 @@ const Field = () => <input className="bg-(--color-brand) rounded-(--radius-md)" 
   `currentColor`, `transparent`, `none`, `auto`, generic font families (`monospace`,
   `system-ui`) and keyword easings (`ease-in-out`, `linear`).
 - A fallback inside `var(--radius, 6px)`: only the variable is read.
+- Arithmetic on a token: a `calc()`, `min()`, `max()` or `clamp()` that reads a variable
+  (`rounded-[calc(var(--radius)-2px)]`, `min(var(--radius-md), 10px)`) derives its value from the
+  token, so the literal offset in it is not reported. A `calc()` without a variable
+  (`rounded-[calc(6px+2px)]`) still is.
+- `url(...)`: an SVG fragment reference (`fill-[url(#fade)]`, `fill: 'url(#a1b2c3)'`) or a file
+  name is never read as a colour.
 - Unitless style values outside the categories (`opacity: 0.5`, `zIndex: 10`, `lineHeight: 1.5`),
   and properties outside the categories (`width: 200`).
 - Values the rule cannot read: a variable, a call, a member access, an interpolated template, and a
