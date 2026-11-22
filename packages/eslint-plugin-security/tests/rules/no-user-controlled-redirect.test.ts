@@ -118,6 +118,44 @@ ruleTester.run('no-user-controlled-redirect', noUserControlledRedirectRule, {
       code: "const HOSTS = ['app.example.com']; function h(req, res) { const url = String(req.query.url); if (!HOSTS.includes(new URL(url).hostname)) return res.sendStatus(400); res.redirect(url); }",
       filename: TS,
     },
+    // Shape: a URL resolved against a literal origin, its origin compared and `//` paths refused through a boolean.
+    {
+      code: "const ORIGIN = 'https://app.example.com'; function h(req, res) { const u = new URL(String(req.query.next), ORIGIN); const ok = u.origin === ORIGIN && !u.pathname.startsWith('//'); res.status(302).location(ok ? u.pathname + u.search : '/').end(); }",
+      filename: TS,
+    },
+    {
+      code: "const ORIGIN = 'https://app.example.com'; function h(req, res) { const u = new URL(String(req.query.next), ORIGIN); const ok = u.origin === ORIGIN && !u.pathname.startsWith('//'); res.writeHead(302, { Location: ok ? u.pathname + u.search : '/' }); }",
+      filename: TS,
+    },
+    // Shape: a local-path regex with a lookahead, in a `?:` at the sink, also on a decoded value.
+    {
+      code: "const LOCAL = /^\\/(?![\\/\\\\])[\\x21-\\x7e]*$/; function h(req, res) { const next = String(req.query.next); res.redirect(LOCAL.test(next) ? next : '/'); }",
+      filename: TS,
+    },
+    {
+      code: "const LOCAL = /^\\/(?!\\/)[\\w\\-./?=&%]*$/; function h(req, res) { const next = decodeURIComponent(String(req.query.next)); res.redirect(LOCAL.test(next) ? next : '/'); }",
+      filename: TS,
+    },
+    // Shape: the regex result and the target through two `const` bindings.
+    {
+      code: "const LOCAL = /^\\/(?!\\/|\\\\)[!-~]*$/; function h(req, res) { const next = String(req.query.next); const ok = LOCAL.test(next); const target = ok ? next : '/'; res.writeHead(302, { Location: target }); }",
+      filename: TS,
+    },
+    // Shape: a literal origin with no path, then a value that starts with `/`.
+    {
+      code: "function h(req, res) { const next = String(req.query.next); const local = next.startsWith('/'); res.redirect('https://app.example.com' + (local ? next : '/')); }",
+      filename: TS,
+    },
+    // Shape: exact membership in a module-level literal Set with an early return, then a query suffix.
+    {
+      code: "const TARGETS = new Set(['https://docs.example.com', '/home']); function h(req, res) { const to = String(req.query.to); if (!TARGETS.has(to)) { res.status(400).end(); return; } res.redirect(`${to}?from=login`); }",
+      filename: TS,
+    },
+    // Shape: a URL parsed in try/catch with a literal fallback, protocol and host checked against a const list.
+    {
+      code: "const HOSTS = ['app.example.com', 'docs.example.com']; function h(req, res) { let u; try { u = new URL(String(req.query.to), 'https://app.example.com'); } catch { u = new URL('https://app.example.com/'); } const ok = u.protocol === 'https:' && HOSTS.includes(u.hostname); res.redirect(ok ? u.href : '/'); }",
+      filename: TS,
+    },
   ],
   invalid: [
     // Plain user input.
@@ -309,6 +347,87 @@ ruleTester.run('no-user-controlled-redirect', noUserControlledRedirectRule, {
     // The inline host check must exit, and must check the URL that is used.
     {
       code: "const HOSTS = ['app.example.com']; function h(req, res) { const url = String(req.query.url); if (!HOSTS.includes(new URL(other).hostname)) return; res.redirect(url); }",
+      filename: TS,
+      errors: [error],
+    },
+    // Near misses: a non-literal origin, a missing `//` refusal, an unchanged-URL break.
+    {
+      code: "function h(req, res, origin: string) { const u = new URL(String(req.query.next), origin); const ok = u.origin === origin && !u.pathname.startsWith('//'); res.redirect(ok ? u.pathname + u.search : '/'); }",
+      filename: TS,
+      errors: [error],
+    },
+    {
+      code: "const ORIGIN = 'https://app.example.com'; function h(req, res) { const u = new URL(String(req.query.next), ORIGIN); const ok = u.origin === ORIGIN; res.redirect(ok ? u.pathname + u.search : '/'); }",
+      filename: TS,
+      errors: [error],
+    },
+    {
+      code: "const ORIGIN = 'https://app.example.com'; function h(req, res) { const u = new URL(String(req.query.next), ORIGIN); const ok = u.origin === ORIGIN && !u.pathname.startsWith('//'); u.pathname = String(req.query.p); res.redirect(ok ? u.pathname + u.search : '/'); }",
+      filename: TS,
+      errors: [error],
+    },
+    // An unanchored regex, a lookahead that lets `\\` through, a regex tested on another value.
+    {
+      code: "const LOCAL = /\\/(?![\\/\\\\])[\\x21-\\x7e]*/; function h(req, res) { const next = String(req.query.next); res.redirect(LOCAL.test(next) ? next : '/'); }",
+      filename: TS,
+      errors: [error],
+    },
+    {
+      code: "const LOCAL = /^\\/(?!\\/)[\\x21-\\x7e]*$/; function h(req, res) { const next = String(req.query.next); res.redirect(LOCAL.test(next) ? next : '/'); }",
+      filename: TS,
+      errors: [error],
+    },
+    {
+      code: "const LOCAL = /^\\/(?![\\/\\\\])[\\x21-\\x7e]*$/; function h(req, res) { const next = String(req.query.next); const ok = LOCAL.test(String(req.query.other)); res.redirect(ok ? next : '/'); }",
+      filename: TS,
+      errors: [error],
+    },
+    // The `?:` branches swapped, and a target in the wrong branch.
+    {
+      code: "const LOCAL = /^\\/(?![\\/\\\\])[\\x21-\\x7e]*$/; function h(req, res) { const next = String(req.query.next); res.redirect(LOCAL.test(next) ? '/' : next); }",
+      filename: TS,
+      errors: [error],
+    },
+    // An origin literal with a path or userinfo slot, and a value not checked for `/`.
+    {
+      code: "function h(req, res) { const next = String(req.query.next); res.redirect('https://app.example.com' + next); }",
+      filename: TS,
+      errors: [error],
+    },
+    {
+      code: "function h(req, res) { const next = String(req.query.next); const local = next.startsWith('/'); res.redirect('https://app.example.com' + (local ? next : '.evil.com')); }",
+      filename: TS,
+      errors: [error],
+    },
+    {
+      code: "function h(req, res, base: string) { const next = String(req.query.next); const local = next.startsWith('/'); res.redirect(base + (local ? next : '/')); }",
+      filename: TS,
+      errors: [error],
+    },
+    // A Set check without the early return, a mutated Set, a suffix that is not a query.
+    {
+      code: "const TARGETS = new Set(['/home']); function h(req, res) { const to = String(req.query.to); if (!TARGETS.has(to)) { res.status(400); } res.redirect(to); }",
+      filename: TS,
+      errors: [error],
+    },
+    {
+      code: "const TARGETS = new Set(['/home']); function h(req, res) { TARGETS.add(String(req.query.x)); const to = String(req.query.to); if (!TARGETS.has(to)) return; res.redirect(to); }",
+      filename: TS,
+      errors: [error],
+    },
+    {
+      code: "const TARGETS = new Set(['https://docs.example.com']); function h(req, res) { const to = String(req.query.to); if (!TARGETS.has(to)) return; res.redirect(`${to}${String(req.query.rest)}`); }",
+      filename: TS,
+      errors: [error],
+    },
+    // A host list that is not literal, and a URL written after the check.
+    {
+      code: "function h(req, res, hosts: string[]) { let u; try { u = new URL(String(req.query.to), 'https://app.example.com'); } catch { u = new URL('https://app.example.com/'); } const ok = u.protocol === 'https:' && hosts.includes(u.hostname); res.redirect(ok ? u.href : '/'); }",
+      filename: TS,
+      errors: [error],
+    },
+    {
+      code: "const HOSTS = ['app.example.com']; function h(req, res) { let u = new URL(String(req.query.to), 'https://app.example.com'); const ok = HOSTS.includes(u.hostname); u = new URL(String(req.query.other)); res.redirect(ok ? u.href : '/'); }",
       filename: TS,
       errors: [error],
     },

@@ -12,10 +12,18 @@
  * allowlist before the redirect, see `../guards`).
  */
 import { AST_NODE_TYPES, type TSESLint, type TSESTree } from '@typescript-eslint/utils';
+import { findVariable } from '@typescript-eslint/utils/ast-utils';
 import type { JSONSchema4 } from '@typescript-eslint/utils/json-schema';
 
 import { createRule } from '../createRule';
-import { isHostPinned, isLiteralTableRead, isSameSitePath } from '../guards';
+import {
+  isAllowlistedTarget,
+  isFixedOriginPath,
+  isHostPinned,
+  isLiteralTableRead,
+  isSameOriginUrlPath,
+  isSameSitePath,
+} from '../guards';
 import {
   calleeSpecSchema,
   hasFixedOrigin,
@@ -25,6 +33,7 @@ import {
   trustSchemaProperties,
   type UrlCalleeEntry,
   type UrlCalleeSpec,
+  type UrlTrust,
   type UrlTrustOptions,
   urlArgumentOf,
 } from '../url-origin';
@@ -115,7 +124,10 @@ function memberCallParts(
   ) {
     return null;
   }
-  return { method: callee.property.name, receiver: squash(sourceCode.getText(rootReceiver(callee.object))) };
+  return {
+    method: callee.property.name,
+    receiver: squash(sourceCode.getText(rootReceiver(callee.object))),
+  };
 }
 
 /** `matchCallee`, also through a chain of response-returning calls on the receiver. */
@@ -133,12 +145,18 @@ function matchRedirectCallee(
     ? undefined
     : specs.find(
         (spec) =>
-          spec.object !== undefined && spec.name === parts.method && squash(spec.object) === parts.receiver,
+          spec.object !== undefined &&
+          spec.name === parts.method &&
+          squash(spec.object) === parts.receiver,
       );
 }
 
 function isLocationName(node: TSESTree.Node): boolean {
-  return node.type === AST_NODE_TYPES.Literal && typeof node.value === 'string' && node.value.toLowerCase() === 'location';
+  return (
+    node.type === AST_NODE_TYPES.Literal &&
+    typeof node.value === 'string' &&
+    node.value.toLowerCase() === 'location'
+  );
 }
 
 /** The `Location` value of an object literal of headers, else undefined. */
@@ -151,9 +169,16 @@ function locationProperty(node: TSESTree.Node | undefined): TSESTree.Expression 
       continue;
     }
     const named =
-      (property.key.type === AST_NODE_TYPES.Identifier && property.key.name.toLowerCase() === 'location') ||
+      (property.key.type === AST_NODE_TYPES.Identifier &&
+        property.key.name.toLowerCase() === 'location') ||
       isLocationName(property.key);
-    if (named && property.value.type !== AST_NODE_TYPES.AssignmentPattern && property.value.type !== AST_NODE_TYPES.ObjectPattern && property.value.type !== AST_NODE_TYPES.ArrayPattern && property.value.type !== AST_NODE_TYPES.TSEmptyBodyFunctionExpression) {
+    if (
+      named &&
+      property.value.type !== AST_NODE_TYPES.AssignmentPattern &&
+      property.value.type !== AST_NODE_TYPES.ObjectPattern &&
+      property.value.type !== AST_NODE_TYPES.ArrayPattern &&
+      property.value.type !== AST_NODE_TYPES.TSEmptyBodyFunctionExpression
+    ) {
       return property.value;
     }
   }
@@ -178,7 +203,9 @@ function locationHeaderValue(
   const [first, second] = node.arguments;
   if (HEADER_SETTERS.has(parts.method)) {
     if (first !== undefined && isLocationName(first)) {
-      return second === undefined || second.type === AST_NODE_TYPES.SpreadElement ? undefined : second;
+      return second === undefined || second.type === AST_NODE_TYPES.SpreadElement
+        ? undefined
+        : second;
     }
     return node.arguments.length === 1 ? locationProperty(first) : undefined;
   }
@@ -186,6 +213,56 @@ function locationHeaderValue(
     return locationProperty(node.arguments.at(-1));
   }
   return undefined;
+}
+
+const MAX_TARGET_DEPTH = 8;
+
+/**
+ * True when a redirect target is proven to stay on a fixed origin. Read at the
+ * value itself, so a check in `ok ? target : '/'` counts for `target`; a
+ * `const` holding the target is followed, and each branch of a `?:` must be
+ * safe on its own.
+ */
+function isSafeTarget(
+  node: TSESTree.Expression,
+  trust: UrlTrust,
+  sourceCode: Readonly<TSESLint.SourceCode>,
+  depth = 0,
+): boolean {
+  if (depth > MAX_TARGET_DEPTH) {
+    return false;
+  }
+  if (
+    hasFixedOrigin(node, trust, sourceCode) ||
+    isHostPinned(node, node, sourceCode) ||
+    isSameSitePath(node, node, sourceCode) ||
+    isLiteralTableRead(node, sourceCode) ||
+    isAllowlistedTarget(node, node, sourceCode) ||
+    isFixedOriginPath(node, node, sourceCode) ||
+    isSameOriginUrlPath(node, node, sourceCode)
+  ) {
+    return true;
+  }
+  if (node.type === AST_NODE_TYPES.ConditionalExpression) {
+    return (
+      isSafeTarget(node.consequent, trust, sourceCode, depth + 1) &&
+      isSafeTarget(node.alternate, trust, sourceCode, depth + 1)
+    );
+  }
+  if (node.type === AST_NODE_TYPES.Identifier) {
+    const variable = findVariable(sourceCode.getScope(node), node);
+    const def = variable?.defs[0];
+    if (
+      variable?.defs.length === 1 &&
+      def?.type === 'Variable' &&
+      def.parent.kind === 'const' &&
+      def.node.id.type === AST_NODE_TYPES.Identifier &&
+      def.node.init !== null
+    ) {
+      return isSafeTarget(def.node.init, trust, sourceCode, depth + 1);
+    }
+  }
+  return false;
 }
 
 const optionSchema: JSONSchema4 = {
@@ -253,12 +330,7 @@ export const noUserControlledRedirectRule = createRule<RuleOptions, MessageIds>(
         if (urlArg === undefined) {
           return;
         }
-        if (
-          hasFixedOrigin(urlArg, trust, sourceCode) ||
-          isHostPinned(urlArg, node, sourceCode) ||
-          isSameSitePath(urlArg, node, sourceCode) ||
-          isLiteralTableRead(urlArg, sourceCode)
-        ) {
+        if (isSafeTarget(urlArg, trust, sourceCode)) {
           return;
         }
         context.report({
