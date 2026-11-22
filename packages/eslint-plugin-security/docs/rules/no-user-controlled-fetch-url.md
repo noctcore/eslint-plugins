@@ -100,7 +100,10 @@ net.connect(6379, 'cache.internal');
   `if` around it), and the URL was not written after the read. The allowlist is `includes` / `has`
   on in-file literals, `===` against literals, or a regex anchored at both ends, without the `m` flag
   or a `.` wildcard, whose every alternative ends in a literal domain. `new URL(pinned).hostname`
-  passed as a socket host is pinned too.
+  passed as a socket host is pinned too. The host can also be checked inline
+  (`HOSTS.includes(new URL(url).hostname)`), or on a parsed `const u = new URL(...)` that the call
+  then receives as `u`, `u.href` or `u.toString()`, as long as nothing changes `u` after the check
+  (`u.host = other` cancels it). The list can be a `const` string (`u.origin === APP_ORIGIN`).
 
 ```ts good
 // only two hosts get past the check

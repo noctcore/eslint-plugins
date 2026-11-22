@@ -89,6 +89,19 @@ ruleTester.run('no-user-controlled-fetch-url', noUserControlledFetchUrlRule, {
       code: "function probe(input: string) { const host = new URL(input).hostname; if (!/^api\\.example\\.com$/.test(host)) return; net.connect(80, new URL(String(input)).hostname); }",
       filename: TS,
     },
+    // A parsed URL object whose host was checked.
+    {
+      code: "const CDN = new Set(['cdn.example.com']); async function h(src: string) { const u = new URL(src); if (u.protocol !== 'https:' || !CDN.has(u.hostname)) throw new Error('host'); return fetch(u); }",
+      filename: TS,
+    },
+    {
+      code: "const APP_ORIGIN = 'https://app.example.com'; async function h(next: string) { const u = new URL(next, APP_ORIGIN); if (u.origin !== APP_ORIGIN) return; await fetch(u.href); }",
+      filename: TS,
+    },
+    {
+      code: "const HOSTS = ['api.example.com']; async function h(url: string) { if (!HOSTS.includes(new URL(url).hostname)) return; await fetch(url); }",
+      filename: TS,
+    },
   ],
   invalid: [
     // The shared wrapper list, string form.
@@ -179,6 +192,22 @@ ruleTester.run('no-user-controlled-fetch-url', noUserControlledFetchUrlRule, {
       filename: TS,
       options: [{ socketCallees: ['sockets.open'] }],
       errors: [{ messageId: 'userControlledSocketHost' }],
+    },
+    // The URL object changed after the check, or another URL checked.
+    {
+      code: "const CDN = new Set(['cdn.example.com']); async function h(src: string, other: string) { const u = new URL(src); if (!CDN.has(u.hostname)) return; u.host = other; return fetch(u); }",
+      filename: TS,
+      errors: [error],
+    },
+    {
+      code: "const CDN = new Set(['cdn.example.com']); async function h(src: string, other: string) { const u = new URL(src); const v = new URL(other); if (!CDN.has(v.hostname)) return; return fetch(u); }",
+      filename: TS,
+      errors: [error],
+    },
+    {
+      code: "async function h(src: string) { const u = new URL(src); if (!/example\\.com$/.test(u.hostname)) return; return fetch(u); }",
+      filename: TS,
+      errors: [error],
     },
   ],
 });
