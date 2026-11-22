@@ -92,21 +92,21 @@
       "url": "https://noctcore.github.io/eslint-plugins/rules/security/no-user-controlled-redirect/"
     },
     "security/require-path-containment": {
-      "tp": 4,
-      "fn": 26,
-      "fp": 2,
-      "tn": 28,
-      "detection": 0.1333,
-      "falseAlarm": 0.0667,
-      "j": 0.0666,
-      "extra": 0,
+      "tp": 5,
+      "fn": 25,
+      "fp": 1,
+      "tn": 29,
+      "detection": 0.1667,
+      "falseAlarm": 0.0333,
+      "j": 0.1334,
+      "extra": 10,
       "crossFp": 0,
       "crossSafe": 0,
       "enabledBy": "override",
       "categories": [
         "security/path-traversal"
       ],
-      "description": "Request-shaped input (`req.*`) passed directly into `path.join` / `path.resolve` without a containment test on the result is a path-traversal sink.",
+      "description": "Request-shaped input (`req.*`) reaching `path.join` / `path.resolve` or the path of an `fs` call (or `res.sendFile`) without a containment test is a path-traversal sink.",
       "url": "https://noctcore.github.io/eslint-plugins/rules/security/require-path-containment/"
     },
     "security/require-sanitized-html": {
@@ -183,14 +183,14 @@
       "overrides": {}
     },
     "security/path-traversal": {
-      "tp": 4,
-      "fn": 26,
-      "fp": 2,
-      "tn": 28,
-      "detection": 0.1333,
-      "falseAlarm": 0.0667,
-      "j": 0.0666,
-      "extra": 0,
+      "tp": 5,
+      "fn": 25,
+      "fp": 1,
+      "tn": 29,
+      "detection": 0.1667,
+      "falseAlarm": 0.0333,
+      "j": 0.1334,
+      "extra": 10,
       "title": "Path traversal",
       "cwe": "CWE-22",
       "rules": [
@@ -4761,11 +4761,11 @@
       "title": "export name must be in a fixed Set of known files"
     },
     "security/path-traversal/express-export-download.safe.ts.case#security/require-path-containment": {
-      "outcome": "FP",
+      "outcome": "TN",
       "category": "security/path-traversal",
       "rule": "security/require-path-containment",
       "file": "security/path-traversal/express-export-download.safe.ts.case",
-      "line": 15,
+      "line": null,
       "pair": "express-export-download",
       "framework": "express",
       "cwe": "CWE-22",
@@ -4992,7 +4992,7 @@
       "title": "template name must be in a fixed allowlist array before joining"
     },
     "security/path-traversal/express-template-preview.vuln.js.case#security/require-path-containment": {
-      "outcome": "FN",
+      "outcome": "TP",
       "category": "security/path-traversal",
       "rule": "security/require-path-containment",
       "file": "security/path-traversal/express-template-preview.vuln.js.case",
