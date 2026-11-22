@@ -1,0 +1,79 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 360 412" width="360" height="412">
+<style>
+/* Standalone colours (GitHub, an <img>): the docs site strips this block and colours the drawing from its theme tokens. Same block in every diagram. */
+svg{--bg:oklch(98.4% 0.004 262);--bg2:oklch(96.2% 0.007 262);--line:oklch(89.5% 0.011 262);--line2:oklch(81% 0.015 262);--field:oklch(64% 0.02 262);--ink:oklch(23% 0.035 266);--ink2:oklch(41% 0.028 266);--ink3:oklch(50% 0.022 266);--sig:oklch(55% 0.215 27);--sigink:oklch(48% 0.19 27);--sigwash:oklch(95.2% 0.028 27);--pass:oklch(46% 0.085 186);--passwash:oklch(95.4% 0.022 186)}
+@media (prefers-color-scheme:dark){svg{--bg:oklch(18.6% 0.026 266);--bg2:oklch(21.4% 0.029 266);--line:oklch(29.5% 0.03 266);--line2:oklch(38% 0.032 266);--field:oklch(56% 0.03 266);--ink:oklch(94.5% 0.01 262);--ink2:oklch(80% 0.02 262);--ink3:oklch(70% 0.022 262);--sig:oklch(68% 0.18 27);--sigink:oklch(76% 0.14 27);--sigwash:oklch(27% 0.06 27);--pass:oklch(78% 0.095 186);--passwash:oklch(26% 0.04 186)}}
+.d-plate{fill:var(--bg)}
+.d-panel{fill:var(--bg2);stroke:var(--line);stroke-width:1}
+.d-box{fill:var(--bg);stroke:var(--line2);stroke-width:1}
+.d-chip{fill:var(--bg);stroke:var(--line2);stroke-width:1}
+.d-chip-key{fill:var(--bg);stroke:var(--ink);stroke-width:1.5}
+.d-chip-ok{fill:var(--passwash);stroke:var(--pass);stroke-width:1}
+.d-chip-bad{fill:var(--sigwash);stroke:var(--sig);stroke-width:1.25;stroke-dasharray:4 3}
+.d-wire{fill:none;stroke:var(--line2);stroke-width:1.25}
+.d-leader{fill:none;stroke:var(--field);stroke-width:1;stroke-dasharray:1 3;stroke-linecap:round}
+.d-limit{fill:none;stroke:var(--ink3);stroke-width:1;stroke-dasharray:6 4}
+.d-ok{fill:none;stroke:var(--pass);stroke-width:1.75}
+.d-ok-head{fill:var(--pass)}
+.d-bad{fill:none;stroke:var(--sig);stroke-width:1.75;stroke-dasharray:5 4}
+.d-bad-past{fill:none;stroke:var(--sig);stroke-width:1.25;stroke-dasharray:1 4;stroke-linecap:round;opacity:.55}
+.d-bad-head{fill:var(--sig)}
+.d-stop{fill:none;stroke:var(--sig);stroke-width:3;stroke-linecap:round}
+.d-ink-head{fill:var(--ink2)}
+.d-flow{fill:none;stroke:var(--ink2);stroke-width:1.5}
+text{font-family:'Schibsted Grotesk Variable','Schibsted Grotesk',ui-sans-serif,system-ui,sans-serif}
+.d-label{font-size:13px;font-weight:650;fill:var(--ink)}
+.d-note{font-size:12px;fill:var(--ink3)}
+.d-code,.d-code-key,.d-code-ok,.d-code-bad,.d-kicker{font-family:'JetBrains Mono Variable','JetBrains Mono',ui-monospace,Menlo,Consolas,monospace}
+.d-code{font-size:12px;fill:var(--ink2)}
+.d-code-key{font-size:12px;font-weight:650;fill:var(--ink)}
+.d-code-ok{font-size:12px;fill:var(--pass)}
+.d-code-bad{font-size:12px;fill:var(--sigink)}
+.d-kicker{font-size:10.5px;letter-spacing:.08em;fill:var(--ink3)}
+.d-ok-text{font-size:12px;font-weight:650;fill:var(--pass)}
+.d-bad-text{font-size:12px;font-weight:650;fill:var(--sigink)}
+</style>
+<rect class="d-plate" width="360" height="412"/>
+<path class="d-wire" d="M30 62 V84 H40"/>
+<path class="d-wire" d="M30 84 V244 H40"/>
+<path class="d-wire" d="M50 94 V116 H60"/>
+<path class="d-wire" d="M70 126 V148 H80"/>
+<path class="d-wire" d="M90 158 V180 H100"/>
+<path class="d-wire" d="M110 190 V212 H120"/>
+<text class="d-code" x="24" y="56">src/</text>
+<text class="d-code" x="44" y="88">a/</text>
+<text class="d-code" x="64" y="120">b/</text>
+<text class="d-code" x="84" y="152">c/</text>
+<text class="d-code" x="104" y="184">d/</text>
+<text class="d-code-key" x="124" y="216">deep.ts</text>
+<text class="d-code" x="44" y="248">shared/log.ts</text>
+<text class="d-note" x="150" y="248">the target</text>
+<path class="d-leader" d="M61 52 H192"/>
+<path class="d-leader" d="M66 84 H192"/>
+<path class="d-leader" d="M86 116 H192"/>
+<path class="d-leader" d="M106 148 H192"/>
+<path class="d-leader" d="M126 180 H192"/>
+<path class="d-limit" d="M176 68 H286"/>
+<text class="d-code-key" x="292" y="72">max: 3</text>
+<path class="d-ok" d="M200 180 V84"/>
+<path class="d-bad" d="M200 84 V56"/>
+<path class="d-stop" d="M190 68 H210"/>
+<circle class="d-ink-head" cx="200" cy="180" r="4"/>
+<circle class="d-ok-head" cx="200" cy="148" r="3.5"/>
+<circle class="d-ok-head" cx="200" cy="116" r="3.5"/>
+<circle class="d-ok-head" cx="200" cy="84" r="3.5"/>
+<circle class="d-bad-head" cx="200" cy="52" r="3.5"/>
+<text class="d-bad-text" x="212" y="30">4 hops: reported</text>
+<text class="d-code" x="214" y="184">start</text>
+<text class="d-code" x="214" y="152">../</text>
+<text class="d-code" x="214" y="120">../../</text>
+<text class="d-code-ok" x="214" y="88">../../../</text>
+<text class="d-code-bad" x="214" y="56">../../../../</text>
+<rect class="d-box" x="12" y="276" width="336" height="124" rx="5"/>
+<text class="d-kicker" x="26" y="298">THE FIX</text>
+<text class="d-code-bad" x="26" y="322">'../../../../shared/log'</text>
+<path class="d-flow" d="M44 330 V345"/>
+<path class="d-ink-head" d="M44 352 l-4 -7 h8 z"/>
+<text class="d-code-ok" x="26" y="374">'@/shared/log'</text>
+<text class="d-note" x="26" y="392">--fix, with alias { src: '@' }</text>
+</svg>
