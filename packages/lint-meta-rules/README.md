@@ -16,7 +16,8 @@ Not a good fit if you are not running the harness.
   imports and tsconfig references, ESLint severities, and, opt-in, one version of each shared dev
   tool across workspace packages.
 - **source-text**: layering between packages, a file-size ratchet, agent-doc presence, colocated
-  tests, one home per helper, no cloned component folders, UI primitive shape.
+  tests, one home per helper, no cloned component folders, UI primitive shape, and, opt-in, Rust
+  module size, `mod.rs` manifests, layering between Rust modules or crates, and command placement.
 - **testing**: every tested package is enrolled in the aggregate test script, test runners are not
   mixed within a package, and, opt-in, every colocated test sits next to its source.
 - **ci**: GitHub Actions pinned by SHA and to named runners, no template injection, least-privilege
@@ -76,7 +77,7 @@ out `OPT_IN_RULE_IDS` there to get the same set as a bare `createAllRules()`.
 
 ## Rules
 
-The main entry exports 36 factories. `createFileSizeRatchetRule` covers any number of capped areas:
+The main entry exports 39 factories. `createFileSizeRatchetRule` covers any number of capped areas:
 create one instance per area, each with its own `id`.
 
 <!-- begin generated rules -->
@@ -110,6 +111,9 @@ create one instance per area, each with its own `id`.
 | [`package-shape`](https://noctcore.github.io/eslint-plugins/rules/lint-meta-rules/package-shape/) | Every workspace is named &lt;scope&gt;/&lt;dir&gt;; library packages expose a barrel and point main/module/types/exports at the built output. | `createPackageShapeRule` | `@noctcore/lint-meta-rules` | `config` | yes |
 | [`pnpm-hardening-settings`](https://noctcore.github.io/eslint-plugins/rules/lint-meta-rules/pnpm-hardening-settings/) | pnpm-workspace.yaml keeps the install hardening on (strictDepBuilds, blockExoticSubdeps, engineStrict, trustPolicy: no-downgrade, a minimum release age), every trustPolicyExclude entry exact and reasoned, and no governed setting is overridden in .npmrc, package.json or on a command line. | `createPnpmHardeningSettingsRule` | `@noctcore/lint-meta-rules` | `supply-chain` | yes |
 | [`pnpm-override-ledger`](https://noctcore.github.io/eslint-plugins/rules/lint-meta-rules/pnpm-override-ledger/) | Every pnpm override needs an entry in overrides.ledger.json with a reason and a reviewBy that has not passed, a security pin must target its own firstPatched or higher, and the lockfile must honour the override. | `createPnpmOverrideLedgerRule` | `@noctcore/lint-meta-rules` | `supply-chain` | yes |
+| [`rust-command-placement`](https://noctcore.github.io/eslint-plugins/rules/lint-meta-rules/rust-command-placement/) | A command handler attribute (default #[tauri::command]) may appear only in the allowed files, and never in the denied ones. | `createRustCommandPlacementRule` | `@noctcore/lint-meta-rules` | `source-text` | yes |
+| [`rust-layer-rank`](https://noctcore.github.io/eslint-plugins/rules/lint-meta-rules/rust-layer-rank/) | A Rust module may import (crate::x) only strictly lower-ranked modules, with facade aliases resolved and test modules skipped. | `createRustLayerRankRule` | `@noctcore/lint-meta-rules` | `source-text` | yes |
+| [`rust-module-shape`](https://noctcore.github.io/eslint-plugins/rules/lint-meta-rules/rust-module-shape/) | Rust files stay at or under 400 code lines, and every mod.rs only declares and re-exports modules. | `createRustModuleShapeRule` | `@noctcore/lint-meta-rules` | `source-text` | yes |
 | [`security-scanner-version-parity`](https://noctcore.github.io/eslint-plugins/rules/lint-meta-rules/security-scanner-version-parity/) | The gitleaks version pinned in the workflows must equal the one in scripts/ci/pre-push.sh, and the hook must compare a native gitleaks against it at run time. | `createSecurityScannerVersionParityRule` | `@noctcore/lint-meta-rules` | `ci` | yes |
 | [`service-image-digest-pin`](https://noctcore.github.io/eslint-plugins/rules/lint-meta-rules/service-image-digest-pin/) | Workflow service and container images, and docker-compose images, must be pinned by `@sha256:` digest (a service that builds locally is exempt). | `createServiceImageDigestPinRule` | `@noctcore/lint-meta-rules` | `ci` | yes |
 | [`shared-tool-version-parity`](https://noctcore.github.io/eslint-plugins/rules/lint-meta-rules/shared-tool-version-parity/) | Workspace packages that declare the same dev tool (eslint, typescript, prettier, or a configured prefix) must declare the same version; `workspace:` and `catalog:` specifiers are skipped. | `createSharedToolVersionParityRule` | `@noctcore/lint-meta-rules` | `config` | yes |
@@ -137,7 +141,8 @@ create one instance per area, each with its own `id`.
 
 Every factory is callable with no arguments (all options default), so `createAllRules()` and
 per-factory defaults work out of the box; supply options to retarget a rule at your own repo. Ids in
-`OPT_IN_RULE_IDS` (`github-actions-package-cache`, `shared-tool-version-parity`,
+`OPT_IN_RULE_IDS` (`github-actions-package-cache`, `rust-command-placement`, `rust-layer-rank`,
+`rust-module-shape`, `shared-tool-version-parity`,
 `test-files-require-source-sibling`) run only when named in `optIn`.
 
 ### `@noctcore/lint-meta-rules/i18n`

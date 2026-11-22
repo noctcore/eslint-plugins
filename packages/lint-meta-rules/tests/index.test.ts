@@ -36,6 +36,9 @@ describe('package export surface', () => {
         'no-cloned-component-folders',
         'no-warn-severity',
         'package-shape',
+        'rust-command-placement',
+        'rust-layer-rank',
+        'rust-module-shape',
         'security-scanner-version-parity',
         'service-image-digest-pin',
         'shared-tool-version-parity',
@@ -62,6 +65,9 @@ describe('package export surface', () => {
   test('OPT_IN_RULE_IDS lists exactly the opt-in catalog rules', () => {
     expect([...OPT_IN_RULE_IDS]).toEqual([
       'github-actions-package-cache',
+      'rust-command-placement',
+      'rust-layer-rank',
+      'rust-module-shape',
       'shared-tool-version-parity',
       'test-files-require-source-sibling',
     ]);
@@ -76,12 +82,15 @@ describe('package export surface', () => {
     expect(ids).not.toContain('test-files-require-source-sibling');
     expect(ids).not.toContain('github-actions-package-cache');
     expect(ids).not.toContain('shared-tool-version-parity');
+    expect(ids).not.toContain('rust-module-shape');
   });
 
   test('createAllRules({ optIn }) adds a named opt-in rule', () => {
-    const ids = createAllRules({ optIn: ['shared-tool-version-parity'] }).map((rule) => rule.id);
+    const ids = createAllRules({ optIn: ['shared-tool-version-parity', 'rust-module-shape'] }).map((rule) => rule.id);
     expect(ids).toContain('shared-tool-version-parity');
+    expect(ids).toContain('rust-module-shape');
     expect(ids).not.toContain('github-actions-package-cache');
+    expect(ids).not.toContain('rust-layer-rank');
     expect(createAllRules({ optIn: [...OPT_IN_RULE_IDS] }).map((rule) => rule.id).sort()).toEqual([...RULE_IDS].sort());
   });
 
@@ -124,6 +133,9 @@ describe('package export surface', () => {
       'createNoClonedComponentFoldersRule',
       'createNoWarnSeverityRule',
       'createPackageShapeRule',
+      'createRustCommandPlacementRule',
+      'createRustLayerRankRule',
+      'createRustModuleShapeRule',
       'createSecurityScannerVersionParityRule',
       'createServiceImageDigestPinRule',
       'createSharedToolVersionParityRule',

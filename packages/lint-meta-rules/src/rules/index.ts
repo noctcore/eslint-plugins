@@ -26,6 +26,9 @@ import { createNodeVersionParityRule } from './node-version-parity';
 import { createPackageShapeRule } from './package-shape';
 import { createPnpmHardeningSettingsRule } from './pnpm-hardening-settings';
 import { createPnpmOverrideLedgerRule } from './pnpm-override-ledger';
+import { createRustCommandPlacementRule } from './rust-command-placement';
+import { createRustLayerRankRule } from './rust-layer-rank';
+import { createRustModuleShapeRule } from './rust-module-shape';
 import { createSecurityScannerVersionParityRule } from './security-scanner-version-parity';
 import { createServiceImageDigestPinRule } from './service-image-digest-pin';
 import { createSharedToolVersionParityRule } from './shared-tool-version-parity';
@@ -89,6 +92,17 @@ export { createPnpmHardeningSettingsRule } from './pnpm-hardening-settings';
 export type { PnpmHardeningSettingsOptions } from './pnpm-hardening-settings';
 export { createPnpmOverrideLedgerRule } from './pnpm-override-ledger';
 export type { PnpmOverrideLedgerOptions } from './pnpm-override-ledger';
+export { createRustCommandPlacementRule } from './rust-command-placement';
+export type { RustCommandPlacementOptions } from './rust-command-placement';
+export { createRustLayerRankRule } from './rust-layer-rank';
+export type {
+  RustCrateRankOptions,
+  RustForbiddenEdge,
+  RustLayerRankOptions,
+  RustModuleRankOptions,
+} from './rust-layer-rank';
+export { createRustModuleShapeRule } from './rust-module-shape';
+export type { RustModuleShapeOptions } from './rust-module-shape';
 export { createSecurityScannerVersionParityRule } from './security-scanner-version-parity';
 export type { SecurityScannerVersionParityOptions } from './security-scanner-version-parity';
 export { createServiceImageDigestPinRule } from './service-image-digest-pin';
@@ -154,6 +168,9 @@ export const RULE_FACTORIES = {
   'package-shape': createPackageShapeRule,
   'pnpm-hardening-settings': createPnpmHardeningSettingsRule,
   'pnpm-override-ledger': createPnpmOverrideLedgerRule,
+  'rust-command-placement': createRustCommandPlacementRule,
+  'rust-layer-rank': createRustLayerRankRule,
+  'rust-module-shape': createRustModuleShapeRule,
   'security-scanner-version-parity': createSecurityScannerVersionParityRule,
   'service-image-digest-pin': createServiceImageDigestPinRule,
   'shared-tool-version-parity': createSharedToolVersionParityRule,
@@ -176,6 +193,9 @@ export const RULE_IDS = Object.keys(RULE_FACTORIES) as (keyof typeof RULE_FACTOR
  */
 export const OPT_IN_RULE_IDS: readonly (keyof typeof RULE_FACTORIES)[] = [
   'github-actions-package-cache',
+  'rust-command-placement',
+  'rust-layer-rank',
+  'rust-module-shape',
   'shared-tool-version-parity',
   'test-files-require-source-sibling',
 ];
