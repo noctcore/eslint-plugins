@@ -1469,7 +1469,7 @@
       "pair": "node-http-nslookup",
       "framework": "node",
       "cwe": "CWE-78",
-      "title": "domain validated by an anchored regex before exec in a node:http server"
+      "title": "domain validated by an anchored regex that cannot start with a dash before exec in a node:http server"
     },
     "security/command-injection/node-http-nslookup.safe.js.case#security/no-user-controlled-fetch-url": {
       "outcome": "TN",
@@ -1480,7 +1480,7 @@
       "pair": "node-http-nslookup",
       "framework": "node",
       "cwe": "CWE-78",
-      "title": "domain validated by an anchored regex before exec in a node:http server"
+      "title": "domain validated by an anchored regex that cannot start with a dash before exec in a node:http server"
     },
     "security/command-injection/node-http-nslookup.safe.js.case#security/no-user-controlled-redirect": {
       "outcome": "TN",
@@ -1491,7 +1491,7 @@
       "pair": "node-http-nslookup",
       "framework": "node",
       "cwe": "CWE-78",
-      "title": "domain validated by an anchored regex before exec in a node:http server"
+      "title": "domain validated by an anchored regex that cannot start with a dash before exec in a node:http server"
     },
     "security/command-injection/node-http-nslookup.vuln.js.case#security/no-shell-interpolation": {
       "outcome": "TP",
