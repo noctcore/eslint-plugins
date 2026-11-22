@@ -116,6 +116,29 @@ ruleTester.run('no-shell-interpolation', noShellInterpolationRule, {
       filename: TS,
     },
     { code: "const BIN = '/usr/bin/git'; exec(`${BIN} status`);", filename: TS },
+    // A frozen list, `indexOf`, and a comparison with a `const` string.
+    {
+      code: "const MODES = Object.freeze(['fast', 'slow']); export const ALL = MODES; function run(x: string) { if (!MODES.includes(x)) return; exec(`tool ${x}`); }",
+      filename: TS,
+    },
+    {
+      code: "const MODES = ['fast', 'slow']; function run(x: string) { if (MODES.indexOf(x) === -1) return; exec(`tool ${x}`); }",
+      filename: TS,
+    },
+    { code: "const FAST = 'fast'; function run(x: string) { if (x !== FAST) return; exec(`tool ${x}`); }", filename: TS },
+    // zod `safeParse`, and a field of a parsed object schema.
+    {
+      code: "const S = z.string().regex(/^[a-z]+$/); function run(x: string) { const r = S.safeParse(x); if (!r.success) return; exec(`tool ${r.data}`); }",
+      filename: TS,
+    },
+    {
+      code: "const Body = z.object({ mode: z.enum(['fast', 'slow']) }); function run(body: unknown) { exec(`tool ${Body.parse(body).mode}`); }",
+      filename: TS,
+    },
+    {
+      code: "const Body = z.object({ mode: z.string().regex(/^[a-z]+$/) }).strict(); function run(body: unknown) { const { mode } = Body.parse(body); exec(`tool ${mode}`); }",
+      filename: TS,
+    },
   ],
   invalid: [
     // exec with an interpolated template.
@@ -391,6 +414,27 @@ ruleTester.run('no-shell-interpolation', noShellInterpolationRule, {
     // An array changed in place after the check no longer holds the checked text.
     {
       code: "function h(x: string, y: string) { const parts = [x]; if (!/^[a-z,]+$/.test(String(parts))) return; parts.push(y); exec(`echo ${parts}`); }",
+      filename: TS,
+      errors: [{ messageId: 'shellInterpolation' }],
+    },
+    // `safeParse` without the exit, an unconfined field, a list that is not frozen and leaks.
+    {
+      code: "const S = z.string().regex(/^[a-z]+$/); function run(x: string) { const r = S.safeParse(x); exec(`tool ${r.data}`); }",
+      filename: TS,
+      errors: [{ messageId: 'shellInterpolation' }],
+    },
+    {
+      code: "const Body = z.object({ mode: z.enum(['fast']), name: z.string() }); function run(body: unknown) { exec(`tool ${Body.parse(body).name}`); }",
+      filename: TS,
+      errors: [{ messageId: 'shellInterpolation' }],
+    },
+    {
+      code: "const MODES = ['fast']; export const ALL = MODES; function run(x: string) { if (MODES.indexOf(x) === -1) return; exec(`tool ${x}`); }",
+      filename: TS,
+      errors: [{ messageId: 'shellInterpolation' }],
+    },
+    {
+      code: "const MODES = ['fast']; function run(x: string) { if (MODES.indexOf(x) === 0) return; exec(`tool ${x}`); }",
       filename: TS,
       errors: [{ messageId: 'shellInterpolation' }],
     },
