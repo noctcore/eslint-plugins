@@ -57,6 +57,34 @@ same file (followed transitively). `let`, parameters, imports and anything compu
 A backslash is read as `/`, the way browsers parse `http(s)` URLs, so `/\evil.com` is caught as
 protocol-relative.
 
+### Node clients, axios configs and sockets
+
+The default `fetchCallees` cover `fetch`, `axios` with its methods, `axios(config)`,
+`axios(url, config)`, `axios.request(config)`, and Node's `http.get`, `http.request`, `https.get`
+and `https.request`. When the URL argument is an object literal, or an in-file `const` bound to one,
+the URL is its `urlProperty` (`url` for the axios config forms). An `http` / `https` options object
+without `href` names its target by `host` / `hostname`, which must then be fixed.
+
+```ts bad
+export async function probe(target: string) {
+  const outbound = { method: 'get', url: String(target), timeout: 5000 };
+  await axios.request(outbound);
+}
+```
+
+`socketCallees` (`net.connect`, `net.createConnection`, `tls.connect`) open a raw socket, so only
+their host is checked: `connect(port, host)` or `connect({ host })`. A literal host, a `const` bound
+to one, a string first argument (an IPC path) and no host at all (localhost) pass.
+
+```ts bad
+// `new URL(...).hostname` of a runtime URL is still a runtime host
+net.connect(80, new URL(String(target)).hostname);
+```
+
+```ts good
+net.connect(6379, 'cache.internal');
+```
+
 ## What it does not flag
 
 - Relative URLs (`/api/todos/${id}`): a runtime part can only move the path.
@@ -66,12 +94,34 @@ protocol-relative.
   `.toString()` and `.href`.
 - A `trustedOrigins` match followed by `/`, `?`, `#`, a sanitizer or a trusted path.
 - Calls to an HTTP client not listed in `fetchCallees`: a custom client is out of scope until you add it.
+  Named imports (`import { get } from 'node:http'`) are not matched either; list them by name.
+- A host-pinned URL: its host was read with `new URL(url).hostname` (or `.host` / `.origin`, with no
+  base argument) into a binding that passed an allowlist before the call (an `if` that exits, or an
+  `if` around it), and the URL was not written after the read. The allowlist is `includes` / `has`
+  on in-file literals, `===` against literals, or a regex anchored at both ends, without the `m` flag
+  or a `.` wildcard, whose every alternative ends in a literal domain. `new URL(pinned).hostname`
+  passed as a socket host is pinned too.
+
+```ts good
+// only two hosts get past the check
+export function probe(input: string) {
+  let host = '';
+  try {
+    host = new URL(input).hostname;
+  } catch {
+    return;
+  }
+  if (!/^(api|assets)\.example\.com$/.test(host)) return;
+  net.connect(80, new URL(String(input)).hostname);
+}
+```
 
 ## Options
 
 | Option | Type | Default | Meaning |
 | --- | --- | --- | --- |
-| `fetchCallees` | `(string \| CalleeSpec)[]` | `fetch`, `axios.{get,post,put,patch,delete,head,options}` | Call shapes that issue a request. Setting this replaces the defaults. |
+| `fetchCallees` | `(string \| CalleeSpec)[]` | `fetch`, `axios`, `axios.{get,post,put,patch,delete,head,options,request}`, `http.{get,request}`, `https.{get,request}` | Call shapes that issue a request. Setting this replaces the defaults. |
+| `socketCallees` | `string[]` | `net.connect`, `net.createConnection`, `tls.connect` | Calls that open a socket; their host must be fixed. Setting this replaces the defaults. |
 | `trustedOrigins` | `string[]` | `[]` | Expressions (source text) that are a fixed-origin URL. `name()` matches any call to `name`. |
 | `sanitizers` | `string[]` | `[]` | Functions whose result is a safe same-origin path. |
 | `trustedPaths` | `string[]` | `[]` | Expressions (source text) that hold a safe same-origin path, e.g. an imported constant. |
