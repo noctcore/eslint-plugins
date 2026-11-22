@@ -25,6 +25,7 @@ describe('package export surface', () => {
         'github-actions-expression-syntax',
         'github-actions-least-privilege-permissions',
         'github-actions-no-template-injection',
+        'github-actions-package-cache',
         'github-actions-paths-filter-permissions',
         'github-actions-pip-install-pinned',
         'github-actions-runner-pinned',
@@ -37,6 +38,7 @@ describe('package export surface', () => {
         'package-shape',
         'security-scanner-version-parity',
         'service-image-digest-pin',
+        'shared-tool-version-parity',
         'test-files-require-source-sibling',
         'test-runner-segregation',
         'test-sibling-enforcement',
@@ -58,7 +60,11 @@ describe('package export surface', () => {
   });
 
   test('OPT_IN_RULE_IDS lists exactly the opt-in catalog rules', () => {
-    expect([...OPT_IN_RULE_IDS]).toEqual(['test-files-require-source-sibling']);
+    expect([...OPT_IN_RULE_IDS]).toEqual([
+      'github-actions-package-cache',
+      'shared-tool-version-parity',
+      'test-files-require-source-sibling',
+    ]);
     for (const id of OPT_IN_RULE_IDS) {
       expect(RULE_IDS).toContain(id);
     }
@@ -68,11 +74,15 @@ describe('package export surface', () => {
     const ids = createAllRules().map((rule) => rule.id);
     expect(ids.sort()).toEqual(RULE_IDS.filter((id) => !OPT_IN_RULE_IDS.includes(id)).sort());
     expect(ids).not.toContain('test-files-require-source-sibling');
+    expect(ids).not.toContain('github-actions-package-cache');
+    expect(ids).not.toContain('shared-tool-version-parity');
   });
 
   test('createAllRules({ optIn }) adds a named opt-in rule', () => {
-    const ids = createAllRules({ optIn: ['test-files-require-source-sibling'] }).map((rule) => rule.id);
-    expect(ids.sort()).toEqual([...RULE_IDS].sort());
+    const ids = createAllRules({ optIn: ['shared-tool-version-parity'] }).map((rule) => rule.id);
+    expect(ids).toContain('shared-tool-version-parity');
+    expect(ids).not.toContain('github-actions-package-cache');
+    expect(createAllRules({ optIn: [...OPT_IN_RULE_IDS] }).map((rule) => rule.id).sort()).toEqual([...RULE_IDS].sort());
   });
 
   test('createAllRules() instantiates every factory with defaults', () => {
@@ -103,6 +113,7 @@ describe('package export surface', () => {
       'createGithubActionsExpressionSyntaxRule',
       'createGithubActionsLeastPrivilegePermissionsRule',
       'createGithubActionsNoTemplateInjectionRule',
+      'createGithubActionsPackageCacheRule',
       'createGithubActionsPathsFilterPermissionsRule',
       'createGithubActionsPipInstallPinnedRule',
       'createGithubActionsRunnerPinnedRule',
@@ -115,6 +126,7 @@ describe('package export surface', () => {
       'createPackageShapeRule',
       'createSecurityScannerVersionParityRule',
       'createServiceImageDigestPinRule',
+      'createSharedToolVersionParityRule',
       'createTestFilesRequireSourceSiblingRule',
       'createTestRunnerSegregationRule',
       'createTestSiblingEnforcementRule',

@@ -270,6 +270,26 @@ describe('CI rules on a real tree with a dot-directory', () => {
   );
 
   test(
+    'github-actions-package-cache reaches .github/workflows',
+    () => {
+      const run = runLintMetaOnRealTree(
+        {
+          '.github/workflows/ci.yml': `${WORKFLOW_HEAD}    runs-on: ubuntu-24.04\n    steps:\n      - uses: actions/setup-node@v6\n        with:\n          node-version: 22\n      - run: pnpm install\n`,
+          '.github/workflows/cached.yml': `${WORKFLOW_HEAD}    runs-on: ubuntu-24.04\n    steps:\n      - uses: actions/setup-node@v6\n        with:\n          cache: pnpm\n      - run: pnpm install\n`,
+        },
+        'createGithubActionsPackageCacheRule',
+      );
+
+      expect(run.stdout).toContain('github-actions-package-cache');
+      expect(run.violations).toHaveLength(1);
+      expect(run.violations[0]).toContain('(.github/workflows/ci.yml)');
+      expect(run.violations[0]).toContain('line 7:');
+      expect(run.code).toBe(1);
+    },
+    TIMEOUT_MS,
+  );
+
+  test(
     'security-scanner-version-parity reports the real 8.19.0 vs 8.18.0 drift, not a false "no workflow pins"',
     () => {
       const run = runLintMetaOnRealTree(

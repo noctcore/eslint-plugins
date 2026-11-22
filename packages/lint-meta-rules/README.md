@@ -13,7 +13,8 @@ Not a good fit if you are not running the harness.
 ## What it checks
 
 - **config**: workspace package names and build fields, the workspace dependency graph against
-  imports and tsconfig references, ESLint severities.
+  imports and tsconfig references, ESLint severities, and, opt-in, one version of each shared dev
+  tool across workspace packages.
 - **source-text**: layering between packages, a file-size ratchet, agent-doc presence, colocated
   tests, one home per helper, no cloned component folders, UI primitive shape.
 - **testing**: every tested package is enrolled in the aggregate test script, test runners are not
@@ -21,8 +22,8 @@ Not a good fit if you are not running the harness.
 - **ci**: GitHub Actions pinned by SHA and to named runners, no template injection, least-privilege
   permissions, a fork guard on self-hosted runners in `pull_request` workflows, jobs running a
   paths-filter action granted `pull-requests: read`, pip installs pinned to exact versions (reported,
-  not failing, by default), container images pinned by digest, and the secret scanner pinned to one
-  version.
+  not failing, by default), container images pinned by digest, the secret scanner pinned to one
+  version, and, opt-in, a package-manager cache restored before every install.
 
 Every check is listed in [Rules](#rules), with a page per rule.
 
@@ -75,7 +76,7 @@ out `OPT_IN_RULE_IDS` there to get the same set as a bare `createAllRules()`.
 
 ## Rules
 
-The main entry exports 34 factories. `createFileSizeRatchetRule` covers any number of capped areas:
+The main entry exports 36 factories. `createFileSizeRatchetRule` covers any number of capped areas:
 create one instance per area, each with its own `id`.
 
 <!-- begin generated rules -->
@@ -93,6 +94,7 @@ create one instance per area, each with its own `id`.
 | [`github-actions-expression-syntax`](https://noctcore.github.io/eslint-plugins/rules/lint-meta-rules/github-actions-expression-syntax/) | GitHub Actions workflows never hold a malformed `${{` (an opener followed by another `{`, or one with no closing `}}`), which fails the whole workflow before any job runs. | `createGithubActionsExpressionSyntaxRule` | `@noctcore/lint-meta-rules` | `ci` | yes |
 | [`github-actions-least-privilege-permissions`](https://noctcore.github.io/eslint-plugins/rules/lint-meta-rules/github-actions-least-privilege-permissions/) | GitHub Actions workflows declare a read-only top-level `permissions:` (no `write-all`/`read-all`, no `<scope>: write`); writes go on the job that needs them. | `createGithubActionsLeastPrivilegePermissionsRule` | `@noctcore/lint-meta-rules` | `ci` | yes |
 | [`github-actions-no-template-injection`](https://noctcore.github.io/eslint-plugins/rules/lint-meta-rules/github-actions-no-template-injection/) | GitHub Actions `run:` and github-script bodies never expand attacker-controllable `${{ }}` context (issue/PR titles, comments, branch names); pass it through `env:` instead. | `createGithubActionsNoTemplateInjectionRule` | `@noctcore/lint-meta-rules` | `ci` | yes |
+| [`github-actions-package-cache`](https://noctcore.github.io/eslint-plugins/rules/lint-meta-rules/github-actions-package-cache/) | A job that installs with npm, pnpm or yarn must set the matching `cache:` on its `actions/setup-node` step, and a job that runs `bun install` must have an `actions/cache` step. | `createGithubActionsPackageCacheRule` | `@noctcore/lint-meta-rules` | `ci` | yes |
 | [`github-actions-paths-filter-permissions`](https://noctcore.github.io/eslint-plugins/rules/lint-meta-rules/github-actions-paths-filter-permissions/) | A job that runs a paths-filter action must have an effective `pull-requests: read` grant; a job-level `permissions:` block replaces the workflow-level one. | `createGithubActionsPathsFilterPermissionsRule` | `@noctcore/lint-meta-rules` | `ci` | yes |
 | [`github-actions-pip-install-pinned`](https://noctcore.github.io/eslint-plugins/rules/lint-meta-rules/github-actions-pip-install-pinned/) | Packages installed with pip, uv pip or pipx in a GitHub Actions run step must be pinned to an exact version with ==. | `createGithubActionsPipInstallPinnedRule` | `@noctcore/lint-meta-rules` | `ci` | no |
 | [`github-actions-runner-pinned`](https://noctcore.github.io/eslint-plugins/rules/lint-meta-rules/github-actions-runner-pinned/) | GitHub Actions jobs must run on a pinned runner image (for example ubuntu-24.04), never a *-latest label. | `createGithubActionsRunnerPinnedRule` | `@noctcore/lint-meta-rules` | `ci` | yes |
@@ -110,6 +112,7 @@ create one instance per area, each with its own `id`.
 | [`pnpm-override-ledger`](https://noctcore.github.io/eslint-plugins/rules/lint-meta-rules/pnpm-override-ledger/) | Every pnpm override needs an entry in overrides.ledger.json with a reason and a reviewBy that has not passed, a security pin must target its own firstPatched or higher, and the lockfile must honour the override. | `createPnpmOverrideLedgerRule` | `@noctcore/lint-meta-rules` | `supply-chain` | yes |
 | [`security-scanner-version-parity`](https://noctcore.github.io/eslint-plugins/rules/lint-meta-rules/security-scanner-version-parity/) | The gitleaks version pinned in the workflows must equal the one in scripts/ci/pre-push.sh, and the hook must compare a native gitleaks against it at run time. | `createSecurityScannerVersionParityRule` | `@noctcore/lint-meta-rules` | `ci` | yes |
 | [`service-image-digest-pin`](https://noctcore.github.io/eslint-plugins/rules/lint-meta-rules/service-image-digest-pin/) | Workflow service and container images, and docker-compose images, must be pinned by `@sha256:` digest (a service that builds locally is exempt). | `createServiceImageDigestPinRule` | `@noctcore/lint-meta-rules` | `ci` | yes |
+| [`shared-tool-version-parity`](https://noctcore.github.io/eslint-plugins/rules/lint-meta-rules/shared-tool-version-parity/) | Workspace packages that declare the same dev tool (eslint, typescript, prettier, or a configured prefix) must declare the same version; `workspace:` and `catalog:` specifiers are skipped. | `createSharedToolVersionParityRule` | `@noctcore/lint-meta-rules` | `config` | yes |
 | [`test-files-require-source-sibling`](https://noctcore.github.io/eslint-plugins/rules/lint-meta-rules/test-files-require-source-sibling/) | Every colocated test file must sit next to the source it covers: a same-named source file, or a directory module's index. | `createTestFilesRequireSourceSiblingRule` | `@noctcore/lint-meta-rules` | `testing` | yes |
 | [`test-runner-segregation`](https://noctcore.github.io/eslint-plugins/rules/lint-meta-rules/test-runner-segregation/) | Bun-side packages use 'bun:test'; foreign-side packages use 'vitest'. Never mix runners. | `createTestRunnerSegregationRule` | `@noctcore/lint-meta-rules` | `testing` | yes |
 | [`test-sibling-enforcement`](https://noctcore.github.io/eslint-plugins/rules/lint-meta-rules/test-sibling-enforcement/) | Every source file matched by `include` must have a colocated sibling test. Pure helpers must ship a test. | `createTestSiblingEnforcementRule` | `@noctcore/lint-meta-rules` | `source-text` | yes |
@@ -134,7 +137,8 @@ create one instance per area, each with its own `id`.
 
 Every factory is callable with no arguments (all options default), so `createAllRules()` and
 per-factory defaults work out of the box; supply options to retarget a rule at your own repo. Ids in
-`OPT_IN_RULE_IDS` (`test-files-require-source-sibling`) run only when named in `optIn`.
+`OPT_IN_RULE_IDS` (`github-actions-package-cache`, `shared-tool-version-parity`,
+`test-files-require-source-sibling`) run only when named in `optIn`.
 
 ### `@noctcore/lint-meta-rules/i18n`
 
