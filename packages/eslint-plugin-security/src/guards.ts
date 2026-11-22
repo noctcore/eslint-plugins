@@ -1020,11 +1020,6 @@ export function hostFieldSubject(node: TSESTree.Node): TSESTree.Node | null {
   return singleArgumentUrl(inner.object);
 }
 
-/** A check that leaves only allowlisted hosts in `variable`. */
-function isHostCheck(node: TSESTree.Node, variable: Variable, sourceCode: SourceCode): boolean {
-  return isCheck(node, variable, regexPinsHost, sourceCode);
-}
-
 /**
  * The bindings that hold `new URL(<variable>).hostname`: every write to such a
  * binding is that read or a literal (`let host = ''`). Returns each with the
@@ -1116,16 +1111,8 @@ function hostPinned(raw: TSESTree.Node, sink: TSESTree.Node, sourceCode: SourceC
       sink,
       (test, negated) =>
         negated
-          ? flattenLogical(test, '||').some(
-              (term) =>
-                (term.type === AST_NODE_TYPES.UnaryExpression &&
-                  term.operator === '!' &&
-                  isHostCheck(term.argument, binding, sourceCode)) ||
-                flattenLogical(term, '&&').every((conjunct) =>
-                  isLiteralComparison(conjunct, binding, true, sourceCode),
-                ),
-            )
-          : flattenLogical(test, '&&').some((term) => isHostCheck(term, binding, sourceCode)),
+          ? failsUnlessChecked(test, binding, regexPinsHost, sourceCode)
+          : holdsOnlyIfChecked(test, binding, regexPinsHost, sourceCode),
       (position) =>
         writtenOnlyBefore(binding, position) &&
         writtenOnlyBefore(variable, Math.min(position, readEnd)),
