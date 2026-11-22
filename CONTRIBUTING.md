@@ -154,6 +154,87 @@ A rule doc, after the title, the blockquote summary and the generated header:
 | `## Related` | Optional: sibling rules and how they differ |
 | `## Credits` | Optional: the licence credit for a ported rule, verbatim, last |
 
+Packages listed in `RULE_PAGE_PACKAGES` (`site/scripts/structure.ts`) use the rule page template
+below instead. It is being piloted on `architecture`; a package moves over by being added to that
+list once its docs are rewritten.
+
+### Rule page template
+
+Every rule page answers the same questions in the same order: what is this, what will I see, what
+code causes it, what do I change, how do I configure it, and when should I leave it off. A reader
+who arrived from an editor report finds the message, the cause and the fix without reading the
+rest. After the title, the blockquote summary and the generated header:
+
+| Section | What goes in it |
+| --- | --- |
+| `## In short` | 2 or 3 plain sentences: what the rule wants and what it reports. No list, code block, table or quote. The site sets it as a band under the title |
+| `## What you will see` | The generated message list (`bun run docs:readmes` writes it from `meta.messages`, between `<!-- begin generated messages -->` markers), then one sentence naming each `{{placeholder}}` |
+| `## Code that triggers it` | Why the rule exists, then one `###` per distinct shape it reports. Diagrams go here |
+| `## What it does not flag` | The legitimate look-alikes and the known blind spots, with `good` examples where they help. Notes such as "Edits to other files" go here as `###` |
+| `## Options` | Present exactly when the rule takes options: the `Option / Type / Default / Meaning` table, the enabling snippet, then `###` notes per option ("In `recommended`" goes here) |
+| `## When not to use it` | Who should leave it off |
+| `## Related` | Optional: sibling rules and how they differ |
+| `## Credits` | Optional: the licence credit, verbatim, last |
+
+Each `###` under `## Code that triggers it` is one shape, in this order:
+
+1. A `bad` fence with `message=<id>[,<id>]`: the ids it must draw. Every report's id must be named,
+   and every named id must be drawn, as a report or as an editor suggestion.
+2. Optionally, a `text report` fence right after it: the messages ESLint prints for that block,
+   filled in, separated by a blank line. The harness compares it to the real output word for word,
+   so the page shows the user exactly what their editor shows. Use one wherever placeholders make
+   the generic message hard to picture.
+3. A paragraph that starts with `**The fix:**`: what changed and why, in a sentence or two.
+4. The `good` fence: the same code after that change.
+
+What the checks enforce, and where:
+
+- `structure.ts` (`checkRulePageBody`): the section order, In short as 2 or 3 sentences, the
+  generated list present, each shape as bad, fix, good.
+- `docExamples.ts`: every listed message id is drawn by some example as the kind it is listed as,
+  every `bad` block names its ids, and every `text report` fence matches the output.
+- `structure.ts` (`checkOptionsTable`), run while syncing: the table lists exactly the schema's
+  top-level keys, each simple type as the schema spells it, each default from `defaultOptions`,
+  and each deprecated alias (a schema description starting "Deprecated alias") says so first. A
+  long enum or an object type is written by hand under a name the docs define (`SemanticCategory`).
+- `readmes.test.ts`: the generated list is current, so a changed message fails until
+  `bun run docs:readmes` runs.
+
+A rule that reads the disk (a sibling file, a folder listing) runs its examples against a real
+folder: `fixture=<dir>` lints the example as `packages/<pkg>/tests/fixtures/<dir>/<filename>`, with
+that folder as the working directory. Put the fixture folders under `tests/fixtures/docs/`, one
+per state the page describes (a bad folder and a fixed folder), and keep them minimal.
+
+Keep every true fact a page had when you move it to the template: restructure, do not drop. A
+`prose` fence with a reason stays the exception for what genuinely cannot run.
+
+#### Diagrams
+
+A diagram earns its place when the rule is about a shape the reader has to picture: a folder
+layout, a boundary, a hop count, a merge. The package page gets an overview of where each rule
+looks. Diagrams are hand-written SVG; no Mermaid, no generated images.
+
+- Files live in `packages/<pkg>/docs/diagrams/`: `<name>.svg` (680 wide) and `<name>.narrow.svg`
+  (360 wide, stacked for phones). The site shows the narrow one when the plate is under 34rem.
+- Every file starts with the same shared `<style>` block (copy it from an existing diagram), so
+  GitHub renders it in the site's colours and follows the reader's dark mode. Use only its classes:
+  `d-box`, `d-chip`, `d-chip-key` (the file in question), `d-chip-ok`, `d-chip-bad` (dashed, red),
+  `d-wire`, `d-leader`, `d-ok`, `d-bad`, `d-stop`, `d-flow`, and the text classes `d-label`, `d-note`,
+  `d-code`, `d-code-key`, `d-code-ok`, `d-code-bad`, `d-kicker`. No `id`, no inline `fill`,
+  `stroke` or `style`, no em or en dashes. Red means "reported" and nothing else; teal means
+  "allowed" or "fixed".
+- The site inlines the drawing without its style block, so `components.css` (`.rule-diagram .d-*`)
+  colours it from the theme tokens and the theme toggle recolours it.
+- A rule doc embeds one with an image line: `![<text version>](../diagrams/<name>.svg "<caption>")`.
+  The alt text is the full text version: every fact the drawing shows, in sentences, shown under
+  a "Text version" disclosure and read by screen readers. The title is the caption, one or two
+  sentences with the takeaway, and may use `**bold**` and code spans. A package page uses
+  `<RuleDiagram pkg name description caption />` the same way.
+- `site/scripts/diagrams.test.ts` checks that every drawing is referenced and has its twin, that
+  the style blocks match, that every class is styled, and the facts each drawing states (rule
+  names, defaults, option keys) against the rules' meta. A new drawing that states a fact adds a
+  test for it there.
+
 ### The doc is executable
 
 `docs/rules/<rule>.md` opens with a level-one heading of the full rule id in backticks and a
@@ -180,6 +261,8 @@ The rules of the fences, from `packages/eslint-test-utils/src/docExamples.ts`:
   filename and options of some `bad` block in the same doc. If moving the file is the documented
   fix, mark the good block `relocation`; if different options are, mark it `reconfigured`.
 - A doc needs at least one `bad` and one `good` example, or a `prose` one with a reason.
+- On a rule page template package (see above), `message=`, `text report` fences and `fixture=`
+  add the message, output and on-disk checks described under "Rule page template".
 
 So a fence line looks like ` ```ts bad options={"checkLoops":true} ` or ` ```tsx good relocation `.
 The pending-fix shape and the doc-to-page pipeline are described at the top of
