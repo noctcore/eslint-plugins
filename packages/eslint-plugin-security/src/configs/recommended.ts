@@ -26,6 +26,12 @@
  * policy is stricter, e.g.
  *   'noctcore-security/bcrypt-rounds-min': ['error', { minRounds: 12 }]
  *
+ * `no-unescaped-html-response` needs no options, but the package is at 1.x,
+ * where a rule entering `recommended` is a breaking change, and most servers
+ * answer with JSON, so it ships opt-in. Enable it, naming your escaper if the
+ * defaults miss it, e.g.
+ *   'noctcore-security/no-unescaped-html-response': ['error', { sanitizers: ['escapeHtml', 'he.encode'] }]
+ *
  * `auth-cookie-flags` needs no options either, and is omitted for the same 1.x
  * reason. It also picks auth cookies by name, so a cookie called `session` that
  * holds no credential is reported until `authCookieNames` is narrowed. Enable

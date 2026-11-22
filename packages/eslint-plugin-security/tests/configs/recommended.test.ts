@@ -13,6 +13,7 @@ function severityOf(entry: unknown): unknown {
 const OMITTED_FROM_PRESETS: readonly string[] = [
   'auth-cookie-flags',
   'bcrypt-rounds-min',
+  'no-unescaped-html-response',
   'require-path-containment',
   'require-sanitized-html',
   'server-action-through-client',
