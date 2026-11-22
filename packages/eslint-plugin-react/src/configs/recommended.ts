@@ -8,6 +8,9 @@
  * - `enforce-context-consumption`: checks nothing until its `contexts` registry is set.
  * - `no-native-date-input`: a house convention (use the design system's date
  *   picker), not a defect every codebase has.
+ * - `no-hardcoded-design-values`: only a design system or UI library that
+ *   themes through tokens wants it; an app styled with the Tailwind palette
+ *   would see a report on most class strings.
  *
  * Naming, size caps and the thin component shell are house conventions and sit
  * in `strict` (`./strict.ts`), not here.

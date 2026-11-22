@@ -13,6 +13,7 @@ function severityOf(entry: unknown): unknown {
 const OMITTED_FROM_PRESETS: readonly string[] = [
   'enforce-context-consumption',
   'no-native-date-input',
+  'no-hardcoded-design-values',
 ];
 
 type Preset = { name?: string; rules: Record<string, unknown> };

@@ -6,6 +6,7 @@ import { maxHooksPerFileRule } from './max-hooks-per-file';
 import { maxPropsPerComponentRule } from './max-props-per-component';
 import { maxStatePerHookRule } from './max-state-per-hook';
 import { noEffectDerivedStateRule } from './no-effect-derived-state';
+import { noHardcodedDesignValuesRule } from './no-hardcoded-design-values';
 import { noJsxComputationRule } from './no-jsx-computation';
 import { noJsxInHooksRule } from './no-jsx-in-hooks';
 import { noNativeDateInputRule } from './no-native-date-input';
@@ -27,6 +28,7 @@ export const rules = {
   'max-props-per-component': maxPropsPerComponentRule,
   'max-state-per-hook': maxStatePerHookRule,
   'no-effect-derived-state': noEffectDerivedStateRule,
+  'no-hardcoded-design-values': noHardcodedDesignValuesRule,
   'no-jsx-computation': noJsxComputationRule,
   'no-jsx-in-hooks': noJsxInHooksRule,
   'no-native-date-input': noNativeDateInputRule,
