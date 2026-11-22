@@ -104,6 +104,19 @@ ruleTester.run('require-path-containment', requirePathContainmentRule, {
     // A `readFile` that is not from fs is not a sink.
     { code: "function h(req) { return storage.readFile('/srv/' + req.query.file); }", filename: TS },
     { code: "function h(req) { return readFile('/srv/' + req.query.file); }", filename: TS },
+    // A random name plus `extname`, a literal table, and a parsed object schema field.
+    {
+      code: "const fs = require('fs'); const path = require('path'); function h(req) { const name = crypto.randomUUID() + path.extname(req.file.originalname); fs.writeFileSync('/srv/uploads/' + name, req.file.buffer); }",
+      filename: TS,
+    },
+    {
+      code: "const fs = require('fs'); const FILES = { terms: 'terms.md', privacy: 'privacy.md' }; function h(req) { const name = FILES[req.params.id]; fs.unlinkSync('/srv/files/' + name); }",
+      filename: TS,
+    },
+    {
+      code: "import fs from 'node:fs'; const Body = z.object({ theme: z.string().regex(/^[a-z0-9-]+$/) }); function h(req) { const { theme } = Body.parse(req.body); return fs.readFileSync(`/srv/themes/${theme}.css`); }",
+      filename: TS,
+    },
   ],
   invalid: [
     // `req.*` straight into path.join with no guard.
@@ -272,6 +285,17 @@ ruleTester.run('require-path-containment', requirePathContainmentRule, {
       code: "const fs = require('fs'); function h(req) { fs.readFileSync(path.join(base, req.params.file)); }",
       filename: TS,
       errors: ERR,
+    },
+    // A table holding request data, and a schema field that is not confined.
+    {
+      code: "const fs = require('fs'); function h(req) { const FILES = { mine: req.body.name }; fs.unlinkSync('/srv/files/' + FILES[req.params.id]); }",
+      filename: TS,
+      errors: FS,
+    },
+    {
+      code: "import fs from 'node:fs'; const Body = z.object({ theme: z.string() }); function h(req) { const { theme } = Body.parse(req.body); return fs.readFileSync(`/srv/themes/${theme}.css`); }",
+      filename: TS,
+      errors: FS,
     },
   ],
 });
