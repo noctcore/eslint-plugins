@@ -1,8 +1,9 @@
 # @noctcore/eslint-plugin-electron
 
 Electron security rules for the main process: renderer isolation flags that must not be turned off,
-IPC handlers that check who sent the message before acting on it, and `shell` calls kept to the one
-module that checks what it hands to the operating system.
+IPC handlers that check who sent the message before acting on it, `shell` calls kept to the one
+module that checks what it hands to the operating system, and paths from renderer-writable settings
+kept out of `fs` until they are contained.
 
 **Docs:** [noctcore.github.io/eslint-plugins/packages/electron](https://noctcore.github.io/eslint-plugins/packages/electron/)
 
@@ -39,8 +40,9 @@ export default [
 
 ## Opt-in rules
 
-`recommended` turns on `webpreferences-locked` only. The other two need a fact about your app: the
-module that may use `shell`, and the function that checks an IPC sender. Turn them on with both:
+`recommended` turns on `webpreferences-locked` only. The others need a fact about your app: the
+module that may use `shell`, the function that checks an IPC sender, and the settings calls the
+renderer can write. Turn them on with all three:
 
 ```js
 // eslint.config.js
@@ -52,6 +54,13 @@ export default [
     rules: {
       'noctcore-electron/no-shell-outside-allowlist': ['error', { allowIn: ['**/src/main/external-links.ts'] }],
       'noctcore-electron/ipc-handler-validates-sender': ['error', { guards: ['isTrustedSender'] }],
+      'noctcore-electron/no-renderer-setting-to-fs': [
+        'error',
+        {
+          sources: [{ object: 'store', method: 'get', keys: ['customAvatarPath', 'theme.*'] }],
+          sanitizers: ['assertInside'],
+        },
+      ],
     },
   },
 ];
@@ -67,6 +76,7 @@ export default [
 | Rule | Description | Preset | ⚙️ | 🔧 | 💡 | 💭 |
 | --- | --- | :-: | :-: | :-: | :-: | :-: |
 | [`ipc-handler-validates-sender`](https://noctcore.github.io/eslint-plugins/rules/electron/ipc-handler-validates-sender/) | Require every inline `ipcMain.handle` / `ipcMain.on` handler to check its sender (`event.senderFrame`) in its first statement, before it does anything else. | 🔘 |  |  |  |  |
+| [`no-renderer-setting-to-fs`](https://noctcore.github.io/eslint-plugins/rules/electron/no-renderer-setting-to-fs/) | Disallow a path read from a renderer-writable settings store reaching an `fs` call or `shell.openPath` in the same function without a containment check. | 🔘 | ⚙️ |  |  |  |
 | [`no-shell-outside-allowlist`](https://noctcore.github.io/eslint-plugins/rules/electron/no-shell-outside-allowlist/) | Restrict Electron's `shell` (`openExternal`, `openPath`) to the files listed in `allowIn`, so URLs and paths reach the operating system through one checked module. | 🔘 | ⚙️ |  |  |  |
 | [`webpreferences-locked`](https://noctcore.github.io/eslint-plugins/rules/electron/webpreferences-locked/) | Disallow turning off an Electron renderer isolation flag: `nodeIntegration`, `webviewTag` or `allowRunningInsecureContent` set to `true`, or `contextIsolation`, `sandbox` or `webSecurity` set to `false`. | ✅ |  |  |  |  |
 <!-- end generated rules -->

@@ -8,6 +8,8 @@
  * - `ipc-handler-validates-sender`: the Electron checklist asks for it, but an
  *   app that has not written a sender check yet would see every handler
  *   reported at once. Turn it on with your guard in `guards`.
+ * - `no-renderer-setting-to-fs`: which store calls the renderer can write is a
+ *   fact about your app; without `sources` it reports nothing.
  */
 export const recommended = {
   'noctcore-electron/webpreferences-locked': 'error',
