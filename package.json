@@ -8,6 +8,7 @@
   },
   "workspaces": [
     "packages/*",
+    "bench",
     "site"
   ],
   "scripts": {
@@ -24,7 +25,8 @@
     "docs:readmes": "bun site/scripts/readmes.ts",
     "sync:versions": "bun scripts/sync-plugin-versions.ts",
     "check:package": "bun scripts/check-package-shape.ts",
-    "lint": "eslint ."
+    "lint": "eslint .",
+    "bench": "bun bench/src/cli.ts"
   },
   "devDependencies": {
     "@arethetypeswrong/cli": "0.18.5",
