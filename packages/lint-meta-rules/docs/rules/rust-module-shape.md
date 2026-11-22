@@ -61,7 +61,10 @@ pub use task::Task;
 With `baselineDir`, the offenders recorded in `<baselineDir>/<id>.json` pass while they do not grow:
 keys are `size:<file>` (the code-line count) and `manifest:<file>` (the number of items), the same
 flat map the harness ratchet uses for `file-size-ratchet`. A new offender, or a recorded one that
-grew, fails. The harness writes the file with `--update-baseline`. `advisoryCodeLines` logs a line
+grew, fails. The baseline also tightens itself, as `file-size-ratchet` does: an entry whose file is
+gone, that no longer offends, or whose count shrank below `frozen * tightenRatio` is reported until
+the baseline is updated, so a paydown cannot grow back. The harness writes the file with
+`--update-baseline`. `advisoryCodeLines` logs a line
 for a file between it and the cap; that is never a violation.
 
 ## What it does not flag
@@ -89,6 +92,7 @@ createRustModuleShapeRule(options?: RustModuleShapeOptions): IMetaRule
 | `skipTestModules` | `boolean` | `true` | Leave `#[cfg(test)] mod` blocks out of the count and the manifest check. |
 | `exclude` | `string[]` | `[]` | Globs of files left out of both checks. |
 | `baselineDir` | `string` | none | Turns on the ratchet baseline, read from `<baselineDir>/<id>.json`. |
+| `tightenRatio` | `number` | `0.85` | With a baseline, an entry whose count fell below `frozen * tightenRatio` must be re-frozen. |
 | `ciCritical` | `boolean` | `true` | Whether a violation fails CI. |
 
 ## When not to use it

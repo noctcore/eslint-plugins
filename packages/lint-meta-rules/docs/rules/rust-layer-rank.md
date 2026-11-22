@@ -50,8 +50,12 @@ violation per file and target, at the first edge to it.
 
 `module` mode (the default) ranks the top-level modules of one crate. A file's layer is its first
 path segment under `root` (`src/store/task.rs` and `src/store.rs` are both `store`). Its edges are
-`crate::x` paths and the names in a grouped `use crate::{x, y::z}`, after `facades` maps a crate-root
-alias to the module it re-exports. Equal-rank edges inside one of `toleratedGroups` are allowed (a
+`crate::x` paths, the names in a grouped `use crate::{x, y::z}`, and `super::` paths that climb to
+the crate root, after `facades` maps a crate-root alias to the module it re-exports. Leading
+`super::` segments are resolved from the file's module depth under `root`: `lib.rs` and `main.rs`
+are the root, `foo.rs` and `foo/mod.rs` are depth 1, `foo/bar.rs` is depth 2. So `use super::ui::Widget`
+in `src/store.rs` is `crate::ui::Widget`, and so is `use super::super::ui::Widget` in
+`src/store/task.rs`. A grouped import is read up to its closing brace, a `;`, or 4096 characters. Equal-rank edges inside one of `toleratedGroups` are allowed (a
 known cycle), and `forbiddenEdges` are reported whatever the ranks say, with their own message.
 
 ```rust
@@ -65,8 +69,14 @@ use crate::types::Id;
 ```
 
 `crate` mode ranks the crates of a workspace. A file belongs to `crates/<prefix>-<name>/` or to a
-`crateDirs` prefix. Its edges are `<prefix>_<name>` paths in Rust source and `<prefix>-<name>` keys in
-any table of a `Cargo.toml` matched by `manifestGlobs` (`acme-db = ...` and `acme-db.workspace = true`).
+`crateDirs` prefix. Its edges in Rust source are `<prefix>_<name>` paths (`acme_db::Pool`,
+`::acme_db::Pool`) and `use` / `extern crate` declarations (`use acme_db;`); a name that only starts
+with the prefix (`acme_db_url`) or a submodule of that name (`foo::acme_db`) is not an edge. In a
+`Cargo.toml` matched by `manifestGlobs`, its edges are the entries of a dependency table
+(`[dependencies]`, `[dev-dependencies]`, `[build-dependencies]`, `[target.<cfg>.dependencies]`):
+bare, quoted or dotted keys (`acme-db = ...`, `"acme-db" = ...`, `acme-db.workspace = true`),
+`[dependencies.acme-db]` table headers, and renamed dependencies, which count as the package they
+name (`db = { package = "acme-db" }`).
 
 ```toml
 # ranks: { core: 0, db: 2 }
@@ -89,7 +99,11 @@ A second instance with its own `id`, no `ranks` and one forbidden edge is a dedi
 - Edges inside one layer, and edges to a lower rank.
 - Paths in comments, doc comments and string literals, and inside `#[cfg(test)]` modules (unless
   `skipTestModules` is `false`).
-- `super::` and `self::` paths, which stay inside a module.
+- `self::` paths, and `super::` paths that stay below the crate root (inside the file's own
+  top-level module). The depth comes from the file path, so an inline `mod name { ... }` block does
+  not add a level.
+- `facades` keys are read as own keys only: a module named `constructor` is not looked up on the
+  object prototype.
 - Files matching `exempt` (a composition root, a bindings aggregator, `tests.rs`).
 
 ## Options
