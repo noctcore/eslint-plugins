@@ -68,10 +68,19 @@ const PATH_KEYWORDS: ReadonlySet<string> = new Set(['crate', 'self', 'super']);
 /**
  * The module depth of a file under the crate root: `lib.rs` and `main.rs` are
  * the root (0), `foo.rs` and `foo/mod.rs` are `foo` (1), `foo/bar.rs` is
- * `foo::bar` (2). `rel` is the path under the crate's source directory.
+ * `foo::bar` (2). Binary crate roots, `bin/<name>.rs` and `bin/<name>/main.rs`,
+ * are roots too, and the files beside a `bin/<name>/main.rs` count from it. `rel` is the path under the crate's source directory. The
+ * depth comes from the path alone, so a module moved with `#[path]` gets the
+ * depth of where its file sits.
  */
 export function rustModuleDepth(rel: string): number {
-  const segments = rel.replace(/\.rs$/u, '').split('/');
+  let segments = rel.replace(/\.rs$/u, '').split('/');
+  if (segments[0] === 'bin') {
+    if (segments.length === 2) return 0;
+    // `bin/<name>/main.rs` is the root, so `bin/<name>/args.rs` is depth 1 below it.
+    segments = segments.slice(2);
+    if (segments.length === 1 && segments[0] === 'main') return 0;
+  }
   if (segments[segments.length - 1] === 'mod') segments.pop();
   if (segments.length === 1 && (segments[0] === 'lib' || segments[0] === 'main')) return 0;
   return segments.length;

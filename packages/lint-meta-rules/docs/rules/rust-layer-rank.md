@@ -100,8 +100,7 @@ A second instance with its own `id`, no `ranks` and one forbidden edge is a dedi
 - Paths in comments, doc comments and string literals, and inside `#[cfg(test)]` modules (unless
   `skipTestModules` is `false`).
 - `self::` paths, and `super::` paths that stay below the crate root (inside the file's own
-  top-level module). The depth comes from the file path, so an inline `mod name { ... }` block does
-  not add a level.
+  top-level module).
 - `facades` keys are read as own keys only: a module named `constructor` is not looked up on the
   object prototype.
 - Files matching `exempt` (a composition root, a bindings aggregator, `tests.rs`).
@@ -131,6 +130,10 @@ createRustLayerRankRule(options?: RustModuleRankOptions | RustCrateRankOptions):
 
 ## When not to use it
 
+Module depth for `super::` comes from the file path, not the module tree: `src/bin/<name>.rs` and
+`src/bin/<name>/main.rs` count as crate roots, but a module loaded through `#[path = "..."]` gets the
+depth of where its file sits, and an inline `mod name { ... }` block does not add a level, so a
+`super::` path in either can resolve to the wrong layer. Exempt such files if they report wrongly.
 The rule reads paths, not the module tree: a `use` through a re-export that `facades` does not list
 is ranked by the alias name, and a macro that expands to a `crate::` path is not seen. Crate mode
 reads dev-dependencies the same as dependencies, so a test-only dependency on a higher crate is

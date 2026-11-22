@@ -96,6 +96,8 @@ describe('rust-layer-rank, module mode', () => {
     expect(['lib.rs', 'main.rs', 'store.rs', 'store/mod.rs', 'store/disk.rs', 'store/disk/mod.rs', 'a/b/c.rs'].map(rustModuleDepth)).toEqual([
       0, 0, 1, 1, 2, 2, 3,
     ]);
+    // Binary crate roots.
+    expect(['bin/cli.rs', 'bin/cli/main.rs', 'bin/cli/args.rs', 'bin/cli/args/mod.rs'].map(rustModuleDepth)).toEqual([0, 0, 1, 1]);
 
     const violations = run(
       {
