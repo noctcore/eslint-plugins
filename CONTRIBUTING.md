@@ -183,9 +183,15 @@ Each `###` under `## Code that triggers it` is one shape, in this order:
 2. Optionally, a `text report` fence right after it: the messages ESLint prints for that block,
    filled in, separated by a blank line. The harness compares it to the real output word for word,
    so the page shows the user exactly what their editor shows. Use one wherever placeholders make
-   the generic message hard to picture.
+   the generic message hard to picture. When it only repeats messages that have no placeholders,
+   the site leaves it out (the check still runs), so it never shows the card twice.
 3. A paragraph that starts with `**The fix:**`: what changed and why, in a sentence or two.
 4. The `good` fence: the same code after that change.
+
+On the site, each shape is its own block with a hairline above it. The options an example lints
+with sit on a framed line above its frame, shown once per shape until they change. A frame title
+keeps the verdict and the file name whole on a phone and shortens the start of the path, and code
+that runs past the frame shows a soft edge on the side that has more.
 
 What the checks enforce, and where:
 
