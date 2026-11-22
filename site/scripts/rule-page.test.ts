@@ -9,7 +9,7 @@ import { describe, expect, test } from 'bun:test';
 import type { RuleDetails } from './inventory';
 import { applyMessagesBlock, MESSAGES_BEGIN, renderMessagesBlock } from './readmes';
 import { checkOptionsTable, checkRulePageBody, schemaType } from './structure';
-import { messageHtml, optionsComment, shapeRulePage } from './sync';
+import { messageHtml, optionsLine, shapeRulePage } from './sync';
 
 function failures(check: () => void): string | null {
   try {
@@ -163,12 +163,13 @@ describe('shaped HTML', () => {
   });
 });
 
-describe('options comment', () => {
-  test('breaks long options after commas and keeps every character', () => {
-    const options = '{"featureRoot":"components","alias":"@/components","sharedFeatures":["ui"],"allowTypeImports":true}';
-    const lines = optionsComment(options, 40);
-    expect(lines[0]).toBe('rule options:');
-    expect(lines.slice(1).every((line) => line.length <= 44)).toBe(true);
-    expect(lines.slice(1).map((line) => line.trim()).join('')).toBe(options);
+describe('example options', () => {
+  test('sit on a labelled line, escaped', () => {
+    expect(optionsLine('{"a":"<b>"}')).toBe('<p class="rule-example-options"><span>Options</span> <code>{"a":"&lt;b&gt;"}</code></p>');
+  });
+
+  test('the Options table is wrapped so phones can restack it', () => {
+    const html = shapeRulePage(['## Options', '', '| Option | Type | Default | Meaning |', '| --- | --- | --- | --- |', '| `a` | `boolean` | `true` | A. |', '', 'After.']).join('\n');
+    expect(html).toMatch(/<div class="rule-options">\n\n\| Option[\s\S]*\| A\. \|\n\n<\/div>\n\nAfter\./);
   });
 });

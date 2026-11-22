@@ -1880,11 +1880,16 @@
   color: var(--verdict);
 }
 
-/* A frame title can name a long path: let it wrap with room between lines. */
+/* A frame title can name a long path: it wraps as text, the mark stays on
+   the first line, and wrapped lines keep room between them. */
 .expressive-code :is(.verdict-bad, .verdict-good, .verdict-report) .header .title {
-  flex-wrap: wrap;
+  display: block;
   line-height: 1.35;
   overflow-wrap: anywhere;
+}
+
+.expressive-code :is(.verdict-bad, .verdict-good) .header .title::before {
+  margin-inline-end: 7px;
 }
 
 .expressive-code:has(.verdict-bad) + .expressive-code:has(.verdict-report) {
@@ -2155,4 +2160,98 @@
   outline: 2px solid var(--sheet-ink);
   outline-offset: 2px;
   border-radius: 2px;
+}
+
+/* The options an example lints with, right above its frame. */
+.sl-markdown-content .rule-example-options {
+  margin: 1rem 0 0.375rem;
+  font-size: 0.8125rem;
+  line-height: 1.5;
+  color: var(--sheet-ink-3);
+}
+
+.rule-example-options > span {
+  margin-inline-end: 0.375rem;
+  font-weight: 600;
+  letter-spacing: 0.02em;
+}
+
+.sl-markdown-content .rule-example-options code {
+  overflow-wrap: anywhere;
+  font-size: 0.78125rem;
+}
+
+.sl-markdown-content .rule-example-options + .expressive-code {
+  margin-top: 0;
+}
+
+/* Inline code in a diagram caption: the same chip as body text. */
+.rule-diagram figcaption code {
+  padding: 0.0625rem 0.3125rem;
+  border-radius: 3px;
+  font-family: var(--sheet-font-code);
+  font-size: 0.875em;
+  background: var(--sheet-bg-3);
+  color: var(--sheet-ink);
+}
+
+/* Options tables restack on phones: name, type and default on one line,
+   the meaning full width under them. */
+@media (max-width: 40rem) {
+  .rule-options table,
+  .rule-options tbody {
+    display: block;
+  }
+
+  .rule-options thead {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    overflow: hidden;
+    clip-path: inset(50%);
+  }
+
+  .rule-options tr {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: baseline;
+    gap: 0.25rem 0.75rem;
+    padding: 0.75rem 0.875rem;
+    border-bottom: 1px solid var(--sheet-line);
+  }
+
+  .rule-options tr:last-child {
+    border-bottom: 0;
+  }
+
+  /* Starlight spaces adjacent blocks; inside a restacked row that is noise. */
+  .sl-markdown-content .rule-options :is(tbody, tr, td) {
+    margin: 0;
+  }
+
+  .sl-markdown-content .rule-options td {
+    padding: 0;
+    border: 0;
+  }
+
+  .sl-markdown-content .rule-options td:nth-child(2)::before {
+    content: 'Type ';
+    color: var(--sheet-ink-3);
+    font-size: 0.8125rem;
+  }
+
+  .sl-markdown-content .rule-options td:nth-child(3)::before {
+    content: 'Default ';
+    color: var(--sheet-ink-3);
+    font-size: 0.8125rem;
+  }
+
+  .sl-markdown-content .rule-options td:nth-child(4) {
+    flex-basis: 100%;
+  }
+
+  .sl-markdown-content .rule-options td code {
+    white-space: normal;
+    overflow-wrap: anywhere;
+  }
 }

@@ -276,13 +276,10 @@ export function renderRuleDoc(
       const attrs = [lang];
       if (title) attrs.push(`title=${JSON.stringify(title)}`);
       if (meta.verdict === 'bad' || meta.verdict === 'good') attrs.push(`verdict=${meta.verdict}`);
-      if (isRulePage(rule) && (meta.verdict === 'bad' || meta.verdict === 'good')) attrs.push('wrap');
+      if (meta.options && isRulePage(rule)) body.push(`${indent}${optionsLine(meta.options)}`, '');
       body.push(`${indent}\`\`\`${attrs.join(' ')}`);
       const comment = LINE_COMMENT[lang];
-      if (meta.options && comment) {
-        if (isRulePage(rule)) for (const part of optionsComment(meta.options)) body.push(`${indent}${comment} ${part}`);
-        else body.push(`${indent}${comment} rule options: ${meta.options}`);
-      }
+      if (meta.options && comment && !isRulePage(rule)) body.push(`${indent}${comment} rule options: ${meta.options}`);
       continue;
     }
     if (fence && inFence && fence[2] === '' && fence[3] === '') {
@@ -334,21 +331,12 @@ export function renderRuleDoc(
 
 /** One generated message as HTML: code spans kept, `{{name}}` placeholders as `<var>`. */
 /**
- * The options of an example as a comment that fits a phone-width code frame:
- * the compact JSON broken after commas into lines of at most `width`.
+ * The options an example lints with, on a rule page: a labelled line right
+ * above its code frame, so the code itself starts with the line that matters.
  */
-export function optionsComment(options: string, width = 56): string[] {
-  const lines = ['rule options:'];
-  let line = '';
-  for (const piece of options.split(/(?<=,)/)) {
-    if (line && line.length + piece.length > width) {
-      lines.push(`  ${line}`);
-      line = '';
-    }
-    line += piece;
-  }
-  if (line) lines.push(`  ${line}`);
-  return lines;
+export function optionsLine(options: string): string {
+  const escaped = options.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+  return `<p class="rule-example-options"><span>Options</span> <code>${escaped}</code></p>`;
 }
 
 export function messageHtml(text: string): string {
@@ -391,8 +379,13 @@ export function shapeRulePage(body: readonly string[]): string[] {
   let messages: string[] | null = null;
   let inFix = false;
   let inSee = false;
+  let inOptions = false;
+  let inTable = false;
   for (const line of body) {
-    if (line.startsWith('## ')) inSee = line.trim() === '## What you will see';
+    if (line.startsWith('## ')) {
+      inSee = line.trim() === '## What you will see';
+      inOptions = line.trim() === '## Options';
+    }
     if (inFix && line.trim() === '') {
       out.push('', '</div>');
       inFix = false;
@@ -426,6 +419,14 @@ export function shapeRulePage(body: readonly string[]): string[] {
       inShort = true;
       continue;
     }
+    if (inTable && !line.startsWith('|')) {
+      out.push('', '</div>');
+      inTable = false;
+    }
+    if (inOptions && !inTable && /^\|\s*Option\s*\|/.test(line)) {
+      out.push('<div class="rule-options">', '');
+      inTable = true;
+    }
     if (line.startsWith('**The fix:**')) {
       const note = line.replace(/^\*\*The fix:\*\*\s*/, '');
       const sentence = note.charAt(0).toUpperCase() + note.slice(1);
@@ -435,7 +436,7 @@ export function shapeRulePage(body: readonly string[]): string[] {
     }
     out.push(line);
   }
-  if (inFix) out.push('', '</div>');
+  if (inFix || inTable) out.push('', '</div>');
   if (inShort) out.push('</div>');
   return out;
 }
