@@ -234,6 +234,9 @@ export const authCookieFlagsRule = createRule<RuleOptions, MessageIds>({
     docs: {
       description:
         'An auth cookie (`session`, `sid`, `auth_token`, `authToken` by default) must be written with `httpOnly: true`, `secure` and a valid `sameSite`.',
+      cwe: ['CWE-614', 'CWE-1004', 'CWE-1275'],
+      owasp: ['A05:2021'],
+      securitySeverity: 5.4,
     },
     schema: [optionSchema],
     messages: {

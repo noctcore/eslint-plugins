@@ -167,6 +167,9 @@ export const serverActionThroughClientRule = createRule<RuleOptions, MessageIds>
       description:
         "In a `'use server'` module every exported action must be built from a configured action client; a raw exported function bypasses input validation, error shaping and middleware.",
       requiresOptions: true,
+      cwe: ['CWE-862', 'CWE-20'],
+      owasp: ['A01:2021'],
+      securitySeverity: 8.1,
     },
     schema: [optionSchema],
     messages: {

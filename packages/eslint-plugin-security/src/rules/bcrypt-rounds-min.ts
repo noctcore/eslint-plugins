@@ -161,6 +161,9 @@ export const bcryptRoundsMinRule = createRule<RuleOptions, MessageIds>({
     docs: {
       description:
         'A bcrypt `hash` / `hashSync` / `genSalt` / `genSaltSync` call must not pass a literal cost below `minRounds` (default 10).',
+      cwe: ['CWE-916'],
+      owasp: ['A02:2021'],
+      securitySeverity: 5.9,
     },
     schema: [optionSchema],
     messages: {

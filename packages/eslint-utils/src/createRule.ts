@@ -11,6 +11,20 @@ export interface NoctcoreRuleDocs {
    * list of models. The generated README table and rule-doc header mark it ⚙️.
    */
   readonly requiresOptions?: boolean;
+  /**
+   * The CWE ids of the weakness the rule reports, as `CWE-<n>` (`['CWE-78']`).
+   * A SARIF formatter can turn them into `external/cwe/cwe-<n>` tags, which is
+   * how code scanning tools and benchmark scorers classify a finding.
+   */
+  readonly cwe?: readonly string[];
+  /** The OWASP Top 10 categories the rule maps to, as `A<nn>:<year>` (`['A03:2021']`). */
+  readonly owasp?: readonly string[];
+  /**
+   * A CVSS-like score from 0.0 to 10.0 for how severe a finding usually is
+   * (`7.5`). A SARIF formatter writes it as `security-severity`, which code
+   * scanning maps to critical (9.0 and up), high (7.0), medium (4.0) or low.
+   */
+  readonly securitySeverity?: number;
 }
 
 /**

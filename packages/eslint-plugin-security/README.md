@@ -92,6 +92,60 @@ export default [
 | [`server-action-through-client`](https://noctcore.github.io/eslint-plugins/rules/security/server-action-through-client/) | In a `'use server'` module every exported action must be built from a configured action client; a raw exported function bypasses input validation, error shaping and middleware. | 🔘 | ⚙️ |  |  |  |
 <!-- end generated rules -->
 
+### CWE ids and SARIF
+
+Every rule names the weakness it reports in `meta.docs.cwe` (and its OWASP Top 10 2021 category in
+`meta.docs.owasp`), so a SARIF consumer such as GitHub code scanning can classify a finding:
+
+| Rule | CWE | OWASP | Security severity |
+| --- | --- | --- | --- |
+| `auth-cookie-flags` | CWE-614, CWE-1004, CWE-1275 | A05:2021 | 5.4 (medium) |
+| `bcrypt-rounds-min` | CWE-916 | A02:2021 | 5.9 (medium) |
+| `no-shell-interpolation` | CWE-78 | A03:2021 | 9.8 (critical) |
+| `no-timing-unsafe-compare` | CWE-208 | A02:2021 | 5.9 (medium) |
+| `no-user-controlled-fetch-url` | CWE-918 | A10:2021 | 8.6 (high) |
+| `no-user-controlled-redirect` | CWE-601 | A01:2021 | 6.1 (medium) |
+| `presigned-post-requires-policy` | CWE-434, CWE-770 | A04:2021 | 6.5 (medium) |
+| `require-path-containment` | CWE-22 | A01:2021 | 7.5 (high) |
+| `require-sanitized-html` | CWE-79 | A03:2021 | 6.1 (medium) |
+| `server-action-through-client` | CWE-862, CWE-20 | A01:2021 | 8.1 (high) |
+
+The security severity (`meta.docs.securitySeverity`) is a CVSS-like score for a typical finding
+of the rule, not a score of your code: command injection is critical, SSRF, an unauthenticated
+server action and path traversal are high, the rest medium. Code scanning shows it as critical
+(9.0 and up), high (7.0 to 8.9), medium (4.0 to 6.9) or low.
+
+The package ships an ESLint formatter, with no dependency, that writes SARIF 2.1.0 with these
+fields on every rule that declares them, from this plugin or any other: the tags code scanning
+tools read (`security`, `external/cwe/cwe-078`, `external/owasp/a03:2021`) and
+`security-severity`. Findings silenced with `eslint-disable` are kept as suppressed results, with
+the text after `--` as the justification, and a file that does not parse is listed as an error
+notification that marks the run unsuccessful. Name the formatter by path (ESLint reads a scoped
+`--format` name as an `eslint-formatter-*` package); `dist/sarif.js` and `dist/sarif.cjs` both
+work:
+
+```sh
+npx eslint -f ./node_modules/@noctcore/eslint-plugin-security/dist/sarif.js -o eslint.sarif .
+```
+
+Paths in the log are relative to the directory ESLint runs in, under the `SRCROOT` base id, which
+`originalUriBaseIds` maps to that directory. Set `NOCTCORE_SARIF_ABSOLUTE_URIS=1` to write absolute
+`file://` URIs instead. A file outside the directory always gets an absolute URI.
+
+To see the findings in GitHub code scanning, run ESLint from the repository root, so the relative
+paths match the checkout, and upload the log:
+
+```yaml
+- run: npx eslint -f ./node_modules/@noctcore/eslint-plugin-security/dist/sarif.js -o eslint.sarif .
+  continue-on-error: true
+- uses: github/codeql-action/upload-sarif@v3
+  with:
+    sarif_file: eslint.sarif
+    category: eslint
+```
+
+The job needs `permissions: security-events: write`.
+
 ## Severity policy
 
 Every rule is `error` or `off`, never `warn`: a warning is a rule nobody obeys. See the

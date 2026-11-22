@@ -182,6 +182,9 @@ export const requireSanitizedHtmlRule = createRule<RuleOptions, MessageIds>({
     docs: {
       description:
         'HTML reaching `dangerouslySetInnerHTML`, `innerHTML`, `outerHTML` or `insertAdjacentHTML` must be static markup or pass through a configured sanitizer.',
+      cwe: ['CWE-79'],
+      owasp: ['A03:2021'],
+      securitySeverity: 6.1,
     },
     schema: [optionSchema],
     messages: {
