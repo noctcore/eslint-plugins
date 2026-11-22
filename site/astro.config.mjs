@@ -86,6 +86,7 @@ export default defineConfig({
             { label: 'Getting started', link: '/getting-started/' },
             { label: 'Adopting in an existing codebase', link: '/adopting/' },
             { label: 'Rules that read other files', link: '/filesystem-rules/' },
+            { label: 'Benchmark', link: '/bench/' },
             { label: 'All rules', link: '/rules/', badge: String(TOTAL_RULES) },
           ],
         },
