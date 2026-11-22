@@ -3,7 +3,7 @@ import { AST_NODE_TYPES, type TSESTree } from '@typescript-eslint/utils';
 import type { JSONSchema4 } from '@typescript-eslint/utils/json-schema';
 
 import { createRule } from '../createRule';
-import { compactName, makeNameMatcher, nameSegments } from '../utils';
+import { compactName, makeNameMatcher, nameSegments, staticKeyName } from '../utils';
 
 const RULE_NAME = 'audit-pii-declared';
 
@@ -99,21 +99,6 @@ const optionSchema: JSONSchema4 = {
     reportOpaque: { type: 'boolean', default: true },
   },
 };
-
-/** A property's static key name, or null for a computed / non-string key. */
-function staticKeyName(property: TSESTree.Property): string | null {
-  if (property.computed) {
-    return null;
-  }
-  const key = property.key;
-  if (key.type === AST_NODE_TYPES.Identifier) {
-    return key.name;
-  }
-  if (key.type === AST_NODE_TYPES.Literal && typeof key.value === 'string') {
-    return key.value;
-  }
-  return null;
-}
 
 /** The trailing name of an identifier or member access (`user.email` → `email`). */
 function valueName(node: TSESTree.Node): string | null {

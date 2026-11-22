@@ -14,6 +14,11 @@
  * would read as coverage the project does not have. The rules left out here
  * are listed in `tests/configs/recommended.test.ts`, and the README's
  * "Opt-in rules" block shows how to enable them.
+ *
+ * `require-event-field` and `typed-event-names` are left out too: an event
+ * identifier on every log line is a convention a project adopts, not a defect
+ * every codebase has, and `typed-event-names` needs the project's event names
+ * module.
  */
 export const recommended = {
   'noctcore-observability/structured-log-arguments': 'error',

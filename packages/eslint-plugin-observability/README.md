@@ -1,7 +1,7 @@
 # @noctcore/eslint-plugin-observability
 
 Structured-logging discipline rules: context objects over interpolated messages, no sensitive fields
-in logs, no error-detail loss.
+in logs, no error-detail loss, and declared event identifiers.
 
 **Docs:** [noctcore.github.io/eslint-plugins/packages/observability](https://noctcore.github.io/eslint-plugins/packages/observability/)
 
@@ -46,7 +46,10 @@ export default [
 
 ## Opt-in rules
 
-`audit-pii-declared` is in `recommended` but inert until `auditCallees` names your audit writes:
+Three rules are left out of `recommended`. `audit-pii-declared` is inert until `auditCallees` names
+your audit writes. `require-event-field` and `typed-event-names` enforce a convention (a declared
+event identifier on every log line) rather than a defect every codebase has, and
+`typed-event-names` needs the module that declares the names:
 
 ```js
 // eslint.config.js
@@ -59,6 +62,10 @@ export default [
       'noctcore-observability/audit-pii-declared': ['error', {
         auditCallees: ['auditService.log'],
         registeredFields: ['email', 'newEmail'],
+      }],
+      'noctcore-observability/require-event-field': 'error',
+      'noctcore-observability/typed-event-names': ['error', {
+        eventNamesModule: 'src/log-events.ts',
       }],
     },
   },
@@ -77,7 +84,9 @@ export default [
 | [`audit-pii-declared`](https://noctcore.github.io/eslint-plugins/rules/observability/audit-pii-declared/) | A PII-shaped key written into an audit payload must be declared, either registered for scrubbing on purge or declared non-PII. | 🔘 | ⚙️ |  |  |  |
 | [`no-error-detail-loss`](https://noctcore.github.io/eslint-plugins/rules/observability/no-error-detail-loss/) | A catch block that reports a failure must not reduce the error to only `e.message` / `String(e)` / `${e}` — log the error itself so its stack and cause survive. | ✅ |  |  |  |  |
 | [`no-sensitive-fields-in-logs`](https://noctcore.github.io/eslint-plugins/rules/observability/no-sensitive-fields-in-logs/) | A logger call must not reference an identifier, property, or object key whose name matches a sensitive-field denylist (password, token, secret, ...). Redact it before logging. | ✅ |  |  |  |  |
+| [`require-event-field`](https://noctcore.github.io/eslint-plugins/rules/observability/require-event-field/) | A logger call must carry a stable event identifier in its structured payload, so log searches, dashboards and alerts do not match on message text. | 🔘 |  |  |  |  |
 | [`structured-log-arguments`](https://noctcore.github.io/eslint-plugins/rules/observability/structured-log-arguments/) | A logger call must not interpolate dynamic values into the message string (a template literal with expressions). Pass a static message and a structured context object instead. | ✅ |  |  |  |  |
+| [`typed-event-names`](https://noctcore.github.io/eslint-plugins/rules/observability/typed-event-names/) | The event field of a logger call must be a name declared in the project event names module, so a typo or a stale name fails at lint time. | 🔘 | ⚙️ |  |  |  |
 <!-- end generated rules -->
 
 ## Severity policy
