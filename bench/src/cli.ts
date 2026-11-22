@@ -6,6 +6,7 @@
  *   bun run bench --check              also exit 1 on a regression or a stale baseline (CI)
  *   bun run bench --update             rewrite baseline.json; refuses to record a regression
  *   bun run bench --update --allow-regressions   record one on purpose
+ *   bun run bench --update --allow-removals      drop TP or TN cases on purpose
  *   bun run bench --plugin security    only the named plugin(s)
  *
  * Run `bun run build` first: plugins are imported from their built dist/.
@@ -29,6 +30,7 @@ interface Flags {
   readonly check: boolean;
   readonly update: boolean;
   readonly allowRegressions: boolean;
+  readonly allowRemovals: boolean;
   readonly plugins: readonly string[] | undefined;
 }
 
@@ -37,13 +39,14 @@ function parseFlags(argv: readonly string[]): Flags {
   argv.forEach((arg, i) => {
     if (arg === '--plugin' && argv[i + 1] !== undefined) plugins.push(argv[i + 1] ?? '');
   });
-  const known = new Set(['--check', '--update', '--allow-regressions', '--plugin', ...plugins]);
+  const known = new Set(['--check', '--update', '--allow-regressions', '--allow-removals', '--plugin', ...plugins]);
   const unknown = argv.filter((arg) => !known.has(arg));
   if (unknown.length > 0) throw new Error(`unknown argument(s): ${unknown.join(' ')}`);
   return {
     check: argv.includes('--check'),
     update: argv.includes('--update'),
     allowRegressions: argv.includes('--allow-regressions'),
+    allowRemovals: argv.includes('--allow-removals'),
     plugins: plugins.length > 0 ? plugins : undefined,
   };
 }
@@ -60,7 +63,7 @@ async function main(): Promise<number> {
     plugins.set(short, await loadPlugin(short));
   }
   const run = scoreCategories(corpus.categories, plugins, REPO_ROOT);
-  const current = buildBaseline(run.results, corpus.categories, plugins);
+  const current = buildBaseline(run.results, run.reports, corpus.categories, plugins);
   const committed = readBaseline();
   const comparison = compareBaseline(committed, current);
 
@@ -92,6 +95,17 @@ async function main(): Promise<number> {
       );
       return 1;
     }
+    if (comparison.removedProtection.length > 0 && !flags.allowRemovals) {
+      console.error(
+        [
+          `Refusing to update: ${comparison.removedProtection.length} removed case(s) were TP or TN.`,
+          ...describe('removed', comparison.removedProtection, Infinity),
+          'Deleting a case a rule handles hides what it protects. Pass --allow-removals to drop them on purpose.',
+        ].join('\n'),
+      );
+      return 1;
+    }
+    for (const line of describe('removed', comparison.removed, Infinity)) console.log(line);
     writeFileSync(BASELINE, serializeBaseline(current));
     console.log(`Updated ${join('bench', 'baseline.json')}.`);
     return 0;

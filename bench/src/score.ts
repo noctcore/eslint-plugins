@@ -5,11 +5,15 @@
  * category's own `overrides`. Then:
  *
  * - every `// expect:` label is a positive: TP when its rule reports a
- *   problem whose line range covers the labelled line, FN otherwise;
- * - every safe case is one negative for each rule the category measures: FP
- *   when that rule reports anything in the file, TN otherwise;
+ *   problem that starts on the labelled line, FN otherwise;
+ * - every safe case is one negative for each measured rule that runs on it
+ *   (the rules any category of the plugin measures, when the preset or this
+ *   category's overrides turn them on): FP when that rule reports anything in
+ *   the file, TN otherwise. So a rule is also charged for firing on another
+ *   category's safe code;
  * - a measured rule's report in a vuln case that no label explains is an
- *   "extra", and any other rule's report is "stray". Both are listed, neither
+ *   "extra" (often a real false alarm on the guard-free code around the sink),
+ *   counted in its own column; any other rule's report is "stray". Neither
  *   moves the four counts.
  */
 import tsParser from '@typescript-eslint/parser';
@@ -112,8 +116,13 @@ export function categoryConfig(category: Category, plugin: LoadedPlugin): Linter
   ];
 }
 
-function covers(message: Linter.LintMessage, line: number): boolean {
-  return message.line <= line && line <= (message.endLine ?? message.line);
+/**
+ * A report answers a label when it starts on the labelled line. Not "any range
+ * covering it": a report on a whole function or statement block would then
+ * answer every label inside it.
+ */
+function startsOn(message: Linter.LintMessage, line: number): boolean {
+  return message.line === line;
 }
 
 /** Classifies one linted case. Exported for the tests. */
@@ -121,8 +130,12 @@ export function classifyCase(
   testCase: CorpusCase,
   category: Category,
   messages: readonly Linter.LintMessage[],
+  /** Every rule the plugin's corpus measures; reports from others are stray. */
+  measuredRules: readonly string[] = category.config.rules,
+  /** The measured rules that run on this category's files: each safe case is a negative for these. */
+  negativeRules: readonly string[] = category.config.rules,
 ): ScoreRun {
-  const measured = new Set(category.config.rules);
+  const measured = new Set(measuredRules);
   const base = {
     category: category.id,
     file: testCase.file,
@@ -139,7 +152,7 @@ export function classifyCase(
     for (const label of testCase.expects) {
       const n = (seen.get(label.rule) ?? 0) + 1;
       seen.set(label.rule, n);
-      const hits = messages.filter((m) => m.ruleId === eslintRuleId(label.rule) && covers(m, label.line));
+      const hits = messages.filter((m) => m.ruleId === eslintRuleId(label.rule) && startsOn(m, label.line));
       for (const hit of hits) matched.add(hit);
       results.push({
         ...base,
@@ -150,7 +163,7 @@ export function classifyCase(
       });
     }
   } else {
-    for (const rule of category.config.rules) {
+    for (const rule of negativeRules) {
       const hits = messages.filter((m) => m.ruleId === eslintRuleId(rule));
       for (const hit of hits) matched.add(hit);
       results.push({
@@ -186,6 +199,20 @@ export function classifyCase(
   return { results, reports };
 }
 
+function severityOf(entry: RuleEntry): unknown {
+  return Array.isArray(entry) ? entry[0] : entry;
+}
+
+/** Whether a rule is on for a category's files: an override wins, else the preset decides. */
+export function runsIn(rule: string, category: Category, plugin: LoadedPlugin): boolean {
+  const override = category.config.overrides[rule];
+  if (override !== undefined) {
+    const severity = severityOf(override);
+    return severity !== 'off' && severity !== 0;
+  }
+  return plugin.recommended.has(rule.slice(category.plugin.length + 1));
+}
+
 /** Lints and classifies every case of the given categories. */
 export function scoreCategories(
   categories: readonly Category[],
@@ -204,6 +231,10 @@ export function scoreCategories(
       if (!(name in plugin.plugin.rules)) fatal.push(`${category.id}: ${plugin.packageName} has no rule "${name}"`);
     }
     const config = categoryConfig(category, plugin);
+    const measuredRules = [
+      ...new Set(categories.filter((c) => c.plugin === category.plugin).flatMap((c) => c.config.rules)),
+    ].sort();
+    const negativeRules = measuredRules.filter((rule) => runsIn(rule, category, plugin));
     for (const testCase of category.cases) {
       const messages = linter.verify(testCase.lintSource, config, { filename: testCase.lintPath });
       const broken = messages.filter((m) => m.fatal === true || m.ruleId === null);
@@ -211,7 +242,7 @@ export function scoreCategories(
         fatal.push(...broken.map((m) => `${testCase.file}:${m.line}: ${m.message}`));
         continue;
       }
-      const run = classifyCase(testCase, category, messages);
+      const run = classifyCase(testCase, category, messages, measuredRules, negativeRules);
       results.push(...run.results);
       reports.push(...run.reports);
     }

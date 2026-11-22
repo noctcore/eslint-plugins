@@ -13,12 +13,14 @@
  * `--check` also fails when the baseline is merely out of date (an improvement,
  * a new or removed case, a changed title), so the numbers on the site are
  * always the numbers of the tree. `--update` refuses to record a regression
- * unless `--allow-regressions` is passed, so accepting one is a visible choice
- * in the diff of baseline.json, never a side effect.
+ * unless `--allow-regressions` is passed, and refuses to drop a TP or TN case
+ * (deleting a case is the other way to hide a regression) unless
+ * `--allow-removals` is passed, so either is a visible choice in the diff of
+ * baseline.json, never a side effect.
  */
 import type { Category } from './corpus';
 import { scoreBy, scoreOf, type Score } from './metrics';
-import type { CaseResult, LoadedPlugin, Outcome } from './score';
+import type { CaseResult, LoadedPlugin, Outcome, Report } from './score';
 
 export interface BaselineCase {
   readonly outcome: Outcome;
@@ -33,6 +35,12 @@ export interface BaselineCase {
 }
 
 export interface BaselineRule extends Score {
+  /** Reports on an unlabelled line of a vulnerable case: not counted in the four, often a real false alarm. */
+  readonly extra: number;
+  /** Safe cases of other categories this rule reported (FP cases, outside the paired rates). */
+  readonly crossFp: number;
+  /** Safe cases of other categories this rule ran on. */
+  readonly crossSafe: number;
   /** `recommended` when the preset turns it on, `override` when a category enables it. */
   readonly enabledBy: 'recommended' | 'override';
   readonly categories: readonly string[];
@@ -41,6 +49,7 @@ export interface BaselineRule extends Score {
 }
 
 export interface BaselineCategory extends Score {
+  readonly extra: number;
   readonly title: string;
   readonly cwe: string | null;
   readonly rules: readonly string[];
@@ -73,11 +82,29 @@ function sortedRecord<T>(entries: Iterable<readonly [string, T]>): Record<string
 
 export function buildBaseline(
   results: readonly CaseResult[],
+  reports: readonly Report[],
   categories: readonly Category[],
   plugins: ReadonlyMap<string, LoadedPlugin>,
 ): Baseline {
-  const ruleScores = scoreBy(results, (r) => r.rule);
-  const categoryScores = scoreBy(results, (r) => r.category);
+  // The rates come from a rule's own categories, where every vulnerable case
+  // has a twin: that is the paired measurement. A rule that also runs on other
+  // categories' safe code (a preset rule runs everywhere) gets those negatives
+  // as cases (so the ratchet guards them) and as the `crossFp` / `crossSafe`
+  // counts, but not in its rates, where hundreds of unrelated TNs would only
+  // dilute the false-alarm rate.
+  const ownRules = new Map(categories.map((c) => [c.id, new Set(c.config.rules)]));
+  const isOwn = (r: CaseResult): boolean => ownRules.get(r.category)?.has(r.rule) === true;
+  const own = results.filter(isOwn);
+  const cross = results.filter((r) => !isOwn(r));
+  const ruleScores = scoreBy(own, (r) => r.rule);
+  const categoryScores = scoreBy(own, (r) => r.category);
+  const extras = reports.filter((r) => r.role === 'extra');
+  const extraFor = (rule: string): number =>
+    extras.filter((r) => r.ruleId === `noctcore-${rule}`).length;
+  const extraIn = (category: Category): number =>
+    extras.filter(
+      (r) => r.file.startsWith(`${category.id}/`) && category.config.rules.some((rule) => r.ruleId === `noctcore-${rule}`),
+    ).length;
 
   const rules = sortedRecord(
     [...ruleScores].map(([rule, score]) => {
@@ -87,6 +114,9 @@ export function buildBaseline(
       const owning = categories.filter((c) => c.config.rules.includes(rule)).map((c) => c.id);
       const entry: BaselineRule = {
         ...score,
+        extra: extraFor(rule),
+        crossFp: cross.filter((r) => r.rule === rule && r.outcome === 'FP').length,
+        crossSafe: cross.filter((r) => r.rule === rule).length,
         enabledBy: plugin?.recommended.has(name) === true ? 'recommended' : 'override',
         categories: owning,
         description: meta?.description ?? '',
@@ -100,6 +130,7 @@ export function buildBaseline(
     categories.map((category) => {
       const entry: BaselineCategory = {
         ...(categoryScores.get(category.id) ?? scoreOf([])),
+        extra: extraIn(category),
         title: category.config.title,
         cwe: category.config.cwe,
         rules: category.config.rules,
@@ -156,6 +187,8 @@ export interface Comparison {
   /** Cases the baseline does not know yet (new known gaps or new wins). */
   readonly added: readonly CaseChange[];
   readonly removed: readonly CaseChange[];
+  /** Removed cases that were TP or TN: protection that would disappear with them. */
+  readonly removedProtection: readonly CaseChange[];
   /** Whether the committed file is byte-for-byte what `--update` would write. */
   readonly upToDate: boolean;
 }
@@ -180,5 +213,6 @@ export function compareBaseline(committed: Baseline | null, current: Baseline): 
     if (!(id in current.cases)) removed.push({ id, rule: was.rule, from: was.outcome, to: null });
   }
   const upToDate = committed !== null && serializeBaseline(committed) === serializeBaseline(current);
-  return { regressions, improvements, added, removed, upToDate };
+  const removedProtection = removed.filter((c) => c.from === 'TP' || c.from === 'TN');
+  return { regressions, improvements, added, removed, removedProtection, upToDate };
 }

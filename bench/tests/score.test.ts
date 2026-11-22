@@ -14,7 +14,7 @@ async function scoreDemo(files: Record<string, string>) {
   const corpus = loadCorpus(root);
   const plugins = new Map<string, LoadedPlugin>([['security', await loadPlugin('security')]]);
   const run = scoreCategories(corpus.categories, plugins, root);
-  return { corpus, plugins, run, baseline: buildBaseline(run.results, corpus.categories, plugins) };
+  return { corpus, plugins, run, baseline: buildBaseline(run.results, run.reports, corpus.categories, plugins) };
 }
 
 const CAUGHT = {
@@ -54,6 +54,49 @@ describe('scoring', () => {
       [3, 'extra'],
       [4, 'TP'],
     ]);
+    const { baseline } = await scoreDemo({
+      'security/demo/two.vuln.js.case': `${header('two')}\nimport { exec } from 'node:child_process';\nexec(\`a \${x}\`);\nexec(\`b \${y}\`); // expect: security/no-shell-interpolation\n`,
+      'security/demo/two.safe.js.case': `${header('two')}\n// ok\n`,
+    });
+    expect(baseline.rules['security/no-shell-interpolation']?.extra).toBe(1);
+    expect(baseline.categories['security/demo']?.extra).toBe(1);
+  });
+
+  it('matches a report only when it starts on the labelled line', async () => {
+    const { run } = await scoreDemo({
+      'security/demo/span.vuln.js.case': `${header('span')}\nimport { exec } from 'node:child_process';\nexec(\`a \${\n  x\n}\`); // expect: security/no-shell-interpolation\n`,
+      'security/demo/span.safe.js.case': `${header('span')}\n// ok\n`,
+    });
+    // The report starts on line 3 and covers line 5, where the label is: not a match.
+    expect(outcomes(run.results)['security/demo/span.vuln.js.case#security/no-shell-interpolation']).toBe('FN');
+  });
+
+  it('charges a measured rule for firing on another category\'s safe code', async () => {
+    const root = writeCorpus({
+      'security/demo/category.json': SHELL_CATEGORY,
+      ...CAUGHT,
+      'security/other/category.json': JSON.stringify({
+        title: 'Other',
+        cwe: null,
+        rules: ['security/require-sanitized-html'],
+        overrides: { 'security/require-sanitized-html': 'error' },
+      }),
+      'security/other/x.vuln.js.case': `// @bench category=other framework=node pair=x title="t"\nel.innerHTML = input; // expect: security/require-sanitized-html\n`,
+      'security/other/x.safe.js.case': `// @bench category=other framework=node pair=x title="t"\n// ok\nimport { exec } from 'node:child_process';\nexec(\`ls \${dir}\`);\n`,
+    });
+    const corpus = loadCorpus(root);
+    const plugins = new Map<string, LoadedPlugin>([['security', await loadPlugin('security')]]);
+    const run = scoreCategories(corpus.categories, plugins, root);
+    const results = outcomes(run.results);
+    // The shell rule is in recommended, so it runs on the other category too.
+    expect(results['security/other/x.safe.js.case#security/no-shell-interpolation']).toBe('FP');
+    expect(results['security/other/x.safe.js.case#security/require-sanitized-html']).toBe('TN');
+    // The opt-in HTML rule does not run on the demo category, so it gets no negative there.
+    expect(results['security/demo/caught.safe.js.case#security/require-sanitized-html']).toBeUndefined();
+    const baseline = buildBaseline(run.results, run.reports, corpus.categories, plugins);
+    expect(baseline.rules['security/no-shell-interpolation']).toMatchObject({ fp: 0, tn: 1, crossFp: 1, crossSafe: 1 });
+    // The category row scores only its own rules.
+    expect(baseline.categories['security/other']).toMatchObject({ tp: 1, fp: 0, tn: 1 });
   });
 
   it('computes detection, false alarms and Youden\'s J', () => {
@@ -118,6 +161,17 @@ describe('ratchet', () => {
     ]);
     expect(comparison.improvements).toHaveLength(2);
     expect(comparison.upToDate).toBe(false);
+  });
+
+  it('marks a removed TP or TN case as removed protection, and a removed gap as a plain removal', async () => {
+    const before = await scoreDemo({ ...CAUGHT, ...MISSED });
+    const after = await scoreDemo(MISSED);
+    const comparison = compareBaseline(JSON.parse(serializeBaseline(before.baseline)), after.baseline);
+    expect(comparison.removed.map((c) => c.from).sort()).toEqual(['TN', 'TP']);
+    expect(comparison.removedProtection).toHaveLength(2);
+    const gapsGone = compareBaseline(JSON.parse(serializeBaseline(before.baseline)), (await scoreDemo(CAUGHT)).baseline);
+    expect(gapsGone.removed.map((c) => c.from).sort()).toEqual(['FN', 'FP']);
+    expect(gapsGone.removedProtection).toEqual([]);
   });
 
   it('treats a new case as a recorded gap to add, not a regression', async () => {

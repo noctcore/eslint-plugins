@@ -15,9 +15,7 @@ const SOURCE = ['packages/*/src/**/*.ts', 'scripts/**/*.ts', 'bench/src/**/*.ts'
 
 export default [
   {
-    // bench/corpus holds deliberately vulnerable sample code that the bench
-    // lints with its own config; linting it here would only report the samples.
-    ignores: ['**/dist/**', '**/node_modules/**', 'site/**', '**/*.d.ts', 'bench/corpus/**'],
+    ignores: ['**/dist/**', '**/node_modules/**', 'site/**', '**/*.d.ts'],
   },
   {
     files: ['packages/*/src/**/*.ts', 'packages/*/tests/**/*.ts', 'scripts/**/*.ts', 'bench/**/*.ts'],

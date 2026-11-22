@@ -6,18 +6,18 @@ import type { Baseline, Comparison } from './baseline';
 import { percent, signedPercent, type Score } from './metrics';
 import type { Report } from './score';
 
-function scoreCells(score: Score): string {
-  return `${score.tp} | ${score.fn} | ${score.fp} | ${score.tn} | ${percent(score.detection)} | ${percent(score.falseAlarm)} | ${signedPercent(score.j)}`;
+function scoreCells(score: Score & { readonly extra: number }): string {
+  return `${score.tp} | ${score.fn} | ${score.fp} | ${score.tn} | ${score.extra} | ${percent(score.detection)} | ${percent(score.falseAlarm)} | ${signedPercent(score.j)}`;
 }
 
-const SCORE_HEAD = 'TP | FN | FP | TN | Detection | False alarms | J';
-const SCORE_RULE = '---: | ---: | ---: | ---: | ---: | ---: | ---:';
+const SCORE_HEAD = 'TP | FN | FP | TN | Extra | Detection | False alarms | J';
+const SCORE_RULE = '---: | ---: | ---: | ---: | ---: | ---: | ---: | ---:';
 
 export function renderMarkdown(baseline: Baseline, comparison: Comparison | null): string {
   const lines: string[] = ['# Bench report', ''];
-  lines.push('## Per rule', '', `| Rule | Enabled by | ${SCORE_HEAD} |`, `| --- | --- | ${SCORE_RULE} |`);
+  lines.push('## Per rule', '', `| Rule | Enabled by | ${SCORE_HEAD} | Other categories' safe cases reported |`, `| --- | --- | ${SCORE_RULE} | ---: |`);
   for (const [rule, score] of Object.entries(baseline.rules)) {
-    lines.push(`| \`${rule}\` | ${score.enabledBy} | ${scoreCells(score)} |`);
+    lines.push(`| \`${rule}\` | ${score.enabledBy} | ${scoreCells(score)} | ${score.crossFp} of ${score.crossSafe} |`);
   }
   lines.push('', '## Per category', '', `| Category | CWE | Pairs | ${SCORE_HEAD} |`, `| --- | --- | ---: | ${SCORE_RULE} |`);
   for (const [id, category] of Object.entries(baseline.categories)) {
@@ -26,7 +26,7 @@ export function renderMarkdown(baseline: Baseline, comparison: Comparison | null
 
   const gaps = Object.entries(baseline.cases).filter(([, c]) => c.outcome === 'FN' || c.outcome === 'FP');
   lines.push('', `## Known gaps (${gaps.length})`, '');
-  lines.push('FN: a vulnerable case the rule misses. FP: a safe twin the rule reports.', '');
+  lines.push('FN: a vulnerable case the rule misses. FP: a safe case the rule reports. Extra (in the tables): a report on an unlabelled line of a vulnerable case.', '');
   for (const [id, c] of gaps) {
     lines.push(`- ${c.outcome} \`${id}\`: ${c.title}`);
   }
@@ -72,7 +72,6 @@ export function renderSarif(baseline: Baseline, reports: readonly Report[]): str
             rules,
           },
         },
-        originalUriBaseIds: { CORPUS: { uri: 'bench/corpus/' } },
         results: reports.map((r) => ({
           ruleId: r.ruleId,
           ruleIndex: ruleIds.indexOf(r.ruleId),
@@ -81,7 +80,8 @@ export function renderSarif(baseline: Baseline, reports: readonly Report[]): str
           locations: [
             {
               physicalLocation: {
-                artifactLocation: { uri: r.file, uriBaseId: 'CORPUS' },
+                // Relative to the repository root, as code-scanning tools expect.
+                artifactLocation: { uri: `bench/corpus/${r.file}` },
                 region: { startLine: r.line, startColumn: r.column, endLine: r.endLine, endColumn: r.endColumn },
               },
             },
