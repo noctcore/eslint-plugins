@@ -13,7 +13,7 @@ three.js and React Three Fiber performance and leaks: capped pixel ratios, dispo
 
 ## What it solves
 
-A 3D scene fails slowly. An uncapped pixel ratio, a geometry that is never disposed, a `new Vector3()` in the frame loop or a React state update on every frame all pass review and every test, then show up as dropped frames, a hot phone and GPU memory that climbs each time a component remounts. Neither TypeScript nor a generic linter knows what a frame loop or a GPU resource is; these rules do, from the imports of `three` and `@react-three/fiber`, without type information.
+A 3D scene fails slowly. An uncapped pixel ratio, a geometry that is never disposed, a `new Vector3()` in the frame loop or a React state update on every frame all pass review and every test, then show up as dropped frames, a hot phone and GPU memory that climbs each time a component remounts. Neither TypeScript nor a generic linter knows what a frame loop or a GPU resource is; these rules do, without type information. They run only in files that import `three`, a `three/*` subpath, `three-stdlib` or an `@react-three/*` package (or a module you name in `extraModules`), so another engine's `camera.fov` is left alone.
 
 ## What it will yell at you about
 
