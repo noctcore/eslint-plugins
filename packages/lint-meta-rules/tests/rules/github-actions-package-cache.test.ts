@@ -191,4 +191,42 @@ describe('github-actions-package-cache', () => {
 
     expect(run(text, { workflowGlobs: ['.github/workflows/other.yml'] })).toEqual([]);
   });
+  test('reads a one-line flow mapping under with:', () => {
+    const flow = (inputs: string) => `      - uses: ${SETUP_NODE}\n        with: { ${inputs} }\n      - run: pnpm install\n`;
+
+    expect(run(workflow(flow('node-version: 22, cache: pnpm')))).toEqual([]);
+    expect(run(workflow(flow("node-version: 22, cache: 'pnpm'")))).toEqual([]);
+    expect(run(workflow(flow('node-version: 22')))).toHaveLength(1);
+    expect(run(workflow(flow('node-version: 22, cache: npm')))[0]?.message ?? '').toContain('caches `npm`');
+  });
+
+  test('skips a flow mapping wrapped over several lines instead of reporting it', () => {
+    const wrapped = `      - uses: ${SETUP_NODE}\n        with: {\n          node-version: 22,\n          cache: pnpm }\n      - run: pnpm install\n`;
+
+    expect(run(workflow(wrapped))).toEqual([]);
+  });
+
+  test('accepts a job whose second setup-node step sets the cache', () => {
+    const steps = `${setupNode()}${setupNode('          node-version: 24\n          cache: pnpm\n')}      - run: pnpm install\n`;
+
+    expect(run(workflow(steps))).toEqual([]);
+  });
+
+  test('reports a job where no setup-node step sets the cache, at the first one', () => {
+    const steps = `${setupNode()}${setupNode('          node-version: 24\n')}      - run: pnpm install\n`;
+    const violations = run(workflow(steps));
+
+    expect(violations).toHaveLength(1);
+    expect(violations[0]?.line).toBe(8);
+    expect(violations[0]?.message ?? '').toContain('nor does any of its other 1 setup step(s)');
+  });
+
+  test('reads a workflow with CRLF line endings, trailing comments included', () => {
+    const crlf = (text: string) => text.replaceAll('\n', '\r\n');
+
+    expect(run(crlf(workflow(`${setupNode('          node-version: 22\n          cache: pnpm # restore the store\n')}      - run: pnpm install\n`)))).toEqual([]);
+    const violations = run(crlf(workflow(`${setupNode("          cache: npm # wrong\n")}      - run: pnpm install\n`)));
+    expect(violations).toHaveLength(1);
+    expect(violations[0]?.message ?? '').toContain('caches `npm`,');
+  });
 });

@@ -92,13 +92,42 @@ interface JobStep {
   readonly uses: string;
 }
 
-/** The `with:` input of a step, unquoted, or undefined when it is not set. */
-function withInput(step: JobStep, input: string): string | undefined {
-  for (const line of step.keys.get('with') ?? []) {
-    const match = new RegExp(`^${input}:\\s*(.*?)\\s*$`, 'u').exec(stripYamlComment(line).trim());
-    if (match !== null) return unquote(match[1] ?? '');
+/** A step's `with:` inputs, or null when they are written in a form the reader does not parse (a flow mapping wrapped over lines). */
+function withInputs(step: JobStep): Map<string, string> | null {
+  const inputs = new Map<string, string>();
+  const lines = (step.keys.get('with') ?? []).map((line) => stripYamlComment(line).trim()).filter(Boolean);
+  const first = lines[0];
+  if (first?.startsWith('{') === true) {
+    // A flow mapping: `with: { node-version: 22, cache: pnpm }`, on one line only.
+    if (lines.length !== 1 || !first.endsWith('}')) return null;
+    for (const pair of first.slice(1, -1).split(',')) {
+      const match = /^\s*([\w-]+)\s*:\s*(.*?)\s*$/u.exec(pair);
+      if (match !== null) inputs.set(match[1] ?? '', unquote(match[2] ?? ''));
+    }
+    return inputs;
   }
-  return undefined;
+  for (const line of lines) {
+    const match = /^([\w-]+):\s*(.*?)\s*$/u.exec(line);
+    if (match !== null) inputs.set(match[1] ?? '', unquote(match[2] ?? ''));
+  }
+  return inputs;
+}
+
+type SetupVerdict = { readonly ok: true } | { readonly ok: false; readonly cache: string | undefined };
+
+/** Whether one setup step restores `manager`'s cache, or what it caches instead. */
+function setupVerdict(setup: JobStep, manager: PackageCacheManager, rootManifest: string | null): SetupVerdict {
+  const inputs = withInputs(setup);
+  // A `with:` the reader cannot parse is skipped, not reported.
+  if (inputs === null) return { ok: true };
+  const cache = inputs.get('cache');
+  if (cache === undefined || cache === '') {
+    const automatic =
+      manager === 'npm' && declaredManager(rootManifest) === 'npm' && inputs.get('package-manager-cache') !== 'false';
+    return automatic ? { ok: true } : { ok: false, cache: undefined };
+  }
+  if (cache.includes('${{') || cache === manager) return { ok: true };
+  return { ok: false, cache };
 }
 
 /** Check one workflow's text: every job that installs with a checked manager restores that manager's cache. */
@@ -136,7 +165,7 @@ export function checkWorkflowPackageCache(
     }
     if (installs.size === 0) continue;
 
-    const setup = jobSteps.find((step) => setupActions.has(step.uses));
+    const setups = jobSteps.filter((step) => setupActions.has(step.uses));
     for (const [manager, installStep] of installs) {
       const installLine = installStep.step.start + 1;
       if (manager === 'bun') {
@@ -148,32 +177,23 @@ export function checkWorkflowPackageCache(
         });
         continue;
       }
-      if (!NODE_MANAGERS.has(manager) || setup === undefined) continue;
-      const cache = withInput(setup, 'cache');
+      if (!NODE_MANAGERS.has(manager) || setups.length === 0) continue;
+      const verdicts = setups.map((setup) => setupVerdict(setup, manager, options.rootManifest));
+      if (verdicts.some((verdict) => verdict.ok)) continue;
+      const setup = setups[0];
+      const verdict = verdicts[0];
+      if (setup === undefined || verdict === undefined || verdict.ok) continue;
       const setupLine = setup.step.start + 1;
-      if (cache === undefined || cache === '') {
-        const automatic =
-          manager === 'npm' &&
-          declaredManager(options.rootManifest) === 'npm' &&
-          withInput(setup, 'package-manager-cache') !== 'false';
-        if (automatic) continue;
-        violations.push({
-          file,
-          rule: RULE_ID,
-          line: setupLine,
-          message: `line ${String(setupLine)}: job "${job.name}" installs with ${manager} (line ${String(installLine)}) but its \`${setup.uses}\` step sets no \`cache:\`, so every run downloads the whole dependency tree again. Add \`cache: ${manager}\` under \`with:\`.`,
-        });
-        continue;
-      }
-      if (cache.includes('${{')) continue;
-      if (cache !== manager) {
-        violations.push({
-          file,
-          rule: RULE_ID,
-          line: setupLine,
-          message: `line ${String(setupLine)}: job "${job.name}" installs with ${manager} (line ${String(installLine)}) but its \`${setup.uses}\` step caches \`${cache}\`, so the ${manager} store is never restored. Set \`cache: ${manager}\`.`,
-        });
-      }
+      const others = setups.length > 1 ? ` (nor does any of its other ${String(setups.length - 1)} setup step(s))` : '';
+      violations.push({
+        file,
+        rule: RULE_ID,
+        line: setupLine,
+        message:
+          verdict.cache === undefined
+            ? `line ${String(setupLine)}: job "${job.name}" installs with ${manager} (line ${String(installLine)}) but its \`${setup.uses}\` step sets no \`cache:\`${others}, so every run downloads the whole dependency tree again. Add \`cache: ${manager}\` under \`with:\`.`
+            : `line ${String(setupLine)}: job "${job.name}" installs with ${manager} (line ${String(installLine)}) but its \`${setup.uses}\` step caches \`${verdict.cache}\`${others}, so the ${manager} store is never restored. Set \`cache: ${manager}\`.`,
+      });
     }
   }
   return violations;
