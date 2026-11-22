@@ -33,31 +33,89 @@ export function inlineMarkdown(text: string): string {
     .join('');
 }
 
-/** An SVG file as markup to inline: no prolog, comments, style, title or fixed size, and no blank lines. */
+/** The elements and attributes a diagram may use; anything else is refused. */
+const SVG_ELEMENTS = new Set(['svg', 'g', 'rect', 'circle', 'line', 'path', 'text', 'tspan']);
+const SVG_ATTRIBUTES = new Set([
+  'xmlns', 'viewBox', 'width', 'height', 'class', 'x', 'y', 'dx', 'dy', 'd', 'rx', 'ry', 'cx', 'cy', 'r',
+  'x1', 'y1', 'x2', 'y2', 'text-anchor',
+]);
+const ATTRIBUTE = /\s+([a-zA-Z][a-zA-Z-]*)="([^"<>&]*)"/y;
+const TEXT = /[^<&]+|&(?:amp|lt|gt|quot|#\d+);/y;
+
+/**
+ * An SVG file as markup to inline. The file is read once, token by token,
+ * against an allow-list, and the output is rebuilt from the tokens: the
+ * prolog and the shared style block are skipped, the root loses its fixed
+ * size and gets the site's class, and any other element, attribute, comment
+ * or entity throws. Diagrams are checked-in files, so refusing is the answer.
+ */
 export function inlineSvg(source: string, name: string, variant: 'wide' | 'narrow'): string {
-  // Strip until nothing changes, so a removal cannot join the halves of a
-  // new comment or style tag, then refuse anything that could still run.
-  let svg = source;
-  for (let previous = ''; previous !== svg; ) {
-    previous = svg;
-    svg = svg
-      .replace(/<\?xml[^>]*\?>/g, '')
-      .replace(/<!--[\s\S]*?-->/g, '')
-      .replace(/<style[\s\S]*?<\/style>/gi, '')
-      .replace(/<title[\s\S]*?<\/title>/gi, '');
+  const refuse = (at: number): never => {
+    throw new Error(`The diagram ${name} holds markup a diagram may not use, near: ${source.slice(at, at + 40)}`);
+  };
+  const out: string[] = [];
+  const open: string[] = [];
+  let i = 0;
+  const skip = (pattern: RegExp): boolean => {
+    pattern.lastIndex = i;
+    const m = pattern.exec(source);
+    if (m) i = pattern.lastIndex;
+    return m !== null;
+  };
+  while (i < source.length) {
+    if (/\s/.test(source[i]!) && open.length === 0) {
+      i += 1;
+      continue;
+    }
+    if (skip(/<\?xml [^<>]*\?>/y) || skip(/<style>[^<]*<\/style>/y)) continue;
+    const tag = /<(\/?)([a-zA-Z]+)/y;
+    tag.lastIndex = i;
+    const m = tag.exec(source);
+    if (m) {
+      const [, closing, element] = m as unknown as [string, string, string];
+      if (!SVG_ELEMENTS.has(element)) refuse(i);
+      i = tag.lastIndex;
+      if (closing) {
+        if (open.pop() !== element || source[i] !== '>') refuse(i);
+        i += 1;
+        out.push(`</${element}>`);
+        continue;
+      }
+      const attrs: string[] = [];
+      for (;;) {
+        ATTRIBUTE.lastIndex = i;
+        const a = ATTRIBUTE.exec(source);
+        if (!a) break;
+        const [, key, value] = a as unknown as [string, string, string];
+        if (!SVG_ATTRIBUTES.has(key)) refuse(i);
+        i = ATTRIBUTE.lastIndex;
+        if (element === 'svg' && (key === 'width' || key === 'height' || key === 'class')) continue;
+        attrs.push(` ${key}="${value}"`);
+      }
+      if (element === 'svg') {
+        if (open.length > 0) refuse(i);
+        attrs.push(` class="d-svg d-svg--${variant}" data-diagram="${name}" aria-hidden="true" focusable="false"`);
+      }
+      const end = /\s*(\/?)>/y;
+      end.lastIndex = i;
+      const e = end.exec(source);
+      if (!e) refuse(i);
+      i = end.lastIndex;
+      const selfClosing = e![1] === '/';
+      out.push(`<${element}${attrs.join('')}${selfClosing ? '/' : ''}>`);
+      if (!selfClosing) open.push(element);
+      continue;
+    }
+    if (open.length === 0) refuse(i);
+    TEXT.lastIndex = i;
+    const t = TEXT.exec(source);
+    if (!t) refuse(i);
+    i = TEXT.lastIndex;
+    // Whitespace between elements is layout in the file, not content.
+    if (open.at(-1) === 'text' || open.at(-1) === 'tspan' || t![0].trim() !== '') out.push(t![0]);
   }
-  if (/<(!--|style|script|foreignObject)|\son[a-z]+=/i.test(svg)) {
-    throw new Error(`The diagram ${name} holds markup a diagram may not: a comment, style, script or event handler`);
-  }
-  return svg
-    .replace(/<svg\b([^>]*)>/, (_, attrs: string) => {
-      const kept = attrs.replace(/\s(width|height|class|role|aria-[a-z]+)="[^"]*"/g, '');
-      return `<svg${kept} class="d-svg d-svg--${variant}" data-diagram="${name}" aria-hidden="true" focusable="false">`;
-    })
-    .split('\n')
-    .map((line) => line.trim())
-    .filter((line) => line !== '')
-    .join('');
+  if (open.length > 0 || out.length === 0) refuse(source.length);
+  return out.join('');
 }
 
 export interface DiagramFigure {

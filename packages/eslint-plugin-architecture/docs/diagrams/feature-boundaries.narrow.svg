@@ -1,6 +1,6 @@
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 360 604" width="360" height="604">
 <style>
-/* Standalone colours (GitHub, an <img>): the docs site strips this block and colours the drawing from its theme tokens. Same block in every diagram. */
+/* Standalone colours (GitHub shows the file as an image): the docs site strips this block and colours the drawing from its theme tokens. Same block in every diagram. */
 svg{--bg:oklch(98.4% 0.004 262);--bg2:oklch(96.2% 0.007 262);--line:oklch(89.5% 0.011 262);--line2:oklch(81% 0.015 262);--field:oklch(64% 0.02 262);--ink:oklch(23% 0.035 266);--ink2:oklch(41% 0.028 266);--ink3:oklch(50% 0.022 266);--sig:oklch(55% 0.215 27);--sigink:oklch(48% 0.19 27);--sigwash:oklch(95.2% 0.028 27);--pass:oklch(46% 0.085 186);--passwash:oklch(95.4% 0.022 186)}
 @media (prefers-color-scheme:dark){svg{--bg:oklch(18.6% 0.026 266);--bg2:oklch(21.4% 0.029 266);--line:oklch(29.5% 0.03 266);--line2:oklch(38% 0.032 266);--field:oklch(56% 0.03 266);--ink:oklch(94.5% 0.01 262);--ink2:oklch(80% 0.02 262);--ink3:oklch(70% 0.022 262);--sig:oklch(68% 0.18 27);--sigink:oklch(76% 0.14 27);--sigwash:oklch(27% 0.06 27);--pass:oklch(78% 0.095 186);--passwash:oklch(26% 0.04 186)}}
 .d-plate{fill:var(--bg)}

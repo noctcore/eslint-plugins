@@ -114,10 +114,17 @@ describe('diagram files', () => {
     }
   });
 
-  test('the inliner refuses markup that survives stripping', () => {
-    expect(() => inlineSvg('<svg><sc<!-- x -->ript>alert(1)</script></svg>', 'x', 'wide')).toThrow('may not');
-    expect(() => inlineSvg('<svg><rect onclick="x"/></svg>', 'x', 'wide')).toThrow('may not');
-    expect(inlineSvg('<svg><!-<!-- a -->- b --></svg>', 'x', 'wide')).not.toContain('<!--');
+  test('the inliner allow-lists elements, attributes and entities', () => {
+    expect(() => inlineSvg('<svg><script>alert(1)</script></svg>', 'x', 'wide')).toThrow('may not use');
+    expect(() => inlineSvg('<svg><sc<!-- x -->ript>alert(1)</script></svg>', 'x', 'wide')).toThrow('may not use');
+    expect(() => inlineSvg('<svg><!-- a --></svg>', 'x', 'wide')).toThrow('may not use');
+    expect(() => inlineSvg('<svg><rect onclick="x"/></svg>', 'x', 'wide')).toThrow('may not use');
+    expect(() => inlineSvg('<svg><foreignObject/></svg>', 'x', 'wide')).toThrow('may not use');
+    expect(() => inlineSvg('<svg><text>&nbsp;</text></svg>', 'x', 'wide')).toThrow('may not use');
+    expect(() => inlineSvg('<svg><rect></svg>', 'x', 'wide')).toThrow('may not use');
+    expect(inlineSvg('<svg width="9" viewBox="0 0 9 9">\n  <style>.a{}</style>\n  <text x="1">a &gt; b</text>\n</svg>', 'x', 'wide')).toBe(
+      '<svg viewBox="0 0 9 9" class="d-svg d-svg--wide" data-diagram="x" aria-hidden="true" focusable="false"><text x="1">a &gt; b</text></svg>',
+    );
   });
 
   test('the site inlines a drawing without its style, ids or size', () => {
