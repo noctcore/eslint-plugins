@@ -1,7 +1,7 @@
 import type { IMetaRule, IViolation } from '@noctcore/harness';
 
 import { matchesAnyGlob } from './glob-match';
-import { lineAt, rustFiles, rustScanText } from './rust-source';
+import { lineLocator, rustFiles, rustScanText } from './rust-source';
 
 /** Options for {@link createRustCommandPlacementRule}. */
 export interface RustCommandPlacementOptions {
@@ -58,7 +58,7 @@ export function createRustCommandPlacementRule(options: RustCommandPlacementOpti
         const scan = rustScanText(ctx.read(file) ?? '', skipTestModules);
         const match = attribute.exec(scan);
         if (match === null) continue;
-        const line = lineAt(scan, match.index);
+        const line = lineLocator(scan)(match.index);
         const where = denied
           ? 'a file where commands are denied (`denyIn`)'
           : 'a file outside the command surface (`allowIn`)';

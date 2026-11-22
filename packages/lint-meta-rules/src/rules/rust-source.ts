@@ -20,20 +20,23 @@ function blank(text: string): string {
   return text.replace(/[^\n]/gu, ' ');
 }
 
-/** The index just past a raw string that starts at `start` (`r"`, `r#"`, `br##"`), or -1 when none starts there. */
+/** The index just past a raw string that starts at `start` (`r"`, `r#"`, `br##"`, `cr#"`), or -1 when none starts there. */
 function rawStringEnd(text: string, start: number): number {
-  const open = /^b?r(#*)"/u.exec(text.slice(start, start + 260));
+  const open = /^[bc]?r(#*)"/u.exec(text.slice(start, start + 260));
   if (open === null) return -1;
   const close = `"${open[1] ?? ''}`;
   const end = text.indexOf(close, start + open[0].length);
   return end === -1 ? text.length : end + close.length;
 }
 
+const MAX_CHAR_LITERAL = 11;
+
 /** The index just past a char literal that starts at `start`, or -1 when the `'` opens a lifetime instead. */
 function charLiteralEnd(text: string, start: number): number {
   if (text[start + 1] === '\\') {
+    // The longest escape is `'\u{10FFFF}'`, so a closing quote further away means this is no char literal.
     const end = text.indexOf("'", start + 2 + (text[start + 2] === "'" ? 1 : 0));
-    return end === -1 ? -1 : end + 1;
+    return end === -1 || end - start > MAX_CHAR_LITERAL ? -1 : end + 1;
   }
   const codePoint = text.codePointAt(start + 1);
   if (codePoint === undefined || text[start + 1] === '\n') return -1;
@@ -81,11 +84,11 @@ export function maskRust(text: string, options: MaskRustOptions = {}): string {
       index = cursor;
       continue;
     }
-    if ((char === 'r' || char === 'b') && !isIdentChar(text[index - 1])) {
+    if ((char === 'r' || char === 'b' || char === 'c') && !isIdentChar(text[index - 1])) {
       const end = rawStringEnd(text, index);
       if (end !== -1) {
         const literal = text.slice(index, end);
-        out += strings ? literal.replace(/^(b?r#*")([\s\S]*)("#*)$/u, (_, a: string, body: string, b: string) => a + blank(body) + b) : literal;
+        out += strings ? literal.replace(/^([bc]?r#*")([\s\S]*)("#*)$/u, (_, a: string, body: string, b: string) => a + blank(body) + b) : literal;
         index = end;
         continue;
       }
@@ -185,11 +188,24 @@ export function countRustCodeLines(text: string, skipTestModules: boolean): numb
     .filter((line, index) => line.trim() !== '' && !inRanges(index, ranges)).length;
 }
 
-/** The 1-based line of the character at `offset` in `text`. */
-export function lineAt(text: string, offset: number): number {
-  let line = 1;
-  for (let index = 0; index < offset && index < text.length; index += 1) if (text[index] === '\n') line += 1;
-  return line;
+/**
+ * A lookup from an offset in `text` to its 1-based line. The newline offsets
+ * are found once, and each lookup is a binary search, so a file with many
+ * matches costs one pass plus a log per match instead of a pass per match.
+ */
+export function lineLocator(text: string): (offset: number) => number {
+  const newlines: number[] = [];
+  for (let index = text.indexOf('\n'); index !== -1; index = text.indexOf('\n', index + 1)) newlines.push(index);
+  return (offset) => {
+    let low = 0;
+    let high = newlines.length;
+    while (low < high) {
+      const middle = (low + high) >>> 1;
+      if ((newlines[middle] ?? Infinity) < offset) low = middle + 1;
+      else high = middle;
+    }
+    return low + 1;
+  };
 }
 
 /** The `.rs` files under `roots`, minus `exclude` globs, sorted and deduplicated. */

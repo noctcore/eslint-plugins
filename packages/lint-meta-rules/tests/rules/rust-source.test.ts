@@ -1,6 +1,6 @@
 import { describe, expect, test } from 'bun:test';
 
-import { countRustCodeLines, maskRust, rustScanText, testModuleRanges } from '../../src/rules/rust-source';
+import { countRustCodeLines, lineLocator, maskRust, rustScanText, testModuleRanges } from '../../src/rules/rust-source';
 
 describe('maskRust', () => {
   test('blanks line, doc and nested block comments and keeps the line count', () => {
@@ -33,6 +33,24 @@ describe('maskRust', () => {
     expect(masked).toContain("fn f<'a>(x: &'a str)");
     expect(masked).toContain('{ let q =');
     expect(masked.split('\n')).toHaveLength(2);
+  });
+
+  test('reads raw C strings (cr"...") like raw byte strings', () => {
+    const text = 'let a = cr#"crate::api // "#; let b = c"crate::db"; use crate::store;\n';
+    const masked = maskRust(text, { strings: true });
+
+    expect(masked).not.toContain('crate::api');
+    expect(masked).not.toContain('crate::db');
+    expect(masked).toContain('use crate::store;');
+    expect(masked).toHaveLength(text.length);
+  });
+
+  test('an escape quote far from its backslash is not a char literal, and stays linear', () => {
+    expect(maskRust("let a = '\\u{10FFFF}'; // c", { strings: true })).toBe("let a = '          ';     ");
+    const hostile = "'\\".repeat(30_000);
+    const start = performance.now();
+    maskRust(hostile, { strings: true });
+    expect(performance.now() - start).toBeLessThan(1000);
   });
 
   test('a string that holds an escaped quote ends at the real quote', () => {
@@ -94,5 +112,15 @@ describe('countRustCodeLines', () => {
 
     expect(countRustCodeLines(text, true)).toBe(4);
     expect(countRustCodeLines(text, false)).toBe(9);
+  });
+});
+
+describe('lineLocator', () => {
+  test('maps offsets to 1-based lines', () => {
+    const text = 'a\nbc\n\nd';
+    const lineOf = lineLocator(text);
+
+    expect([0, 1, 2, 4, 5, 6, 7].map(lineOf)).toEqual([1, 1, 2, 2, 3, 4, 4]);
+    expect(lineLocator('')(0)).toBe(1);
   });
 });
