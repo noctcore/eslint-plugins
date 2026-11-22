@@ -77,7 +77,36 @@ export function back(req, res) {
   The allowlist is `includes` / `has` on in-file literals, `===` against literals, or a regex
   anchored at both ends, without the `m` flag or a `.` wildcard, whose every alternative ends in a
   literal domain (`^(app|docs)\.example\.com$`, `^([a-z]+\.)?example\.com$`). `const` aliases and
-  `String(url)` are followed.
+  `String(url)` are followed. The host can also be checked inline:
+  `if (!HOSTS.includes(new URL(url).hostname)) return;`.
+- A same-site path: the function checked the binding before the redirect (an `if` that exits, or
+  an `if` around it) with `startsWith('/')` while refusing both `startsWith('//')` and
+  `startsWith('/\\')` (or `includes('\\')`), or with a regex that starts `^\/` followed by a
+  character that cannot be `/`, `\`, a tab or a line break (`^\/[a-z0-9]`, `^\/[^\/\\\s]`).
+  Browsers read `/\evil.com` and `/<tab>/evil.com` as `//evil.com`, so a check that refuses only
+  `//` keeps the report.
+- A value read from an in-file table of literal destinations: `TABLE[key]`, `TABLE.key` or
+  `MAP.get(key)` on a `const` object or `new Map([...])` whose values are all literals, never
+  exported or changed (also with a literal fallback, `TABLE[key] ?? '/'`).
+
+```ts bad
+// `/\evil.com` passes this check and leaves the site
+export function back(req, res) {
+  const next = String(req.query.next);
+  if (!next.startsWith('/') || next.startsWith('//')) return res.redirect('/');
+  res.redirect(next);
+}
+```
+
+```ts good
+export function back(req, res) {
+  const next = String(req.query.next);
+  if (!next.startsWith('/') || next.startsWith('//') || next.startsWith('/\\')) {
+    return res.redirect('/');
+  }
+  res.redirect(next);
+}
+```
 
 ```ts bad
 // the check only logs, and `/example\.com$/` also matches `evilexample.com`
