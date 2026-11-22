@@ -87,14 +87,18 @@ export function Grid({ layout }: { layout: Layout }) {
 - Files that import neither `three` (or a `three/*` subpath), `three-stdlib`, an
   `@react-three/*` package nor one of `extraModules`: the rule only runs in three.js code, so
   another engine's API with the same names (a Phaser or Babylon camera) is never read as three.js.
+  Only static `import` declarations count: a file that loads three.js only through `import()` or
+  `require()` is skipped, which can hide a report but never adds one.
 - A function that receives the mesh as a parameter: a helper whose caller sets the flag.
 - A function that hands the mesh to another call (`scene.add(mesh)`, `markDirty(mesh)`), returns
   it, or constructs it (`const mesh = new InstancedMesh(...)`, `this.mesh = new InstancedMesh(...)`):
   a mesh still being built has not been uploaded yet, and a helper may set the flag.
 - `BatchedMesh.setMatrixAt()`, which uploads by itself: receivers whose name contains `batch`,
-  or that resolve to a `BatchedMesh` (`useRef<BatchedMesh>()`, `const m = new BatchedMesh()`,
-  `this.mesh = new BatchedMesh()` anywhere in the file), are skipped, and files that never name
-  `InstancedMesh` are not checked.
+  or that resolve to a `BatchedMesh` through scope (`useRef<BatchedMesh>()`,
+  `const m = new BatchedMesh()`, `ref.current = new BatchedMesh()` on the same `ref` variable,
+  `this.mesh = new BatchedMesh()` in the same class), are skipped, and files that never name
+  `InstancedMesh` are not checked. Another component's `ref.current` or another class's
+  `this.mesh` does not count.
 
 ```ts good filename=src/swarm.ts
 import { InstancedMesh, Matrix4 } from 'three';
@@ -119,7 +123,7 @@ dependencies change, and setting it costs nothing.
 | Option | Type | Default | Meaning |
 | --- | --- | --- | --- |
 | `allowIn` | `string[]` (globs) | `[]` | Files the rule skips, matched against the absolute path and the path relative to the working directory or workspace root. |
-| `extraModules` | `string[]` | `[]` | More module specifiers that mark a file as three.js code (a project module that re-exports three.js, such as `@acme/engine`); subpaths match too. |
+| `extraModules` | `string[]` | `[]` | More module specifiers that mark a file as three.js code (a project module that re-exports three.js, such as `@acme/engine`); subpaths match too, and their imports count as three.js classes and R3F hooks. |
 
 ```js
 'noctcore-three/instanced-mesh-needs-update': ['error', { allowIn: ['**/legacy/**'] }]

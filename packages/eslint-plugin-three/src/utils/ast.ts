@@ -104,6 +104,21 @@ export function rootIdentifier(node: TSESTree.Node): TSESTree.Identifier | null 
   return current.type === AST_NODE_TYPES.Identifier ? current : null;
 }
 
+/**
+ * A key for an identifier or a non-computed member chain (`ref.current`,
+ * `this.mesh`, `a.b.c`), compared whole: `myref.current` and `ref.current`
+ * differ. Null for anything else.
+ */
+export function chainKey(node: TSESTree.Node): string | null {
+  const inner = unwrap(node);
+  if (inner.type === AST_NODE_TYPES.Identifier) return inner.name;
+  if (inner.type === AST_NODE_TYPES.ThisExpression) return 'this';
+  if (inner.type !== AST_NODE_TYPES.MemberExpression) return null;
+  const property = propertyName(inner);
+  const object = chainKey(inner.object);
+  return property === null || object === null ? null : `${object}.${property}`;
+}
+
 /** True when `node` is a call to a React hook (`useX(...)` or `React.useX(...)`). */
 export function isHookCall(node: TSESTree.Node, names?: ReadonlySet<string>): node is TSESTree.CallExpression {
   if (node.type !== AST_NODE_TYPES.CallExpression) return false;

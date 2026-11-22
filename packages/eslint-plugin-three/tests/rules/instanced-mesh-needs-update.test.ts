@@ -67,6 +67,17 @@ ruleTester.run('instanced-mesh-needs-update', instancedMeshNeedsUpdateRule, inTh
       build() { this.mesh = new BatchedMesh(10, 100, 300, material); }
       tick() { this.mesh.setMatrixAt(0, m); }
     }`,
+    // A write of new BatchedMesh() to the same ref, resolved through scope.
+    `${IMPORT}function Props() {
+      const ref = useRef(null);
+      useEffect(() => { ref.current = new BatchedMesh(10, 100, 300, material); }, []);
+      useFrame(() => { ref.current.setMatrixAt(0, m); });
+      return null;
+    }`,
+    `${IMPORT}class Props {
+      mesh = new THREE.BatchedMesh(10, 100, 300, material);
+      tick() { this.mesh.setMatrixAt(0, m); }
+    }`,
     // No InstancedMesh anywhere in the file: some other setMatrixAt.
     'function f() { grid.setMatrixAt(0, m); }',
     // Exempt file.
@@ -99,6 +110,50 @@ ruleTester.run('instanced-mesh-needs-update', instancedMeshNeedsUpdateRule, inTh
         return <instancedMesh ref={ref} args={[undefined, undefined, 11]} />;
       }`,
       errors: [{ messageId: 'missingNeedsUpdate' }],
+    },
+    {
+      // Another component's ref holds the BatchedMesh; this ref is an InstancedMesh.
+      code: `${IMPORT}function Batches() {
+        const ref = useRef(null);
+        useEffect(() => { ref.current = new BatchedMesh(10, 100, 300, material); }, []);
+        return null;
+      }
+      function Grid() {
+        const ref = useRef(null);
+        useFrame(() => { ref.current.setMatrixAt(0, m); });
+        return <instancedMesh ref={ref} args={[undefined, undefined, 1]} />;
+      }`,
+      errors: [{ messageId: 'missingNeedsUpdate', data: { method: 'setMatrixAt', attribute: 'instanceMatrix', receiver: 'ref.current' } }],
+    },
+    {
+      // myref holds the BatchedMesh, ref does not.
+      code: `${IMPORT}function Grid() {
+        const myref = useRef(null);
+        const ref = useRef(null);
+        useEffect(() => { myref.current = new BatchedMesh(10, 100, 300, material); }, []);
+        useFrame(() => { ref.current.setMatrixAt(0, m); });
+        return <instancedMesh ref={ref} args={[undefined, undefined, 1]} />;
+      }`,
+      errors: [{ messageId: 'missingNeedsUpdate', data: { method: 'setMatrixAt', attribute: 'instanceMatrix', receiver: 'ref.current' } }],
+    },
+    {
+      // Another class's this.mesh is a BatchedMesh; the local mesh is not.
+      code: `${IMPORT}class Batches {
+        build() { this.mesh = new BatchedMesh(10, 100, 300, material); }
+      }
+      const mesh = new InstancedMesh(geometry, material, 10);
+      function update() { mesh.setMatrixAt(0, m); }`,
+      errors: [{ messageId: 'missingNeedsUpdate', data: { method: 'setMatrixAt', attribute: 'instanceMatrix', receiver: 'mesh' } }],
+    },
+    {
+      // A class whose own this.mesh is an InstancedMesh, next to a class with a BatchedMesh.
+      code: `${IMPORT}class Batches {
+        build() { this.mesh = new BatchedMesh(10, 100, 300, material); }
+      }
+      class Swarm {
+        tick() { this.mesh.setMatrixAt(0, m); }
+      }`,
+      errors: [{ messageId: 'missingNeedsUpdate', data: { method: 'setMatrixAt', attribute: 'instanceMatrix', receiver: 'this.mesh' } }],
     },
     {
       // A class that never sets the flag.

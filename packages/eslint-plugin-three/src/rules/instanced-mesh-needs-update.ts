@@ -12,7 +12,9 @@ import {
 import { createRule } from '../createRule';
 import {
   allowInSchema,
+  chainKey,
   classOf,
+  logicalParent,
   propertyName,
   rootIdentifier,
   skipFile,
@@ -141,27 +143,102 @@ export const instancedMeshNeedsUpdateRule = createRule<RuleOptions, MessageIds>(
     if (!NAMES_INSTANCED_MESH.test(context.sourceCode.text)) return {};
     const keys = context.sourceCode.visitorKeys;
     const reported = new Set<string>();
-    const text = context.sourceCode.text;
+
+    /** True for `new BatchedMesh(...)` or `new THREE.BatchedMesh(...)`. */
+    const isBatchedNew = (node: TSESTree.Node | null | undefined): boolean => {
+      if (node == null) return false;
+      const inner = unwrap(node);
+      if (inner.type !== AST_NODE_TYPES.NewExpression) return false;
+      const callee = inner.callee;
+      const name =
+        callee.type === AST_NODE_TYPES.Identifier
+          ? callee.name
+          : callee.type === AST_NODE_TYPES.MemberExpression
+            ? propertyName(callee)
+            : null;
+      return name === 'BatchedMesh';
+    };
+
+    /** True when `node` is the left side of `= new BatchedMesh()` and reads as `key`. */
+    const assignsBatched = (node: TSESTree.Node, key: string): boolean => {
+      const { parent, child } = logicalParent(node);
+      return (
+        parent.type === AST_NODE_TYPES.AssignmentExpression &&
+        parent.left === child &&
+        chainKey(node) === key &&
+        isBatchedNew(parent.right)
+      );
+    };
+
+    /** The outermost member chain that starts at `node` (`ref` in `ref.current` gives `ref.current`). */
+    const chainTop = (node: TSESTree.Node): TSESTree.Node => {
+      let current = node;
+      for (;;) {
+        const { parent, child } = logicalParent(current);
+        if (parent.type !== AST_NODE_TYPES.MemberExpression || parent.object !== child) return current;
+        current = parent;
+      }
+    };
+
+    /** The nearest class body around `node`. */
+    const nearestClassBody = (node: TSESTree.Node): TSESTree.ClassBody | null => {
+      for (let current = node.parent; current != null; current = current.parent) {
+        if (current.type === AST_NODE_TYPES.ClassBody) return current;
+      }
+      return null;
+    };
 
     /**
-     * True when the receiver is known to be a `BatchedMesh`: its variable (or the
-     * ref behind `x.current`) is declared from `new BatchedMesh()` or
-     * `useRef<BatchedMesh>()`, or the file assigns it `new BatchedMesh()`.
+     * True when the receiver is known to be a `BatchedMesh`. The receiver's
+     * root is resolved through scope, and only that same variable (or, for
+     * `this.x`, the same class) counts: its declaration is `new BatchedMesh()`
+     * or `useRef<BatchedMesh>()`, or a write to the same chain assigns
+     * `new BatchedMesh()`. Another component's `ref.current`, a `myref.current`
+     * or another class's `this.mesh` does not.
      */
-    const isBatchedMesh = (object: TSESTree.Node, receiver: string): boolean => {
-      const escaped = receiver.replace(/[.*+?^${}()|[\]\\]/gu, '\\$&');
-      if (new RegExp(`${escaped}\\s*=\\s*new\\s+(?:[\\w$]+\\.)?BatchedMesh\\b`, 'u').test(text)) return true;
+    const isBatchedMesh = (object: TSESTree.Node): boolean => {
+      const key = chainKey(object);
+      if (key === null) return false;
+      if (key.startsWith('this.')) {
+        const body = nearestClassBody(object);
+        if (body === null) return false;
+        const field = key.slice('this.'.length);
+        let found = false;
+        forEachDescendant(body, keys, (node) => {
+          if (found) return;
+          if (
+            node.type === AST_NODE_TYPES.PropertyDefinition &&
+            !node.computed &&
+            node.key.type === AST_NODE_TYPES.Identifier &&
+            node.key.name === field &&
+            node.parent === body &&
+            isBatchedNew(node.value)
+          ) {
+            found = true;
+          } else if (
+            node.type === AST_NODE_TYPES.MemberExpression &&
+            nearestClassBody(node) === body &&
+            assignsBatched(node, key)
+          ) {
+            found = true;
+          }
+        });
+        return found;
+      }
       const root = rootIdentifier(object);
       if (root === null) return false;
       for (let scope: TSESLint.Scope.Scope | null = context.sourceCode.getScope(object); scope !== null; scope = scope.upper) {
         const variable = scope.set.get(root.name);
         if (variable === undefined) continue;
         const definition = variable.defs[0]?.node;
-        return (
+        if (
           definition?.type === AST_NODE_TYPES.VariableDeclarator &&
           definition.init !== null &&
           /\bBatchedMesh\b/u.test(context.sourceCode.getText(definition.init))
-        );
+        ) {
+          return true;
+        }
+        return variable.references.some((reference) => assignsBatched(chainTop(reference.identifier), key));
       }
       return false;
     };
@@ -227,7 +304,7 @@ export const instancedMeshNeedsUpdateRule = createRule<RuleOptions, MessageIds>(
         if (node.arguments.length !== 2) return;
         const attribute = WRITES[method as Write];
         const receiver = context.sourceCode.getText(unwrap(callee.object));
-        if (BATCHED.test(receiver) || isBatchedMesh(callee.object, receiver)) return;
+        if (BATCHED.test(receiver) || isBatchedMesh(callee.object)) return;
 
         const found = flagScope(node);
         const root = rootIdentifier(callee.object);
