@@ -3,9 +3,9 @@
  * feeds a small doc to a toy rule and asserts the exact problem, so a check
  * that quietly stops firing fails here rather than letting every doc pass.
  */
-import { mkdtempSync, rmSync, writeFileSync } from 'node:fs';
+import { existsSync, mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
-import { join } from 'node:path';
+import { basename, dirname, join } from 'node:path';
 
 import { afterAll, describe, expect, it } from 'vitest';
 
@@ -225,5 +225,92 @@ describe('compareRulesToDocs', () => {
       undocumented: ['new-rule'],
       orphaned: ['retired-rule'],
     });
+  });
+});
+
+/**
+ * Reports `debugger` as `debugger` with a `remove` suggestion, and reports a
+ * file whose folder has no `README.md` on disk as `noReadme`.
+ */
+const withMessages = {
+  meta: {
+    type: 'problem',
+    hasSuggestions: true,
+    schema: [],
+    messages: { debugger: 'no debugger', remove: 'remove it', noReadme: 'folder {{folder}} has no README.md' },
+  },
+  create(context: {
+    filename: string;
+    report(descriptor: { node: unknown; messageId: string; data?: object; suggest?: object[] }): void;
+  }) {
+    return {
+      DebuggerStatement(node: unknown): void {
+        context.report({ node, messageId: 'debugger', suggest: [{ messageId: 'remove', fix: (fixer: { remove(n: unknown): unknown }) => fixer.remove(node) }] });
+      },
+      Program(node: unknown): void {
+        const folder = dirname(context.filename);
+        if (folder.includes('fixture-root') && !existsSync(join(folder, 'README.md'))) {
+          context.report({ node, messageId: 'noReadme', data: { folder: basename(folder) } });
+        }
+      },
+    };
+  },
+};
+const messagesPlugin = { rules: { 'with-messages': withMessages } };
+const LIST = [
+  '<!-- begin generated messages -->',
+  '- `debugger`: no debugger',
+  '- `remove` (suggestion): remove it',
+  '<!-- end generated messages -->',
+].join('\n');
+
+describe('message ids, report fences and fixtures', () => {
+  const root = mkdtempSync(join(tmpdir(), 'fixture-root-'));
+  mkdirSync(join(root, 'bad', 'src'), { recursive: true });
+  mkdirSync(join(root, 'good', 'src'), { recursive: true });
+  writeFileSync(join(root, 'good', 'src', 'README.md'), '# here');
+  afterAll(() => rmSync(root, { recursive: true, force: true }));
+  const check = (markdown: string): string[] =>
+    collectDocProblems(messagesPlugin, 'with-messages', markdown, { fixturesDir: root });
+
+  it('accepts a bad example whose message= names what it draws', () => {
+    expect(check(doc(fence('ts bad message=debugger,remove', 'debugger;'), GOOD))).toEqual([]);
+  });
+
+  it('rejects a report message= does not name, and a named message never drawn', () => {
+    expect(check(doc(fence('ts bad message=remove', 'debugger;'), GOOD))[0]).toMatch(
+      /does not name \(debugger\)/,
+    );
+    expect(check(doc(fence('ts bad message=debugger,other', 'debugger;'), GOOD))).toEqual([
+      'line 3 (bad, src/example.ts): bad example names message(s) it never draws: other',
+    ]);
+  });
+
+  it('holds a report fence to what ESLint prints', () => {
+    const report = fence('text report', 'no debugger\n\nno debugger');
+    expect(check(doc(fence('ts bad', 'debugger;\ndebugger;'), report, GOOD))).toEqual([]);
+    const wrong = fence('text report', 'no debugger');
+    expect(check(doc(fence('ts bad', 'debugger;\ndebugger;'), wrong, GOOD))[0]).toMatch(/does not match what ESLint prints/);
+    expect(check(doc(GOOD, report, fence('ts bad', 'debugger;')))).toContain(
+      'line 7: a report fence must come right after the bad example it reports',
+    );
+  });
+
+  it('lints a fixture example inside the fixture folder, pairing on the written filename', () => {
+    const bad = fence('ts bad fixture=bad message=noReadme', 'export {};');
+    const good = fence('ts good fixture=good', 'export {};');
+    expect(check(doc(bad, good))).toEqual([]);
+    expect(check(doc(fence('ts bad fixture=missing', 'export {};'), good))[0]).toMatch(/fixture folder .* does not exist/);
+  });
+
+  it('on a rule page, needs message= on every bad example and every listed message drawn as its kind', () => {
+    expect(check(`${LIST}\n\n${doc(fence('ts bad message=debugger,remove', 'debugger;'), GOOD)}`)).toEqual([]);
+    expect(check(`${LIST}\n\n${doc(fence('ts bad', 'debugger;'), GOOD)}`)).toContainEqual(
+      expect.stringMatching(/: a bad example on a rule page names its message ids with message=$/),
+    );
+    const asReport = LIST.replace(' (suggestion)', '');
+    expect(check(`${asReport}\n\n${doc(fence('ts bad message=debugger', 'debugger;'), GOOD)}`)).toEqual([
+      'message `remove` is listed as a report, but no bad example draws it as one',
+    ]);
   });
 });

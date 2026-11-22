@@ -21,10 +21,28 @@
  * otherwise with `relocation` (a different file) or `reconfigured` (different
  * options). Moving the code is the documented fix for some rules and an
  * evasion for the rest, so the doc has to claim it out loud.
+ *
+ * Three more attributes tie a doc to what the rule prints and reads:
+ *
+ * - `message=crossFeatureImport` (or `message=a,b`) on a bad example names the
+ *   message ids it draws: every report it draws must be one of them, and each
+ *   one must be drawn, as a report or as one of a report's suggestions.
+ * - `fixture=component-folder/bad` lints the example as if its file sat in
+ *   `tests/fixtures/<fixture>/` of the package, so a rule that reads sibling
+ *   files from disk runs against a real folder. The pairing of good and bad
+ *   examples still compares the `filename` as written: a different fixture is
+ *   the fix on disk, not a move.
+ * - A ` ```text report ` fence right after a bad example holds what ESLint
+ *   prints for it: its reports' messages, in order, a blank line between two.
+ *
+ * A doc whose `What you will see` section carries the generated message list
+ * (`<!-- begin generated messages -->`) is on the rule page template: every bad
+ * example there must say `message=`, and between them they must draw every
+ * message the list names, each as the kind (report or suggestion) it is listed as.
  */
 import { existsSync, readdirSync, readFileSync } from 'node:fs';
 import { createRequire } from 'node:module';
-import { basename, join } from 'node:path';
+import { basename, dirname, join } from 'node:path';
 
 import * as parser from '@typescript-eslint/parser';
 import type { Linter } from 'eslint';
@@ -64,6 +82,12 @@ export interface DocBlock {
   readonly reason: string | undefined;
   /** How many reports a bad example must draw, when it pins the count. */
   readonly reports: number | undefined;
+  /** The message ids a bad example claims to draw (`message=`). */
+  readonly messageIds: readonly string[];
+  /** The fixture folder under the package's `tests/fixtures/` the example lints in. */
+  readonly fixture: string | undefined;
+  /** The text of a `text report` fence right after a bad example: what ESLint prints. */
+  readonly report: string | undefined;
 }
 
 /** A lint message reduced to what a doc check reports. */
@@ -72,6 +96,9 @@ export interface DocMessage {
   readonly message: string;
   readonly line: number;
   readonly fatal: boolean;
+  readonly messageId: string | undefined;
+  /** The message ids of the report's suggestions. */
+  readonly suggestions: readonly string[];
 }
 
 /** Anything with a `rules` map: every `@noctcore` plugin's default export. */
@@ -82,7 +109,11 @@ export interface DocPlugin {
 const EXAMPLE_LANGS = new Set(['ts', 'tsx', 'js', 'jsx']);
 const LABELS = new Set<string>(['bad', 'good', 'prose']);
 const FLAGS = new Set(['relocation', 'reconfigured']);
-const KEYS = new Set(['filename', 'options', 'reason', 'reports']);
+const KEYS = new Set(['filename', 'options', 'reason', 'reports', 'message', 'fixture']);
+
+/** The markers around the generated message list of a rule page (`site/scripts/readmes.ts` writes it). */
+export const MESSAGES_BEGIN = '<!-- begin generated messages -->';
+export const MESSAGES_END = '<!-- end generated messages -->';
 const NAMESPACE = 'doc';
 
 interface ParsedDoc {
@@ -173,10 +204,24 @@ function parseJson(raw: string, what: string, at: string, problems: string[]): u
 export function parseDocExamples(markdown: string): ParsedDoc {
   const blocks: DocBlock[] = [];
   const problems: string[] = [];
+  // The block the previous fence produced, so a `report` fence can attach to it.
+  let previous: DocBlock | undefined;
   for (const fence of fences(markdown)) {
     const [lang = '', ...rest] = tokenize(fence.info);
     const at = `line ${fence.line}`;
     const label = rest[0];
+    if (label === 'report') {
+      if (lang !== 'text' || rest.length > 1) problems.push(`${at}: a report fence is \`text report\`, with nothing else`);
+      if (previous?.kind !== 'bad' || previous.report !== undefined) {
+        problems.push(`${at}: a report fence must come right after the bad example it reports`);
+      } else {
+        const index = blocks.indexOf(previous);
+        previous = { ...previous, report: fence.code };
+        blocks[index] = previous;
+      }
+      continue;
+    }
+    previous = undefined;
     if (label === undefined || !LABELS.has(label)) {
       if (lang === 'ts' || lang === 'tsx') {
         problems.push(`${at}: \`${lang}\` fence has no bad / good / prose label`);
@@ -191,6 +236,8 @@ export function parseDocExamples(markdown: string): ParsedDoc {
     let options: readonly unknown[] = [];
     let reason: string | undefined;
     let reports: number | undefined;
+    let messageIds: readonly string[] = [];
+    let fixture: string | undefined;
     let runnable = true;
     const flags = new Set<string>();
     for (const token of rest.slice(1)) {
@@ -205,6 +252,8 @@ export function parseDocExamples(markdown: string): ParsedDoc {
           runnable &&= parsed !== undefined;
           options = [parsed];
         }
+        else if (key === 'message') messageIds = value.split(',').filter((id) => id !== '');
+        else if (key === 'fixture') fixture = value;
         else if (key === 'reports') {
           reports = Number(value);
           if (!Number.isInteger(reports) || reports < 1) {
@@ -226,12 +275,18 @@ export function parseDocExamples(markdown: string): ParsedDoc {
     if (kind !== 'bad' && reports !== undefined) {
       problems.push(`${at}: reports= only belongs on a bad example`);
     }
+    if (kind !== 'bad' && messageIds.length > 0) {
+      problems.push(`${at}: message= only belongs on a bad example`);
+    }
+    if (kind === 'prose' && fixture !== undefined) {
+      problems.push(`${at}: fixture= only belongs on a bad or good example`);
+    }
     if (kind !== 'good' && flags.size > 0) {
       problems.push(`${at}: ${[...flags].join(', ')} only belongs on a good example`);
     }
     // Running with options the doc failed to state would test something else.
     if (!runnable) continue;
-    blocks.push({
+    const block: DocBlock = {
       kind,
       lang,
       code: fence.code,
@@ -242,7 +297,12 @@ export function parseDocExamples(markdown: string): ParsedDoc {
       reconfigured: flags.has('reconfigured'),
       reason,
       reports,
-    });
+      messageIds,
+      fixture,
+      report: undefined,
+    };
+    blocks.push(block);
+    previous = block;
   }
   return { blocks, problems };
 }
@@ -284,10 +344,32 @@ export function checkDocStructure(blocks: readonly DocBlock[]): string[] {
   return problems;
 }
 
-const linter = new eslint.Linter({ configType: 'flat' });
+const linters = new Map<string, Linter>();
+
+/** One linter per working directory: an example in a fixture lints with the fixture folder as its cwd. */
+function linterFor(cwd: string | undefined): Linter {
+  const key = cwd ?? '';
+  let linter = linters.get(key);
+  if (linter === undefined) {
+    linter = new eslint.Linter(cwd === undefined ? { configType: 'flat' } : { configType: 'flat', cwd });
+    linters.set(key, linter);
+  }
+  return linter;
+}
+
+/** Where a doc's `fixture=` folders live, and how a fixture example is linted. */
+export interface DocContext {
+  /** The package's `tests/fixtures` directory. */
+  readonly fixturesDir?: string;
+}
+
+/** The fixtures directory of the package a rule doc (`<pkg>/docs/rules/<rule>.md`) belongs to. */
+export function fixturesDirOf(docPath: string): string {
+  return join(dirname(docPath), '..', '..', 'tests', 'fixtures');
+}
 
 /** Lints one example with only the documented rule enabled. */
-export function lintDocBlock(plugin: DocPlugin, ruleName: string, block: DocBlock): DocMessage[] {
+export function lintDocBlock(plugin: DocPlugin, ruleName: string, block: DocBlock, context: DocContext = {}): DocMessage[] {
   const jsx = block.lang === 'tsx' || block.lang === 'jsx';
   const config = {
     // A bare `**/*` is a universal pattern and matches nothing on its own.
@@ -299,12 +381,24 @@ export function lintDocBlock(plugin: DocPlugin, ruleName: string, block: DocBloc
     },
     rules: { [`${NAMESPACE}/${ruleName}`]: ['error', ...block.options] },
   } as Linter.Config;
-  return linter.verify(block.code, [config], { filename: block.filename }).map((m) => ({
-    ruleId: m.ruleId,
-    message: m.message,
-    line: m.line,
-    fatal: m.fatal === true,
-  }));
+  let cwd: string | undefined;
+  let filename = block.filename;
+  if (block.fixture !== undefined) {
+    if (context.fixturesDir === undefined) throw new Error('fixture= needs the package fixtures directory');
+    cwd = join(context.fixturesDir, block.fixture);
+    if (!existsSync(cwd)) throw new Error(`fixture folder ${cwd} does not exist`);
+    filename = join(cwd, block.filename);
+  }
+  return linterFor(cwd)
+    .verify(block.code, [config], { filename })
+    .map((m) => ({
+      ruleId: m.ruleId,
+      message: m.message,
+      line: m.line,
+      fatal: m.fatal === true,
+      messageId: m.messageId,
+      suggestions: (m.suggestions ?? []).flatMap((s) => (s.messageId === undefined ? [] : [s.messageId])),
+    }));
 }
 
 function describeMessages(messages: readonly DocMessage[]): string {
@@ -312,11 +406,16 @@ function describeMessages(messages: readonly DocMessage[]): string {
 }
 
 /** Why an executed example disagrees with its label, or `undefined` when it agrees. */
-export function checkDocBlock(plugin: DocPlugin, ruleName: string, block: DocBlock): string | undefined {
+export function checkDocBlock(
+  plugin: DocPlugin,
+  ruleName: string,
+  block: DocBlock,
+  context: DocContext = {},
+): string | undefined {
   const at = `line ${block.line} (${block.kind}, ${block.filename})`;
   let messages: DocMessage[];
   try {
-    messages = lintDocBlock(plugin, ruleName, block);
+    messages = lintDocBlock(plugin, ruleName, block, context);
   } catch (error) {
     // ESLint throws on a config it rejects, such as options the rule's schema disallows.
     return `${at}: ESLint rejected the example: ${error instanceof Error ? error.message : String(error)}`;
@@ -332,17 +431,103 @@ export function checkDocBlock(plugin: DocPlugin, ruleName: string, block: DocBlo
     if (block.reports !== undefined && own.length !== block.reports) {
       return `${at}: bad example claims ${block.reports} report(s) but drew ${own.length}:\n${describeMessages(own)}`;
     }
+    if (block.messageIds.length > 0) {
+      const claimed = new Set(block.messageIds);
+      const stray = own.filter((m) => !claimed.has(m.messageId ?? ''));
+      if (stray.length > 0) {
+        return `${at}: bad example draws message(s) its message= does not name (${[...new Set(stray.map((m) => m.messageId))].join(', ')}):\n${describeMessages(stray)}`;
+      }
+      const drawn = new Set(own.flatMap((m) => [m.messageId ?? '', ...m.suggestions]));
+      const missing = block.messageIds.filter((id) => !drawn.has(id));
+      if (missing.length > 0) return `${at}: bad example names message(s) it never draws: ${missing.join(', ')}`;
+    }
+    if (block.report !== undefined) {
+      const printed = own.map((m) => m.message).join('\n\n');
+      if (printed !== block.report) {
+        return `${at}: the report fence after this example does not match what ESLint prints:\n--- printed\n${printed}\n--- report fence\n${block.report}`;
+      }
+    }
   }
   return undefined;
 }
 
+/** One entry of a rule page's generated message list. */
+export interface ListedMessage {
+  readonly id: string;
+  readonly kind: 'report' | 'suggestion';
+}
+
+/**
+ * The generated message list of a rule page, or `undefined` for a doc not on
+ * the template. Lines look like ``- `crossFeatureImport`: text`` and
+ * ``- `renameExport` (suggestion): text``.
+ */
+export function listedMessages(markdown: string): ListedMessage[] | undefined {
+  const start = markdown.indexOf(MESSAGES_BEGIN);
+  const end = markdown.indexOf(MESSAGES_END);
+  if (start === -1 || end < start) return undefined;
+  return markdown
+    .slice(start + MESSAGES_BEGIN.length, end)
+    .split('\n')
+    .flatMap((line) => {
+      const match = /^- `([^`]+)`( \(suggestion\))?: /.exec(line);
+      return match ? [{ id: match[1]!, kind: match[2] ? ('suggestion' as const) : ('report' as const) }] : [];
+    });
+}
+
+/**
+ * On a rule page, every bad example names its messages and between them they
+ * draw every listed message, each as the kind it is listed as.
+ */
+export function checkMessageCoverage(
+  plugin: DocPlugin,
+  ruleName: string,
+  markdown: string,
+  blocks: readonly DocBlock[],
+  context: DocContext = {},
+): string[] {
+  const listed = listedMessages(markdown);
+  if (listed === undefined) return [];
+  const problems: string[] = [];
+  const bad = blocks.filter((b) => b.kind === 'bad');
+  for (const block of bad) {
+    if (block.messageIds.length === 0) problems.push(`line ${block.line}: a bad example on a rule page names its message ids with message=`);
+  }
+  const reported = new Set<string>();
+  const suggested = new Set<string>();
+  for (const block of bad) {
+    let messages: DocMessage[];
+    try {
+      messages = lintDocBlock(plugin, ruleName, block, context);
+    } catch {
+      continue; // checkDocBlock reports the failure.
+    }
+    for (const m of messages.filter((msg) => msg.ruleId === `${NAMESPACE}/${ruleName}`)) {
+      if (m.messageId !== undefined) reported.add(m.messageId);
+      for (const s of m.suggestions) suggested.add(s);
+    }
+  }
+  for (const { id, kind } of listed) {
+    const seen = kind === 'report' ? reported.has(id) : suggested.has(id);
+    if (!seen) {
+      problems.push(`message \`${id}\` is listed as a ${kind}, but no bad example draws it as one`);
+    }
+  }
+  return problems;
+}
+
 /** Every problem in one rule doc: its structure, then each executed example. */
-export function collectDocProblems(plugin: DocPlugin, ruleName: string, markdown: string): string[] {
+export function collectDocProblems(
+  plugin: DocPlugin,
+  ruleName: string,
+  markdown: string,
+  context: DocContext = {},
+): string[] {
   const { blocks, problems } = parseDocExamples(markdown);
-  const found = [...problems, ...checkDocStructure(blocks)];
+  const found = [...problems, ...checkDocStructure(blocks), ...checkMessageCoverage(plugin, ruleName, markdown, blocks, context)];
   for (const block of blocks) {
     if (block.kind === 'prose') continue;
-    const problem = checkDocBlock(plugin, ruleName, block);
+    const problem = checkDocBlock(plugin, ruleName, block, context);
     if (problem !== undefined) found.push(problem);
   }
   return found;
@@ -365,15 +550,22 @@ export function runDocExamples({ plugin, ruleName, docPath }: RunDocExamplesOpti
     });
     return;
   }
-  const { blocks, problems } = parseDocExamples(readFileSync(docPath, 'utf8'));
+  const markdown = readFileSync(docPath, 'utf8');
+  const { blocks, problems } = parseDocExamples(markdown);
+  const context: DocContext = { fixturesDir: fixturesDirOf(docPath) };
   describe(`${ruleName} doc examples`, () => {
     it('labels every example and pairs each good one with a bad one', () => {
       expect([...problems, ...checkDocStructure(blocks)].join('\n')).toBe('');
     });
+    if (listedMessages(markdown) !== undefined) {
+      it('draws every message the page lists', () => {
+        expect(checkMessageCoverage(plugin, ruleName, markdown, blocks, context).join('\n')).toBe('');
+      });
+    }
     for (const block of blocks) {
       if (block.kind === 'prose') continue;
       it(`${block.kind} example at line ${block.line}`, () => {
-        expect(checkDocBlock(plugin, ruleName, block)).toBeUndefined();
+        expect(checkDocBlock(plugin, ruleName, block, context)).toBeUndefined();
       });
     }
   });
