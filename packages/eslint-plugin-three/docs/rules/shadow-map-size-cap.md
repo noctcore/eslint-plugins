@@ -57,6 +57,8 @@ export const Sun = () => <directionalLight castShadow shadow-mapSize={[2048, 204
 - Files that import neither `three` (or a `three/*` subpath), `three-stdlib`, an
   `@react-three/*` package nor one of `extraModules`: the rule only runs in three.js code, so
   another engine's API with the same names (a Phaser or Babylon camera) is never read as three.js.
+  Only static `import` declarations count: a file that loads three.js only through `import()` or
+  `require()` is skipped, which can hide a report but never adds one.
 - Sizes the rule cannot read: a variable, a quality setting chosen at runtime.
 - `mapSize` that is not under `.shadow`, and other render target sizes.
 
@@ -73,7 +75,7 @@ sun.shadow.mapSize.set(quality.shadowMapSize, quality.shadowMapSize);
 | --- | --- | --- | --- |
 | `maxMapSize` | `integer` | `2048` | The largest shadow map width or height allowed. |
 | `allowIn` | `string[]` (globs) | `[]` | Files the rule skips, matched against the absolute path and the path relative to the working directory or workspace root. |
-| `extraModules` | `string[]` | `[]` | More module specifiers that mark a file as three.js code (a project module that re-exports three.js, such as `@acme/engine`); subpaths match too. |
+| `extraModules` | `string[]` | `[]` | More module specifiers that mark a file as three.js code (a project module that re-exports three.js, such as `@acme/engine`); subpaths match too, and their imports count as three.js classes and R3F hooks. |
 
 ```js
 'noctcore-three/shadow-map-size-cap': ['error', { maxMapSize: 1024 }]

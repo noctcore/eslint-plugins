@@ -83,9 +83,15 @@ animate();
 - Files that import neither `three` (or a `three/*` subpath), `three-stdlib`, an
   `@react-three/*` package nor one of `extraModules`: the rule only runs in three.js code, so
   another engine's API with the same names (a Phaser or Babylon camera) is never read as three.js.
-- Lazy initialisation that runs once: `ref.current ??= new Vector3()`, `cache ?? new Vector3()`,
-  and `ref.current = new Vector3()` under an `if`, or after an early return
-  (`if (ref.current) return;`), that tests the same target.
+  Only static `import` declarations count: a file that loads three.js only through `import()` or
+  `require()` is skipped, which can hide a report but never adds one.
+- Lazy initialisation that runs once: `ref.current ??= new Vector3()`,
+  `cache.v = cache.v ?? new Vector3()` (the result goes back to the target the left side reads),
+  and `ref.current = new Vector3()` in a branch that runs only while that same target is unset
+  (`if (!ref.current)`, `if (ref.current == null)`), or after an early return that fires whenever
+  it is set (`if (ref.current) return;`). A fallback that is not stored back
+  (`const v = p.v || new Vector3()`) and a guard on another name or with the opposite polarity
+  (`if (!ref.current) return;`) are still reported.
 - Classes that are not imported from `three` (a local `Vector3` class), and three.js classes that
   are neither math nor GPU resources (`Group`, `Object3D`).
 - A one-shot `requestAnimationFrame(() => ...)`, and a helper function declared inside the loop.
@@ -110,7 +116,7 @@ export function Float({ mesh, target }: { mesh: { current: THREE.Mesh }; target:
 | Option | Type | Default | Meaning |
 | --- | --- | --- | --- |
 | `allowIn` | `string[]` (globs) | `[]` | Files the rule skips, matched against the absolute path and the path relative to the working directory or workspace root. |
-| `extraModules` | `string[]` | `[]` | More module specifiers that mark a file as three.js code (a project module that re-exports three.js, such as `@acme/engine`); subpaths match too. |
+| `extraModules` | `string[]` | `[]` | More module specifiers that mark a file as three.js code (a project module that re-exports three.js, such as `@acme/engine`); subpaths match too, and their imports count as three.js classes and R3F hooks. |
 
 ```js
 'noctcore-three/no-allocation-in-frame-loop': ['error', { allowIn: ['**/demos/**'] }]

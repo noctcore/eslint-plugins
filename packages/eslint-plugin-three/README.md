@@ -10,8 +10,10 @@ render, allocations and React state updates in the frame loop, camera changes wi
 Not a good fit for code that does not use three.js. Every rule except
 `capability-probe-performance-caveat` (a plain WebGL check) runs only in files that import `three`,
 a `three/*` subpath, `three-stdlib` or an `@react-three/*` package; a project that re-exports
-three.js through its own module names it in `extraModules`. Matching is by syntax, without type
-information.
+three.js through its own module names it in `extraModules`, and its named and namespace imports
+then count as three.js classes and React Three Fiber hooks too. Only static `import` declarations
+are read: a file that loads three.js only through `import()` or `require()` is skipped (a missed
+report, never a false one). Matching is by syntax, without type information.
 
 ## Requirements
 
