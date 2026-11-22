@@ -12,6 +12,7 @@ function severityOf(entry: unknown): unknown {
 // Every rule that needs options (`meta.docs.requiresOptions`) must be here.
 const OMITTED_FROM_PRESETS: readonly string[] = [
   'ipc-handler-validates-sender',
+  'no-renderer-setting-to-fs',
   'no-shell-outside-allowlist',
 ];
 

@@ -9,7 +9,7 @@
  * The ESLint plugins already get a per-plugin version of the first two checks
  * from runPluginDocs in @noctcore/eslint-test-utils. The 47 lint-meta rules get
  * none there, and nothing else counts the whole set, so this guard covers all
- * 176 in one place.
+ * 179 in one place.
  *
  * EXPECTED_RULE_COUNT is a deliberate tripwire on the inventory itself. The set
  * comparison alone passes if the inventory goes blind (a listing of
