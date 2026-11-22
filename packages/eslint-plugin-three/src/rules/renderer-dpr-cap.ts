@@ -1,13 +1,15 @@
 import { AST_NODE_TYPES, calleeName, type TSESTree } from '@noctcore/eslint-utils';
 
 import { createRule } from '../createRule';
-import { allowInSchema, isAllowed, numberValue, propertyName, unwrap } from '../utils/ast';
-import { fiberLocal, readThreeImports } from '../utils/imports';
+import { allowInSchema, numberValue, propertyName, skipFile, unwrap } from '../utils/ast';
+import { extraModulesSchema, fiberLocal, readThreeImports } from '../utils/imports';
 
 const RULE_NAME = 'renderer-dpr-cap';
 
 export interface RendererDprCapOptions {
   readonly allowIn?: readonly string[];
+  /** Module specifiers besides three.js and R3F that mark a file as three.js code. */
+  readonly extraModules?: readonly string[];
   /** The highest pixel ratio a renderer may run at. */
   readonly maxDpr?: number;
 }
@@ -100,6 +102,7 @@ export const rendererDprCapRule = createRule<RuleOptions, MessageIds>({
         additionalProperties: false,
         properties: {
           allowIn: allowInSchema,
+          extraModules: extraModulesSchema,
           maxDpr: {
             type: 'number',
             minimum: 1,
@@ -117,7 +120,7 @@ export const rendererDprCapRule = createRule<RuleOptions, MessageIds>({
   },
   defaultOptions: [{ maxDpr: 2 }],
   create(context, [options]) {
-    if (isAllowed(context, options)) return {};
+    if (skipFile(context, options)) return {};
     const maxDpr = options.maxDpr ?? 2;
     const canvas = fiberLocal(readThreeImports(context.sourceCode.ast), 'Canvas');
 

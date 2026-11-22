@@ -64,16 +64,6 @@ export function readThreeImports(program: TSESTree.Program): ThreeImports {
   return { core, namespaces, addons, fiber };
 }
 
-/** True when the file imports anything from three.js or React Three Fiber. */
-export function importsAnyThree(imports: ThreeImports): boolean {
-  return (
-    imports.core.size > 0 ||
-    imports.namespaces.size > 0 ||
-    imports.addons.size > 0 ||
-    imports.fiber.size > 0
-  );
-}
-
 /**
  * The three.js core class a `new` expression constructs, or null: `Vector3` for
  * `new Vector3()` (imported from `three`) and `new THREE.Vector3()` (namespace
@@ -126,4 +116,36 @@ export function fiberLocal(imports: ThreeImports, name: string): string | null {
     if (imported === name) return local;
   }
   return null;
+}
+
+/** The `extraModules` schema entry the import-gated rules share. */
+export const extraModulesSchema = {
+  type: 'array',
+  items: { type: 'string', minLength: 1 },
+  uniqueItems: true,
+  description:
+    'More module specifiers that mark a file as three.js code, for a project that re-exports three.js through its own module (`@acme/engine`). A specifier also matches its subpaths. Empty by default.',
+} as const;
+
+function matchesModule(source: string, module: string): boolean {
+  return source === module || source.startsWith(`${module}/`);
+}
+
+/**
+ * True when the file imports `three`, any `three/*` subpath, `three-stdlib`, any
+ * `@react-three/*` package, or one of `extraModules` (type-only and side-effect
+ * imports count). Rules that match by name (`camera.fov`, `setPixelRatio`) run
+ * only in such files, so a Phaser or Babylon camera is never read as a three.js one.
+ */
+export function isThreeFile(program: TSESTree.Program, extraModules: readonly string[] = []): boolean {
+  return program.body.some((statement) => {
+    if (statement.type !== AST_NODE_TYPES.ImportDeclaration) return false;
+    const source = statement.source.value;
+    return (
+      matchesModule(source, 'three') ||
+      matchesModule(source, 'three-stdlib') ||
+      source.startsWith('@react-three/') ||
+      extraModules.some((module) => matchesModule(source, module))
+    );
+  });
 }

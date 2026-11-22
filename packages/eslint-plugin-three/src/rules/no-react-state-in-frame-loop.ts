@@ -1,13 +1,16 @@
 import { AST_NODE_TYPES, type TSESLint, type TSESTree } from '@noctcore/eslint-utils';
 
 import { createRule } from '../createRule';
-import { allowInSchema, FrameLoops, isAllowed, isHookCall } from '../utils/ast';
-import { importsAnyThree, readThreeImports } from '../utils/imports';
+import { allowInSchema, FrameLoops, isHookCall, skipFile } from '../utils/ast';
+import { earlyReturnTests } from '../utils/guards';
+import { extraModulesSchema, readThreeImports } from '../utils/imports';
 
 const RULE_NAME = 'no-react-state-in-frame-loop';
 
 export interface NoReactStateInFrameLoopOptions {
   readonly allowIn?: readonly string[];
+  /** Module specifiers besides three.js and R3F that mark a file as three.js code. */
+  readonly extraModules?: readonly string[];
 }
 
 type RuleOptions = [NoReactStateInFrameLoopOptions];
@@ -24,7 +27,7 @@ type MessageIds = 'stateInFrameLoop';
  * elsewhere does not count), made unconditionally inside a frame loop.
  *
  * Not reported: a call under an `if`, a `? :`, a `&&` / `||` / `??` or a
- * `switch` case, the usual shape of a one-off transition (`if (t > 2 &&
+ * `switch` case, or after an early return (`if (done) return;`), the usual shape of a one-off transition (`if (t > 2 &&
  * !done) setDone(true)`). Store setters (zustand `set`, signals) are not React
  * state and are left alone.
  */
@@ -84,7 +87,7 @@ export const noReactStateInFrameLoopRule = createRule<RuleOptions, MessageIds>({
       {
         type: 'object',
         additionalProperties: false,
-        properties: { allowIn: allowInSchema },
+        properties: { allowIn: allowInSchema, extraModules: extraModulesSchema },
       },
     ],
     messages: {
@@ -94,18 +97,17 @@ export const noReactStateInFrameLoopRule = createRule<RuleOptions, MessageIds>({
   },
   defaultOptions: [{}],
   create(context, [options]) {
-    if (isAllowed(context, options)) return {};
+    if (skipFile(context, options)) return {};
     const program = context.sourceCode.ast;
     const imports = readThreeImports(program);
-    if (!importsAnyThree(imports)) return {};
-    const loops = new FrameLoops(program, context.sourceCode.visitorKeys, imports);
+    const loops = new FrameLoops(context.sourceCode, imports);
     if (loops.size === 0) return {};
 
     return {
       CallExpression(node): void {
         if (node.callee.type !== AST_NODE_TYPES.Identifier) return;
         const loop = loops.enclosingLoop(node);
-        if (loop === null || isConditional(node, loop)) return;
+        if (loop === null || isConditional(node, loop) || earlyReturnTests(node).length > 0) return;
         if (!isStateSetter(context.sourceCode.getScope(node), node.callee.name)) return;
         context.report({ node, messageId: 'stateInFrameLoop', data: { name: node.callee.name } });
       },

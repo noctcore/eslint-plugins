@@ -28,6 +28,17 @@ ruleTester.run('no-react-state-in-frame-loop', noReactStateInFrameLoopRule, {
       useFrame(() => { switch (phase) { case 0: setPhase(1); break; } });
       return null;
     }`,
+    // An early return guards the call: the gate's probe.
+    `${R3F}function Intro() {
+      const [d, setD] = useState(false);
+      useFrame(({ clock }) => { if (d || clock.elapsedTime < 2) return; setD(true); });
+      return null;
+    }`,
+    `${R3F}function Box() {
+      const [t, setT] = React.useState(0);
+      useFrame(({ clock }) => { if (paused) { return; } setT(clock.elapsedTime); });
+      return null;
+    }`,
     // A setter outside the loop.
     `${R3F}function Box() {
       const [hovered, setHovered] = useState(false);
@@ -59,21 +70,21 @@ ruleTester.run('no-react-state-in-frame-loop', noReactStateInFrameLoopRule, {
       errors: [{ messageId: 'stateInFrameLoop', data: { name: 'setAngle' } }],
     },
     {
+      // An early return after the call does not guard it.
+      code: `${R3F}function Box() {
+        const [t, setT] = useState(0);
+        useFrame(({ clock }) => { setT(clock.elapsedTime); if (paused) return; });
+        return null;
+      }`,
+      errors: [{ messageId: 'stateInFrameLoop' }],
+    },
+    {
       code: `${R3F}function Box() {
         const [, dispatch] = useReducer(reducer, init);
         useFrame((state) => { dispatch({ type: 'tick', t: state.clock.elapsedTime }); });
         return null;
       }`,
       errors: [{ messageId: 'stateInFrameLoop', data: { name: 'dispatch' } }],
-    },
-    {
-      // After an early return, it still runs on most frames.
-      code: `${R3F}function Box() {
-        const [t, setT] = React.useState(0);
-        useFrame(({ clock }) => { if (paused) return; setT(clock.elapsedTime); });
-        return null;
-      }`,
-      errors: [{ messageId: 'stateInFrameLoop' }],
     },
     {
       code: `import { useState } from 'react';\nimport * as THREE from 'three';\nfunction Loop() {

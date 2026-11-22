@@ -9,9 +9,10 @@ import {
 } from '@noctcore/eslint-utils';
 
 import { createRule } from '../createRule';
-import { allowInSchema, functionName, isAllowed, isHookCall, logicalParent } from '../utils/ast';
+import { allowInSchema, functionName, isHookCall, logicalParent, skipFile } from '../utils/ast';
+import { isLazyInit } from '../utils/guards';
 import {
-  importsAnyThree,
+  extraModulesSchema,
   isGpuResourceClass,
   isLoaderClass,
   readThreeImports,
@@ -23,6 +24,8 @@ const RULE_NAME = 'no-resource-creation-in-render';
 
 export interface NoResourceCreationInRenderOptions {
   readonly allowIn?: readonly string[];
+  /** Module specifiers besides three.js and R3F that mark a file as three.js code. */
+  readonly extraModules?: readonly string[];
 }
 
 type RuleOptions = [NoResourceCreationInRenderOptions];
@@ -43,7 +46,8 @@ type MessageIds = 'resourceInRender';
  * calls a hook.
  *
  * Not reported: construction inside any nested function (hook callbacks, event
- * handlers), as a direct argument of a hook (`useRef(new X())`: discarded after
+ * handlers), React's lazy ref idiom (`if (ref.current === null) ref.current =
+ * new X()`, `ref.current ??= new X()`), as a direct argument of a hook (`useRef(new X())`: discarded after
  * the first render and never uploaded), in a PascalCase function that is
  * neither (a vanilla three.js factory), and math objects (`Vector3`), which
  * hold no GPU memory.
@@ -98,7 +102,7 @@ export const noResourceCreationInRenderRule = createRule<RuleOptions, MessageIds
       {
         type: 'object',
         additionalProperties: false,
-        properties: { allowIn: allowInSchema },
+        properties: { allowIn: allowInSchema, extraModules: extraModulesSchema },
       },
     ],
     messages: {
@@ -108,9 +112,8 @@ export const noResourceCreationInRenderRule = createRule<RuleOptions, MessageIds
   },
   defaultOptions: [{}],
   create(context, [options]) {
-    if (isAllowed(context, options)) return {};
+    if (skipFile(context, options)) return {};
     const imports = readThreeImports(context.sourceCode.ast);
-    if (!importsAnyThree(imports)) return {};
     const keys = context.sourceCode.visitorKeys;
     const verdicts = new Map<FunctionNode, boolean>();
 
@@ -121,7 +124,7 @@ export const noResourceCreationInRenderRule = createRule<RuleOptions, MessageIds
         const fn = enclosingFunction(node);
         if (fn === null) return;
         const { parent } = logicalParent(node);
-        if (isHookCall(parent)) return;
+        if (isHookCall(parent) || isLazyInit(node, (n) => context.sourceCode.getText(n))) return;
         let isComponent = verdicts.get(fn);
         if (isComponent === undefined) {
           isComponent = looksLikeComponent(fn, keys);

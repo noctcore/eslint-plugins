@@ -14,6 +14,11 @@ nothing on screen: after a resize the scene stays stretched, a zoom animation do
 clipping plane moved for a close-up never moves.
 
 ```ts bad
+import { PerspectiveCamera, WebGLRenderer } from 'three';
+
+const camera = new PerspectiveCamera(50, 1, 0.1, 100);
+const renderer = new WebGLRenderer();
+
 export function onResize(width: number, height: number) {
   camera.aspect = width / height;
   renderer.setSize(width, height);
@@ -21,6 +26,11 @@ export function onResize(width: number, height: number) {
 ```
 
 ```ts good
+import { PerspectiveCamera, WebGLRenderer } from 'three';
+
+const camera = new PerspectiveCamera(50, 1, 0.1, 100);
+const renderer = new WebGLRenderer();
+
 export function onResize(width: number, height: number) {
   camera.aspect = width / height;
   camera.updateProjectionMatrix();
@@ -52,6 +62,9 @@ export function closeUp() {
 
 ## What it does not flag
 
+- Files that import neither `three` (or a `three/*` subpath), `three-stdlib`, an
+  `@react-three/*` package nor one of `extraModules`: the rule only runs in three.js code, so
+  another engine's API with the same names (a Phaser or Babylon camera) is never read as three.js.
 - Any `updateProjectionMatrix()` call after the assignment in the same function, on any receiver,
   so an alias (`const cam = ref.current`) is fine.
 - `setFocalLength()`, `setLens()`, `setViewOffset()` and `clearViewOffset()` after it: they update
@@ -93,6 +106,7 @@ at a time. Call the update where the change is made, or put that file in `allowI
 | --- | --- | --- | --- |
 | `cameraNames` | `string` (regular expression) | `^(?:cam\|camera\|[A-Za-z_$][\w$]*Camera)$` | What the receiver's last name must match to count as a camera. Case sensitive, so `cameraSettings` does not match. |
 | `allowIn` | `string[]` (globs) | `[]` | Files the rule skips, matched against the absolute path and the path relative to the working directory or workspace root. |
+| `extraModules` | `string[]` | `[]` | More module specifiers that mark a file as three.js code (a project module that re-exports three.js, such as `@acme/engine`); subpaths match too. |
 
 ```js
 'noctcore-three/update-projection-matrix-after-camera-change': ['error', { cameraNames: '^(?:camera|eye|viewer)$' }]

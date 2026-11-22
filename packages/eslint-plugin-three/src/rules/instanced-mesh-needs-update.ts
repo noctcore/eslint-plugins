@@ -5,16 +5,27 @@ import {
   forEachDescendant,
   isFunctionNode,
   type FunctionNode,
+  type TSESLint,
   type TSESTree,
 } from '@noctcore/eslint-utils';
 
 import { createRule } from '../createRule';
-import { allowInSchema, classOf, isAllowed, propertyName, rootIdentifier, unwrap } from '../utils/ast';
+import {
+  allowInSchema,
+  classOf,
+  propertyName,
+  rootIdentifier,
+  skipFile,
+  unwrap,
+} from '../utils/ast';
+import { extraModulesSchema } from '../utils/imports';
 
 const RULE_NAME = 'instanced-mesh-needs-update';
 
 export interface InstancedMeshNeedsUpdateOptions {
   readonly allowIn?: readonly string[];
+  /** Module specifiers besides three.js and R3F that mark a file as three.js code. */
+  readonly extraModules?: readonly string[];
 }
 
 type RuleOptions = [InstancedMeshNeedsUpdateOptions];
@@ -42,7 +53,8 @@ type MessageIds = 'missingNeedsUpdate';
  * a mesh still being built has never been uploaded.
  * `BatchedMesh` has a `setMatrixAt()` too and uploads by itself, so the rule
  * only runs in a file that names `InstancedMesh` (an import, a type, a `new`,
- * or R3F's `<instancedMesh>`), and skips receivers whose name says `batch`.
+ * or R3F's `<instancedMesh>`), and skips receivers whose name says `batch` or
+ * that resolve to one (`useRef<BatchedMesh>()`, `x = new BatchedMesh()`).
  */
 
 const NAMES_INSTANCED_MESH = /\bInstancedMesh\b|<instancedMesh\b/u;
@@ -115,7 +127,7 @@ export const instancedMeshNeedsUpdateRule = createRule<RuleOptions, MessageIds>(
       {
         type: 'object',
         additionalProperties: false,
-        properties: { allowIn: allowInSchema },
+        properties: { allowIn: allowInSchema, extraModules: extraModulesSchema },
       },
     ],
     messages: {
@@ -125,10 +137,34 @@ export const instancedMeshNeedsUpdateRule = createRule<RuleOptions, MessageIds>(
   },
   defaultOptions: [{}],
   create(context, [options]) {
-    if (isAllowed(context, options)) return {};
+    if (skipFile(context, options)) return {};
     if (!NAMES_INSTANCED_MESH.test(context.sourceCode.text)) return {};
     const keys = context.sourceCode.visitorKeys;
     const reported = new Set<string>();
+    const text = context.sourceCode.text;
+
+    /**
+     * True when the receiver is known to be a `BatchedMesh`: its variable (or the
+     * ref behind `x.current`) is declared from `new BatchedMesh()` or
+     * `useRef<BatchedMesh>()`, or the file assigns it `new BatchedMesh()`.
+     */
+    const isBatchedMesh = (object: TSESTree.Node, receiver: string): boolean => {
+      const escaped = receiver.replace(/[.*+?^${}()|[\]\\]/gu, '\\$&');
+      if (new RegExp(`${escaped}\\s*=\\s*new\\s+(?:[\\w$]+\\.)?BatchedMesh\\b`, 'u').test(text)) return true;
+      const root = rootIdentifier(object);
+      if (root === null) return false;
+      for (let scope: TSESLint.Scope.Scope | null = context.sourceCode.getScope(object); scope !== null; scope = scope.upper) {
+        const variable = scope.set.get(root.name);
+        if (variable === undefined) continue;
+        const definition = variable.defs[0]?.node;
+        return (
+          definition?.type === AST_NODE_TYPES.VariableDeclarator &&
+          definition.init !== null &&
+          /\bBatchedMesh\b/u.test(context.sourceCode.getText(definition.init))
+        );
+      }
+      return false;
+    };
 
     /** True when `scope` assigns `<x>.<attribute>.needsUpdate` or hands `root` to a call. */
     const isHandled = (
@@ -191,7 +227,7 @@ export const instancedMeshNeedsUpdateRule = createRule<RuleOptions, MessageIds>(
         if (node.arguments.length !== 2) return;
         const attribute = WRITES[method as Write];
         const receiver = context.sourceCode.getText(unwrap(callee.object));
-        if (BATCHED.test(receiver)) return;
+        if (BATCHED.test(receiver) || isBatchedMesh(callee.object, receiver)) return;
 
         const found = flagScope(node);
         const root = rootIdentifier(callee.object);

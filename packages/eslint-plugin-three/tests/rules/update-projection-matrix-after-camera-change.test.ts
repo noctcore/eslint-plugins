@@ -1,8 +1,10 @@
 import { ruleTester } from '@noctcore/eslint-test-utils';
 
+import { inThree } from '../inThree';
+
 import { updateProjectionMatrixAfterCameraChangeRule } from '../../src/rules/update-projection-matrix-after-camera-change';
 
-ruleTester.run('update-projection-matrix-after-camera-change', updateProjectionMatrixAfterCameraChangeRule, {
+ruleTester.run('update-projection-matrix-after-camera-change', updateProjectionMatrixAfterCameraChangeRule, inThree({
   valid: [
     // The fix: update after the change.
     `function onResize(w: number, h: number) {
@@ -104,5 +106,36 @@ ruleTester.run('update-projection-matrix-after-camera-change', updateProjectionM
       errors: [{ messageId: 'missingUpdate' }],
     },
     { code: 'eye.fov = 30;', options: [{ cameraNames: '^eye$' }], errors: [{ messageId: 'missingUpdate' }] },
+  ],
+}));
+
+ruleTester.run('update-projection-matrix-after-camera-change outside three.js files', updateProjectionMatrixAfterCameraChangeRule, {
+  valid: [
+    // The gate's probes: Phaser, Babylon and a plain object.
+    "import Phaser from 'phaser';\nfunction create(scene) { scene.cameras.main.zoom = 2; }",
+    "import { FreeCamera } from '@babylonjs/core';\nfunction setup(camera) { camera.fov = 0.8; }",
+    'const camera = { far: 1 };\ncamera.far = 2;',
+  ],
+  invalid: [
+    {
+      // An R3F file that only uses useThree is still three.js code.
+      code: `import { useThree } from '@react-three/fiber';
+      function Zoom() {
+        const camera = useThree((s) => s.camera);
+        useEffect(() => { camera.fov = 30; }, [camera]);
+        return null;
+      }`,
+      filename: 'src/Zoom.tsx',
+      errors: [{ messageId: 'missingUpdate' }],
+    },
+    {
+      code: "import type { Camera } from 'three/webgpu';\nfunction f(camera: Camera) { camera.near = 1; }",
+      errors: [{ messageId: 'missingUpdate' }],
+    },
+    {
+      code: "import { rig } from '@acme/engine';\nrig.camera.far = 10;",
+      options: [{ extraModules: ['@acme/engine'] }],
+      errors: [{ messageId: 'missingUpdate' }],
+    },
   ],
 });

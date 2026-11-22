@@ -8,12 +8,22 @@ import {
 } from '@noctcore/eslint-utils';
 
 import { createRule } from '../createRule';
-import { allowInSchema, classOf, isAllowed, propertyName, rootIdentifier, unwrap } from '../utils/ast';
+import {
+  allowInSchema,
+  classOf,
+  propertyName,
+  rootIdentifier,
+  skipFile,
+  unwrap,
+} from '../utils/ast';
+import { extraModulesSchema } from '../utils/imports';
 
 const RULE_NAME = 'update-projection-matrix-after-camera-change';
 
 export interface UpdateProjectionMatrixOptions {
   readonly allowIn?: readonly string[];
+  /** Module specifiers besides three.js and R3F that mark a file as three.js code. */
+  readonly extraModules?: readonly string[];
   /** Regular expression a receiver's name must match to count as a camera. */
   readonly cameraNames?: string;
 }
@@ -131,6 +141,7 @@ export const updateProjectionMatrixAfterCameraChangeRule = createRule<RuleOption
         additionalProperties: false,
         properties: {
           allowIn: allowInSchema,
+          extraModules: extraModulesSchema,
           cameraNames: {
             type: 'string',
             minLength: 1,
@@ -147,7 +158,7 @@ export const updateProjectionMatrixAfterCameraChangeRule = createRule<RuleOption
   },
   defaultOptions: [{}],
   create(context, [options]) {
-    if (isAllowed(context, options)) return {};
+    if (skipFile(context, options)) return {};
     const cameraNames = new RegExp(options.cameraNames ?? DEFAULT_CAMERA_NAMES, 'u');
     const keys = context.sourceCode.visitorKeys;
 

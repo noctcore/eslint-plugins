@@ -1,10 +1,12 @@
 import { ruleTester } from '@noctcore/eslint-test-utils';
 
+import { inThree } from '../inThree';
+
 import { instancedMeshNeedsUpdateRule } from '../../src/rules/instanced-mesh-needs-update';
 
 const IMPORT = "import { InstancedMesh, Object3D } from 'three';\n";
 
-ruleTester.run('instanced-mesh-needs-update', instancedMeshNeedsUpdateRule, {
+ruleTester.run('instanced-mesh-needs-update', instancedMeshNeedsUpdateRule, inThree({
   valid: [
     // The fix: the flag after the writes.
     `${IMPORT}function update(mesh: InstancedMesh) {}\nuseFrame(() => {
@@ -54,6 +56,17 @@ ruleTester.run('instanced-mesh-needs-update', instancedMeshNeedsUpdateRule, {
     `${IMPORT}function build() { this.mesh.setMatrixAt(0, matrix); return this.mesh; }`,
     // BatchedMesh uploads by itself.
     `${IMPORT}function f() { batchedMesh.setMatrixAt(id, matrix); }`,
+    // A BatchedMesh whose name does not say so, resolved through its declaration.
+    `${IMPORT}import type { BatchedMesh } from 'three';
+    function Props() {
+      const ref = useRef<BatchedMesh>(null!);
+      useFrame(() => { ref.current.setMatrixAt(0, m); });
+      return null;
+    }`,
+    `${IMPORT}class Props {
+      build() { this.mesh = new BatchedMesh(10, 100, 300, material); }
+      tick() { this.mesh.setMatrixAt(0, m); }
+    }`,
     // No InstancedMesh anywhere in the file: some other setMatrixAt.
     'function f() { grid.setMatrixAt(0, m); }',
     // Exempt file.
@@ -95,4 +108,9 @@ ruleTester.run('instanced-mesh-needs-update', instancedMeshNeedsUpdateRule, {
       errors: [{ messageId: 'missingNeedsUpdate', data: { method: 'setMatrixAt', attribute: 'instanceMatrix', receiver: 'this.mesh' } }],
     },
   ],
+}));
+
+ruleTester.run('instanced-mesh-needs-update outside three.js files', instancedMeshNeedsUpdateRule, {
+  valid: ['// an InstancedMesh-like API from another engine\nfunction f() { mesh.setMatrixAt(0, m); }'],
+  invalid: [],
 });

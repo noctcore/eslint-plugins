@@ -61,8 +61,12 @@ export function Clock() {
 
 ## What it does not flag
 
-- A setter under an `if`, a `? :`, a `&&` / `||` / `??` or a `switch` case. That is the shape of a
-  one-off transition, such as ending an intro after two seconds.
+- Files that import neither `three` (or a `three/*` subpath), `three-stdlib`, an
+  `@react-three/*` package nor one of `extraModules`: the rule only runs in three.js code, so
+  another engine's API with the same names (a Phaser or Babylon camera) is never read as three.js.
+- A setter under an `if`, a `? :`, a `&&` / `||` / `??` or a `switch` case, or after an early
+  return (`if (done || clock.elapsedTime < 2) return;`). That is the shape of a one-off
+  transition, such as ending an intro after two seconds.
 - Setters of stores (zustand `set`, signals), which are not React state.
 - Setters outside the loop: event handlers, effects.
 
@@ -79,14 +83,15 @@ export function Clock() {
 }
 ```
 
-A setter after an early return (`if (paused) return; setTime(t)`) is reported: it still runs on
-most frames.
+An early return counts as a guard whatever it tests, so `if (paused) return; setTime(t)` is not
+reported even though it runs on every unpaused frame: precision over coverage.
 
 ## Options
 
 | Option | Type | Default | Meaning |
 | --- | --- | --- | --- |
 | `allowIn` | `string[]` (globs) | `[]` | Files the rule skips, matched against the absolute path and the path relative to the working directory or workspace root. |
+| `extraModules` | `string[]` | `[]` | More module specifiers that mark a file as three.js code (a project module that re-exports three.js, such as `@acme/engine`); subpaths match too. |
 
 ```js
 'noctcore-three/no-react-state-in-frame-loop': ['error', { allowIn: ['**/debug/**'] }]

@@ -56,8 +56,14 @@ export function Model() {
 
 ## What it does not flag
 
+- Files that import neither `three` (or a `three/*` subpath), `three-stdlib`, an
+  `@react-three/*` package nor one of `extraModules`: the rule only runs in three.js code, so
+  another engine's API with the same names (a Phaser or Babylon camera) is never read as three.js.
 - Construction inside any nested function: `useMemo` and `useEffect` callbacks, lazy `useState`
   initialisers, event handlers.
+- React's lazy ref idiom: `if (ref.current === null) ref.current = new THREE.BoxGeometry()`,
+  `ref.current ??= new THREE.BoxGeometry()`, or the same assignment after an early return that
+  tests the ref.
 - A resource passed straight to a hook (`useRef(new THREE.BoxGeometry())`): the extra instances are
   thrown away after the first render without ever reaching the GPU.
 - Math objects (`Vector3`, `Color`), which hold no GPU memory.
@@ -79,6 +85,7 @@ export function Model() {
 | Option | Type | Default | Meaning |
 | --- | --- | --- | --- |
 | `allowIn` | `string[]` (globs) | `[]` | Files the rule skips, matched against the absolute path and the path relative to the working directory or workspace root. |
+| `extraModules` | `string[]` | `[]` | More module specifiers that mark a file as three.js code (a project module that re-exports three.js, such as `@acme/engine`); subpaths match too. |
 
 ```js
 'noctcore-three/no-resource-creation-in-render': ['error', { allowIn: ['**/*.stories.tsx'] }]

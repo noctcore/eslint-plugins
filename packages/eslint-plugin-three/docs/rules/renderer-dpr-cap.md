@@ -14,10 +14,16 @@ for a difference few people can see. three.js runs at whatever ratio it is given
 ratio puts the heaviest load on the devices with the least GPU per pixel:
 
 ```ts bad
+import { WebGLRenderer } from 'three';
+
+const renderer = new WebGLRenderer({ antialias: true });
 renderer.setPixelRatio(window.devicePixelRatio);
 ```
 
 ```ts good
+import { WebGLRenderer } from 'three';
+
+const renderer = new WebGLRenderer({ antialias: true });
 renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
 ```
 
@@ -46,6 +52,9 @@ export const Product = () => <Canvas dpr={[1, 2]} />;
 
 ## What it does not flag
 
+- Files that import neither `three` (or a `three/*` subpath), `three-stdlib`, an
+  `@react-three/*` package nor one of `extraModules`: the rule only runs in three.js code, so
+  another engine's API with the same names (a Phaser or Babylon camera) is never read as three.js.
 - A `<Canvas>` with no `dpr` prop: R3F already defaults to `[1, 2]`.
 - A value the rule cannot read: a variable, a store value, a function call such as R3F's
   `PerformanceMonitor` result. Those are runtime decisions.
@@ -68,6 +77,7 @@ capping the ratio, but it needs the canvas size at runtime, which a static rule 
 | --- | --- | --- | --- |
 | `maxDpr` | `number` | `2` | The highest pixel ratio a renderer may run at. |
 | `allowIn` | `string[]` (globs) | `[]` | Files the rule skips, matched against the absolute path and the path relative to the working directory or workspace root. |
+| `extraModules` | `string[]` | `[]` | More module specifiers that mark a file as three.js code (a project module that re-exports three.js, such as `@acme/engine`); subpaths match too. |
 
 ```js
 'noctcore-three/renderer-dpr-cap': ['error', { maxDpr: 1.5, allowIn: ['**/tools/screenshot/**'] }]

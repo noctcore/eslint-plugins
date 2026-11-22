@@ -11,7 +11,7 @@ import {
   type TSESTree,
 } from '@noctcore/eslint-utils';
 
-import { fiberLocal, type ThreeImports } from './imports';
+import { fiberLocal, isThreeFile, type ThreeImports } from './imports';
 
 /** The `allowIn` schema entry every rule in this plugin shares. */
 export const allowInSchema = {
@@ -29,6 +29,18 @@ export function isAllowed(
 ): boolean {
   const globs = resolveAllowIn(options, [], []);
   return globs.length > 0 && fileMatchesAnyGlob(context.filename, globs, context.cwd);
+}
+
+/**
+ * True when the rule should skip the file: exempt through `allowIn`, or not
+ * three.js code (no import of `three`, `three/*`, `three-stdlib`,
+ * `@react-three/*` or one of `extraModules`).
+ */
+export function skipFile(
+  context: Readonly<TSESLint.RuleContext<string, readonly unknown[]>>,
+  options: { readonly allowIn?: readonly string[]; readonly extraModules?: readonly string[] },
+): boolean {
+  return isAllowed(context, options) || !isThreeFile(context.sourceCode.ast, options.extraModules);
 }
 
 /** The node under `x?.y` chains and the type wrappers (`x!`, `x as T`, `x satisfies T`). */
@@ -159,16 +171,17 @@ function isRequestAnimationFrame(callee: TSESTree.Node): boolean {
  * - the callback of `renderer.setAnimationLoop(fn)`;
  * - a named function that schedules itself with `requestAnimationFrame(name)`.
  *
- * A callback is matched inline or by name (`renderer.setAnimationLoop(tick)`
- * with `function tick() {}` or `const tick = () => {}` in the same file). A
+ * A callback is matched inline or by reference (`renderer.setAnimationLoop(tick)`
+ * resolves `tick` through scope to `function tick() {}` or `const tick = () => {}`). A
  * one-shot `requestAnimationFrame(() => ...)` is not a loop and is not matched.
  */
 export class FrameLoops {
   private readonly loops = new Set<TSESTree.Node>();
 
-  constructor(program: TSESTree.Program, keys: TSESLint.SourceCode['visitorKeys'], imports: ThreeImports) {
+  constructor(sourceCode: Readonly<TSESLint.SourceCode>, imports: ThreeImports) {
+    const program = sourceCode.ast;
+    const keys = sourceCode.visitorKeys;
     const useFrame = fiberLocal(imports, 'useFrame');
-    const byName = new Set<string>();
     const functions: FunctionNode[] = [];
 
     forEachDescendant(program, keys, (node) => {
@@ -187,13 +200,15 @@ export class FrameLoops {
         node.callee.type === AST_NODE_TYPES.MemberExpression;
       if (!isUseFrame && !isAnimationLoop) return;
       if (isFunctionNode(first)) this.loops.add(first);
-      else if (first.type === AST_NODE_TYPES.Identifier) byName.add(first.name);
+      else if (first.type === AST_NODE_TYPES.Identifier) {
+        const target = resolveFunction(sourceCode.getScope(first), first.name);
+        if (target !== null) this.loops.add(target);
+      }
     });
 
     for (const fn of functions) {
       const name = functionName(fn);
-      if (name === null) continue;
-      if (byName.has(name) || schedulesItself(fn, name, keys)) this.loops.add(fn);
+      if (name !== null && schedulesItself(fn, name, keys)) this.loops.add(fn);
     }
   }
 
@@ -219,6 +234,23 @@ export class FrameLoops {
   get size(): number {
     return this.loops.size;
   }
+}
+
+/** The function a name is bound to in scope (`function tick() {}`, `const tick = () => {}`), or null. */
+function resolveFunction(scope: TSESLint.Scope.Scope, name: string): FunctionNode | null {
+  for (let current: TSESLint.Scope.Scope | null = scope; current !== null; current = current.upper) {
+    const variable = current.set.get(name);
+    if (variable === undefined) continue;
+    const definition = variable.defs[0]?.node;
+    if (definition === undefined) return null;
+    if (definition.type === AST_NODE_TYPES.FunctionDeclaration) return definition;
+    if (definition.type === AST_NODE_TYPES.VariableDeclarator && definition.init !== null) {
+      const init = unwrap(definition.init);
+      return isFunctionNode(init) ? init : null;
+    }
+    return null;
+  }
+  return null;
 }
 
 function schedulesItself(fn: FunctionNode, name: string, keys: TSESLint.SourceCode['visitorKeys']): boolean {

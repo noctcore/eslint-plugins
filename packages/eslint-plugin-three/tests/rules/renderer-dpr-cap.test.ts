@@ -1,10 +1,12 @@
 import { ruleTester } from '@noctcore/eslint-test-utils';
 
+import { inThree } from '../inThree';
+
 import { rendererDprCapRule } from '../../src/rules/renderer-dpr-cap';
 
 const FIBER = "import { Canvas } from '@react-three/fiber';\n";
 
-ruleTester.run('renderer-dpr-cap', rendererDprCapRule, {
+ruleTester.run('renderer-dpr-cap', rendererDprCapRule, inThree({
   valid: [
     // Capped with Math.min at or below the cap.
     'renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));',
@@ -76,6 +78,22 @@ ruleTester.run('renderer-dpr-cap', rendererDprCapRule, {
     {
       code: `${FIBER}const App = () => <Canvas onCreated={({ gl }) => gl.setPixelRatio(window.devicePixelRatio)} />;`,
       filename: 'src/App.tsx',
+      errors: [{ messageId: 'uncapped' }],
+    },
+  ],
+}));
+
+ruleTester.run('renderer-dpr-cap outside three.js files', rendererDprCapRule, {
+  valid: [
+    // Another renderer's method with the same name, in a file that does not import three.
+    "import { Application } from 'some-2d-engine';\nrenderer.setPixelRatio(window.devicePixelRatio);",
+    'renderer.setPixelRatio(window.devicePixelRatio);',
+  ],
+  invalid: [
+    {
+      // A project module that re-exports three.js, named in extraModules.
+      code: "import { renderer } from '@acme/engine/renderer';\nrenderer.setPixelRatio(window.devicePixelRatio);",
+      options: [{ extraModules: ['@acme/engine'] }],
       errors: [{ messageId: 'uncapped' }],
     },
   ],

@@ -23,6 +23,8 @@ ruleTester.run('no-allocation-in-frame-loop', noAllocationInFrameLoopRule, {
     `${R3F}useFrame(() => { tmp.current ??= new THREE.Vector3(); tmp.current.set(1, 2, 3); });`,
     `${R3F}useFrame(() => { if (!tmp.current) tmp.current = new THREE.Vector3(); });`,
     `${R3F}useFrame(() => { const v = cache.v ?? new THREE.Vector3(); });`,
+    // Lazy initialisation behind an early return: the gate's probe.
+    `${R3F}useFrame(() => { if (v.current) return; v.current = new THREE.Vector3(); });`,
     // A one-shot requestAnimationFrame is not a loop.
     `${VANILLA}requestAnimationFrame(() => { camera.position.copy(new Vector3(0, 0, 5)); });`,
     // A loop that does not reschedule itself by name.
@@ -89,6 +91,23 @@ ruleTester.run('no-allocation-in-frame-loop', noAllocationInFrameLoopRule, {
       errors: [{ messageId: 'resourceAllocation' }],
     },
     {
+      // setAnimationLoop(tick) resolves `tick` through scope: only the passed one is a loop.
+      code: `${VANILLA}function start() {
+        function tick() { const v = new Vector3(); }
+        renderer.setAnimationLoop(tick);
+      }
+      function other() {
+        function tick() { const v = new Vector3(); }
+        register(tick);
+      }`,
+      errors: [{ messageId: 'mathAllocation', line: 3 }],
+    },
+    {
+      // An early return that tests something else does not make it lazy.
+      code: `${R3F}useFrame(() => { if (paused) return; v.current = new THREE.Vector3(); });`,
+      errors: [{ messageId: 'mathAllocation' }],
+    },
+    {
       // A class method that reschedules itself.
       code: `${VANILLA}class App {
         animate = () => {
@@ -103,4 +122,12 @@ ruleTester.run('no-allocation-in-frame-loop', noAllocationInFrameLoopRule, {
       errors: [{ messageId: 'mathAllocation' }, { messageId: 'mathAllocation' }],
     },
   ],
+});
+
+ruleTester.run('no-allocation-in-frame-loop outside three.js files', noAllocationInFrameLoopRule, {
+  valid: [
+    // No import of three or R3F: some other engine's loop.
+    "import { Vector3 } from '@babylonjs/core';\nengine.runRenderLoop(() => {});\nfunction tick() { requestAnimationFrame(tick); const v = new Vector3(); }",
+  ],
+  invalid: [],
 });

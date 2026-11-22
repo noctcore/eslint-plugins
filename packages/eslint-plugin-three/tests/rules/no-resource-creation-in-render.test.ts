@@ -12,6 +12,10 @@ ruleTester.run('no-resource-creation-in-render', noResourceCreationInRenderRule,
     // Lazy initialisers and refs.
     { code: `${NS}function Box() { const [geo] = useState(() => new THREE.BoxGeometry()); return <mesh geometry={geo} />; }`, filename: TSX },
     { code: `${NS}function Box() { const ref = useRef(new THREE.BoxGeometry()); return <mesh geometry={ref.current} />; }`, filename: TSX },
+    // React's lazy ref idiom: the gate's probes.
+    { code: `${NS}function Box() { const ref = useRef(null); if (ref.current === null) ref.current = new THREE.BoxGeometry(); return <mesh geometry={ref.current} />; }`, filename: TSX },
+    { code: `${NS}function Box() { const ref = useRef(null); ref.current ??= new THREE.BoxGeometry(); return <mesh geometry={ref.current} />; }`, filename: TSX },
+    { code: `${NS}function Box() { const ref = useRef(null); if (!ref.current) { ref.current = new THREE.TextureLoader(); } return null; }`, filename: TSX },
     // Module scope.
     { code: `${NS}const mat = new THREE.MeshBasicMaterial();\nfunction Box() { return <mesh material={mat} />; }`, filename: TSX },
     // Inside an effect or a handler.
@@ -37,6 +41,12 @@ ruleTester.run('no-resource-creation-in-render', noResourceCreationInRenderRule,
       code: `${NS}function Box() { const mat = new THREE.MeshBasicMaterial(); return <mesh material={mat} />; }`,
       filename: TSX,
       errors: [{ messageId: 'resourceInRender', data: { name: 'MeshBasicMaterial', component: 'Box' } }],
+    },
+    {
+      // Assigned to a ref on every render, with no guard.
+      code: `${NS}function Box() { const ref = useRef(null); ref.current = new THREE.BoxGeometry(); return <mesh geometry={ref.current} />; }`,
+      filename: TSX,
+      errors: [{ messageId: 'resourceInRender' }],
     },
     {
       code: `${NS}const Box = () => <mesh geometry={new THREE.BoxGeometry(1, 1, 1)} />;`,

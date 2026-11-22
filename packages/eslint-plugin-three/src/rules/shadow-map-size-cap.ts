@@ -1,12 +1,15 @@
 import { AST_NODE_TYPES, calleeName, type TSESTree } from '@noctcore/eslint-utils';
 
 import { createRule } from '../createRule';
-import { allowInSchema, isAllowed, numberValue, propertyName, unwrap } from '../utils/ast';
+import { allowInSchema, numberValue, propertyName, skipFile, unwrap } from '../utils/ast';
+import { extraModulesSchema } from '../utils/imports';
 
 const RULE_NAME = 'shadow-map-size-cap';
 
 export interface ShadowMapSizeCapOptions {
   readonly allowIn?: readonly string[];
+  /** Module specifiers besides three.js and R3F that mark a file as three.js code. */
+  readonly extraModules?: readonly string[];
   /** The largest shadow map width or height allowed. */
   readonly maxMapSize?: number;
 }
@@ -55,6 +58,7 @@ export const shadowMapSizeCapRule = createRule<RuleOptions, MessageIds>({
         additionalProperties: false,
         properties: {
           allowIn: allowInSchema,
+          extraModules: extraModulesSchema,
           maxMapSize: {
             type: 'integer',
             minimum: 1,
@@ -70,7 +74,7 @@ export const shadowMapSizeCapRule = createRule<RuleOptions, MessageIds>({
   },
   defaultOptions: [{ maxMapSize: 2048 }],
   create(context, [options]) {
-    if (isAllowed(context, options)) return {};
+    if (skipFile(context, options)) return {};
     const max = options.maxMapSize ?? 2048;
 
     const check = (node: TSESTree.Node | null | undefined): void => {

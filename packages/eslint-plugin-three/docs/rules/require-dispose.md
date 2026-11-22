@@ -83,6 +83,9 @@ export function useLabel(scene: THREE.Scene, canvas: HTMLCanvasElement) {
 
 ## What it does not flag
 
+- Files that import neither `three` (or a `three/*` subpath), `three-stdlib`, an
+  `@react-three/*` package nor one of `extraModules`: the rule only runs in three.js code, so
+  another engine's API with the same names (a Phaser or Babylon camera) is never read as three.js.
 Anything that may be disposed somewhere the rule cannot see:
 
 - a resource that leaves the effect: stored in a ref or an outer variable, passed to a plain
@@ -119,6 +122,7 @@ export function useLabel(scene: THREE.Scene, canvas: HTMLCanvasElement) {
 | Option | Type | Default | Meaning |
 | --- | --- | --- | --- |
 | `allowIn` | `string[]` (globs) | `[]` | Files the rule skips, matched against the absolute path and the path relative to the working directory or workspace root. |
+| `extraModules` | `string[]` | `[]` | More module specifiers that mark a file as three.js code (a project module that re-exports three.js, such as `@acme/engine`); subpaths match too. |
 
 ```js
 'noctcore-three/require-dispose': ['error', { allowIn: ['**/legacy/**'] }]

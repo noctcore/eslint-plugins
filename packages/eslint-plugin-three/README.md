@@ -7,8 +7,11 @@ render, allocations and React state updates in the frame loop, camera changes wi
 
 **Docs:** [noctcore.github.io/eslint-plugins/packages/three](https://noctcore.github.io/eslint-plugins/packages/three/)
 
-Not a good fit for code that does not use three.js. The rules read imports of `three` and
-`@react-three/fiber` and match by syntax, without type information.
+Not a good fit for code that does not use three.js. Every rule except
+`capability-probe-performance-caveat` (a plain WebGL check) runs only in files that import `three`,
+a `three/*` subpath, `three-stdlib` or an `@react-three/*` package; a project that re-exports
+three.js through its own module names it in `extraModules`. Matching is by syntax, without type
+information.
 
 ## Requirements
 

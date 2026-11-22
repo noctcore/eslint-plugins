@@ -14,10 +14,18 @@ one, and a point light renders six faces. On integrated and mobile GPUs that is 
 single cost in a scene.
 
 ```ts bad
+import { DirectionalLight } from 'three';
+
+const sun = new DirectionalLight(0xffffff, 2);
+sun.castShadow = true;
 sun.shadow.mapSize.set(4096, 4096);
 ```
 
 ```ts good
+import { DirectionalLight } from 'three';
+
+const sun = new DirectionalLight(0xffffff, 2);
+sun.castShadow = true;
 sun.shadow.mapSize.set(2048, 2048);
 ```
 
@@ -31,19 +39,31 @@ A literal number above `maxMapSize` in:
   `shadow-mapSize={size}`, `shadow-mapSize-width={size}` and `shadow-mapSize-height={size}`.
 
 ```tsx bad filename=src/Lights.tsx reports=2
+import { Canvas } from '@react-three/fiber';
+
+export const Scene = () => <Canvas shadows><Sun /></Canvas>;
 export const Sun = () => <directionalLight castShadow shadow-mapSize={[4096, 4096]} />;
 ```
 
 ```tsx good filename=src/Lights.tsx
+import { Canvas } from '@react-three/fiber';
+
+export const Scene = () => <Canvas shadows><Sun /></Canvas>;
 export const Sun = () => <directionalLight castShadow shadow-mapSize={[2048, 2048]} />;
 ```
 
 ## What it does not flag
 
+- Files that import neither `three` (or a `three/*` subpath), `three-stdlib`, an
+  `@react-three/*` package nor one of `extraModules`: the rule only runs in three.js code, so
+  another engine's API with the same names (a Phaser or Babylon camera) is never read as three.js.
 - Sizes the rule cannot read: a variable, a quality setting chosen at runtime.
 - `mapSize` that is not under `.shadow`, and other render target sizes.
 
 ```ts good
+import { DirectionalLight } from 'three';
+
+const sun = new DirectionalLight(0xffffff, 2);
 sun.shadow.mapSize.set(quality.shadowMapSize, quality.shadowMapSize);
 ```
 
@@ -53,6 +73,7 @@ sun.shadow.mapSize.set(quality.shadowMapSize, quality.shadowMapSize);
 | --- | --- | --- | --- |
 | `maxMapSize` | `integer` | `2048` | The largest shadow map width or height allowed. |
 | `allowIn` | `string[]` (globs) | `[]` | Files the rule skips, matched against the absolute path and the path relative to the working directory or workspace root. |
+| `extraModules` | `string[]` | `[]` | More module specifiers that mark a file as three.js code (a project module that re-exports three.js, such as `@acme/engine`); subpaths match too. |
 
 ```js
 'noctcore-three/shadow-map-size-cap': ['error', { maxMapSize: 1024 }]

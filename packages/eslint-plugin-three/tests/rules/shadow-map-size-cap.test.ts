@@ -1,8 +1,10 @@
 import { ruleTester } from '@noctcore/eslint-test-utils';
 
+import { inThree } from '../inThree';
+
 import { shadowMapSizeCapRule } from '../../src/rules/shadow-map-size-cap';
 
-ruleTester.run('shadow-map-size-cap', shadowMapSizeCapRule, {
+ruleTester.run('shadow-map-size-cap', shadowMapSizeCapRule, inThree({
   valid: [
     'light.shadow.mapSize.set(2048, 2048);',
     'light.shadow.mapSize.width = 1024; light.shadow.mapSize.height = 1024;',
@@ -44,4 +46,9 @@ ruleTester.run('shadow-map-size-cap', shadowMapSizeCapRule, {
       errors: [{ messageId: 'aboveCap' }, { messageId: 'aboveCap' }],
     },
   ],
+}));
+
+ruleTester.run('shadow-map-size-cap outside three.js files', shadowMapSizeCapRule, {
+  valid: ['light.shadow.mapSize.set(4096, 4096);'],
+  invalid: [],
 });

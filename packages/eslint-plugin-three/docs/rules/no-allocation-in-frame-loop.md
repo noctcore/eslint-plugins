@@ -52,7 +52,7 @@ export function Float({ mesh }: { mesh: { current: THREE.Mesh } }) {
 A frame loop is the callback of R3F's `useFrame` (imported from `@react-three/fiber`), the callback
 of `renderer.setAnimationLoop()`, or a function that schedules itself with
 `requestAnimationFrame(name)` (also `requestAnimationFrame(this.name)` in a class). Callbacks are
-matched inline or by name, and inline callbacks inside the loop (`items.forEach(...)`) count too.
+matched inline or by reference (`setAnimationLoop(tick)` resolves `tick` through scope), and inline callbacks inside the loop (`items.forEach(...)`) count too.
 
 ```ts bad filename=src/loop.ts
 import { Vector3 } from 'three';
@@ -80,8 +80,12 @@ animate();
 
 ## What it does not flag
 
+- Files that import neither `three` (or a `three/*` subpath), `three-stdlib`, an
+  `@react-three/*` package nor one of `extraModules`: the rule only runs in three.js code, so
+  another engine's API with the same names (a Phaser or Babylon camera) is never read as three.js.
 - Lazy initialisation that runs once: `ref.current ??= new Vector3()`, `cache ?? new Vector3()`,
-  and `ref.current = new Vector3()` under an `if` that tests the same target.
+  and `ref.current = new Vector3()` under an `if`, or after an early return
+  (`if (ref.current) return;`), that tests the same target.
 - Classes that are not imported from `three` (a local `Vector3` class), and three.js classes that
   are neither math nor GPU resources (`Group`, `Object3D`).
 - A one-shot `requestAnimationFrame(() => ...)`, and a helper function declared inside the loop.
@@ -106,6 +110,7 @@ export function Float({ mesh, target }: { mesh: { current: THREE.Mesh }; target:
 | Option | Type | Default | Meaning |
 | --- | --- | --- | --- |
 | `allowIn` | `string[]` (globs) | `[]` | Files the rule skips, matched against the absolute path and the path relative to the working directory or workspace root. |
+| `extraModules` | `string[]` | `[]` | More module specifiers that mark a file as three.js code (a project module that re-exports three.js, such as `@acme/engine`); subpaths match too. |
 
 ```js
 'noctcore-three/no-allocation-in-frame-loop': ['error', { allowIn: ['**/demos/**'] }]

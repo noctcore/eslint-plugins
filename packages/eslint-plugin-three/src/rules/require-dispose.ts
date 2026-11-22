@@ -9,13 +9,27 @@ import {
 } from '@noctcore/eslint-utils';
 
 import { createRule } from '../createRule';
-import { allowInSchema, isAllowed, isHookCall, logicalParent, rootIdentifier, unwrap } from '../utils/ast';
-import { importsAnyThree, isGpuResourceClass, readThreeImports, threeCoreClass } from '../utils/imports';
+import {
+  allowInSchema,
+  isHookCall,
+  logicalParent,
+  rootIdentifier,
+  skipFile,
+  unwrap,
+} from '../utils/ast';
+import {
+  extraModulesSchema,
+  isGpuResourceClass,
+  readThreeImports,
+  threeCoreClass,
+} from '../utils/imports';
 
 const RULE_NAME = 'require-dispose';
 
 export interface RequireDisposeOptions {
   readonly allowIn?: readonly string[];
+  /** Module specifiers besides three.js and R3F that mark a file as three.js code. */
+  readonly extraModules?: readonly string[];
 }
 
 type RuleOptions = [RequireDisposeOptions];
@@ -101,7 +115,7 @@ export const requireDisposeRule = createRule<RuleOptions, MessageIds>({
       {
         type: 'object',
         additionalProperties: false,
-        properties: { allowIn: allowInSchema },
+        properties: { allowIn: allowInSchema, extraModules: extraModulesSchema },
       },
     ],
     messages: {
@@ -111,9 +125,8 @@ export const requireDisposeRule = createRule<RuleOptions, MessageIds>({
   },
   defaultOptions: [{}],
   create(context, [options]) {
-    if (isAllowed(context, options)) return {};
+    if (skipFile(context, options)) return {};
     const imports = readThreeImports(context.sourceCode.ast);
-    if (!importsAnyThree(imports)) return {};
     const keys = context.sourceCode.visitorKeys;
     const sourceCode = context.sourceCode;
 

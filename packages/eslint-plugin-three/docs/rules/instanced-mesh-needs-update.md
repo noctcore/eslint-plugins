@@ -84,12 +84,17 @@ export function Grid({ layout }: { layout: Layout }) {
 
 ## What it does not flag
 
+- Files that import neither `three` (or a `three/*` subpath), `three-stdlib`, an
+  `@react-three/*` package nor one of `extraModules`: the rule only runs in three.js code, so
+  another engine's API with the same names (a Phaser or Babylon camera) is never read as three.js.
 - A function that receives the mesh as a parameter: a helper whose caller sets the flag.
 - A function that hands the mesh to another call (`scene.add(mesh)`, `markDirty(mesh)`), returns
   it, or constructs it (`const mesh = new InstancedMesh(...)`, `this.mesh = new InstancedMesh(...)`):
   a mesh still being built has not been uploaded yet, and a helper may set the flag.
-- `BatchedMesh.setMatrixAt()`, which uploads by itself: receivers whose name contains `batch`
-  are skipped, and files that never name `InstancedMesh` are not checked.
+- `BatchedMesh.setMatrixAt()`, which uploads by itself: receivers whose name contains `batch`,
+  or that resolve to a `BatchedMesh` (`useRef<BatchedMesh>()`, `const m = new BatchedMesh()`,
+  `this.mesh = new BatchedMesh()` anywhere in the file), are skipped, and files that never name
+  `InstancedMesh` are not checked.
 
 ```ts good filename=src/swarm.ts
 import { InstancedMesh, Matrix4 } from 'three';
@@ -103,14 +108,18 @@ export function buildSwarm(count: number, matrix: Matrix4) {
 ```
 
 Outside a class, a flag set in a different function (writes in an event handler, the flag set every
-frame in the render loop) is reported. Set it where the writes are, or put the file in `allowIn`. Writes made
-before the mesh first renders do not strictly need the flag; setting it costs nothing.
+frame in the render loop) is reported. Set it where the writes are, or put the file in `allowIn`. Writes in a
+`useLayoutEffect` that runs on mount, before the first frame, are still reported: they do not
+strictly need the flag, because the attribute has not been uploaded yet, but the three.js docs
+state the flag as required after `setMatrixAt()` / `setColorAt()`, the same effect re-runs when its
+dependencies change, and setting it costs nothing.
 
 ## Options
 
 | Option | Type | Default | Meaning |
 | --- | --- | --- | --- |
 | `allowIn` | `string[]` (globs) | `[]` | Files the rule skips, matched against the absolute path and the path relative to the working directory or workspace root. |
+| `extraModules` | `string[]` | `[]` | More module specifiers that mark a file as three.js code (a project module that re-exports three.js, such as `@acme/engine`); subpaths match too. |
 
 ```js
 'noctcore-three/instanced-mesh-needs-update': ['error', { allowIn: ['**/legacy/**'] }]
