@@ -89,12 +89,59 @@ interface RegexToken {
 }
 
 /** Splits a pattern into tokens; null for syntax this reader does not handle. */
-function tokenize(pattern: string): RegexToken[] | null {
+/**
+ * Unicode property escapes that admit only letters, marks or digits, never
+ * ASCII punctuation or whitespace. Read with the `u` flag only.
+ */
+const LETTER_PROPERTIES: ReadonlySet<string> = new Set([
+  'L',
+  'Letter',
+  'Lu',
+  'Ll',
+  'Lt',
+  'Lm',
+  'Lo',
+  'M',
+  'Mark',
+  'Mn',
+  'Mc',
+  'N',
+  'Number',
+  'Nd',
+  'Alphabetic',
+  'Alpha',
+  'Script=Latin',
+  'sc=Latin',
+]);
+
+/**
+ * For `\p{Letter}`-style escapes at `index` (with the `u` flag), the
+ * characters it stands for (a letter, as a representative: none of these is
+ * unsafe anywhere) and its length; null for other escapes.
+ */
+function propertyEscape(text: string, index: number, unicode: boolean): { chars: string; length: number } | null {
+  if (!unicode || !text.startsWith('\\p{', index)) {
+    return null;
+  }
+  const close = text.indexOf('}', index);
+  if (close === -1 || !LETTER_PROPERTIES.has(text.slice(index + 3, close))) {
+    return null;
+  }
+  return { chars: 'a', length: close + 1 - index };
+}
+
+function tokenize(pattern: string, unicode = false): RegexToken[] | null {
   const tokens: RegexToken[] = [];
   let i = 0;
   while (i < pattern.length) {
     const char = pattern.charAt(i);
     if (char === '\\') {
+      const property = propertyEscape(pattern, i, unicode);
+      if (property !== null) {
+        tokens.push({ kind: 'chars', chars: property.chars });
+        i += property.length;
+        continue;
+      }
       const chars = escapeCharacters(pattern.charAt(i + 1));
       if (chars === null) {
         return null;
@@ -106,7 +153,7 @@ function tokenize(pattern: string): RegexToken[] | null {
       if (end === -1) {
         return null;
       }
-      const chars = classCharacters(pattern.slice(i + 1, end));
+      const chars = classCharacters(pattern.slice(i + 1, end), unicode);
       if (chars === null) {
         return null;
       }
@@ -182,7 +229,7 @@ function classEnd(pattern: string, start: number): number {
 }
 
 /** Every character a class body admits, or null for a negated or unread class. */
-function classCharacters(body: string): string | null {
+function classCharacters(body: string, unicode = false): string | null {
   if (body.startsWith('^')) {
     return null;
   }
@@ -190,6 +237,12 @@ function classCharacters(body: string): string | null {
   let i = 0;
   while (i < body.length) {
     let first: string;
+    const property = propertyEscape(body, i, unicode);
+    if (property !== null) {
+      singles.push(property.chars);
+      i += property.length;
+      continue;
+    }
     if (body.charAt(i) === '\\') {
       const chars = escapeCharacters(body.charAt(i + 1));
       if (chars === null) {
@@ -249,7 +302,7 @@ function anchoredBody(pattern: string, flags: string): RegexToken[] | null {
   if (flags.includes('m') || flags.includes('v')) {
     return null;
   }
-  const tokens = tokenize(pattern);
+  const tokens = tokenize(pattern, flags.includes('u'));
   if (tokens === null || tokens.length < 2) {
     return null;
   }
@@ -550,7 +603,7 @@ function isMethodReceiver(node: TSESTree.Node, methods: ReadonlySet<string>): bo
   );
 }
 
-const LIST_READS: ReadonlySet<string> = new Set(['includes']);
+const LIST_READS: ReadonlySet<string> = new Set(['includes', 'indexOf']);
 const SET_READS: ReadonlySet<string> = new Set(['has']);
 
 /**
@@ -603,12 +656,36 @@ function isUnchangedConst(
 /** True for an array literal (possibly behind a `const` that never changes) of string or number literals only. */
 function isLiteralList(node: TSESTree.Node, sourceCode: SourceCode): boolean {
   const resolved = resolveConst(node, sourceCode);
+  const frozen = frozenArgument(resolved, sourceCode);
+  if (frozen !== null) {
+    // `Object.freeze([...])`: the contents cannot change, whatever else reads the list.
+    return (
+      frozen.type === AST_NODE_TYPES.ArrayExpression &&
+      frozen.elements.length > 0 &&
+      frozen.elements.every((element) => element !== null && isStaticLiteral(element))
+    );
+  }
   return (
     resolved.type === AST_NODE_TYPES.ArrayExpression &&
     resolved.elements.length > 0 &&
     resolved.elements.every((element) => element !== null && isStaticLiteral(element)) &&
     isUnchangedConst(node, LIST_READS, sourceCode)
   );
+}
+
+/** For `Object.freeze(x)` with the global `Object`, the `x`; else null. */
+function frozenArgument(node: TSESTree.Node, sourceCode: SourceCode): TSESTree.Node | null {
+  const inner = unwrap(node);
+  return inner.type === AST_NODE_TYPES.CallExpression &&
+    inner.callee.type === AST_NODE_TYPES.MemberExpression &&
+    !inner.callee.computed &&
+    isGlobal(inner.callee.object, 'Object', sourceCode) &&
+    inner.callee.property.type === AST_NODE_TYPES.Identifier &&
+    inner.callee.property.name === 'freeze' &&
+    inner.arguments.length === 1 &&
+    inner.arguments[0]?.type !== AST_NODE_TYPES.SpreadElement
+    ? unwrap(inner.arguments[0] as TSESTree.Node)
+    : null;
 }
 
 /** True for `new Set([...literals])`, inline or behind a `const` that never changes. */
@@ -740,7 +817,58 @@ function isCheck(
     const regex = regexOf(test.callee.object, sourceCode);
     return regex !== null && judge(regex.pattern, regex.flags);
   }
-  return isLiteralComparison(inner, variable, false, sourceCode);
+  return (
+    indexOfCheck(inner, variable, true, sourceCode) ||
+    isLiteralComparison(inner, variable, false, sourceCode)
+  );
+}
+
+/**
+ * `LIST.indexOf(x)` compared so the test holds only when `x` is in the list
+ * (`positive`: `!== -1`, `>= 0`, `> -1`) or only when it is not (`=== -1`,
+ * `< 0`), with the list one {@link isLiteralList} accepts.
+ */
+function indexOfCheck(
+  node: TSESTree.Node,
+  subject: Subject,
+  positive: boolean,
+  sourceCode: SourceCode,
+): boolean {
+  const inner = unwrap(node);
+  if (inner.type !== AST_NODE_TYPES.BinaryExpression) {
+    return false;
+  }
+  const call = memberCall(inner.left, 'indexOf');
+  const bound = unwrap(inner.right);
+  if (
+    call === null ||
+    call.callee.type !== AST_NODE_TYPES.MemberExpression ||
+    !readsVariable(call.arguments[0] as TSESTree.Node, subject, sourceCode) ||
+    !isLiteralList(call.callee.object, sourceCode)
+  ) {
+    return false;
+  }
+  const value =
+    bound.type === AST_NODE_TYPES.Literal && typeof bound.value === 'number'
+      ? bound.value
+      : bound.type === AST_NODE_TYPES.UnaryExpression &&
+          bound.operator === '-' &&
+          bound.argument.type === AST_NODE_TYPES.Literal &&
+          bound.argument.value === 1
+        ? -1
+        : null;
+  if (value === null) {
+    return false;
+  }
+  const op = inner.operator;
+  if (positive) {
+    return (
+      ((op === '!==' || op === '!=') && value === -1) ||
+      (op === '>=' && value === 0) ||
+      (op === '>' && value === -1)
+    );
+  }
+  return ((op === '===' || op === '==') && value === -1) || (op === '<' && value === 0);
 }
 
 function flattenLogical(node: TSESTree.Node, operator: '&&' | '||'): TSESTree.Node[] {
@@ -761,6 +889,9 @@ function failsUnlessChecked(
   return flattenLogical(node, '||').some((term) => {
     if (term.type === AST_NODE_TYPES.UnaryExpression && term.operator === '!') {
       return isCheck(term.argument, variable, judge, sourceCode);
+    }
+    if (indexOfCheck(term, variable, false, sourceCode)) {
+      return true;
     }
     const conjuncts = flattenLogical(term, '&&');
     return conjuncts.every((conjunct) => isLiteralComparison(conjunct, variable, true, sourceCode));
@@ -1005,6 +1136,212 @@ function isConfinedParse(node: TSESTree.Node, judge: RegexJudge, sourceCode: Sou
   );
 }
 
+/** `result.success` (or `!result.success` when `negated`) on the given binding. */
+function isSuccessTest(
+  test: TSESTree.Node,
+  result: Variable,
+  negated: boolean,
+  sourceCode: SourceCode,
+): boolean {
+  let inner = unwrap(test);
+  if (negated) {
+    if (inner.type !== AST_NODE_TYPES.UnaryExpression || inner.operator !== '!') {
+      return false;
+    }
+    inner = unwrap(inner.argument);
+  }
+  return (
+    inner.type === AST_NODE_TYPES.MemberExpression &&
+    !inner.computed &&
+    inner.property.type === AST_NODE_TYPES.Identifier &&
+    inner.property.name === 'success' &&
+    inner.object.type === AST_NODE_TYPES.Identifier &&
+    variableOf(inner.object, sourceCode) === result
+  );
+}
+
+/**
+ * `result.data` where `const result = schema.safeParse(x)` with a confined
+ * schema, and `if (!result.success)` exits before the sink (or
+ * `if (result.success)` is around it).
+ */
+function isConfinedSafeParseData(
+  node: TSESTree.Node,
+  sink: TSESTree.Node,
+  judge: RegexJudge,
+  sourceCode: SourceCode,
+): boolean {
+  if (
+    node.type !== AST_NODE_TYPES.MemberExpression ||
+    node.computed ||
+    node.property.type !== AST_NODE_TYPES.Identifier ||
+    node.property.name !== 'data' ||
+    node.object.type !== AST_NODE_TYPES.Identifier
+  ) {
+    return false;
+  }
+  const result = variableOf(node.object, sourceCode);
+  const init = result === null ? null : constInit(result);
+  const call = init === null ? null : memberCall(init, 'safeParse');
+  if (
+    result === null ||
+    call === null ||
+    call.callee.type !== AST_NODE_TYPES.MemberExpression ||
+    !schemaConfines(call.callee.object, judge, sourceCode)
+  ) {
+    return false;
+  }
+  return guardedBefore(
+    sink,
+    (test, negated) => isSuccessTest(test, result, negated, sourceCode),
+    // `result.data = other` after the check is a change to the binding.
+    (position) => writtenOnlyBefore(result, position),
+  );
+}
+
+/**
+ * The schema of `field` in an object schema chain (`z.object({ theme: ... })`,
+ * `joi.object({ theme: ... })`), when every method after `object(...)` only
+ * narrows; else null.
+ */
+function objectFieldSchema(
+  node: TSESTree.Node,
+  field: string,
+  sourceCode: SourceCode,
+): TSESTree.Node | null {
+  let current = resolveConst(node, sourceCode);
+  for (let depth = 0; depth < 16 && current.type === AST_NODE_TYPES.CallExpression; depth += 1) {
+    const callee = current.callee;
+    if (
+      callee.type !== AST_NODE_TYPES.MemberExpression ||
+      callee.computed ||
+      callee.property.type !== AST_NODE_TYPES.Identifier
+    ) {
+      return null;
+    }
+    if (callee.property.name === 'object' && callee.object.type === AST_NODE_TYPES.Identifier) {
+      const shape = current.arguments[0] === undefined ? null : unwrap(current.arguments[0]);
+      if (shape?.type !== AST_NODE_TYPES.ObjectExpression) {
+        return null;
+      }
+      for (const property of shape.properties) {
+        if (
+          property.type === AST_NODE_TYPES.Property &&
+          !property.computed &&
+          ((property.key.type === AST_NODE_TYPES.Identifier && property.key.name === field) ||
+            (property.key.type === AST_NODE_TYPES.Literal && property.key.value === field))
+        ) {
+          return property.value;
+        }
+      }
+      return null;
+    }
+    if (!SCHEMA_NARROWING_METHODS.has(callee.property.name)) {
+      return null;
+    }
+    current = unwrap(callee.object);
+  }
+  return null;
+}
+
+/** The schema of a `schema.parse(x)` call, a `const` bound to one, else null. */
+function parsedSchemaOf(node: TSESTree.Node, sourceCode: SourceCode): TSESTree.Node | null {
+  const call = memberCall(resolveConst(node, sourceCode), 'parse');
+  return call !== null && call.callee.type === AST_NODE_TYPES.MemberExpression
+    ? call.callee.object
+    : null;
+}
+
+/** `schema.parse(x).theme` or `parsed.theme`, where the object schema confines `theme`. */
+function isConfinedParsedField(
+  node: TSESTree.Node,
+  sink: TSESTree.Node,
+  judge: RegexJudge,
+  sourceCode: SourceCode,
+): boolean {
+  if (
+    node.type !== AST_NODE_TYPES.MemberExpression ||
+    node.computed ||
+    node.property.type !== AST_NODE_TYPES.Identifier
+  ) {
+    return false;
+  }
+  const field = node.property.name;
+  let schema = parsedSchemaOf(node.object, sourceCode);
+  if (schema === null && isConfinedSafeParseResult(node.object, sink, sourceCode)) {
+    const object = unwrap(node.object) as TSESTree.MemberExpression;
+    const call = memberCall(resolveConst(object.object, sourceCode), 'safeParse');
+    schema =
+      call !== null && call.callee.type === AST_NODE_TYPES.MemberExpression
+        ? call.callee.object
+        : null;
+  }
+  const fieldSchema = schema === null ? null : objectFieldSchema(schema, field, sourceCode);
+  return fieldSchema !== null && schemaConfines(fieldSchema, judge, sourceCode);
+}
+
+/** `result.data` of a `safeParse` result whose failure exits before the sink. */
+function isConfinedSafeParseResult(
+  node: TSESTree.Node,
+  sink: TSESTree.Node,
+  sourceCode: SourceCode,
+): boolean {
+  const inner = unwrap(node);
+  if (
+    inner.type !== AST_NODE_TYPES.MemberExpression ||
+    inner.computed ||
+    inner.property.type !== AST_NODE_TYPES.Identifier ||
+    inner.property.name !== 'data' ||
+    inner.object.type !== AST_NODE_TYPES.Identifier
+  ) {
+    return false;
+  }
+  const result = variableOf(inner.object, sourceCode);
+  if (result === null || memberCall(resolveConst(inner.object, sourceCode), 'safeParse') === null) {
+    return false;
+  }
+  return guardedBefore(
+    sink,
+    (test, negated) => isSuccessTest(test, result, negated, sourceCode),
+    (position) => writtenOnlyBefore(result, position),
+  );
+}
+
+/** `const { theme } = schema.parse(x)` where the object schema confines `theme`. */
+function isConfinedDestructuredField(
+  variable: Variable,
+  judge: RegexJudge,
+  sourceCode: SourceCode,
+): boolean {
+  const def = variable.defs[0];
+  if (
+    variable.defs.length !== 1 ||
+    def?.type !== 'Variable' ||
+    def.parent.kind !== 'const' ||
+    def.node.id.type !== AST_NODE_TYPES.ObjectPattern ||
+    def.node.init === null
+  ) {
+    return false;
+  }
+  const schema = parsedSchemaOf(def.node.init, sourceCode);
+  if (schema === null) {
+    return false;
+  }
+  for (const property of def.node.id.properties) {
+    if (
+      property.type === AST_NODE_TYPES.Property &&
+      !property.computed &&
+      property.key.type === AST_NODE_TYPES.Identifier &&
+      property.value.type === AST_NODE_TYPES.Identifier &&
+      property.value.name === variable.name
+    ) {
+      const fieldSchema = objectFieldSchema(schema, property.key.name, sourceCode);
+      return fieldSchema !== null && schemaConfines(fieldSchema, judge, sourceCode);
+    }
+  }
+  return false;
+}
+
 /**
  * `const { error, value } = schema.validate(x)` followed by an exiting
  * `if (error)` before the sink, with a confined schema.
@@ -1121,7 +1458,11 @@ function provenSafe(
   if (options.trustEnvironment === true && isEnvironmentValue(node, sourceCode, 0)) {
     return true;
   }
-  if (isConfinedParse(node, judge, sourceCode)) {
+  if (
+    isConfinedParse(node, judge, sourceCode) ||
+    isConfinedSafeParseData(node, sink, judge, sourceCode) ||
+    isConfinedParsedField(node, sink, judge, sourceCode)
+  ) {
     return true;
   }
   if (node.type !== AST_NODE_TYPES.Identifier) {
@@ -1130,6 +1471,9 @@ function provenSafe(
   const variable = variableOf(node, sourceCode);
   if (variable === null) {
     return false;
+  }
+  if (isConfinedDestructuredField(variable, judge, sourceCode)) {
+    return true;
   }
   if (
     variableGuarded(variable, node.range[0], sink, judge, sourceCode) ||
