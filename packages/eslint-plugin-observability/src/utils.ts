@@ -10,6 +10,8 @@ export {
   type LoggerCallOptions,
 } from '@noctcore/eslint-utils';
 
+import { AST_NODE_TYPES, type TSESTree } from '@typescript-eslint/utils';
+
 /** Lowercased camelCase / snake_case / kebab segments of a name. */
 export function nameSegments(name: string): string[] {
   return name
@@ -52,4 +54,73 @@ export function makeNameMatcher(patterns: readonly string[]): (name: string) => 
     const flat = compactName(name);
     return multi.some((p) => flat.includes(p));
   };
+}
+
+/** The event field name the event rules read by default. */
+export const DEFAULT_EVENT_FIELD = 'event';
+
+/** A property's static key name, or null for a computed / non-string key. */
+export function staticKeyName(property: TSESTree.Property): string | null {
+  if (property.computed) {
+    return null;
+  }
+  const key = property.key;
+  if (key.type === AST_NODE_TYPES.Identifier) {
+    return key.name;
+  }
+  if (key.type === AST_NODE_TYPES.Literal && typeof key.value === 'string') {
+    return key.value;
+  }
+  return null;
+}
+
+/** What a logger call's arguments say about its structured payload. */
+export interface LogPayload {
+  /** The object-literal arguments, in order. */
+  readonly objects: readonly TSESTree.ObjectExpression[];
+  /**
+   * True when some argument may carry fields the rule cannot see: a spread
+   * argument, or a value that is neither a literal nor an object literal (an
+   * identifier, a call, a member access), which may be a context object built
+   * elsewhere.
+   */
+  readonly opaque: boolean;
+}
+
+/** Arguments that can never be a structured payload: strings, numbers, booleans, templates. */
+function isPlainValue(node: TSESTree.Node): boolean {
+  return node.type === AST_NODE_TYPES.Literal || node.type === AST_NODE_TYPES.TemplateLiteral;
+}
+
+/** Read the direct arguments of a logger call as a structured payload. */
+export function logPayload(node: TSESTree.CallExpression): LogPayload {
+  const objects: TSESTree.ObjectExpression[] = [];
+  let opaque = false;
+  for (const argument of node.arguments) {
+    if (argument.type === AST_NODE_TYPES.ObjectExpression) {
+      objects.push(argument);
+    } else if (!isPlainValue(argument)) {
+      opaque = true;
+    }
+  }
+  return { objects, opaque };
+}
+
+/** True when an object literal spreads another value into itself. */
+export function hasSpread(object: TSESTree.ObjectExpression): boolean {
+  return object.properties.some((property) => property.type === AST_NODE_TYPES.SpreadElement);
+}
+
+/** The last property of an object literal whose static key is `name`, or null. */
+export function findProperty(
+  object: TSESTree.ObjectExpression,
+  name: string,
+): TSESTree.Property | null {
+  let found: TSESTree.Property | null = null;
+  for (const property of object.properties) {
+    if (property.type === AST_NODE_TYPES.Property && staticKeyName(property) === name) {
+      found = property;
+    }
+  }
+  return found;
 }
