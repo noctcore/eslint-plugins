@@ -11,14 +11,14 @@ const [codeQuality, contracts, asyncSafety, security, architecture] = await Prom
   ['code-quality', 'contracts', 'async-safety', 'security', 'architecture'].map(loadPlugin),
 );
 
-const SOURCE = ['packages/*/src/**/*.ts', 'scripts/**/*.ts'];
+const SOURCE = ['packages/*/src/**/*.ts', 'scripts/**/*.ts', 'bench/src/**/*.ts'];
 
 export default [
   {
     ignores: ['**/dist/**', '**/node_modules/**', 'site/**', '**/*.d.ts'],
   },
   {
-    files: ['packages/*/src/**/*.ts', 'packages/*/tests/**/*.ts', 'scripts/**/*.ts'],
+    files: ['packages/*/src/**/*.ts', 'packages/*/tests/**/*.ts', 'scripts/**/*.ts', 'bench/**/*.ts'],
     languageOptions: { parser: tsParser, ecmaVersion: 'latest', sourceType: 'module' },
     linterOptions: { reportUnusedDisableDirectives: 'error' },
   },

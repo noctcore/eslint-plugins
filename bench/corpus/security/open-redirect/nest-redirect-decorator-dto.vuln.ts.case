@@ -1,0 +1,18 @@
+// @bench category=open-redirect cwe=CWE-601 framework=nest pair=nest-redirect-decorator-dto title="Redirect decorator returns the url from the query dto"
+import { Controller, Get, Query, Redirect } from '@nestjs/common';
+import { IsOptional, IsString } from 'class-validator';
+
+export class GoDto {
+  @IsString()
+  @IsOptional()
+  next: string = '/';
+}
+
+@Controller()
+export class GoController {
+  @Get('go')
+  @Redirect('/', 302)
+  go(@Query() dto: GoDto) {
+    return { url: dto.next }; // expect: security/no-user-controlled-redirect
+  }
+}

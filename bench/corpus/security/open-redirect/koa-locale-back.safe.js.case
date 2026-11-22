@@ -1,0 +1,21 @@
+// @bench category=open-redirect cwe=CWE-601 framework=koa pair=koa-locale-back title="back URL must share the app origin and a non protocol-relative path"
+// ok
+const Koa = require('koa');
+const Router = require('@koa/router');
+
+const app = new Koa();
+const router = new Router();
+const APP_ORIGIN = 'https://app.example.com';
+const LOCALES = new Set(['en', 'pl', 'de']);
+
+router.get('/locale/:code', (ctx) => {
+  if (!LOCALES.has(ctx.params.code)) ctx.throw(404);
+  ctx.cookies.set('locale', ctx.params.code, { maxAge: 31536000000 });
+  const url = new URL(String(ctx.query.back || '/'), APP_ORIGIN);
+  // A pathname that starts with // (from `/.//x` or `/%2e//x`) would be protocol-relative.
+  const local = url.origin === APP_ORIGIN && !url.pathname.startsWith('//');
+  ctx.redirect(local ? url.pathname + url.search : '/');
+});
+
+app.use(router.routes());
+app.listen(3000);

@@ -1,0 +1,17 @@
+// @bench category=server-side-xss cwe=CWE-79 framework=express pair=express-profile-bio title="profile page renders stored user bio as raw HTML"
+const express = require('express');
+const { db } = require('./fake-db');
+
+const app = express();
+
+app.get('/u/:name', async (req, res) => {
+  const user = await db.users.findOne({ name: req.params.name });
+  if (!user) {
+    return res.status(404).send('no such user');
+  }
+  const bio = user.bio || '';
+  const page = `<article><h2>Profile</h2><div class="bio">${bio}</div></article>`; // expect: security/require-sanitized-html
+  res.send(page);
+});
+
+app.listen(8080);

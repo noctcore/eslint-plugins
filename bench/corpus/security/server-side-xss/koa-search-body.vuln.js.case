@@ -1,0 +1,17 @@
+// @bench category=server-side-xss cwe=CWE-79 framework=koa pair=koa-search-body title="search page sets ctx.body with the raw query"
+const Koa = require('koa');
+const Router = require('@koa/router');
+const { searchArticles } = require('./articles');
+
+const app = new Koa();
+const router = new Router();
+
+router.get('/search', async (ctx) => {
+  const term = String(ctx.query.term || '');
+  const hits = await searchArticles(term);
+  ctx.type = 'html';
+  ctx.body = `<h1>Search: ${term}</h1><p>${hits.length} articles found</p>`; // expect: security/require-sanitized-html
+});
+
+app.use(router.routes());
+app.listen(4000);

@@ -1,0 +1,17 @@
+// @bench category=path-traversal cwe=CWE-22 framework=express pair=express-log-tail title="query file concatenated onto the log dir and streamed to the response"
+import fs from 'node:fs';
+import path from 'node:path';
+import express, { Request, Response } from 'express';
+
+const LOG_DIR = path.resolve('/var/log/myapp');
+const app = express();
+
+app.get('/logs', (req: Request, res: Response) => {
+  const file = String(req.query.file ?? 'app.log');
+  const full = LOG_DIR + '/' + file; // expect: security/require-path-containment
+  fs.createReadStream(full).pipe(res);
+});
+
+app.listen(9000);
+
+export default app;

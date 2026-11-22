@@ -1,0 +1,15 @@
+// @bench category=server-side-xss cwe=CWE-79 framework=nest pair=nest-search-header title="controller returns a search page string with the raw query"
+import { Controller, Get, Header, Query } from '@nestjs/common';
+import { SearchService } from './search.service';
+
+@Controller('search')
+export class SearchController {
+  constructor(private readonly search: SearchService) {}
+
+  @Get()
+  @Header('Content-Type', 'text/html')
+  async page(@Query('q') q = ''): Promise<string> {
+    const hits = await this.search.find(q);
+    return `<h1>Results for ${q}</h1><p>${hits.length} items</p>`; // expect: security/require-sanitized-html
+  }
+}

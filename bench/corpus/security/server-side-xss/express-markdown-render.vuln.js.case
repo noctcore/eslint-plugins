@@ -1,0 +1,18 @@
+// @bench category=server-side-xss cwe=CWE-79 framework=express pair=express-markdown-render title="posted markdown rendered with marked and sent as HTML"
+const express = require('express');
+const { marked } = require('marked');
+
+const app = express();
+app.use(express.json());
+
+app.post('/notes/render', (req, res) => {
+  const source = req.body.markdown;
+  if (typeof source !== 'string') {
+    res.status(400).send('markdown required');
+    return;
+  }
+  res.type('html');
+  res.send('<div class="note">' + marked(source) + '</div>'); // expect: security/require-sanitized-html
+});
+
+app.listen(3002);

@@ -1,0 +1,6 @@
+{
+  "title": "Cookie flags",
+  "cwe": null,
+  "rules": ["security/auth-cookie-flags"],
+  "overrides": { "security/auth-cookie-flags": "error" }
+}

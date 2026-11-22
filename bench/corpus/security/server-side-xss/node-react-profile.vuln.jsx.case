@@ -1,0 +1,22 @@
+// @bench category=server-side-xss cwe=CWE-79 framework=node pair=node-react-profile title="node server renders React with the bio set through __html"
+const http = require('node:http');
+const React = require('react');
+const { renderToString } = require('react-dom/server');
+
+function Profile({ bio }) {
+  const label = 'Biography';
+  return (
+    <section>
+      <h2>{label}</h2>
+      <p dangerouslySetInnerHTML={{ __html: bio }} /> {/* expect: security/require-sanitized-html */}
+    </section>
+  );
+}
+
+http
+  .createServer((req, res) => {
+    const bio = new URL(req.url, 'http://x').searchParams.get('bio') || '';
+    res.writeHead(200, { 'Content-Type': 'text/html' });
+    res.end(renderToString(<Profile bio={bio} />));
+  })
+  .listen(5005);

@@ -1,0 +1,19 @@
+// @bench category=server-side-xss cwe=CWE-79 framework=node pair=node-report-concat title="report page concatenates the title query into HTML"
+import http from 'node:http';
+
+const rows: string[][] = [['north', '12'], ['south', '7']];
+
+http
+  .createServer((req, res) => {
+    const params = new URL(req.url ?? '/', 'http://localhost').searchParams;
+    const title = params.get('title') ?? 'Report';
+    let html = '<html><body>';
+    html += '<h1>' + title + '</h1><table>'; // expect: security/require-sanitized-html
+    for (const [region, total] of rows) {
+      html += '<tr><td>' + region + '</td><td>' + total + '</td></tr>';
+    }
+    html += '</table></body></html>';
+    res.writeHead(200, { 'Content-Type': 'text/html' });
+    res.end(html);
+  })
+  .listen(5003);

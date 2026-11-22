@@ -1,0 +1,25 @@
+// @bench category=command-injection cwe=CWE-78 framework=express pair=express-tar-backup title="folder name validated, then passed to tar as an argument array without a shell"
+// ok
+const express = require('express');
+const { spawn } = require('node:child_process');
+
+const FOLDER = /^[a-z0-9][a-z0-9_-]{0,63}$/i;
+
+const app = express();
+
+app.get('/backup', (req, res) => {
+  const folder = req.query.folder;
+  if (typeof folder !== 'string' || !FOLDER.test(folder)) {
+    return res.status(400).json({ error: 'invalid folder' });
+  }
+  const args = ['-czf', `/var/backups/${folder}.tgz`, '-C', '/srv/data', '--', String(folder)];
+  const child = spawn('tar', args);
+  child.on('close', (code) => {
+    if (code !== 0) {
+      return res.status(500).json({ error: 'backup failed' });
+    }
+    res.json({ archive: `/var/backups/${folder}.tgz` });
+  });
+});
+
+app.listen(3000);

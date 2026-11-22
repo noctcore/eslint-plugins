@@ -1,0 +1,17 @@
+// @bench category=server-side-xss cwe=CWE-79 framework=node pair=node-search-end title="http server ends the response with the query in HTML"
+const http = require('node:http');
+const { URL } = require('node:url');
+
+const server = http.createServer((req, res) => {
+  const url = new URL(req.url, 'http://localhost');
+  if (url.pathname !== '/search') {
+    res.writeHead(404);
+    res.end('not found');
+    return;
+  }
+  const q = url.searchParams.get('q') || '';
+  res.writeHead(200, { 'Content-Type': 'text/html; charset=utf-8' });
+  res.end(`<html><body><h1>You searched for ${q}</h1></body></html>`); // expect: security/require-sanitized-html
+});
+
+server.listen(5000);

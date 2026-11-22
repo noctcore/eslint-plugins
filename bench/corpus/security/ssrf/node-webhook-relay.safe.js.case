@@ -1,0 +1,25 @@
+// @bench category=ssrf cwe=CWE-918 framework=node pair=node-webhook-relay title="relay target hostname must match an anchored regex on the partner domain"
+// ok
+const http = require('node:http');
+
+const RELAY_HOST = /^([a-z0-9-]+\.)*relay\.example\.com$/;
+
+async function readJson(req) {
+  let raw = '';
+  for await (const chunk of req) raw += chunk;
+  return JSON.parse(raw);
+}
+
+const server = http.createServer(async (req, res) => {
+  const body = await readJson(req);
+  const target = new URL(body.url);
+  if (target.protocol !== 'https:' || !RELAY_HOST.test(target.hostname)) {
+    res.writeHead(400).end();
+    return;
+  }
+  const outcome = await fetch(target, { method: 'POST', body: JSON.stringify(body.data) });
+  res.writeHead(200, { 'Content-Type': 'application/json' });
+  res.end(JSON.stringify({ status: outcome.status }));
+});
+
+server.listen(3000);

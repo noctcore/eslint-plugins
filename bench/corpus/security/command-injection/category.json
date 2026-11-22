@@ -1,0 +1,6 @@
+{
+  "title": "Command injection",
+  "cwe": "CWE-78",
+  "rules": ["security/no-shell-interpolation"],
+  "overrides": {}
+}

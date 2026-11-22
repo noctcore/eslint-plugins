@@ -26,11 +26,14 @@
  *    links, as it does for every page).
  * 10. Nothing emitted loads Google Fonts: every font is self-hosted, and each
  *     of the three families ships its woff2 files.
+ * 11. The benchmark page exists and has a row for every rule measured in
+ *     bench/baseline.json (check 3 already walks its links to rule pages).
  */
 import { existsSync, readdirSync, readFileSync, statSync } from 'node:fs';
 import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
+import { readBenchBaseline } from './bench';
 import { SITE_BASE, SITE_ORIGIN, listRuleDocs, loadInventory } from './inventory';
 
 const DIST = join(resolve(dirname(fileURLToPath(import.meta.url)), '..'), 'dist');
@@ -250,6 +253,19 @@ const NOT_FOUND = join(DIST, '404.html');
 if (!existsSync(NOT_FOUND)) failures.push('dist/404.html was not emitted');
 else if (!readFileSync(NOT_FOUND, 'utf8').includes('class="not-found')) failures.push('dist/404.html is not the site\'s own 404 page');
 
+// 11. The benchmark page, rendered from bench/baseline.json.
+const BENCH_PAGE = join(DIST, 'bench', 'index.html');
+let benchRules = 0;
+if (!existsSync(BENCH_PAGE)) failures.push('dist/bench/index.html was not emitted');
+else {
+  const html = readFileSync(BENCH_PAGE, 'utf8');
+  for (const rule of Object.keys(readBenchBaseline().rules)) {
+    benchRules++;
+    const [short, name] = rule.split('/');
+    if (!html.includes(`href="${SITE_BASE}/rules/${short}/${name}/"`)) failures.push(`bench page: no row linking ${rule}`);
+  }
+}
+
 // 10. Self-hosted fonts only.
 const TEXT_FILE = /\.(?:html|css|js|mjs|json|txt|xml|svg)$/;
 let textFilesScanned = 0;
@@ -273,7 +289,8 @@ console.log(
     `rules.json ${indexEntries} entries with ${indexUrlsChecked} urls checked, ` +
     `search palette on ${pagesWithPalette} pages, ${rulePagesFramed} rule page frames checked, ` +
     `strict offered on ${strictFound.length} package pages, ` +
-    `${textFilesScanned} text files free of Google Fonts, ${fontFiles} woff2 fonts`,
+    `${textFilesScanned} text files free of Google Fonts, ${fontFiles} woff2 fonts, ` +
+    `bench page with ${benchRules} measured rules`,
 );
 if (failures.length > 0) {
   const unique = [...new Set(failures)];

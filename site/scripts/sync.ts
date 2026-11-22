@@ -31,6 +31,7 @@ import {
   type PackageEntry,
   type RuleEntry,
 } from './inventory';
+import { readBenchBaseline, renderBenchPage } from './bench';
 import { deprecationSentence, stripRuleHeader } from './readmes';
 import { HERO } from '../src/lib/stacks';
 import { checkRuleDocSections } from './structure';
@@ -39,6 +40,7 @@ const SITE_DIR = resolve(dirname(fileURLToPath(import.meta.url)), '..');
 const RULES_OUT = join(SITE_DIR, 'src', 'content', 'docs', 'rules');
 const CATALOG_OUT = join(SITE_DIR, 'src', 'generated', 'catalog.json');
 const HERO_OUT = join(SITE_DIR, 'src', 'generated', 'hero.json');
+const BENCH_OUT = join(SITE_DIR, 'src', 'content', 'docs', 'bench.md');
 
 const FENCE = /^(\s*)```(\S*)[ \t]*(.*)$/;
 const VERDICTS = new Set(['bad', 'good', 'prose']);
@@ -350,6 +352,9 @@ async function main(): Promise<void> {
     ...heroExample(readFileSync(heroDoc.path, 'utf8'), HERO.highlight, heroDoc.path),
   };
   writeFileSync(HERO_OUT, `${JSON.stringify(hero, null, 2)}\n`);
+
+  // The benchmark page, from the baseline CI's ratchet holds the tree to.
+  writeFileSync(BENCH_OUT, renderBenchPage(readBenchBaseline()));
 
   const counts = inventory.map((pkg) => `${pkg.short}=${pkg.rules.length}`).join(' ');
   console.log(`sync: ${docs.length} rule pages, ${inventory.length} packages (${counts})`);
