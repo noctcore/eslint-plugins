@@ -83,7 +83,8 @@ A runtime part is proven safe when it is:
 - a value the function checked before the response with an `if` that exits (or an `if` around
   it): an allowlist (`includes` / `has` on in-file literals, `===` against literals) or a regex
   anchored at both ends, without the `m` flag or a `.`, that admits none of `<`, `>`, `&`, `"`, `'`
-  or a backtick.
+  or a backtick. With the `u` flag, letter and number classes (`\p{L}`, `\p{N}`) are read as
+  admitting no markup.
 
 ```ts good
 export function list(req, res) {
@@ -110,7 +111,15 @@ built in one function and sent from another is not followed.
 | `sanitizers` | `string[]` | see below | Functions whose result is safe in HTML. An entry with a dot (`he.encode`) matches that callee; one without (`escapeHtml`) matches a bare call or any method of that name. Setting this replaces the defaults. |
 
 Default `sanitizers`: `escapeHtml`, `escapeHTML`, `htmlEscape`, `encodeHTML`, `escape`, `he.encode`,
-`he.escape`, `sanitize` (so `DOMPurify.sanitize`), `sanitizeHtml`, `xss`, `filterXSS`.
+`he.escape`, `sanitize` (so `DOMPurify.sanitize`), `sanitizeHtml`, `xss`, `filterXSS`,
+`renderToString` and `renderToStaticMarkup` (React escapes the text it renders; its raw-HTML prop is
+`require-sanitized-html`'s to check).
+
+Escapers imported from their modules count under any local name, whatever `sanitizers` says:
+`he` (`encode`, `escape`), `entities`, `escape-html`, `html-escaper`, `lodash` / `lodash-es` /
+`lodash.escape` (`escape`), `xss`, `sanitize-html` and `react-dom/server`, through `import`
+(default, named or namespace) or `require` (whole or destructured). So
+`import { encode } from 'he'` makes `encode(x)` safe.
 
 ```js
 'noctcore-security/no-unescaped-html-response': [
