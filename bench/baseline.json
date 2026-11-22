@@ -74,13 +74,13 @@
       "url": "https://noctcore.github.io/eslint-plugins/rules/security/no-user-controlled-fetch-url/"
     },
     "security/no-user-controlled-redirect": {
-      "tp": 13,
-      "fn": 17,
-      "fp": 13,
-      "tn": 17,
-      "detection": 0.4333,
-      "falseAlarm": 0.4333,
-      "j": 0,
+      "tp": 21,
+      "fn": 9,
+      "fp": 6,
+      "tn": 24,
+      "detection": 0.7,
+      "falseAlarm": 0.2,
+      "j": 0.5,
       "extra": 0,
       "crossFp": 0,
       "crossSafe": 151,
@@ -166,13 +166,13 @@
       }
     },
     "security/open-redirect": {
-      "tp": 13,
-      "fn": 17,
-      "fp": 13,
-      "tn": 17,
-      "detection": 0.4333,
-      "falseAlarm": 0.4333,
-      "j": 0,
+      "tp": 21,
+      "fn": 9,
+      "fp": 6,
+      "tn": 24,
+      "detection": 0.7,
+      "falseAlarm": 0.2,
+      "j": 0.5,
       "extra": 0,
       "title": "Open redirect",
       "cwe": "CWE-601",
@@ -3265,11 +3265,11 @@
       "title": "cookie value parsed, origin compared and a protocol-relative pathname refused"
     },
     "security/open-redirect/express-cookie-return-url.safe.ts.case#security/no-user-controlled-redirect": {
-      "outcome": "FP",
+      "outcome": "TN",
       "category": "security/open-redirect",
       "rule": "security/no-user-controlled-redirect",
       "file": "security/open-redirect/express-cookie-return-url.safe.ts.case",
-      "line": 19,
+      "line": null,
       "pair": "express-cookie-return-url",
       "framework": "express",
       "cwe": "CWE-601",
@@ -3353,11 +3353,11 @@
       "title": "path must start with one slash so the host stays fixed"
     },
     "security/open-redirect/express-host-concat-path.safe.js.case#security/no-user-controlled-redirect": {
-      "outcome": "FP",
+      "outcome": "TN",
       "category": "security/open-redirect",
       "rule": "security/no-user-controlled-redirect",
       "file": "security/open-redirect/express-host-concat-path.safe.js.case",
-      "line": 14,
+      "line": null,
       "pair": "express-host-concat-path",
       "framework": "express",
       "cwe": "CWE-601",
@@ -3408,7 +3408,7 @@
       "title": "next mapped through a destination table to fixed paths"
     },
     "security/open-redirect/express-location-send-status.vuln.ts.case#security/no-user-controlled-redirect": {
-      "outcome": "FN",
+      "outcome": "TP",
       "category": "security/open-redirect",
       "rule": "security/no-user-controlled-redirect",
       "file": "security/open-redirect/express-location-send-status.vuln.ts.case",
@@ -3485,11 +3485,11 @@
       "title": "logout next accepted only for allowlisted https hosts"
     },
     "security/open-redirect/express-logout-next.safe.js.case#security/no-user-controlled-redirect": {
-      "outcome": "FP",
+      "outcome": "TN",
       "category": "security/open-redirect",
       "rule": "security/no-user-controlled-redirect",
       "file": "security/open-redirect/express-logout-next.safe.js.case",
-      "line": 19,
+      "line": null,
       "pair": "express-logout-next",
       "framework": "express",
       "cwe": "CWE-601",
@@ -4013,11 +4013,11 @@
       "title": "path guard throws unless it starts with a single slash"
     },
     "security/open-redirect/nest-host-concat-path.safe.ts.case#security/no-user-controlled-redirect": {
-      "outcome": "FP",
+      "outcome": "TN",
       "category": "security/open-redirect",
       "rule": "security/no-user-controlled-redirect",
       "file": "security/open-redirect/nest-host-concat-path.safe.ts.case",
-      "line": 14,
+      "line": null,
       "pair": "nest-host-concat-path",
       "framework": "nest",
       "cwe": "CWE-601",
@@ -4057,11 +4057,11 @@
       "title": "dto restricts target under ValidationPipe to a key mapped to fixed paths"
     },
     "security/open-redirect/nest-locale-switch-back.safe.ts.case#security/no-user-controlled-redirect": {
-      "outcome": "FP",
+      "outcome": "TN",
       "category": "security/open-redirect",
       "rule": "security/no-user-controlled-redirect",
       "file": "security/open-redirect/nest-locale-switch-back.safe.ts.case",
-      "line": 21,
+      "line": null,
       "pair": "nest-locale-switch-back",
       "framework": "nest",
       "cwe": "CWE-601",
@@ -4112,7 +4112,7 @@
       "title": "cookie parsed, origin compared and a protocol-relative path refused"
     },
     "security/open-redirect/nest-location-header-cookie.vuln.ts.case#security/no-user-controlled-redirect": {
-      "outcome": "FN",
+      "outcome": "TP",
       "category": "security/open-redirect",
       "rule": "security/no-user-controlled-redirect",
       "file": "security/open-redirect/nest-location-header-cookie.vuln.ts.case",
@@ -4145,11 +4145,11 @@
       "title": "next accepted only as a same-site relative path"
     },
     "security/open-redirect/nest-login-res-redirect.safe.ts.case#security/no-user-controlled-redirect": {
-      "outcome": "FP",
+      "outcome": "TN",
       "category": "security/open-redirect",
       "rule": "security/no-user-controlled-redirect",
       "file": "security/open-redirect/nest-login-res-redirect.safe.ts.case",
-      "line": 16,
+      "line": null,
       "pair": "nest-login-res-redirect",
       "framework": "nest",
       "cwe": "CWE-601",
@@ -4233,11 +4233,11 @@
       "title": "redirect_uri must be in the registered client URI set"
     },
     "security/open-redirect/nest-oauth-callback-redirect-uri.safe.ts.case#security/no-user-controlled-redirect": {
-      "outcome": "FP",
+      "outcome": "TN",
       "category": "security/open-redirect",
       "rule": "security/no-user-controlled-redirect",
       "file": "security/open-redirect/nest-oauth-callback-redirect-uri.safe.ts.case",
-      "line": 17,
+      "line": null,
       "pair": "nest-oauth-callback-redirect-uri",
       "framework": "nest",
       "cwe": "CWE-601",
@@ -4332,7 +4332,7 @@
       "title": "cookie value parsed, origin compared and a protocol-relative path refused"
     },
     "security/open-redirect/node-cookie-return-ts.vuln.ts.case#security/no-user-controlled-redirect": {
-      "outcome": "FN",
+      "outcome": "TP",
       "category": "security/open-redirect",
       "rule": "security/no-user-controlled-redirect",
       "file": "security/open-redirect/node-cookie-return-ts.vuln.ts.case",
@@ -4376,7 +4376,7 @@
       "title": "decoded value must match an anchored local path regex"
     },
     "security/open-redirect/node-decode-location-ts.vuln.ts.case#security/no-user-controlled-redirect": {
-      "outcome": "FN",
+      "outcome": "TP",
       "category": "security/open-redirect",
       "rule": "security/no-user-controlled-redirect",
       "file": "security/open-redirect/node-decode-location-ts.vuln.ts.case",
@@ -4420,7 +4420,7 @@
       "title": "path must start with one slash so the host stays fixed"
     },
     "security/open-redirect/node-host-concat-path.vuln.js.case#security/no-user-controlled-redirect": {
-      "outcome": "FN",
+      "outcome": "TP",
       "category": "security/open-redirect",
       "rule": "security/no-user-controlled-redirect",
       "file": "security/open-redirect/node-host-concat-path.vuln.js.case",
@@ -4464,7 +4464,7 @@
       "title": "redirect_uri compared to a registered set before use"
     },
     "security/open-redirect/node-oauth-redirect-uri.vuln.js.case#security/no-user-controlled-redirect": {
-      "outcome": "FN",
+      "outcome": "TP",
       "category": "security/open-redirect",
       "rule": "security/no-user-controlled-redirect",
       "file": "security/open-redirect/node-oauth-redirect-uri.vuln.js.case",
@@ -4508,7 +4508,7 @@
       "title": "returnTo host checked against an allowlist constant"
     },
     "security/open-redirect/node-setheader-return-to.vuln.js.case#security/no-user-controlled-redirect": {
-      "outcome": "FN",
+      "outcome": "TP",
       "category": "security/open-redirect",
       "rule": "security/no-user-controlled-redirect",
       "file": "security/open-redirect/node-setheader-return-to.vuln.js.case",
@@ -4552,7 +4552,7 @@
       "title": "next accepted only as a printable same-site relative path"
     },
     "security/open-redirect/node-writehead-next.vuln.js.case#security/no-user-controlled-redirect": {
-      "outcome": "FN",
+      "outcome": "TP",
       "category": "security/open-redirect",
       "rule": "security/no-user-controlled-redirect",
       "file": "security/open-redirect/node-writehead-next.vuln.js.case",
