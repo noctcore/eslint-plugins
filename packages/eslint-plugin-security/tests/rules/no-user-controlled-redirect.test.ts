@@ -50,6 +50,31 @@ ruleTester.run('no-user-controlled-redirect', noUserControlledRedirectRule, {
     { code: 'ctx.redirect(url);', filename: TS },
     // A status code is not the URL in the single-argument-last shape.
     { code: `res.redirect('/done');`, filename: TS },
+    // Location headers with a fixed origin.
+    { code: "res.location('/login');", filename: TS },
+    { code: "res.set('Location', `/users/${id}`).status(302).end();", filename: TS },
+    { code: "res.status(302).set('Location', '/home').end();", filename: TS },
+    { code: "res.writeHead(302, { Location: '/home' });", filename: TS },
+    { code: "res.set('Content-Type', contentType);", filename: TS },
+    { code: "res.set({ 'Cache-Control': value });", filename: TS },
+    { code: "headers.set('Location', target);", filename: TS },
+    // A target whose host passed an anchored allowlist before the redirect.
+    {
+      code: "function go(req, res) { const target = String(req.query.next); let host = ''; try { host = new URL(target).hostname; } catch { return res.status(400).end(); } if (!/^(app|docs)\\.example\\.com$/.test(host)) return res.status(403).end(); res.redirect(target); }",
+      filename: TS,
+    },
+    {
+      code: "const HOSTS = ['app.example.com']; function go(req, res) { const target = req.query.next; const { hostname } = { hostname: '' }; const host = new URL(target).host; if (!HOSTS.includes(host)) { res.sendStatus(403); return; } const next = target; res.status(302).set('Location', String(next)).end(); }",
+      filename: TS,
+    },
+    {
+      code: "function go(req, res) { const target = req.query.next; const host = new URL(String(target)).hostname; if (host === 'app.example.com' || host === 'docs.example.com') { res.location(target).sendStatus(303); } }",
+      filename: TS,
+    },
+    {
+      code: "function go(req, res) { const target = req.query.next; const host = new URL(target).hostname; if (!/^([a-z]+\\.)?example\\.com$/.test(host)) throw new Error('host'); res.redirect(302, target); }",
+      filename: TS,
+    },
   ],
   invalid: [
     // Plain user input.
@@ -88,6 +113,74 @@ ruleTester.run('no-user-controlled-redirect', noUserControlledRedirectRule, {
       code: 'ctx.redirect(301, url);',
       filename: TS,
       options: [{ redirectCallees: [{ object: 'ctx', name: 'redirect', urlArgument: 1 }] }],
+      errors: [error],
+    },
+    // Location headers and chained receivers.
+    { code: 'res.location(req.query.next);', filename: TS, errors: [error] },
+    { code: 'res.location(String(next)).sendStatus(303);', filename: TS, errors: [error] },
+    { code: "res.status(302).set('Location', String(target)).end();", filename: TS, errors: [error] },
+    { code: "res.header('location', target);", filename: TS, errors: [error] },
+    { code: "res.setHeader('Location', target);", filename: TS, errors: [error] },
+    { code: "response.set({ Location: target });", filename: TS, errors: [error] },
+    { code: "res.writeHead(302, { 'Location': target });", filename: TS, errors: [error] },
+    { code: "res.writeHead(302, 'Found', { location: target });", filename: TS, errors: [error] },
+    { code: "reply.code(302).header('Location', target).send();", filename: TS, errors: [error] },
+    { code: 'res.status(302).redirect(target);', filename: TS, errors: [error] },
+    // A value read from storage or a header is still a runtime origin.
+    {
+      code: "async function go(res) { const row = await db.query('SELECT url FROM links'); res.location(String(row.url)).sendStatus(303); }",
+      filename: TS,
+      errors: [error],
+    },
+    // Near misses of the host allowlist.
+    {
+      code: "function go(target, res) { const host = new URL(target).hostname; if (!/example\\.com$/.test(host)) return; res.redirect(target); }",
+      filename: TS,
+      errors: [error],
+    },
+    {
+      code: "function go(target, res) { const host = new URL(target).hostname; if (!/^app\\.example\\.com|docs\\.example\\.com$/.test(host)) return; res.redirect(target); }",
+      filename: TS,
+      errors: [error],
+    },
+    {
+      code: "function go(target, res) { const host = new URL(target).hostname; if (!/^[a-z]+\\.[a-z]+$/.test(host)) return; res.redirect(target); }",
+      filename: TS,
+      errors: [error],
+    },
+    {
+      code: "function go(target, res) { const host = new URL(target).hostname; if (!/^.*\\.example\\.com$/.test(host)) return; res.redirect(target); }",
+      filename: TS,
+      errors: [error],
+    },
+    {
+      code: "function go(target, res) { const host = new URL(target).hostname; if (!/^app\\.example\\.com$/.test(host)) { log(host); } res.redirect(target); }",
+      filename: TS,
+      errors: [error],
+    },
+    {
+      code: "function go(input, res) { let target = input; const host = new URL(target).hostname; if (!/^app\\.example\\.com$/.test(host)) return; target = input + '/x'; res.redirect(target); }",
+      filename: TS,
+      errors: [error],
+    },
+    {
+      code: "function go(target, other, res) { const host = new URL(other).hostname; if (!/^app\\.example\\.com$/.test(host)) return; res.redirect(target); }",
+      filename: TS,
+      errors: [error],
+    },
+    {
+      code: "function go(target, res) { const host = new URL(target, base).hostname; if (!/^app\\.example\\.com$/.test(host)) return; res.redirect(target); }",
+      filename: TS,
+      errors: [error],
+    },
+    {
+      code: "function go(target, res) { let host = new URL(target).hostname; host = getHost(); if (!/^app\\.example\\.com$/.test(host)) return; res.redirect(target); }",
+      filename: TS,
+      errors: [error],
+    },
+    {
+      code: "function go(target, res) { res.redirect(target); const host = new URL(target).hostname; if (!/^app\\.example\\.com$/.test(host)) return; }",
+      filename: TS,
       errors: [error],
     },
   ],
