@@ -1,5 +1,6 @@
 import type { IMetaRule, IViolation } from '@noctcore/harness';
 
+import { matchesAnyGlob } from './glob-match';
 import { workspaceList } from './pnpm-workspace-yaml';
 import { asRecord, escapeRegExp, readManifests } from './shared';
 
@@ -50,15 +51,6 @@ function trimSlashes(glob: string): string {
   return glob.replace(/^\.\//u, '').replace(/\/+$/u, '');
 }
 
-/** A glob as a whole-path regex: `**` spans directories, `*` stays in one segment. */
-function globRegExp(glob: string): RegExp {
-  const source = glob
-    .split('**')
-    .map((part) => part.split('*').map(escapeRegExp).join('[^/]*'))
-    .join('.*');
-  return new RegExp(`^${source}$`, 'u');
-}
-
 /** The `package.json` files of the workspace packages, plus the root one when asked for. */
 function manifestFiles(
   glob: (pattern: string) => string[],
@@ -68,12 +60,12 @@ function manifestFiles(
   const include = workspaces.filter((entry) => !entry.startsWith('!')).map(trimSlashes);
   const exclude = workspaces
     .filter((entry) => entry.startsWith('!'))
-    .map((entry) => globRegExp(trimSlashes(entry.slice(1))));
+    .map((entry) => trimSlashes(entry.slice(1)));
   const files = new Set<string>();
   for (const entry of include) {
     for (const file of glob(`${entry}/package.json`)) {
       const dir = file.replace(/\/?package\.json$/u, '');
-      if (!exclude.some((pattern) => pattern.test(dir))) files.add(file);
+      if (!matchesAnyGlob(dir, exclude)) files.add(file);
     }
   }
   if (includeRoot) files.add('package.json');
