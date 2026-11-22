@@ -70,7 +70,7 @@ export function createTestWorkspaceEnrollmentRule(
           violations.push({
             file: manifestPath,
             rule: 'test-workspace-enrollment',
-            message: `Package '${dir}' has test files but is not listed in the '${scriptName}' script — its tests run in no CI gate. Add '${dir}' to '${scriptName}'.`,
+            message: `Package '${dir}' has test files but is not listed in the '${scriptName}' script: its tests run in no CI gate. Add '${dir}' to '${scriptName}'.`,
           });
         }
       }

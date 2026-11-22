@@ -76,7 +76,7 @@ export function createCanonicalHelpersSingleHomeRule(
           violations.push({
             file: first,
             rule: 'canonical-helpers-single-home',
-            message: `Helper '${name}' lives in multiple homes (${homes.join(', ')}) — consolidate to the canonical one.`,
+            message: `Helper '${name}' lives in multiple homes (${homes.join(', ')}): consolidate to the canonical one.`,
           });
         }
       }

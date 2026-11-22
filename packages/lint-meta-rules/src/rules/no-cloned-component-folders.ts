@@ -68,7 +68,7 @@ export function createNoClonedComponentFoldersRule(
         violations.push({
           file: `${componentsRoot}/{${sorted.join(',')}}/${name}`,
           rule: 'no-cloned-component-folders',
-          message: `Component folder '${name}' is cloned across ${features.length} features (${sorted.join(', ')}) — clone drift in the making. Hoist it to ${sharedDest} or rename to reflect divergent semantics.`,
+          message: `Component folder '${name}' is cloned across ${features.length} features (${sorted.join(', ')}): clone drift in the making. Hoist it to ${sharedDest} or rename to reflect divergent semantics.`,
         });
       }
 
@@ -79,7 +79,7 @@ export function createNoClonedComponentFoldersRule(
           violations.push({
             file: `${componentsRoot}/*/${name}`,
             rule: 'no-cloned-component-folders',
-            message: `Allowlist entry '${name}' is stale — the clone group no longer exists. Remove it from allowedClones (the allowlist only shrinks).`,
+            message: `Allowlist entry '${name}' is stale: the clone group no longer exists. Remove it from allowedClones (the allowlist only shrinks).`,
           });
         }
       }
