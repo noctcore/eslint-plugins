@@ -40,12 +40,69 @@ The URL argument of each configured redirect callee goes through the same fixed-
 base)`. A same-origin relative path passes; a runtime host, a runtime value right after a lone `/`,
 or a runtime value right after an origin that no `/`, `?` or `#` has closed is flagged.
 
+The analysis judges the target's origin, not where the value came from, so a URL read from the
+database (a stored open redirect) or from the `Host` header counts the same as one read from the
+query string.
+
+### `Location` headers
+
+A redirect is also a `Location` header plus a 3xx status. On a receiver named in `responseObjects`
+(`res`, `response`, `reply` by default), these are checked like `res.redirect`:
+
+- `res.location(url)` (in the default `redirectCallees`);
+- `res.set('Location', url)`, `res.header('location', url)`, `res.setHeader('Location', url)`, with
+  the header name in any case;
+- `res.set({ Location: url })` and `res.writeHead(302, { Location: url })`.
+
+A sink after calls that return the response is still on the response:
+`res.status(302).set('Location', url)`, `reply.code(302).header('Location', url)` and
+`res.status(302).redirect(url)` are all read.
+
+```ts bad
+export function back(req, res) {
+  return res.status(302).set('Location', String(req.query.next)).end();
+}
+```
+
 ## What it does not flag
 
 - A literal URL, or a same-origin relative path even with a runtime segment (`/users/${id}`).
 - A `trustedOrigins` match closed by `/`, `?` or `#`, or followed by a sanitizer's result or a
   trusted path; a sanitizer's result on its own.
-- Redirect calls not listed in `redirectCallees` (`ctx.redirect` needs configuring).
+- Redirect calls not listed in `redirectCallees` (`ctx.redirect` needs configuring), and header
+  writes on receivers not in `responseObjects` (a `Headers` object's `headers.set(...)`).
+- A host-pinned target: the URL's host was read with `new URL(url).hostname` (or `.host` /
+  `.origin`, with no base argument) into a binding, that binding passed an allowlist before the
+  redirect (an `if` that exits, or an `if` around it), and the URL was not written after the read.
+  The allowlist is `includes` / `has` on in-file literals, `===` against literals, or a regex
+  anchored at both ends, without the `m` flag or a `.` wildcard, whose every alternative ends in a
+  literal domain (`^(app|docs)\.example\.com$`, `^([a-z]+\.)?example\.com$`). `const` aliases and
+  `String(url)` are followed.
+
+```ts bad
+// the check only logs, and `/example\.com$/` also matches `evilexample.com`
+export function go(req, res) {
+  const target = String(req.query.next);
+  const host = new URL(target).hostname;
+  if (!/example\.com$/.test(host)) console.warn('unexpected host', host);
+  res.redirect(target);
+}
+```
+
+```ts good
+// only two hosts get past the check
+export function go(req, res) {
+  const target = String(req.query.next);
+  let host = '';
+  try {
+    host = new URL(target).hostname;
+  } catch {
+    return res.status(400).end();
+  }
+  if (!/^(app|docs)\.example\.com$/.test(host)) return res.status(403).end();
+  res.redirect(target);
+}
+```
 
 When the URL argument is an object literal, the URL is read from its `urlProperty` (default `href`),
 and an object without that property is skipped. That is what keeps TanStack Router quiet:
@@ -66,6 +123,7 @@ throw redirect({ href: search.next });
 | Option | Type | Default | Meaning |
 | --- | --- | --- | --- |
 | `redirectCallees` | `CalleeSpec[]` | see below | Call shapes that redirect. Setting this replaces the defaults. |
+| `responseObjects` | `string[]` | `['res', 'response', 'reply']` | Receivers whose `set` / `header` / `setHeader` / `writeHead` calls are checked for a `Location` header. Setting this replaces the defaults. |
 | `trustedOrigins` | `string[]` | `[]` | Expressions (source text) that are a fixed-origin URL. `name()` matches any call to `name`. |
 | `sanitizers` | `string[]` | `[]` | Functions whose result is a safe same-origin path. |
 | `trustedPaths` | `string[]` | `[]` | Expressions (source text) that hold a safe same-origin path, e.g. an imported constant. |
@@ -84,6 +142,8 @@ Default `redirectCallees`:
 | `reply.redirect(url)` (Fastify v5) | 0 |
 | `res.redirect([status,] url)` (Express) | last |
 | `response.redirect([status,] url)` (Express) | last |
+| `res.location(url)` (Express) | 0 |
+| `response.location(url)` (Express) | 0 |
 
 `'last'` covers both Express forms: `res.redirect(url)` and `res.redirect(302, url)`.
 
