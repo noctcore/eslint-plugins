@@ -189,6 +189,7 @@ export const noShellInterpolationRule = createRule<RuleOptions, MessageIds>({
         'A dynamically-interpolated command string must not flow into a shell runner (`exec`/`execSync`, or `spawn`/`execFile` with a `shell` option that is not `false`), including through `promisify(exec)`. Pass the program and arguments separately.',
       cwe: ['CWE-78'],
       owasp: ['A03:2021'],
+      securitySeverity: 9.8,
     },
     schema: [optionSchema],
     messages: {

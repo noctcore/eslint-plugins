@@ -67,6 +67,7 @@ export const noUserControlledFetchUrlRule = createRule<RuleOptions, MessageIds>(
         'Disallow HTTP requests whose origin is not fixed at authoring time: a runtime-controlled host enables SSRF.',
       cwe: ['CWE-918'],
       owasp: ['A10:2021'],
+      securitySeverity: 8.6,
     },
     schema: [optionSchema],
     messages: {

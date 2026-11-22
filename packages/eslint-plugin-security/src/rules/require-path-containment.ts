@@ -241,6 +241,7 @@ export const requirePathContainmentRule = createRule<RuleOptions, MessageIds>({
         'Request-shaped input (`req.*`) passed directly into `path.join` / `path.resolve` without a containment test on the result is a path-traversal sink.',
       cwe: ['CWE-22'],
       owasp: ['A01:2021'],
+      securitySeverity: 7.5,
     },
     schema: [optionSchema],
     messages: {

@@ -68,6 +68,7 @@ export const noUserControlledRedirectRule = createRule<RuleOptions, MessageIds>(
         'Disallow redirects whose target origin is not fixed at authoring time: a user-controlled target is an open redirect.',
       cwe: ['CWE-601'],
       owasp: ['A01:2021'],
+      securitySeverity: 6.1,
     },
     schema: [optionSchema],
     messages: {

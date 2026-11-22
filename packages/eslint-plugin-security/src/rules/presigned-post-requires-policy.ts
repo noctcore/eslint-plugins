@@ -69,6 +69,7 @@ export const presignedPostRequiresPolicyRule = createRule<[], MessageIds>({
         'A `createPresignedPost` call must pin the upload size and Content-Type in literal `Conditions`.',
       cwe: ['CWE-434', 'CWE-770'],
       owasp: ['A04:2021'],
+      securitySeverity: 6.5,
     },
     schema: [],
     messages: {

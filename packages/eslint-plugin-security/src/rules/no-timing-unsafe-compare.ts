@@ -195,6 +195,7 @@ export const noTimingUnsafeCompareRule = createRule<RuleOptions, MessageIds>({
         'An HMAC digest or signature must not be compared with `===` / `!==` / `==` / `!=` or `Buffer#equals`; use `crypto.timingSafeEqual`.',
       cwe: ['CWE-208'],
       owasp: ['A02:2021'],
+      securitySeverity: 5.9,
     },
     schema: [optionSchema],
     messages: {
