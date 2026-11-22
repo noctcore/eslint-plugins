@@ -374,3 +374,75 @@ export function listRuleDocs(): DocEntry[] {
   }
   return docs;
 }
+
+/** What the rule page template reads from a rule module beyond the inventory. */
+export interface RuleDetails {
+  /** `meta.messages`, keyed by message id, in declaration order. */
+  readonly messages: Readonly<Record<string, string>>;
+  /** Message ids the rule only ever uses as a suggestion, read from its source. */
+  readonly suggestionIds: readonly string[];
+  /** The first entry of `meta.schema` when it is an object schema, else null. */
+  readonly optionsSchema: SchemaLike | null;
+  /** The first entry of `defaultOptions`, or an empty object. */
+  readonly defaults: Readonly<Record<string, unknown>>;
+}
+
+export interface SchemaLike {
+  readonly type?: string;
+  readonly enum?: readonly unknown[];
+  readonly items?: SchemaLike;
+  readonly properties?: Readonly<Record<string, SchemaLike>>;
+  readonly additionalProperties?: boolean | SchemaLike;
+  readonly description?: string;
+}
+
+/**
+ * Message ids used only inside a `suggest: [...]` array of the rule source. No
+ * rule declares which messages are suggestions, so, like type information, it
+ * is read from the source; the doc harness then checks it against what the
+ * rule draws (`checkMessageCoverage` in `@noctcore/eslint-test-utils`).
+ */
+export function detectSuggestionIds(source: string): string[] {
+  const windows: [number, number][] = [];
+  for (const m of source.matchAll(/\bsuggest\s*:/g)) {
+    // The array that follows, up to its matching bracket.
+    let i = source.indexOf('[', m.index);
+    if (i === -1) continue;
+    let depth = 0;
+    const start = i;
+    for (; i < source.length; i++) {
+      if (source[i] === '[') depth++;
+      else if (source[i] === ']' && --depth === 0) break;
+    }
+    windows.push([start, i]);
+  }
+  const inside = new Map<string, boolean>();
+  for (const m of source.matchAll(/messageId\s*:\s*'([^']+)'/g)) {
+    const within = windows.some(([a, b]) => m.index > a && m.index < b);
+    inside.set(m[1]!, (inside.get(m[1]!) ?? true) && within);
+  }
+  return [...inside].filter(([, only]) => only).map(([id]) => id);
+}
+
+/** Details of every ESLint plugin rule, keyed `<short>/<rule>`. */
+export async function loadRuleDetails(from: InventorySource = 'src'): Promise<Map<string, RuleDetails>> {
+  const details = new Map<string, RuleDetails>();
+  for (const short of PLUGIN_SHORT_NAMES) {
+    const dir = packageDirOf(short);
+    const mod = await importEntry(dir, 'index', from);
+    const rules = (mod.default as { rules: Record<string, RuleModuleLike & { defaultOptions?: unknown[]; meta?: { messages?: Record<string, string> } }> }).rules;
+    for (const [name, rule] of Object.entries(rules)) {
+      const file = join(dir, 'src', 'rules', `${name}.ts`);
+      const schema = rule.meta?.schema;
+      const first = Array.isArray(schema) ? schema[0] : undefined;
+      const defaults = rule.defaultOptions?.[0];
+      details.set(`${short}/${name}`, {
+        messages: rule.meta?.messages ?? {},
+        suggestionIds: existsSync(file) ? detectSuggestionIds(readFileSync(file, 'utf8')) : [],
+        optionsSchema: first && typeof first === 'object' ? (first as SchemaLike) : null,
+        defaults: defaults && typeof defaults === 'object' ? (defaults as Record<string, unknown>) : {},
+      });
+    }
+  }
+  return details;
+}
