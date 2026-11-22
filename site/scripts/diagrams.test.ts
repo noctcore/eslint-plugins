@@ -114,6 +114,12 @@ describe('diagram files', () => {
     }
   });
 
+  test('the inliner refuses markup that survives stripping', () => {
+    expect(() => inlineSvg('<svg><sc<!-- x -->ript>alert(1)</script></svg>', 'x', 'wide')).toThrow('may not');
+    expect(() => inlineSvg('<svg><rect onclick="x"/></svg>', 'x', 'wide')).toThrow('may not');
+    expect(inlineSvg('<svg><!-<!-- a -->- b --></svg>', 'x', 'wide')).not.toContain('<!--');
+  });
+
   test('the site inlines a drawing without its style, ids or size', () => {
     const svg = inlineSvg(drawings[0]!.source, drawings[0]!.name, 'wide');
     expect(svg).not.toContain('<style');

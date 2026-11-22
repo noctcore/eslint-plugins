@@ -35,11 +35,21 @@ export function inlineMarkdown(text: string): string {
 
 /** An SVG file as markup to inline: no prolog, comments, style, title or fixed size, and no blank lines. */
 export function inlineSvg(source: string, name: string, variant: 'wide' | 'narrow'): string {
-  return source
-    .replace(/<\?xml[^>]*\?>/g, '')
-    .replace(/<!--[\s\S]*?-->/g, '')
-    .replace(/<style[\s\S]*?<\/style>/g, '')
-    .replace(/<title[\s\S]*?<\/title>/g, '')
+  // Strip until nothing changes, so a removal cannot join the halves of a
+  // new comment or style tag, then refuse anything that could still run.
+  let svg = source;
+  for (let previous = ''; previous !== svg; ) {
+    previous = svg;
+    svg = svg
+      .replace(/<\?xml[^>]*\?>/g, '')
+      .replace(/<!--[\s\S]*?-->/g, '')
+      .replace(/<style[\s\S]*?<\/style>/gi, '')
+      .replace(/<title[\s\S]*?<\/title>/gi, '');
+  }
+  if (/<(!--|style|script|foreignObject)|\son[a-z]+=/i.test(svg)) {
+    throw new Error(`The diagram ${name} holds markup a diagram may not: a comment, style, script or event handler`);
+  }
+  return svg
     .replace(/<svg\b([^>]*)>/, (_, attrs: string) => {
       const kept = attrs.replace(/\s(width|height|class|role|aria-[a-z]+)="[^"]*"/g, '');
       return `<svg${kept} class="d-svg d-svg--${variant}" data-diagram="${name}" aria-hidden="true" focusable="false">`;

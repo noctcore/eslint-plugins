@@ -234,7 +234,7 @@ export function checkRulePageBody(source: string, path: string): void {
 
 /** A JavaScript literal as the docs write it: single quotes, `[a, b]`, `{ k: v }`. */
 export function jsLiteral(value: unknown): string {
-  if (typeof value === 'string') return `'${value.replace(/'/g, "\\'")}'`;
+  if (typeof value === 'string') return `'${value.replace(/\\/g, '\\\\').replace(/'/g, "\\'")}'`;
   if (Array.isArray(value)) return `[${value.map(jsLiteral).join(', ')}]`;
   if (value !== null && typeof value === 'object') {
     const entries = Object.entries(value);
