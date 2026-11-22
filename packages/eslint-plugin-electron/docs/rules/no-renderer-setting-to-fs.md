@@ -55,7 +55,8 @@ In one function, a value returned by a call listed in `sources` that reaches:
 
 The value is followed through `const` bindings, destructuring, member reads, template literals,
 `+`, `??` and `||`, `await`, `String(...)`, `.trim()`, and `path.join`, `path.resolve` and
-`path.normalize`:
+`path.normalize`. Every tainted operand is followed: a containment check on one setting does not
+cover a second setting joined or concatenated onto it.
 
 ```ts bad filename=src/main/theme.ts options={"sources":[{"object":"store","method":"get","keys":["theme.*"]}]}
 import fs from 'node:fs';
@@ -79,6 +80,32 @@ export function revealExport(): void {
 }
 ```
 
+A `{ function, returns: 'value' }` source is a getter whose return value is the setting itself;
+`keys` match its first argument:
+
+```ts bad filename=src/main/export.ts options={"sources":[{"function":"getSetting","returns":"value"}]}
+import fs from 'node:fs';
+
+export function readLastExport(): Buffer {
+  return fs.readFileSync(getSetting('lastExportFile'));
+}
+```
+
+`path.basename` keeps a value inside the base only for a sink that acts on a file. For a sink that
+removes, lists, copies, moves, trashes or opens a directory (`rm`, `rmdir`, `readdir`, `opendir`,
+`cp`, `rename`, `shell.trashItem`, `shell.openPath`) it is not containment: `path.basename('..')` is
+`'..'`, and `''` or `'.'` joined under the base is the base itself, so the setting can still name
+the parent folder or the whole base:
+
+```ts bad filename=src/main/cache.ts options={"sources":[{"object":"store","method":"get"}]}
+import fs from 'node:fs';
+import path from 'node:path';
+
+export function clearProfileCache(): void {
+  fs.rmSync(path.join(CACHE_DIR, path.basename(store.get('profile'))), { recursive: true });
+}
+```
+
 A test of the raw setting (`file.startsWith('.')`) is not a containment check, and neither is a
 check that comes after the call.
 
@@ -90,8 +117,12 @@ check that comes after the call.
   test exists, not what the code does with its result.
 - A call to a function in `sanitizers` that takes a binding the setting went through, before the
   sink (`assertInside(base, file)`).
-- `path.basename(value)`: it strips the directories, so what is left can only name a file in the
-  directory you join it to.
+- `path.basename(value)` reaching a sink that acts on a file (`readFile`, `writeFile`, `stat`,
+  `unlink`, ...): it strips the directories, so what is left names an entry of the directory you
+  join it to. `..`, `.` or an empty name there points at a directory, which a file read or write
+  refuses. Directory sinks are flagged, as shown above.
+- An allowlist check, when you add `includes` to `sanitizers`: `ALLOWED.includes(name)` before the
+  sink, with `name` a binding the setting went through.
 - Any other call between the source and the sink. A helper that returns a checked path
   (`resolveInside(base, file)`) is already silent without being listed; so is
   `decodeURIComponent(file)` or `file.replace(...)`, which is a known blind spot.
@@ -128,9 +159,10 @@ flat config's `files`, as the other rules in this plugin are.
 
 | Option | Type | Default | Meaning |
 | --- | --- | --- | --- |
-| `sources` | array of `{ object, method, keys? }` or `{ function, keys? }` | `[]` | Calls whose result the renderer can write. `{ object: 'store', method: 'get' }` matches `store.get(...)` and `this.store.get(...)`; `{ function: 'loadSettings' }` matches `loadSettings()` and `this.loadSettings()` and treats every property of the result as a setting. Empty, the rule reports nothing. |
-| `sources[].keys` | `string[]` (globs) | unset | Only these keys count: the first argument of a store call, the property read off a loader's object. `*` matches any run of characters except `/`, so `theme.*` matches every key under `theme`. |
-| `sanitizers` | `string[]` | `[]` | Functions that check a path stays inside its base and throw or return false otherwise. A call to one that takes a binding of the chain, before the sink, ends it. |
+| `sources` | array of `{ object, method, keys? }` or `{ function, returns?, keys? }` | `[]` | Calls whose result the renderer can write. `{ object: 'store', method: 'get' }` matches `store.get(...)` and `this.store.get(...)`; `{ function: 'loadSettings' }` matches `loadSettings()` and `this.loadSettings()` and treats every property of the result as a setting. Empty, the rule reports nothing. |
+| `sources[].returns` | `'object'` or `'value'` | `'object'` | For a `{ function }` source: `'object'` is a loader that returns the settings object, `'value'` a getter (`getSetting('key')`) that returns one setting. |
+| `sources[].keys` | `string[]` (globs) | unset | Only these keys count: the first argument of a store call or getter, the property read off a loader's object. `*` matches any run of characters except `/`, so `theme.*` matches every key under `theme`. |
+| `sanitizers` | `string[]` | `[]` | Functions that check a path stays inside its base and throw or return false otherwise. A call to one that takes a binding of the chain, before the sink, ends it. Add `includes` to accept an allowlist check such as `ALLOWED.includes(name)`. |
 | `allowIn` | `string[]` (globs) | `[]` | Files the rule skips, matched against the absolute path and the path relative to the working directory or workspace root. |
 
 ```js
@@ -138,8 +170,9 @@ flat config's `files`, as the other rules in this plugin are.
   sources: [
     { object: 'store', method: 'get', keys: ['customAvatarPath', 'theme.*', 'exportDir'] },
     { function: 'loadSettings' },
+    { function: 'getSetting', returns: 'value', keys: ['paths.*'] },
   ],
-  sanitizers: ['assertInside'],
+  sanitizers: ['assertInside', 'includes'],
 }]
 ```
 
