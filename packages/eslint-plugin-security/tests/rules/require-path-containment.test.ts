@@ -114,7 +114,16 @@ ruleTester.run('require-path-containment', requirePathContainmentRule, {
       filename: TS,
     },
     {
-      code: "import fs from 'node:fs'; const Body = z.object({ theme: z.string().regex(/^[a-z0-9-]+$/) }); function h(req) { const { theme } = Body.parse(req.body); return fs.readFileSync(`/srv/themes/${theme}.css`); }",
+      code: "import { z } from 'zod'; import fs from 'node:fs'; const Body = z.object({ theme: z.string().regex(/^[a-z0-9-]+$/) }); function h(req) { const { theme } = Body.parse(req.body); return fs.readFileSync(`/srv/themes/${theme}.css`); }",
+      filename: TS,
+    },
+    // A request member checked against a handler-local literal list with an early return.
+    {
+      code: "import { join } from 'node:path'; const BASE = '/srv/templates'; function h(req, res) { const allowed = ['a.html', 'b.html']; if (!allowed.includes(req.params.name)) return res.status(404).end(); return res.sendFile(join(BASE, req.params.name)); }",
+      filename: TS,
+    },
+    {
+      code: "import fs from 'node:fs'; import { join } from 'node:path'; const NAMES = new Set(['a.css']); function h(req) { if (!NAMES.has(req.query.name)) { throw new Error('unknown'); } return fs.readFileSync(join('/srv/themes', req.query.name)); }",
       filename: TS,
     },
   ],
@@ -293,9 +302,40 @@ ruleTester.run('require-path-containment', requirePathContainmentRule, {
       errors: FS,
     },
     {
-      code: "import fs from 'node:fs'; const Body = z.object({ theme: z.string() }); function h(req) { const { theme } = Body.parse(req.body); return fs.readFileSync(`/srv/themes/${theme}.css`); }",
+      code: "import { z } from 'zod'; import fs from 'node:fs'; const Body = z.object({ theme: z.string() }); function h(req) { const { theme } = Body.parse(req.body); return fs.readFileSync(`/srv/themes/${theme}.css`); }",
       filename: TS,
       errors: FS,
+    },
+    // Near misses: no early return, a list that is mutated, the member written after the check, another member checked, a regex.
+    {
+      code: "import { join } from 'node:path'; function h(req, res) { const allowed = ['a.html']; if (!allowed.includes(req.params.name)) res.status(404); return join('/srv', req.params.name); }",
+      filename: TS,
+      errors: ERR,
+    },
+    {
+      code: "import { join } from 'node:path'; function h(req, res) { const allowed = ['a.html']; allowed.push(req.query.extra); if (!allowed.includes(req.params.name)) return res.end(); return join('/srv', req.params.name); }",
+      filename: TS,
+      errors: ERR,
+    },
+    {
+      code: "import { join } from 'node:path'; function h(req, res) { const allowed = ['a.html']; if (!allowed.includes(req.params.name)) return res.end(); req.params.name = req.query.other; return join('/srv', req.params.name); }",
+      filename: TS,
+      errors: ERR,
+    },
+    {
+      code: "import { join } from 'node:path'; function h(req, res) { const allowed = ['a.html']; if (!allowed.includes(req.params.name)) return res.end(); Object.assign(req.params, req.query); return join('/srv', req.params.name); }",
+      filename: TS,
+      errors: ERR,
+    },
+    {
+      code: "import { join } from 'node:path'; function h(req, res) { const allowed = ['a.html']; if (!allowed.includes(req.params.other)) return res.end(); return join('/srv', req.params.name); }",
+      filename: TS,
+      errors: ERR,
+    },
+    {
+      code: "import { join } from 'node:path'; function h(req, res) { if (!/^[a-z.]+$/.test(req.params.name)) return res.end(); return join('/srv', req.params.name); }",
+      filename: TS,
+      errors: ERR,
     },
   ],
 });

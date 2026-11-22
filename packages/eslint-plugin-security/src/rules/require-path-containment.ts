@@ -9,6 +9,7 @@ import {
 import type { JSONSchema4 } from '@typescript-eslint/utils/json-schema';
 
 import { createRule } from '../createRule';
+import { isAllowlistedMember } from '../guards';
 import { requestSourceOf } from '../request-taint';
 
 const RULE_NAME = 'require-path-containment';
@@ -296,17 +297,21 @@ function rootIdentifier(node: TSESTree.Node): TSESTree.Identifier | null {
   return current.type === AST_NODE_TYPES.Identifier ? current : null;
 }
 
-/** The first argument that is a member chain rooted at a request object. */
+/**
+ * The first argument that is a member chain rooted at a request object, other
+ * than one checked against a literal allowlist before the call.
+ */
 function requestSource(
   call: TSESTree.CallExpression,
   requestObjects: ReadonlySet<string>,
+  sourceCode: Readonly<TSESLint.SourceCode>,
 ): TSESTree.MemberExpression | null {
   for (const arg of call.arguments) {
     if (arg.type !== AST_NODE_TYPES.MemberExpression) {
       continue;
     }
     const root = rootIdentifier(arg);
-    if (root !== null && requestObjects.has(root.name)) {
+    if (root !== null && requestObjects.has(root.name) && !isAllowlistedMember(arg, call, sourceCode)) {
       return arg;
     }
   }
@@ -543,7 +548,7 @@ export const requirePathContainmentRule = createRule<RuleOptions, MessageIds>({
         if (origin.type === AST_NODE_TYPES.CallExpression && pathBuilderMethod(origin.callee, current) !== null) {
           // A resolved path: the containment test on it decides, and a direct
           // request argument is already reported at the join.
-          if (builderTested(origin) || requestSource(origin, requestObjects) !== null) {
+          if (builderTested(origin) || requestSource(origin, requestObjects, sourceCode) !== null) {
             continue;
           }
         }
@@ -576,7 +581,7 @@ export const requirePathContainmentRule = createRule<RuleOptions, MessageIds>({
         if (method === null) {
           return;
         }
-        const source = requestSource(node, requestObjects);
+        const source = requestSource(node, requestObjects, sourceCode);
         if (source === null) {
           return;
         }

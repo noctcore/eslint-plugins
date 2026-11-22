@@ -1,6 +1,11 @@
 import { AST_NODE_TYPES, ASTUtils, type TSESLint, type TSESTree } from '@typescript-eslint/utils';
 
-import { type GuardContext, isLiteralTableRead, isProvenSafeValue } from './guards';
+import {
+  type GuardContext,
+  isAllowlistedMember,
+  isLiteralTableRead,
+  isProvenSafeValue,
+} from './guards';
 
 /*
  * In-function data flow from request-shaped input to a sink, without type
@@ -112,7 +117,8 @@ function carried(raw: TSESTree.Node, walk: Walk, depth: number): TSESTree.Node |
   };
 
   if (isRequestMember(raw, walk.options.requestObjects)) {
-    return raw;
+    // `if (!NAMES.includes(req.params.name)) return` leaves an author's literal.
+    return isAllowlistedMember(raw, walk.sink, walk.sourceCode) ? null : raw;
   }
   // A value proven harmless (a confined schema's output, a literal table read)
   // cuts the flow wherever it sits, not only behind a binding.
@@ -238,7 +244,11 @@ function carriedByCall(
   return null;
 }
 
-function carriedByVariable(node: TSESTree.Identifier, walk: Walk, depth: number): TSESTree.Node | null {
+function carriedByVariable(
+  node: TSESTree.Identifier,
+  walk: Walk,
+  depth: number,
+): TSESTree.Node | null {
   const variable = ASTUtils.findVariable(walk.sourceCode.getScope(node), node);
   if (variable === null || walk.seen.has(variable)) {
     return null;
@@ -258,7 +268,10 @@ function carriedByVariable(node: TSESTree.Identifier, walk: Walk, depth: number)
       }
       // `arr.push(x)`, `arr[i] = x`: a write into the array the binding holds.
       const parent = reference.identifier.parent;
-      if (parent?.type !== AST_NODE_TYPES.MemberExpression || parent.object !== reference.identifier) {
+      if (
+        parent?.type !== AST_NODE_TYPES.MemberExpression ||
+        parent.object !== reference.identifier
+      ) {
         continue;
       }
       const grand = parent.parent;
