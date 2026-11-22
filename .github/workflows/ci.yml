@@ -73,3 +73,23 @@ jobs:
       # lint-meta-rules runs against the workspace plugins' builds.
       - run: bun run build
       - run: bun run test:eslint${{ matrix.eslint }}
+
+  # Scores every rule against the labeled corpus in bench/ and fails when a case
+  # got worse than bench/baseline.json (a rule stopped catching a vulnerable
+  # case, or started reporting a safe twin), or when the baseline is out of
+  # date. The tables land on the run's summary page.
+  bench:
+    name: bench · ratchet
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5.1.0
+        with:
+          persist-credentials: false
+      - uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2.2.0
+        with:
+          bun-version: 1.4.2
+      - run: bun install --frozen-lockfile
+      # The bench imports each plugin from its built dist/, as a consumer would.
+      - run: bun run build
+      - run: bun run bench --check
