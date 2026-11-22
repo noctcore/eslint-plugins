@@ -332,8 +332,8 @@ result on the site's [Benchmark](https://noctcore.github.io/eslint-plugins/bench
 `bench · ratchet` runs `bun run bench --check` (after `bun run build`) and fails when a case got
 worse than `bench/baseline.json`, or when that file is out of date. So a change to a measured rule
 (today: six security rules) may need `bun run bench --update` and the new `bench/baseline.json` in
-the same PR: always for an improvement, and `--allow-regressions` plus a reason in the PR for a
-deliberate trade. A false-negative or false-positive fix is best proven by adding the case to the
+the same PR: always for an improvement, `--allow-regressions` plus a reason in the PR for a
+deliberate trade, and `--allow-removals` to delete a case a rule handles. A false-negative or false-positive fix is best proven by adding the case to the
 corpus first. The case format is in [`bench/README.md`](bench/README.md).
 
 ## Changesets
