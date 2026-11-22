@@ -1,0 +1,26 @@
+// @bench category=command-injection cwe=CWE-78 framework=express pair=express-ping-host title="host passed as an argument array to execFile, no shell (variant)"
+// ok
+import express, { Request, Response } from 'express';
+import { exec } from 'child_process';
+
+const app = express();
+app.use(express.json());
+
+const PROBE_TARGETS = ['gateway.internal.example.com', 'db.internal.example.com'] as const;
+
+app.post('/diagnostics/ping', (req: Request, res: Response) => {
+  const host: string = req.body.host;
+  if (!(PROBE_TARGETS as readonly string[]).includes(host)) {
+    res.status(400).json({ error: 'unknown target' });
+    return;
+  }
+  exec('ping -c 2 ' + host, { timeout: 5000 }, (error, stdout) => {
+    if (error) {
+      res.status(502).json({ reachable: false });
+      return;
+    }
+    res.json({ reachable: true, raw: stdout });
+  });
+});
+
+app.listen(3000);
