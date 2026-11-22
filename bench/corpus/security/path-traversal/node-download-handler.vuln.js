@@ -1,0 +1,20 @@
+// @bench category=path-traversal cwe=CWE-22 framework=node pair=node-download-handler title="search param file joined onto the downloads dir and read"
+const http = require('node:http');
+const fs = require('node:fs/promises');
+const path = require('node:path');
+
+const DOWNLOADS = path.resolve('/srv/downloads');
+
+const server = http.createServer(async (req, res) => {
+  const { searchParams } = new URL(req.url, 'http://localhost');
+  const file = searchParams.get('file');
+  const target = path.join(DOWNLOADS, file); // expect: security/require-path-containment
+  try {
+    const body = await fs.readFile(target);
+    res.end(body);
+  } catch {
+    res.writeHead(404).end();
+  }
+});
+
+server.listen(8001);

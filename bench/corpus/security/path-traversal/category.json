@@ -1,0 +1,6 @@
+{
+  "title": "Path traversal",
+  "cwe": "CWE-22",
+  "rules": ["security/require-path-containment"],
+  "overrides": { "security/require-path-containment": "error" }
+}
