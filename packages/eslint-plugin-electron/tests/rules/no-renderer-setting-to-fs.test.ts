@@ -6,6 +6,9 @@ const MAIN = 'src/main/avatar.ts';
 const STORE = [{ sources: [{ object: 'store', method: 'get' }] }];
 const LOADER = [{ sources: [{ function: 'loadSettings' }] }];
 const KEYED = [{ sources: [{ object: 'store', method: 'get', keys: ['theme.*', 'customAvatarPath'] }] }];
+const GETTER = [{ sources: [{ function: 'getSetting', returns: 'value' as const }] }];
+const GETTER_KEYED = [{ sources: [{ function: 'getSetting', returns: 'value' as const, keys: ['paths.*'] }] }];
+const ALLOWLIST = [{ sources: [{ object: 'store', method: 'get' }], sanitizers: ['includes'] }];
 const GUARDED = [
   { sources: [{ object: 'store', method: 'get' }], sanitizers: ['assertInside', 'isInside'] },
 ];
@@ -47,7 +50,7 @@ ruleTester.run('no-renderer-setting-to-fs', noRendererSettingToFsRule, {
       filename: MAIN,
       options: STORE,
     },
-    // `path.basename` strips the directories.
+    // `path.basename` keeps a file sink inside the base: `..` or `.` there names a directory, which a file read refuses.
     {
       code: `${FS}function read() {\n  const name = path.basename(store.get('customAvatarPath'));\n  return fs.readFileSync(path.join(AVATAR_DIR, name));\n}`,
       filename: MAIN,
@@ -130,6 +133,23 @@ ruleTester.run('no-renderer-setting-to-fs', noRendererSettingToFsRule, {
       code: `${FS}fs.readFileSync(store.get('x'));`,
       filename: workspacePath('apps', 'desktop', 'src', 'main', 'migrate.ts'),
       options: [{ ...STORE[0], allowIn: ['apps/desktop/src/main/migrate.ts'] }],
+    },
+    // A getter source only counts for the keys listed.
+    { code: `${FS}fs.readFileSync(getSetting('theme'));`, filename: MAIN, options: GETTER_KEYED },
+    { code: `${FS}fs.readFileSync(getSetting(key));`, filename: MAIN, options: GETTER_KEYED },
+    // A loader-mode function returns an object: the call itself is not a path.
+    { code: `${FS}fs.readFileSync(String(getSetting));`, filename: MAIN, options: GETTER },
+    // An allowlist check through a sanitizer named `includes`.
+    {
+      code: `${FS}function read() {\n  const name = store.get('theme');\n  if (!THEMES.includes(name)) return;\n  return fs.readFileSync(path.join(THEME_DIR, name));\n}`,
+      filename: MAIN,
+      options: ALLOWLIST,
+    },
+    // Both tainted operands contained.
+    {
+      code: `${FS}function read() {\n  const a = path.join(BASE, store.get('a'));\n  const b = path.join(BASE, store.get('b'));\n  if (!a.startsWith(BASE + path.sep) || !b.startsWith(BASE + path.sep)) return;\n  fs.copyFileSync(a, b);\n}`,
+      filename: MAIN,
+      options: STORE,
     },
   ],
   invalid: [
@@ -225,6 +245,69 @@ ruleTester.run('no-renderer-setting-to-fs', noRendererSettingToFsRule, {
       code: `${FS}fs.rmSync(store.get('customAvatarPath'));`,
       filename: MAIN,
       options: KEYED,
+      errors: [ERROR],
+    },
+    // `path.basename` does not contain a directory sink: '..' stays '..', and '' or '.' is the base itself.
+    {
+      code: `${FS}fs.rmSync(path.join(DIR, path.basename(store.get('a'))), { recursive: true });`,
+      filename: MAIN,
+      options: STORE,
+      errors: [ERROR],
+    },
+    {
+      code: `${FS}function list() {\n  const name = path.basename(store.get('folder'));\n  return fs.readdirSync(path.join(DIR, name));\n}`,
+      filename: MAIN,
+      options: STORE,
+      errors: [ERROR],
+    },
+    {
+      code: `import { shell } from 'electron';\nimport path from 'node:path';\nshell.openPath(path.join(DIR, path.basename(store.get('folder'))));`,
+      filename: MAIN,
+      options: STORE,
+      errors: [ERROR],
+    },
+    {
+      code: `import { shell } from 'electron';\nimport path from 'node:path';\nshell.trashItem(path.join(DIR, path.basename(store.get('folder'))));`,
+      filename: MAIN,
+      options: STORE,
+      errors: [ERROR],
+    },
+    {
+      code: `import { cp, rename, opendir, rmdir } from 'node:fs/promises';\nimport { basename, join } from 'node:path';\nasync function f() {\n  await cp(join(DIR, basename(store.get('a'))), OUT);\n  await rename(OUT, join(DIR, basename(store.get('b'))));\n  await opendir(join(DIR, basename(store.get('c'))));\n  await rmdir(join(DIR, basename(store.get('d'))));\n}`,
+      filename: MAIN,
+      options: STORE,
+      errors: [ERROR, ERROR, ERROR, ERROR],
+    },
+    // A contained first setting does not hide a second one beside it.
+    {
+      code: `${FS}function read() {\n  const full = path.resolve(BASE, store.get('a'));\n  if (!full.startsWith(BASE + path.sep)) throw new Error('outside');\n  return fs.readFileSync(path.join(full, store.get('b')));\n}`,
+      filename: MAIN,
+      options: STORE,
+      errors: [ERROR],
+    },
+    {
+      code: `${FS}function read() {\n  const full = path.resolve(BASE, store.get('a'));\n  if (!full.startsWith(BASE + path.sep)) throw new Error('outside');\n  return fs.readFileSync(full + store.get('b'));\n}`,
+      filename: MAIN,
+      options: STORE,
+      errors: [ERROR],
+    },
+    {
+      code: `${FS}function read() {\n  const full = path.resolve(BASE, store.get('a'));\n  if (!full.startsWith(BASE + path.sep)) throw new Error('outside');\n  return fs.readFileSync(\`\${full}/\${store.get('b')}\`);\n}`,
+      filename: MAIN,
+      options: STORE,
+      errors: [ERROR],
+    },
+    // A getter function whose return value is the setting.
+    {
+      code: `${FS}fs.readFileSync(getSetting('dir'));`,
+      filename: MAIN,
+      options: GETTER,
+      errors: [ERROR],
+    },
+    {
+      code: `${FS}function f() {\n  const dir = this.getSetting('paths.export');\n  return fs.writeFileSync(path.join(dir, 'out.json'), data);\n}`,
+      filename: MAIN,
+      options: GETTER_KEYED,
       errors: [ERROR],
     },
   ],

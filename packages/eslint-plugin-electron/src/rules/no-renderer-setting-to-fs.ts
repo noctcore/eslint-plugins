@@ -22,9 +22,14 @@ export interface StoreCallSource {
   readonly keys?: readonly string[];
 }
 
-/** `loadSettings()`: every property of the returned object is a renderer-writable setting. */
+/**
+ * `loadSettings()`: every property of the returned object is a renderer-writable
+ * setting. With `returns: 'value'`, the call's own return value is the setting
+ * (`getSetting('key')`), and `keys` match its first argument.
+ */
 export interface LoaderSource {
   readonly function: string;
+  readonly returns?: 'object' | 'value';
   readonly keys?: readonly string[];
 }
 
@@ -54,10 +59,17 @@ type MessageIds = 'settingToFs';
  * a fact about the app, so it comes from `sources`; without them the rule is
  * silent. A value is followed only inside one function: through `const`
  * bindings, destructuring, member reads, template literals, `+`, `??` / `||`,
- * `await` and `path.join` / `resolve` / `normalize`. Anything else ends the
- * chain: a parameter, a `let`, a module-level binding, a property written
- * later, any other call (a helper that returns a checked path included) and
- * `path.basename`, which strips the directories. An ended chain is silent.
+ * `await` and `path.join` / `resolve` / `normalize`. Every tainted operand is
+ * followed, so a contained first setting does not hide a second one beside it.
+ * Anything else ends the chain: a parameter, a `let`, a module-level binding, a
+ * property written later, and any other call (a helper that returns a checked
+ * path included). An ended chain is silent.
+ *
+ * `path.basename` ends the chain only for sinks that act on a file. It does not
+ * make a value safe for a sink that acts on a directory (`rm`, `readdir`, `cp`,
+ * `rename`, `shell.openPath`, ...): `path.basename('..')` is `'..'`, and `''`
+ * or `'.'` joined under a base is the base itself, so a basename can still
+ * name the parent or the whole base directory.
  *
  * A containment test on a path built from the setting ends the chain too: the
  * same shapes `security/require-path-containment` accepts (`full.startsWith(base)`
@@ -115,10 +127,32 @@ const FS_TWO_PATHS: ReadonlySet<string> = new Set([
   'symlink',
   'symlinkSync',
 ]);
+/**
+ * Sinks that act on a directory as well as a file: removing, listing, copying,
+ * moving, trashing or opening `..` or the base itself does damage, so a
+ * `path.basename` does not contain a value that reaches them.
+ */
+const DIRECTORY_SINKS: ReadonlySet<string> = new Set([
+  'rm',
+  'rmSync',
+  'rmdir',
+  'rmdirSync',
+  'readdir',
+  'readdirSync',
+  'opendir',
+  'opendirSync',
+  'cp',
+  'cpSync',
+  'rename',
+  'renameSync',
+  'shell.trashItem',
+  'shell.openPath',
+]);
 /** Electron `shell` functions that take a filesystem path. */
 const SHELL_PATH: ReadonlySet<string> = new Set(['openPath', 'showItemInFolder', 'trashItem']);
 /** `path` functions whose result still carries every part of their arguments. */
 const PATH_BUILDERS: ReadonlySet<string> = new Set(['join', 'resolve', 'normalize']);
+const BASENAME: ReadonlySet<string> = new Set(['basename']);
 /** String methods whose result is still the same text. */
 const PASS_THROUGH_METHODS: ReadonlySet<string> = new Set([
   'toString',
@@ -189,7 +223,7 @@ const optionSchema: JSONSchema4 = {
     sources: {
       type: 'array',
       description:
-        'Calls whose result the renderer can write: `{ object, method }` for a store call such as `store.get(key)`, or `{ function }` for a loader whose returned object holds the settings. Empty by default, so nothing is reported.',
+        "Calls whose result the renderer can write: `{ object, method }` for a store call such as `store.get(key)`, `{ function }` for a loader whose returned object holds the settings, or `{ function, returns: 'value' }` for a getter such as `getSetting(key)`. Empty by default, so nothing is reported.",
       items: {
         oneOf: [
           {
@@ -216,6 +250,12 @@ const optionSchema: JSONSchema4 = {
                 description:
                   'A function that returns the settings object (`loadSettings` matches `loadSettings()` and `this.loadSettings()`).',
               },
+              returns: {
+                type: 'string',
+                enum: ['object', 'value'],
+                description:
+                  "`'object'` (default): the call returns the settings object and every property read off it is a setting. `'value'`: the call returns one setting (`getSetting('key')`), and `keys` match its first argument.",
+              },
               keys: keysSchema,
             },
           },
@@ -227,7 +267,7 @@ const optionSchema: JSONSchema4 = {
       items: { type: 'string' },
       uniqueItems: true,
       description:
-        'Functions that check a path stays inside its base, such as `assertInside`. A call to one that takes a binding the setting went through, before the sink, ends the chain.',
+        'Functions that check a path stays inside its base, such as `assertInside`. A call to one that takes a binding the setting went through, before the sink, ends the chain. Add `includes` to accept an allowlist check such as `ALLOWED.includes(name)`.',
     },
     allowIn: {
       type: 'array',
@@ -251,7 +291,7 @@ export const noRendererSettingToFsRule = createRule<RuleOptions, MessageIds>({
     schema: [optionSchema],
     messages: {
       settingToFs:
-        '`{{source}}` is a setting the renderer can write, and it reaches {{sink}} without a containment check. Any frame that can send on the settings channel can point it at any file: resolve it under a base directory and check the result still starts with it, or keep only `path.basename(...)` of it.',
+        '`{{source}}` is a setting the renderer can write, and it reaches {{sink}} without a containment check. Any frame that can send on the settings channel can point it at any file: resolve it under a base directory and check the result still starts with it plus a separator.',
     },
   },
   defaultOptions: [{}],
@@ -288,7 +328,14 @@ export const noRendererSettingToFsRule = createRule<RuleOptions, MessageIds>({
       for (const source of sources) {
         if ('function' in source) {
           if (!pathEndsWith(calleePath(callee, { allowThis: true }), source.function)) continue;
-          return fresh(shortLabel(`${sourceCode.getText(callee)}()`), source.keys ?? null);
+          if (source.returns !== 'value') {
+            return fresh(shortLabel(`${sourceCode.getText(callee)}()`), source.keys ?? null);
+          }
+          if (source.keys !== undefined) {
+            const key = staticString(call.arguments[0]);
+            if (key === null || !keyMatches(source.keys, key)) continue;
+          }
+          return fresh(shortLabel(sourceCode.getText(call)));
         }
         if (
           callee.type !== AST_NODE_TYPES.MemberExpression ||
@@ -315,10 +362,6 @@ export const noRendererSettingToFsRule = createRule<RuleOptions, MessageIds>({
       }
       if (!keyMatches(value.pendingKeys, key)) return null;
       return { ...value, label: shortLabel(`${value.label}.${key}`), pendingKeys: undefined };
-    }
-
-    function either(left: Flow | null, right: Flow | null): Flow | null {
-      return isValue(left) ? left : isValue(right) ? right : null;
     }
 
     /** The flow reaching `target` when `value` is destructured by `pattern`; undefined if absent. */
@@ -355,8 +398,25 @@ export const noRendererSettingToFsRule = createRule<RuleOptions, MessageIds>({
       }
     }
 
+    /**
+     * How far a value is followed. `throughBasename` is set for a sink that acts
+     * on a directory, where `path.basename` does not contain the value.
+     */
+    interface Walk {
+      readonly depth: number;
+      readonly throughBasename: boolean;
+    }
+
+    function deeper(walk: Walk): Walk {
+      return { ...walk, depth: walk.depth + 1 };
+    }
+
+    function values(flows: readonly Flow[]): Flow[] {
+      return flows.filter(isValue);
+    }
+
     /** A `const` binding defined in the same function as its use, followed to its initializer. */
-    function bindingFlow(node: TSESTree.Identifier, depth: number): Flow | null {
+    function bindingFlows(node: TSESTree.Identifier, walk: Walk): Flow[] {
       const variable = variableOf(node);
       const def = variable?.defs[0];
       if (
@@ -368,72 +428,77 @@ export const noRendererSettingToFsRule = createRule<RuleOptions, MessageIds>({
         def.node.init === null ||
         enclosingFunction(def.node) !== enclosingFunction(node)
       ) {
-        return null;
+        return [];
       }
-      const result = project(def.node.id, flow(def.node.init, depth + 1), def.name);
-      if (result === undefined || result === null) return null;
-      const bindings = new Set(result.bindings).add(variable);
-      const built = result.isBuilt ? new Set(result.built).add(variable) : result.built;
-      return { ...result, bindings, built };
+      const out: Flow[] = [];
+      for (const initial of flows(def.node.init, deeper(walk))) {
+        const result = project(def.node.id, initial, def.name);
+        if (result === undefined || result === null) continue;
+        const bindings = new Set(result.bindings).add(variable);
+        const built = result.isBuilt ? new Set(result.built).add(variable) : result.built;
+        out.push({ ...result, bindings, built });
+      }
+      return out;
     }
 
-    function callFlow(node: TSESTree.CallExpression, depth: number): Flow | null {
+    function callFlows(node: TSESTree.CallExpression, walk: Walk): Flow[] {
       const started = sourceFlow(node);
-      if (started !== null) return started;
+      if (started !== null) return [started];
       if (isPathMember(node.callee, PATH_BUILDERS) !== null) {
-        for (const argument of node.arguments) {
-          const found = flow(argument, depth + 1);
-          if (isValue(found)) return { ...found, isBuilt: true };
-        }
-        return null;
+        return node.arguments.flatMap((argument) =>
+          values(flows(argument, deeper(walk))).map((found) => ({ ...found, isBuilt: true })),
+        );
+      }
+      const [first] = node.arguments;
+      if (walk.throughBasename && first !== undefined && isPathMember(node.callee, BASENAME) !== null) {
+        return values(flows(first, deeper(walk)));
       }
       const callee = unwrap(node.callee);
-      const [first] = node.arguments;
       if (callee.type === AST_NODE_TYPES.Identifier) {
         // `String(value)` is the value.
-        if (callee.name !== 'String' || first === undefined) return null;
+        if (callee.name !== 'String' || first === undefined) return [];
         const variable = variableOf(callee);
-        if (variable !== null && variable.defs.length > 0) return null;
-        const found = flow(first, depth + 1);
-        return isValue(found) ? found : null;
+        if (variable !== null && variable.defs.length > 0) return [];
+        return values(flows(first, deeper(walk)));
       }
-      if (callee.type !== AST_NODE_TYPES.MemberExpression) return null;
+      if (callee.type !== AST_NODE_TYPES.MemberExpression) return [];
       const method = staticPropertyName(callee);
-      if (method === null || !PASS_THROUGH_METHODS.has(method)) return null;
-      const receiver = flow(callee.object, depth + 1);
-      return isValue(receiver) ? receiver : null;
+      if (method === null || !PASS_THROUGH_METHODS.has(method)) return [];
+      return values(flows(callee.object, deeper(walk)));
     }
 
-    function flow(raw: TSESTree.Node, depth: number): Flow | null {
-      if (depth > MAX_DEPTH) return null;
+    /** Every renderer-writable value that reaches `raw`, one entry per tainted operand. */
+    function flows(raw: TSESTree.Node, walk: Walk): Flow[] {
+      if (walk.depth > MAX_DEPTH) return [];
       const node = unwrap(raw);
+      const next = deeper(walk);
       switch (node.type) {
         case AST_NODE_TYPES.AwaitExpression:
-          return flow(node.argument, depth + 1);
+          return flows(node.argument, next);
         case AST_NODE_TYPES.Identifier:
-          return bindingFlow(node, depth);
-        case AST_NODE_TYPES.MemberExpression:
-          return step(flow(node.object, depth + 1), staticPropertyName(node));
+          return bindingFlows(node, walk);
+        case AST_NODE_TYPES.MemberExpression: {
+          const key = staticPropertyName(node);
+          return flows(node.object, next)
+            .map((found) => step(found, key))
+            .filter((found): found is Flow => found !== null);
+        }
         case AST_NODE_TYPES.CallExpression:
-          return callFlow(node, depth);
+          return callFlows(node, walk);
         case AST_NODE_TYPES.TemplateLiteral:
-          for (const expression of node.expressions) {
-            const found = flow(expression, depth + 1);
-            if (isValue(found)) return found;
-          }
-          return null;
+          return node.expressions.flatMap((expression) => values(flows(expression, next)));
         case AST_NODE_TYPES.BinaryExpression:
           return node.operator === '+'
-            ? either(flow(node.left, depth + 1), flow(node.right, depth + 1))
-            : null;
+            ? [...values(flows(node.left, next)), ...values(flows(node.right, next))]
+            : [];
         case AST_NODE_TYPES.LogicalExpression:
           return node.operator === '&&'
-            ? flow(node.right, depth + 1)
-            : either(flow(node.left, depth + 1), flow(node.right, depth + 1));
+            ? flows(node.right, next)
+            : [...values(flows(node.left, next)), ...values(flows(node.right, next))];
         case AST_NODE_TYPES.ConditionalExpression:
-          return either(flow(node.consequent, depth + 1), flow(node.alternate, depth + 1));
+          return [...values(flows(node.consequent, next)), ...values(flows(node.alternate, next))];
         default:
-          return null;
+          return [];
       }
     }
 
@@ -475,10 +540,13 @@ export const noRendererSettingToFsRule = createRule<RuleOptions, MessageIds>({
       sink: TSESTree.CallExpression,
       argument: TSESTree.CallExpressionArgument | undefined,
       sinkName: string,
+      directory: boolean,
     ): void {
       if (argument === undefined || argument.type === AST_NODE_TYPES.SpreadElement) return;
-      const found = flow(argument, 0);
-      if (!isValue(found) || contained(sink, found)) return;
+      const found = values(flows(argument, { depth: 0, throughBasename: directory })).find(
+        (candidate) => !contained(sink, candidate),
+      );
+      if (found === undefined) return;
       context.report({
         node: argument,
         messageId: 'settingToFs',
@@ -495,7 +563,7 @@ export const noRendererSettingToFsRule = createRule<RuleOptions, MessageIds>({
         if (module === 'electron') {
           const method = path[1];
           if (path.length === 2 && path[0] === 'shell' && method !== undefined && SHELL_PATH.has(method)) {
-            check(node, first, `\`shell.${method}\``);
+            check(node, first, `\`shell.${method}\``, DIRECTORY_SINKS.has(`shell.${method}`));
           }
           return;
         }
@@ -504,11 +572,12 @@ export const noRendererSettingToFsRule = createRule<RuleOptions, MessageIds>({
           path.length === 1 || (path.length === 2 && path[0] === 'promises') ? path.at(-1) : undefined;
         if (method === undefined) return;
         const sinkName = `a path argument of \`fs.${method}\``;
+        const directory = DIRECTORY_SINKS.has(method);
         if (FS_ONE_PATH.has(method)) {
-          check(node, first, sinkName);
+          check(node, first, sinkName, directory);
         } else if (FS_TWO_PATHS.has(method)) {
-          check(node, first, sinkName);
-          check(node, second, sinkName);
+          check(node, first, sinkName, directory);
+          check(node, second, sinkName, directory);
         }
       },
     };
