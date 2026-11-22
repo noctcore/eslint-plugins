@@ -103,6 +103,18 @@ interface RegexToken {
   readonly optional?: boolean;
 }
 
+/** A `\xHH` or `\uHHHH` escape at `index`: the character and the escape's length. */
+function hexEscape(text: string, index: number): { char: string; length: number } | null {
+  const match = /^\\(?:x([0-9a-fA-F]{2})|u([0-9a-fA-F]{4}))/u.exec(text.slice(index));
+  if (match === null) {
+    return null;
+  }
+  return {
+    char: String.fromCodePoint(Number.parseInt(match[1] ?? match[2] ?? '', 16)),
+    length: match[0].length,
+  };
+}
+
 /** Splits a pattern into tokens; null for syntax this reader does not handle. */
 /**
  * Unicode property escapes that admit only letters, marks or digits, never
@@ -159,6 +171,12 @@ function tokenize(pattern: string, unicode = false): RegexToken[] | null {
       if (property !== null) {
         tokens.push({ kind: 'chars', chars: property.chars });
         i += property.length;
+        continue;
+      }
+      const hex = hexEscape(pattern, i);
+      if (hex !== null) {
+        tokens.push({ kind: 'chars', chars: hex.char, literal: true });
+        i += hex.length;
         continue;
       }
       const chars = escapeCharacters(pattern.charAt(i + 1));
@@ -262,7 +280,11 @@ function classCharacters(body: string, unicode = false): string | null {
       i += property.length;
       continue;
     }
-    if (body.charAt(i) === '\\') {
+    const hex = hexEscape(body, i);
+    if (hex !== null) {
+      first = hex.char;
+      i += hex.length;
+    } else if (body.charAt(i) === '\\') {
       const chars = escapeCharacters(body.charAt(i + 1));
       if (chars === null) {
         return null;
@@ -279,7 +301,11 @@ function classCharacters(body: string, unicode = false): string | null {
     }
     if (body.charAt(i) === '-' && i + 1 < body.length) {
       let last: string;
-      if (body.charAt(i + 1) === '\\') {
+      const lastHex = hexEscape(body, i + 1);
+      if (lastHex !== null) {
+        last = lastHex.char;
+        i += 1 + lastHex.length;
+      } else if (body.charAt(i + 1) === '\\') {
         const chars = escapeCharacters(body.charAt(i + 2));
         if (chars?.length !== 1) {
           return null;
@@ -1044,11 +1070,71 @@ function exitsBlock(node: TSESTree.Statement): boolean {
 
 type GuardTest = (test: TSESTree.Expression, negated: boolean) => boolean;
 
+/** The nearest function around `node`, or null at the top level. */
+function enclosingFunction(node: TSESTree.Node): TSESTree.Node | null {
+  for (let current = node.parent; current != null; current = current.parent) {
+    if (
+      current.type === AST_NODE_TYPES.FunctionDeclaration ||
+      current.type === AST_NODE_TYPES.FunctionExpression ||
+      current.type === AST_NODE_TYPES.ArrowFunctionExpression
+    ) {
+      return current;
+    }
+  }
+  return null;
+}
+
+/**
+ * A guard test read through `!` and through a `const` boolean declared in the
+ * same function (`const ok = A && B; if (!ok) return`): the test it stands for,
+ * whether it is negated, and where the check really ran. Null when the test is
+ * already plain.
+ */
+function expandTest(
+  test: TSESTree.Expression,
+  negated: boolean,
+  at: TSESTree.Node,
+  sourceCode: SourceCode,
+): { test: TSESTree.Expression; negated: boolean; position: number } | null {
+  let current = unwrap(test) as TSESTree.Expression;
+  let flipped = negated;
+  let position = at.range[0];
+  let changed = false;
+  for (let depth = 0; depth < MAX_DEPTH; depth += 1) {
+    if (current.type === AST_NODE_TYPES.UnaryExpression && current.operator === '!') {
+      current = unwrap(current.argument) as TSESTree.Expression;
+      flipped = !flipped;
+      changed = true;
+      continue;
+    }
+    if (current.type !== AST_NODE_TYPES.Identifier) {
+      break;
+    }
+    const variable = variableOf(current, sourceCode);
+    const init = variable === null ? null : constInit(variable);
+    if (
+      variable === null ||
+      init === null ||
+      isImportBinding(variable) ||
+      enclosingFunction(init) !== enclosingFunction(at) ||
+      init.range[0] > at.range[0]
+    ) {
+      break;
+    }
+    current = unwrap(init) as TSESTree.Expression;
+    position = Math.min(position, init.range[0]);
+    changed = true;
+  }
+  return changed ? { test: current, negated: flipped, position } : null;
+}
+
 /**
  * True when a guard runs before `sink` on every path to it: an `if` that
  * exits, before the sink in an enclosing block, whose test is true when the
- * value failed (`negated`); or an `if` around the sink whose test passed. Only
- * blocks of the function that holds the sink are searched.
+ * value failed (`negated`); an `if` around the sink whose test passed; or a
+ * `test ? sink : other` (or `test ? other : sink`) around it. Only blocks of
+ * the function that holds the sink are searched. With `sourceCode`, a test is
+ * also read through `!` and a `const` boolean (`const ok = re.test(x)`).
  * `writesEndBefore(position)` says whether the checked bindings are no longer
  * written after a guard at `position`.
  */
@@ -1056,7 +1142,19 @@ function guardedBefore(
   sink: TSESTree.Node,
   isGuard: GuardTest,
   writesEndBefore: (position: number) => boolean,
+  sourceCode?: SourceCode,
 ): boolean {
+  const passes = (test: TSESTree.Expression, negated: boolean, at: TSESTree.Node): boolean => {
+    if (writesEndBefore(at.range[0]) && isGuard(test, negated)) {
+      return true;
+    }
+    const expanded = sourceCode === undefined ? null : expandTest(test, negated, at, sourceCode);
+    return (
+      expanded !== null &&
+      writesEndBefore(expanded.position) &&
+      isGuard(expanded.test, expanded.negated)
+    );
+  };
   let child: TSESTree.Node = sink;
   for (let parent = sink.parent; parent != null; child = parent, parent = parent.parent) {
     if (
@@ -1083,18 +1181,20 @@ function guardedBefore(
           statement?.type === AST_NODE_TYPES.IfStatement &&
           statement.alternate === null &&
           exitsBlock(statement.consequent) &&
-          writesEndBefore(statement.range[0]) &&
-          isGuard(statement.test, true)
+          passes(statement.test, true, statement)
         ) {
           return true;
         }
       }
     }
-    if (parent.type === AST_NODE_TYPES.IfStatement && writesEndBefore(parent.range[0])) {
-      if (child === parent.consequent && isGuard(parent.test, false)) {
+    if (
+      parent.type === AST_NODE_TYPES.IfStatement ||
+      parent.type === AST_NODE_TYPES.ConditionalExpression
+    ) {
+      if (child === parent.consequent && passes(parent.test, false, parent)) {
         return true;
       }
-      if (child === parent.alternate && isGuard(parent.test, true)) {
+      if (child === parent.alternate && passes(parent.test, true, parent)) {
         return true;
       }
     }
@@ -1102,7 +1202,6 @@ function guardedBefore(
   return false;
 }
 
-/** True when `variable` holds a value checked against `judge` before `sink`. */
 /**
  * True for an imported binding. An `import { cur }` is a live view of a
  * binding the other module can reassign at any time, so a check on it says
@@ -1112,6 +1211,7 @@ function isImportBinding(variable: Variable): boolean {
   return variable.defs.some((def) => def.type === 'ImportBinding');
 }
 
+/** True when `variable` holds a value checked against `judge` before `sink`. */
 function variableGuarded(
   variable: Variable,
   readAt: number,
@@ -1131,6 +1231,7 @@ function variableGuarded(
     // The value read at `readAt` is the checked one only if nothing wrote it
     // after the check or after the read (`const copy = x; x = y; check(x)`).
     (position) => writtenOnlyBefore(variable, Math.min(position, readAt)),
+    sourceCode,
   );
 }
 
@@ -1405,6 +1506,7 @@ function isConfinedSafeParseData(
     (test, negated) => isSuccessTest(test, result, negated, sourceCode),
     // `result.data = other` after the check is a change to the binding.
     (position) => writtenOnlyBefore(result, position),
+    sourceCode,
   );
 }
 
@@ -1534,8 +1636,9 @@ function isUnchangedObject(variable: Variable): boolean {
 
 /**
  * True when nothing changes the `data` object of a `safeParse` result: every
- * use of the binding reads `result.success`, or reads a field of
- * `result.data` without changing it (`result.data.mode = x` is a change).
+ * use of the binding reads another property (`result.success`,
+ * `result.error`), or reads a field of `result.data` without changing it
+ * (`result.data.mode = x` is a change).
  */
 function isUnchangedResultData(result: Variable): boolean {
   return result.references.every((reference) => {
@@ -1553,7 +1656,8 @@ function isUnchangedResultData(result: Variable): boolean {
     ) {
       return false;
     }
-    return member.property.name === 'success' || isReadOnlyMember(member);
+    // `result.error` and `result.success` are other objects; only `data` must stay unchanged.
+    return member.property.name !== 'data' || isReadOnlyMember(member);
   });
 }
 
@@ -1629,6 +1733,7 @@ function isConfinedSafeParseResult(
     sink,
     (test, negated) => isSuccessTest(test, result, negated, sourceCode),
     (position) => writtenOnlyBefore(result, position),
+    sourceCode,
   );
 }
 
@@ -1731,6 +1836,7 @@ function isConfinedValidateValue(
       );
     },
     () => true,
+    sourceCode,
   );
 }
 
@@ -2054,6 +2160,7 @@ function hostPinned(
         ? failsUnlessChecked(test, inlineHost, regexPinsHost, sourceCode)
         : holdsOnlyIfChecked(test, inlineHost, regexPinsHost, sourceCode),
     (position) => writtenOnlyBefore(variable, position),
+    sourceCode,
   );
   if (inlineGuarded) {
     return true;
@@ -2068,6 +2175,7 @@ function hostPinned(
       (position) =>
         writtenOnlyBefore(binding, position) &&
         writtenOnlyBefore(variable, Math.min(position, readEnd)),
+      sourceCode,
     );
     if (guarded) {
       return true;
@@ -2098,7 +2206,7 @@ function admitsAuthorityOpener(chars: string): boolean {
  * rejects the pattern.
  */
 export function regexPinsLocalPath(pattern: string, flags: string): boolean {
-  if (flags.includes('m') || flags.includes('v') || pattern.includes('|')) {
+  if (flags.includes('m') || flags.includes('v')) {
     return false;
   }
   const head = /^\^\\?\//u.exec(pattern);
@@ -2106,6 +2214,13 @@ export function regexPinsLocalPath(pattern: string, flags: string): boolean {
     return false;
   }
   const rest = pattern.slice(head[0].length);
+  const lookahead = /^\(\?!((?:\[[^\]]*\])|(?:\\.(?:\|\\.)*))\)/u.exec(rest);
+  if (lookahead !== null) {
+    return lookaheadPinsLocalPath(lookahead[1] ?? '', rest.slice(lookahead[0].length));
+  }
+  if (rest.includes('|')) {
+    return false;
+  }
   let after: string;
   if (rest.startsWith('[^')) {
     const end = classEnd(rest, 0);
@@ -2135,6 +2250,36 @@ export function regexPinsLocalPath(pattern: string, flags: string): boolean {
   }
   // `?`, `*` or `{0` would make the checked character optional.
   return !/^(\?|\*|\{0[,}])/u.test(after);
+}
+
+/**
+ * For `^\/(?!L)R`: true when every character an opener (`/`, `\`, a tab or a
+ * line break) could be is refused by the lookahead `L` (a class or `\/|\\`)
+ * or cannot be the first character of `R`. `R` must be plain character tokens
+ * up to the closing `$`.
+ */
+function lookaheadPinsLocalPath(refusedSource: string, rest: string): boolean {
+  let refused: string | null;
+  if (refusedSource.startsWith('[')) {
+    refused = refusedSource.startsWith('[^') ? null : classCharacters(refusedSource.slice(1, -1));
+  } else {
+    const escapes = refusedSource.split('|').map((part) => escapeCharacters(part.charAt(1)));
+    refused = escapes.every((chars) => chars?.length === 1) ? escapes.join('') : null;
+  }
+  const tokens = tokenize(rest);
+  const last = tokens?.at(-1);
+  if (refused === null || tokens === null || last?.kind !== 'anchor' || last.chars !== '$') {
+    return false;
+  }
+  const body = tokens.slice(0, -1);
+  if (body.some((token) => token.kind !== 'chars' && token.kind !== 'quantifier')) {
+    return false;
+  }
+  const first = firstCharacters(body);
+  return (
+    first !== null &&
+    [...AUTHORITY_OPENERS].every((char) => refused.includes(char) || !first.includes(char))
+  );
 }
 
 /** `x.startsWith('lit')` on the subject, or `x.includes('lit')` when `method` says so. */
@@ -2254,6 +2399,7 @@ export function isSameSitePath(
       sink,
       (test, negated) => isLocalPathGuard(test, negated, variable, sourceCode),
       (position) => writtenOnlyBefore(variable, Math.min(position, inner.range[0])),
+      sourceCode,
     )
   ) {
     return true;
@@ -2428,6 +2574,46 @@ function urlObjectOf(node: TSESTree.Node): TSESTree.Node {
   return node;
 }
 
+/** True when a fresh global `new URL(...)` is all the binding is ever set to. */
+function isNewUrl(node: TSESTree.Node | null | undefined, sourceCode: SourceCode): boolean {
+  const created = node == null ? null : unwrap(node);
+  return (
+    created?.type === AST_NODE_TYPES.NewExpression && isGlobal(created.callee, 'URL', sourceCode)
+  );
+}
+
+/**
+ * True when every value the binding is given is a `new URL(...)`: a `const`, or
+ * a `let` set only in plain assignments (`try { u = new URL(x, base) } catch {
+ * u = new URL(FALLBACK) }`).
+ */
+function holdsOnlyUrls(variable: Variable, sourceCode: SourceCode): boolean {
+  const init = constInit(variable);
+  if (init !== null) {
+    return isNewUrl(init, sourceCode);
+  }
+  const def = variable.defs[0];
+  if (
+    variable.defs.length !== 1 ||
+    def?.type !== 'Variable' ||
+    def.node.id.type !== AST_NODE_TYPES.Identifier
+  ) {
+    return false;
+  }
+  const writes = variable.references.filter((reference) => reference.isWrite());
+  return (
+    writes.length > 0 &&
+    writes.every((reference) => {
+      const parent = reference.identifier.parent;
+      return (
+        (reference.init === true ||
+          (parent?.type === AST_NODE_TYPES.AssignmentExpression && parent.operator === '=')) &&
+        isNewUrl(reference.writeExpr, sourceCode)
+      );
+    })
+  );
+}
+
 /**
  * True when `variable` is a `const` holding `new URL(...)` whose `hostname`
  * (or `host` / `origin`) the function checked against an allowlist before the
@@ -2435,12 +2621,7 @@ function urlObjectOf(node: TSESTree.Node): TSESTree.Node {
  * change): `const u = new URL(x); if (!HOSTS.has(u.hostname)) return; get(u)`.
  */
 function urlObjectPinned(variable: Variable, sink: TSESTree.Node, sourceCode: SourceCode): boolean {
-  const init = constInit(variable);
-  const created = init === null ? null : unwrap(init);
-  if (
-    created?.type !== AST_NODE_TYPES.NewExpression ||
-    !isGlobal(created.callee, 'URL', sourceCode)
-  ) {
+  if (!holdsOnlyUrls(variable, sourceCode)) {
     return false;
   }
   const hostOfUrl: Subject = (candidate) =>
@@ -2456,5 +2637,430 @@ function urlObjectPinned(variable: Variable, sink: TSESTree.Node, sourceCode: So
         ? failsUnlessChecked(test, hostOfUrl, regexPinsHost, sourceCode)
         : holdsOnlyIfChecked(test, hostOfUrl, regexPinsHost, sourceCode),
     (position) => writtenOnlyBefore(variable, position),
+    sourceCode,
+  );
+}
+
+// ---------------------------------------------------------------------------
+// Redirect targets built from checked parts
+// ---------------------------------------------------------------------------
+
+/** A `scheme://host` origin with nothing after the host. */
+const ORIGIN_ONLY = /^https?:\/\/[^/?#@\\\s]+$/iu;
+
+/**
+ * The pieces of a string built with `+` or a template, in order: static text
+ * (from literals, quasis and `const` string literals) and the runtime values.
+ * Empty text is dropped, so two adjacent values stay adjacent.
+ */
+function stringSegments(node: TSESTree.Node, sourceCode: SourceCode): (string | TSESTree.Node)[] {
+  const out: (string | TSESTree.Node)[] = [];
+  const push = (text: string): void => {
+    if (text === '') {
+      return;
+    }
+    const last = out.at(-1);
+    if (typeof last === 'string') {
+      out[out.length - 1] = last + text;
+    } else {
+      out.push(text);
+    }
+  };
+  const collect = (part: TSESTree.Node): void => {
+    const inner = unwrap(part);
+    if (inner.type === AST_NODE_TYPES.TemplateLiteral) {
+      inner.quasis.forEach((quasi, index) => {
+        push(quasi.value.cooked ?? '');
+        const expression = inner.expressions[index];
+        if (expression !== undefined) {
+          collect(expression);
+        }
+      });
+    } else if (inner.type === AST_NODE_TYPES.BinaryExpression && inner.operator === '+') {
+      collect(inner.left);
+      collect(inner.right);
+    } else {
+      const resolved = resolveConst(inner, sourceCode);
+      if (resolved.type === AST_NODE_TYPES.Literal && typeof resolved.value === 'string') {
+        push(resolved.value);
+      } else {
+        out.push(inner);
+      }
+    }
+  };
+  collect(node);
+  return out;
+}
+
+/**
+ * True when `node` is a binding checked against a literal allowlist before
+ * `sink` (`if (!ALLOWED.has(x)) return`), so it holds one of the values the
+ * author wrote. Regex checks do not count here.
+ */
+function isAllowlisted(node: TSESTree.Node, sink: TSESTree.Node, sourceCode: SourceCode): boolean {
+  const inner = peelStringWrappers(node, sourceCode);
+  if (inner.type !== AST_NODE_TYPES.Identifier) {
+    return false;
+  }
+  const variable = variableOf(inner, sourceCode);
+  return (
+    variable !== null && variableGuarded(variable, inner.range[0], sink, () => false, sourceCode)
+  );
+}
+
+/**
+ * True for a value checked against a literal allowlist, alone or followed by
+ * text that starts a query or a fragment (`${target}?from=${page}`), which
+ * cannot move the host the allowlisted value names.
+ */
+export function isAllowlistedTarget(
+  node: TSESTree.Node,
+  sink: TSESTree.Node,
+  sourceCode: SourceCode,
+): boolean {
+  const [first, second] = stringSegments(node, sourceCode);
+  return (
+    first !== undefined &&
+    typeof first !== 'string' &&
+    isAllowlisted(first, sink, sourceCode) &&
+    (second === undefined || (typeof second === 'string' && /^[?#]/u.test(second)))
+  );
+}
+
+/** True when the value is known to start with `/` at `sink`. */
+function startsWithSlash(
+  node: TSESTree.Node,
+  sink: TSESTree.Node,
+  sourceCode: SourceCode,
+  depth: number,
+): boolean {
+  if (depth > MAX_DEPTH) {
+    return false;
+  }
+  const inner = peelStringWrappers(node, sourceCode);
+  if (inner.type === AST_NODE_TYPES.ConditionalExpression) {
+    return (
+      startsWithSlash(inner.consequent, inner.consequent, sourceCode, depth + 1) &&
+      startsWithSlash(inner.alternate, inner.alternate, sourceCode, depth + 1)
+    );
+  }
+  const first = stringSegments(inner, sourceCode)[0];
+  if (typeof first === 'string') {
+    return first.startsWith('/');
+  }
+  if (first !== inner && first !== undefined) {
+    return startsWithSlash(first, sink, sourceCode, depth + 1);
+  }
+  if (inner.type !== AST_NODE_TYPES.Identifier) {
+    return false;
+  }
+  const variable = variableOf(inner, sourceCode);
+  if (variable === null || isImportBinding(variable)) {
+    return false;
+  }
+  const slashTerm = (term: TSESTree.Node): boolean =>
+    stringCall(term, variable, 'startsWith', '/', sourceCode) ||
+    localPathParts(term, variable, sourceCode).regex;
+  const guarded = guardedBefore(
+    sink,
+    (test, negated) =>
+      negated
+        ? flattenLogical(test, '||').some(
+            (term) =>
+              term.type === AST_NODE_TYPES.UnaryExpression &&
+              term.operator === '!' &&
+              slashTerm(term.argument),
+          )
+        : flattenLogical(test, '&&').some(slashTerm),
+    (position) => writtenOnlyBefore(variable, Math.min(position, inner.range[0])),
+    sourceCode,
+  );
+  if (guarded) {
+    return true;
+  }
+  const init = constInit(variable);
+  return init !== null && startsWithSlash(init, init, sourceCode, depth + 1);
+}
+
+/**
+ * True for a literal origin with no path followed by a value that starts with
+ * `/` (`'https://app.example.com' + (local ? next : '/')`): the host is fixed
+ * by the literal, so `//` or `/\` after it only changes the path.
+ */
+export function isFixedOriginPath(
+  node: TSESTree.Node,
+  sink: TSESTree.Node,
+  sourceCode: SourceCode,
+): boolean {
+  const [first, second] = stringSegments(node, sourceCode);
+  if (typeof first !== 'string' || second === undefined) {
+    return false;
+  }
+  if (ORIGIN_ONLY.test(first)) {
+    return typeof second === 'string'
+      ? second.startsWith('/')
+      : startsWithSlash(second, second, sourceCode, 0);
+  }
+  return false;
+}
+
+/** `u.<field>` for the given binding. */
+function urlField(
+  node: TSESTree.Node,
+  url: Variable,
+  field: string,
+  sourceCode: SourceCode,
+): boolean {
+  const inner = unwrap(node);
+  return (
+    inner.type === AST_NODE_TYPES.MemberExpression &&
+    !inner.computed &&
+    inner.property.type === AST_NODE_TYPES.Identifier &&
+    inner.property.name === field &&
+    subjectVariable(inner.object, sourceCode) === url
+  );
+}
+
+/** `u.origin === ORIGIN` (or `!==` when `negated`) against a literal origin. */
+function originComparison(
+  term: TSESTree.Node,
+  url: Variable,
+  negated: boolean,
+  sourceCode: SourceCode,
+): boolean {
+  const inner = unwrap(term);
+  if (
+    inner.type !== AST_NODE_TYPES.BinaryExpression ||
+    inner.operator !== (negated ? '!==' : '===')
+  ) {
+    return false;
+  }
+  const literalOrigin = (side: TSESTree.Node): boolean => {
+    const resolved = resolveConst(side, sourceCode);
+    return (
+      resolved.type === AST_NODE_TYPES.Literal &&
+      typeof resolved.value === 'string' &&
+      ORIGIN_ONLY.test(resolved.value)
+    );
+  };
+  return (
+    (urlField(inner.left, url, 'origin', sourceCode) && literalOrigin(inner.right)) ||
+    (urlField(inner.right, url, 'origin', sourceCode) && literalOrigin(inner.left))
+  );
+}
+
+/** `u.pathname.startsWith('//')`. */
+function doubleSlashPath(term: TSESTree.Node, url: Variable, sourceCode: SourceCode): boolean {
+  const call = memberCall(unwrap(term), 'startsWith');
+  const argument = call?.arguments[0];
+  return (
+    call !== null &&
+    call.callee.type === AST_NODE_TYPES.MemberExpression &&
+    urlField(call.callee.object, url, 'pathname', sourceCode) &&
+    argument?.type === AST_NODE_TYPES.Literal &&
+    argument.value === '//'
+  );
+}
+
+/**
+ * True for `u.pathname` (optionally followed by `u.search`, `u.hash` and
+ * literal text) of a URL object whose origin was compared to a literal origin
+ * and whose path was refused when it starts with `//`, before the sink and
+ * with no change to the URL after: `const ok = u.origin === ORIGIN &&
+ * !u.pathname.startsWith('//')`, then `ok ? u.pathname + u.search : '/'`.
+ */
+export function isSameOriginUrlPath(
+  node: TSESTree.Node,
+  sink: TSESTree.Node,
+  sourceCode: SourceCode,
+): boolean {
+  const segments = stringSegments(node, sourceCode);
+  const first = segments[0];
+  if (first === undefined || typeof first === 'string') {
+    return false;
+  }
+  const field = unwrap(first);
+  if (field.type !== AST_NODE_TYPES.MemberExpression) {
+    return false;
+  }
+  const url = subjectVariable(field.object, sourceCode);
+  if (
+    url === null ||
+    isImportBinding(url) ||
+    !holdsOnlyUrls(url, sourceCode) ||
+    !urlField(field, url, 'pathname', sourceCode) ||
+    !segments
+      .slice(1)
+      .every(
+        (segment) =>
+          typeof segment === 'string' ||
+          urlField(segment, url, 'search', sourceCode) ||
+          urlField(segment, url, 'hash', sourceCode),
+      )
+  ) {
+    return false;
+  }
+  return guardedBefore(
+    sink,
+    (test, negated) => {
+      const terms = flattenLogical(test, negated ? '||' : '&&');
+      const origin = terms.some((term) => originComparison(term, url, negated, sourceCode));
+      const double = terms.some((term) => {
+        const inner = unwrap(term);
+        if (negated) {
+          return doubleSlashPath(inner, url, sourceCode);
+        }
+        return (
+          inner.type === AST_NODE_TYPES.UnaryExpression &&
+          inner.operator === '!' &&
+          doubleSlashPath(inner.argument, url, sourceCode)
+        );
+      });
+      return origin && double;
+    },
+    (position) => writtenOnlyBefore(url, position),
+    sourceCode,
+  );
+}
+
+// ---------------------------------------------------------------------------
+// Checked member expressions
+// ---------------------------------------------------------------------------
+
+/** `req.params.name` as its root binding and property names, or null for a computed or odd chain. */
+function memberPath(node: TSESTree.Node): { root: TSESTree.Identifier; path: string[] } | null {
+  const path: string[] = [];
+  let current: TSESTree.Node = node;
+  for (let depth = 0; depth < MAX_DEPTH; depth += 1) {
+    if (current.type === AST_NODE_TYPES.ChainExpression) {
+      current = current.expression;
+      continue;
+    }
+    current = unwrap(current);
+    if (current.type === AST_NODE_TYPES.Identifier) {
+      return path.length > 0 ? { root: current, path: path.reverse() } : null;
+    }
+    if (current.type !== AST_NODE_TYPES.MemberExpression) {
+      return null;
+    }
+    if (!current.computed && current.property.type === AST_NODE_TYPES.Identifier) {
+      path.push(current.property.name);
+    } else if (
+      current.computed &&
+      current.property.type === AST_NODE_TYPES.Literal &&
+      typeof current.property.value === 'string'
+    ) {
+      path.push(current.property.value);
+    } else {
+      return null;
+    }
+    current = current.object;
+  }
+  return null;
+}
+
+/** True when `node` is changed in place: assigned, updated, deleted or the target of `Object.assign`. */
+function isWriteTarget(node: TSESTree.Node, sourceCode: SourceCode): boolean {
+  let outer: TSESTree.Node = node;
+  while (
+    outer.parent !== undefined &&
+    (outer.parent.type === AST_NODE_TYPES.ChainExpression ||
+      outer.parent.type === AST_NODE_TYPES.TSNonNullExpression ||
+      outer.parent.type === AST_NODE_TYPES.TSAsExpression)
+  ) {
+    outer = outer.parent;
+  }
+  const use = outer.parent;
+  if (use === undefined) {
+    return false;
+  }
+  if (use.type === AST_NODE_TYPES.AssignmentExpression && use.left === outer) {
+    return true;
+  }
+  if (use.type === AST_NODE_TYPES.UpdateExpression) {
+    return true;
+  }
+  if (use.type === AST_NODE_TYPES.UnaryExpression && use.operator === 'delete') {
+    return true;
+  }
+  if (
+    (use.type === AST_NODE_TYPES.ForInStatement || use.type === AST_NODE_TYPES.ForOfStatement) &&
+    use.left === outer
+  ) {
+    return true;
+  }
+  return (
+    use.type === AST_NODE_TYPES.CallExpression &&
+    use.arguments[0] === outer &&
+    use.callee.type === AST_NODE_TYPES.MemberExpression &&
+    !use.callee.computed &&
+    isGlobal(use.callee.object, 'Object', sourceCode) &&
+    use.callee.property.type === AST_NODE_TYPES.Identifier &&
+    (use.callee.property.name === 'assign' || use.callee.property.name === 'defineProperty')
+  );
+}
+
+/**
+ * True when the member expression `node` (`req.params.name`) was checked
+ * against a literal allowlist before `sink` (`if (!NAMES.includes(req.params.name))
+ * return`) and nothing writes that member, or any object on its path, anywhere
+ * (`req.params.name = x`, `req.params = {}`, `Object.assign(req.params, x)`).
+ * Regex checks do not count.
+ */
+export function isAllowlistedMember(
+  node: TSESTree.Node,
+  sink: TSESTree.Node,
+  sourceCode: SourceCode,
+): boolean {
+  const target = memberPath(node);
+  const root = target === null ? null : variableOf(target.root, sourceCode);
+  if (target === null || root === null || isImportBinding(root)) {
+    return false;
+  }
+  const changed = root.references.some((reference) => {
+    if (reference.isWrite() && reference.init !== true) {
+      return true;
+    }
+    // Climb the chain from the root while it follows the target's path.
+    let current: TSESTree.Node = reference.identifier;
+    for (let index = 0; ; index += 1) {
+      if (isWriteTarget(current, sourceCode)) {
+        return true;
+      }
+      const parent: TSESTree.Node | undefined = current.parent;
+      const step = parent === undefined ? null : memberPath(parent);
+      if (
+        index >= target.path.length ||
+        parent?.type !== AST_NODE_TYPES.MemberExpression ||
+        parent.object !== current ||
+        step === null ||
+        step.path[index] !== target.path[index]
+      ) {
+        return false;
+      }
+      current = parent;
+    }
+  });
+  if (changed) {
+    return false;
+  }
+  const sameMember: Subject = (candidate) => {
+    const path = memberPath(candidate);
+    return (
+      path !== null &&
+      variableOf(path.root, sourceCode) === root &&
+      path.path.length === target.path.length &&
+      path.path.every((name, index) => name === target.path[index])
+    );
+  };
+  const noRegex: RegexJudge = () => false;
+  return guardedBefore(
+    sink,
+    (test, negated) =>
+      negated
+        ? failsUnlessChecked(test, sameMember, noRegex, sourceCode)
+        : holdsOnlyIfChecked(test, sameMember, noRegex, sourceCode),
+    () => true,
+    sourceCode,
   );
 }
