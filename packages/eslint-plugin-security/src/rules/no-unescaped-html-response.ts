@@ -62,7 +62,31 @@ export const DEFAULT_SANITIZERS: readonly string[] = [
   'sanitizeHtml',
   'xss',
   'filterXSS',
+  // React escapes text it renders; raw HTML needs `dangerouslySetInnerHTML`,
+  // which `require-sanitized-html` checks.
+  'renderToString',
+  'renderToStaticMarkup',
 ];
+
+/**
+ * Escaping and sanitizing exports of common modules, by module name. An
+ * import or `require` of one of these under any local name counts as a
+ * sanitizer, so `import { encode } from 'he'` makes `encode(x)` safe.
+ * `default` stands for the module's default export (or the `require` result).
+ */
+const ESCAPING_MODULES: Readonly<Record<string, readonly string[]>> = {
+  he: ['encode', 'escape'],
+  entities: ['encode', 'encodeHTML', 'escape', 'escapeUTF8'],
+  'escape-html': ['default'],
+  'html-escaper': ['escape'],
+  'lodash.escape': ['default'],
+  'lodash/escape': ['default'],
+  lodash: ['escape'],
+  'lodash-es': ['escape'],
+  xss: ['default', 'filterXSS'],
+  'sanitize-html': ['default'],
+  'react-dom/server': ['renderToString', 'renderToStaticMarkup'],
+};
 
 const BODY_WRITERS: ReadonlySet<string> = new Set(['send', 'end', 'write']);
 /** Response methods that return the response, so a writer after them is on the response. */
@@ -400,11 +424,39 @@ export const noUnescapedHtmlResponseRule = createRule<RuleOptions, MessageIds>({
     const { sourceCode } = context;
     const responseObjects = new Set((options.responseObjects ?? DEFAULT_RESPONSE_OBJECTS).map(squash));
     const entries = (options.sanitizers ?? DEFAULT_SANITIZERS).map((entry) => squash(entry).replace(/\(\)$/u, ''));
-    const judge = new SafetyJudge(
-      sourceCode,
-      new Set(entries.filter((entry) => entry.includes('.'))),
-      new Set(entries.filter((entry) => !entry.includes('.'))),
-    );
+    const sanitizerTexts = new Set(entries.filter((entry) => entry.includes('.')));
+    const sanitizerNames = new Set(entries.filter((entry) => !entry.includes('.')));
+    const judge = new SafetyJudge(sourceCode, sanitizerTexts, sanitizerNames);
+
+    /** Records the local names an escaping module is bound to. */
+    const bindEscapingModule = (module: string, local: string, imported: string | null): void => {
+      const exports = ESCAPING_MODULES[module];
+      if (exports === undefined) {
+        return;
+      }
+      if (imported === null) {
+        // The namespace or the `require` result: its methods, and itself when callable.
+        for (const name of exports) {
+          if (name === 'default') {
+            sanitizerNames.add(local);
+          } else {
+            sanitizerTexts.add(`${local}.${name}`);
+          }
+        }
+      } else if (exports.includes(imported)) {
+        sanitizerNames.add(local);
+      }
+    };
+    const requiredModule = (node: TSESTree.Node | null): string | null => {
+      const inner = node === null ? null : unwrap(node);
+      return inner?.type === AST_NODE_TYPES.CallExpression &&
+        inner.callee.type === AST_NODE_TYPES.Identifier &&
+        inner.callee.name === 'require' &&
+        inner.arguments[0]?.type === AST_NODE_TYPES.Literal &&
+        typeof inner.arguments[0].value === 'string'
+        ? inner.arguments[0].value
+        : null;
+    };
 
     /** A literal non-HTML content type set on the response before `sink` in its function. */
     const sentAsNonHtml = (sink: TSESTree.CallExpression): boolean => {
@@ -543,6 +595,42 @@ export const noUnescapedHtmlResponseRule = createRule<RuleOptions, MessageIds>({
     };
 
     return {
+      ImportDeclaration(node): void {
+        const module = String(node.source.value);
+        for (const specifier of node.specifiers) {
+          if (specifier.type === AST_NODE_TYPES.ImportNamespaceSpecifier) {
+            bindEscapingModule(module, specifier.local.name, null);
+          } else if (specifier.type === AST_NODE_TYPES.ImportDefaultSpecifier) {
+            bindEscapingModule(module, specifier.local.name, 'default');
+          } else {
+            const imported =
+              specifier.imported.type === AST_NODE_TYPES.Identifier
+                ? specifier.imported.name
+                : String(specifier.imported.value);
+            bindEscapingModule(module, specifier.local.name, imported);
+          }
+        }
+      },
+      VariableDeclarator(node): void {
+        const module = requiredModule(node.init);
+        if (module === null) {
+          return;
+        }
+        if (node.id.type === AST_NODE_TYPES.Identifier) {
+          bindEscapingModule(module, node.id.name, null);
+        } else if (node.id.type === AST_NODE_TYPES.ObjectPattern) {
+          for (const property of node.id.properties) {
+            if (
+              property.type === AST_NODE_TYPES.Property &&
+              !property.computed &&
+              property.key.type === AST_NODE_TYPES.Identifier &&
+              property.value.type === AST_NODE_TYPES.Identifier
+            ) {
+              bindEscapingModule(module, property.value.name, property.key.name);
+            }
+          }
+        }
+      },
       CallExpression(node): void {
         checkResponseWrite(node);
         checkTemplateRender(node);

@@ -62,6 +62,21 @@ ruleTester.run('no-unescaped-html-response', noUnescapedHtmlResponseRule, {
     { code: "ejs.render('<p><%= bio %></p>', { bio: input });", filename: TS },
     { code: "nunjucks.renderString(template, { bio: input });", filename: TS },
     { code: "nunjucks.renderString('<p>{{ bio | safe }}</p>', { title: input, bio: '<b>fixed</b>' });", filename: TS },
+    // Escapers imported from their modules under any name.
+    { code: "import { encode } from 'he'; res.send('<p>' + encode(comment) + '</p>');", filename: TS },
+    { code: "import * as entities from 'he'; res.send(`<p>${entities.encode(comment)}</p>`);", filename: TS },
+    { code: "const esc = require('escape-html'); res.send('<p>' + esc(comment) + '</p>');", filename: TS },
+    { code: "const { escape: e } = require('lodash'); res.send('<p>' + e(comment) + '</p>');", filename: TS },
+    // React escapes the text it renders.
+    {
+      code: "import { renderToString } from 'react-dom/server'; res.send('<!doctype html><div id=\"root\">' + renderToString(app) + '</div>');",
+      filename: TS,
+    },
+    // A Unicode letter class with the `u` flag admits no markup.
+    {
+      code: "function h(req, res) { const bio = String(req.body.bio); if (!/^[\\p{L}\\p{N} .,-]{0,200}$/u.test(bio)) return res.status(400).end(); res.send('<p>' + bio + '</p>'); }",
+      filename: TS,
+    },
   ],
   invalid: [
     { code: "res.send('<div>' + data + '</div>');", filename: TS, errors: html },
@@ -112,6 +127,15 @@ ruleTester.run('no-unescaped-html-response', noUnescapedHtmlResponseRule, {
       code: "function h(req) { const data = `${req.headers['x-forwarded-for']}`; return nunjucks.renderString('<div>{{ bio | safe }}</div>', { bio: data }); }",
       filename: TS,
       errors: raw,
+    },
+    // A module that does not escape, or an export that is not an escaper.
+    { code: "import { encode } from 'base64-thing'; res.send('<p>' + encode(comment) + '</p>');", filename: TS, errors: html },
+    { code: "import { decode } from 'he'; res.send('<p>' + decode(comment) + '</p>');", filename: TS, errors: html },
+    // A Unicode letter class next to `<` and `>` still admits markup.
+    {
+      code: "function h(req, res) { const bio = String(req.body.bio); if (!/^[\\p{L}<>]+$/u.test(bio)) return; res.send('<p>' + bio + '</p>'); }",
+      filename: TS,
+      errors: html,
     },
   ],
 });
