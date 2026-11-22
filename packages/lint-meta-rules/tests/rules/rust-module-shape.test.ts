@@ -174,4 +174,45 @@ describe('rust-module-shape', () => {
       }
     });
   });
+
+  describe('tightens a stale or over-generous baseline', () => {
+    const fixture = createFixture({
+      'src/kept.rs': functions(5),
+      'src/small.rs': functions(2),
+      'src/shrunk.rs': functions(5),
+      'src/clean/mod.rs': 'pub mod a;\n',
+      'ci/baselines/rust-module-shape.json': JSON.stringify({
+        'size:src/kept.rs': 5,
+        'size:src/gone.rs': 9,
+        'size:src/small.rs': 6,
+        'size:src/shrunk.rs': 10,
+        'manifest:src/clean/mod.rs': 2,
+        weird: 1,
+      }),
+    });
+
+    test('reports gone, now-clean and shrunk entries, and a key it cannot read', () => {
+      const original = console.error;
+      console.error = () => undefined;
+      try {
+        const violations = runSync(
+          createRustModuleShapeRule({ maxCodeLines: 3, baselineDir: 'ci/baselines' }),
+          fixture.context(),
+        );
+        const byFile = Object.fromEntries(violations.map((violation) => [violation.file, violation.message]));
+        expect(Object.keys(byFile).sort()).toEqual(['src/clean/mod.rs', 'src/gone.rs', 'src/shrunk.rs', 'src/small.rs', 'weird']);
+        expect(byFile['src/gone.rs']).toContain('the file no longer exists');
+        expect(byFile['src/small.rs']).toContain('is now within the 3-line cap');
+        expect(byFile['src/clean/mod.rs']).toContain('no longer holds items');
+        expect(byFile['src/shrunk.rs']).toContain('over-generous: frozen at 10 code lines, now 5');
+        expect(
+          runSync(createRustModuleShapeRule({ maxCodeLines: 3, baselineDir: 'ci/baselines', tightenRatio: 0.4 }), fixture.context()).map(
+            (violation) => violation.file,
+          ),
+        ).not.toContain('src/shrunk.rs');
+      } finally {
+        console.error = original;
+      }
+    });
+  });
 });

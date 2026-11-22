@@ -23,10 +23,13 @@ export interface RustModuleShapeOptions {
   readonly exclude?: readonly string[];
   /**
    * Where a ratchet baseline lives, relative to the repo root. When set, today's offenders recorded in
-   * `<baselineDir>/<id>.json` (keys `size:<file>` and `manifest:<file>`) pass while they do not grow.
+   * `<baselineDir>/<id>.json` (keys `size:<file>` and `manifest:<file>`) pass while they do not grow,
+   * and an entry that is stale or over-generous is reported until the baseline is updated.
    * Default: no baseline.
    */
   readonly baselineDir?: string;
+  /** With a baseline, an entry whose file shrank below `frozen * tightenRatio` must be re-frozen. Default `0.85`. */
+  readonly tightenRatio?: number;
   /** Whether a violation fails CI. Default `true`. */
   readonly ciCritical?: boolean;
 }
@@ -105,6 +108,7 @@ export function createRustModuleShapeRule(options: RustModuleShapeOptions = {}):
   const skipTestModules = options.skipTestModules ?? true;
   const exclude = options.exclude ?? [];
   const baselineDir = options.baselineDir;
+  const tightenRatio = options.tightenRatio ?? 0.85;
   const ciCritical = options.ciCritical ?? true;
 
   const isManifest = (file: string): boolean => file === manifestFile || file.endsWith(`/${manifestFile}`);
@@ -158,6 +162,43 @@ export function createRustModuleShapeRule(options: RustModuleShapeOptions = {}):
     return out;
   }
 
+  /**
+   * Self-tightening, as in `file-size-ratchet`: a baseline entry whose file is
+   * gone, that no longer offends, or that shrank below `frozen * tightenRatio`
+   * is reported, so a paydown is captured in the baseline instead of leaving
+   * room to grow back.
+   */
+  function staleEntries(ctx: IMetaCtx, baseline: Record<string, number>, all: readonly Finding[]): IViolation[] {
+    const current = new Map(all.map((finding) => [finding.key, finding.metric]));
+    const out: IViolation[] = [];
+    for (const [key, frozen] of Object.entries(baseline)) {
+      const separator = key.indexOf(':');
+      const kind = key.slice(0, separator);
+      const file = key.slice(separator + 1);
+      const what = kind === 'size' ? `${String(frozen)} code lines` : `${String(frozen)} manifest item(s)`;
+      if (separator === -1 || (kind !== 'size' && kind !== 'manifest')) {
+        out.push({ file: key, rule: id, message: `baseline entry \`${key}\` is not a \`size:<file>\` or \`manifest:<file>\` key. Remove it and update the baseline.` });
+        continue;
+      }
+      if (ctx.read(file) === null) {
+        out.push({ file, rule: id, message: `baseline entry \`${key}\` is stale: the file no longer exists. Remove it and update the baseline.` });
+        continue;
+      }
+      const now = current.get(key);
+      if (now === undefined) {
+        const state = kind === 'size' ? `is now within the ${String(maxCodeLines)}-line cap` : `no longer holds items a ${manifestFile} should not`;
+        out.push({ file, rule: id, message: `baseline entry \`${key}\` is stale: the file ${state}. Remove it and update the baseline.` });
+      } else if (now < frozen * tightenRatio) {
+        out.push({
+          file,
+          rule: id,
+          message: `baseline entry \`${key}\` is over-generous: frozen at ${what}, now ${String(now)}. Tighten it and update the baseline.`,
+        });
+      }
+    }
+    return out;
+  }
+
   const rule: IMetaRule = {
     id,
     category: 'source-text',
@@ -175,6 +216,7 @@ export function createRustModuleShapeRule(options: RustModuleShapeOptions = {}):
           violations.push(finding.violation);
         }
       }
+      violations.push(...staleEntries(ctx, baseline, all));
       return violations;
     },
   };
