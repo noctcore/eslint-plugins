@@ -37,44 +37,44 @@ text{font-family:'Schibsted Grotesk Variable','Schibsted Grotesk',ui-sans-serif,
 <text class="d-kicker" x="12" y="24">FILES AND FOLDERS</text>
 <text class="d-code" x="12" y="48">src/components/board/</text>
 <text class="d-code-key" x="24" y="80">TaskCard/</text>
-<path class="d-wire" d="M30 84 V94 H36"/>
+<path class="d-leader" d="M30 84 V94 H36"/>
 <text class="d-label" x="40" y="98">component-folder-structure</text>
 <text class="d-note" x="40" y="114">the folder carries its full sibling set</text>
 <text class="d-code-key" x="40" y="140">TaskCard.tsx</text>
-<path class="d-wire" d="M46 144 V154 H52"/>
+<path class="d-leader" d="M46 144 V154 H52"/>
 <text class="d-label" x="56" y="158">filename-matches-export</text>
 <text class="d-note" x="56" y="174">the file is named after its export</text>
 <text class="d-code-key" x="40" y="200">TaskCard.hooks.ts</text>
-<path class="d-wire" d="M46 204 V214 H52"/>
+<path class="d-leader" d="M46 204 V214 H52"/>
 <text class="d-label" x="56" y="218">single-semantic-module</text>
 <text class="d-note" x="56" y="234">its exports are one kind of thing</text>
 <text class="d-code-key" x="40" y="260">TaskCard.test.tsx</text>
-<path class="d-wire" d="M46 264 V274 H52"/>
+<path class="d-leader" d="M46 264 V274 H52"/>
 <text class="d-label" x="56" y="278">colocated-test-required</text>
 <text class="d-note" x="56" y="294">its test sits beside the file it tests</text>
 <text class="d-code-key" x="40" y="320">index.ts</text>
-<path class="d-wire" d="M46 324 V374 H52 M46 334 H52"/>
+<path class="d-leader" d="M46 324 V374 H52 M46 334 H52"/>
 <text class="d-label" x="56" y="338">barrel-purity</text>
 <text class="d-note" x="56" y="354">the barrel holds re-exports only</text>
 <text class="d-label" x="56" y="378">index-must-reexport-default</text>
 <text class="d-note" x="56" y="394">the barrel re-exports the component</text>
 <text class="d-code" x="12" y="430">src/modules/account/</text>
 <text class="d-code-key" x="28" y="448">account.routes.ts</text>
-<path class="d-wire" d="M34 452 V462 H40"/>
+<path class="d-leader" d="M34 452 V462 H40"/>
 <text class="d-label" x="44" y="466">file-naming-pattern</text>
 <text class="d-note" x="44" y="482">the file is named after its folder</text>
 <path class="d-wire" d="M12 506 H348"/>
 <text class="d-kicker" x="12" y="532">WHAT IT IMPORTS</text>
 <text class="d-code-key" x="12" y="558">board/ → projects/</text>
-<path class="d-wire" d="M18 562 V572 H24"/>
+<path class="d-leader" d="M18 562 V572 H24"/>
 <text class="d-label" x="28" y="576">no-cross-feature-imports</text>
 <text class="d-note" x="28" y="592">no runtime imports between sibling features</text>
 <text class="d-code-key" x="12" y="622">lib/ → @/features</text>
-<path class="d-wire" d="M18 626 V636 H24"/>
+<path class="d-leader" d="M18 626 V636 H24"/>
 <text class="d-label" x="28" y="640">no-restricted-imports-layered</text>
 <text class="d-note" x="28" y="656">bans per file layer, merged per file</text>
 <text class="d-code-key" x="12" y="686">'../../../../shared'</text>
-<path class="d-wire" d="M18 690 V700 H24"/>
+<path class="d-leader" d="M18 690 V700 H24"/>
 <text class="d-label" x="28" y="704">max-import-depth</text>
 <text class="d-note" x="28" y="720">at most 3 parent hops by default</text>
 </svg>

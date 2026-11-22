@@ -66,7 +66,7 @@ text{font-family:'Schibsted Grotesk Variable','Schibsted Grotesk',ui-sans-serif,
 <path class="d-ok-head" d="M148 164 l-4 -7 h8 z"/>
 <path class="d-ok" d="M82 120 V261"/>
 <path class="d-ok-head" d="M82 268 l-4 -7 h8 z"/>
-<path class="d-ok" d="M204 120 V224 H650 V281 H577"/>
+<path class="d-ok" d="M210 120 V224 H650 V281 H577"/>
 <path class="d-ok-head" d="M570 281 l7 -4 v8 z"/>
 <path class="d-bad" d="M212 106 H234"/>
 <path class="d-stop" d="M236 96 V116"/>

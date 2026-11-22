@@ -53,8 +53,8 @@ text{font-family:'Schibsted Grotesk Variable','Schibsted Grotesk',ui-sans-serif,
 <path class="d-leader" d="M86 116 H192"/>
 <path class="d-leader" d="M106 148 H192"/>
 <path class="d-leader" d="M126 180 H192"/>
-<path class="d-limit" d="M176 68 H286"/>
-<text class="d-code-key" x="292" y="72">max: 3</text>
+<path class="d-limit" d="M176 68 H300"/>
+<text class="d-code-key" x="122" y="72">max: 3</text>
 <path class="d-ok" d="M200 180 V84"/>
 <path class="d-bad" d="M200 84 V56"/>
 <path class="d-stop" d="M190 68 H210"/>
@@ -68,6 +68,7 @@ text{font-family:'Schibsted Grotesk Variable','Schibsted Grotesk',ui-sans-serif,
 <text class="d-code" x="214" y="152">../</text>
 <text class="d-code" x="214" y="120">../../</text>
 <text class="d-code-ok" x="214" y="88">../../../</text>
+<text class="d-ok-text" x="290" y="88">at max</text>
 <text class="d-code-bad" x="214" y="56">../../../../</text>
 <rect class="d-box" x="12" y="276" width="336" height="124" rx="5"/>
 <text class="d-kicker" x="26" y="298">THE FIX</text>
