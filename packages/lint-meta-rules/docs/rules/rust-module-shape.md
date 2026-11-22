@@ -1,0 +1,110 @@
+# `rust-module-shape`
+
+> Rust files stay at or under a code-line cap, and every `mod.rs` only declares and re-exports modules.
+
+<!-- begin generated rule header -->
+Runs under `@noctcore/harness`, not ESLint · Factory `createRustModuleShapeRule` from `@noctcore/lint-meta-rules` · Category `source-text` · Fails CI by default: yes
+<!-- end generated rule header -->
+
+## Why
+
+A Rust module that keeps growing ends up doing several jobs, and a `mod.rs` that holds logic hides it
+in the one file a reader skims for the module's shape. Capping code lines, not raw lines, keeps the
+measure honest: doc comments and inline `#[cfg(test)]` modules do not count, so a well documented,
+well tested file is not punished and tests cannot be shuffled around to game the number. The check
+is text only and never runs cargo, so it works in a lint job with no Rust toolchain.
+
+### Opt-in
+
+The rule is in `RULE_FACTORIES` and in `OPT_IN_RULE_IDS`, so a bare `createAllRules()` skips it and
+adding it gives no existing caller a new violation. Code that iterates `RULE_FACTORIES` or `RULE_IDS`
+itself does build it, at `ciCritical: true`: filter out `OPT_IN_RULE_IDS` there if you do not want it.
+Enable it by naming it in `optIn`, or by calling its factory:
+
+```ts prose
+import { createAllRules, createRustModuleShapeRule } from '@noctcore/lint-meta-rules';
+
+const everything = createAllRules({ optIn: ['rust-module-shape'] });
+const justThisOne = createRustModuleShapeRule({
+  roots: ['apps/desktop/src-tauri/src'],
+  exclude: ['**/tests.rs', 'apps/desktop/src-tauri/src/bindings/generated.rs'],
+  baselineDir: '.noctcore/baselines',
+});
+```
+
+## What it flags
+
+- A `.rs` file under `roots` with more than `maxCodeLines` code lines. A code line is any line that is
+  not blank once comments are removed; lines inside a `#[cfg(test)] mod name { ... }` block are left
+  out unless `skipTestModules` is `false`. One violation per file, with the count.
+- A `mod.rs` (`manifestFile`) with an item keyword at brace depth 0: `fn`, `impl`, `struct`, `enum`,
+  `union`, `trait`, `const`, `static`, `type` or `macro_rules!` (`manifestItems`), with or without
+  `pub`, `pub(crate)`, `async`, `unsafe`, `const fn` or `extern`. One violation per file, at the first
+  item, listing every item as `keyword@line`.
+
+```rust
+// Bad: src/store/mod.rs
+pub mod task;
+pub use task::Task;
+
+pub fn open(path: &Path) -> Store {
+    Store::new(path)
+}
+
+// Good: src/store/mod.rs
+pub mod open;
+pub mod task;
+pub use open::open;
+pub use task::Task;
+```
+
+With `baselineDir`, the offenders recorded in `<baselineDir>/<id>.json` pass while they do not grow:
+keys are `size:<file>` (the code-line count) and `manifest:<file>` (the number of items), the same
+flat map the harness ratchet uses for `file-size-ratchet`. A new offender, or a recorded one that
+grew, fails. The baseline also tightens itself, as `file-size-ratchet` does: an entry whose file is
+gone, that no longer offends, or whose count shrank below `frozen * tightenRatio` is reported until
+the baseline is updated, so a paydown cannot grow back. The harness writes the file with
+`--update-baseline`. `advisoryCodeLines` logs a line
+for a file between it and the cap; that is never a violation.
+
+## What it does not flag
+
+- `mod` and `use` declarations, attributes, doc comments and comments in a `mod.rs`, and items inside
+  an inline `mod name { ... }` body or a `#[cfg(test)]` module.
+- Item keywords inside comments or string literals.
+- `lib.rs`, `main.rs` and any file not named `manifestFile` for the manifest check.
+- Files matching `exclude`, and anything under a `target/` directory.
+
+## Options
+
+```ts
+createRustModuleShapeRule(options?: RustModuleShapeOptions): IMetaRule
+```
+
+| Option | Type | Default | Meaning |
+| --- | --- | --- | --- |
+| `id` | `string` | `'rust-module-shape'` | Rule id, and the baseline file name. |
+| `roots` | `string[]` | `['src', 'crates/*/src']` | Directories whose `.rs` files are checked, recursively. |
+| `maxCodeLines` | `number` | `400` | The most code lines a file may hold. |
+| `advisoryCodeLines` | `number` | none | Log, never report, a file above this and at or under the cap. |
+| `manifestFile` | `string` | `'mod.rs'` | The file name that must stay a manifest. |
+| `manifestItems` | `string[]` | `fn`, `impl`, `struct`, `enum`, `union`, `trait`, `const`, `static`, `type`, `macro_rules!` | Item keywords that make a manifest implement. |
+| `skipTestModules` | `boolean` | `true` | Leave `#[cfg(test)] mod` blocks out of the count and the manifest check. |
+| `exclude` | `string[]` | `[]` | Globs of files left out of both checks. |
+| `baselineDir` | `string` | none | Turns on the ratchet baseline, read from `<baselineDir>/<id>.json`. |
+| `tightenRatio` | `number` | `0.85` | With a baseline, an entry whose count fell below `frozen * tightenRatio` must be re-frozen. |
+| `ciCritical` | `boolean` | `true` | Whether a violation fails CI. |
+
+## When not to use it
+
+The scan is lexical: it understands comments, string and raw string literals and char literals, but
+not macros, so an item generated by a macro call in a `mod.rs` is not seen. A crate whose layout puts
+logic in `mod.rs` on purpose (the older module style) should set `manifestItems: []` and keep only the
+size cap, or leave the rule off.
+
+## Related
+
+- [`rust-layer-rank`](./rust-layer-rank.md) and [`rust-command-placement`](./rust-command-placement.md)
+  read the same files with the same comment and test-module handling.
+- [`file-size-ratchet`](./file-size-ratchet.md) caps raw lines for TypeScript sources with the same
+  baseline format.
