@@ -29,9 +29,17 @@ interface Score {
 /** The parts of bench/src/baseline.ts's `Baseline` this page reads. */
 export interface BenchBaseline {
   readonly plugins: Readonly<Record<string, { readonly package: string; readonly rules: readonly string[] }>>;
-  readonly rules: Readonly<Record<string, Score & { readonly enabledBy: 'recommended' | 'override' }>>;
+  readonly rules: Readonly<
+    Record<
+      string,
+      Score & { readonly enabledBy: 'recommended' | 'override'; readonly extra: number; readonly crossFp: number; readonly crossSafe: number }
+    >
+  >;
   readonly categories: Readonly<
-    Record<string, Score & { readonly title: string; readonly cwe: string | null; readonly pairs: number; readonly rules: readonly string[] }>
+    Record<
+      string,
+      Score & { readonly title: string; readonly cwe: string | null; readonly pairs: number; readonly rules: readonly string[]; readonly extra: number }
+    >
   >;
   readonly cases: Readonly<
     Record<string, { readonly outcome: Outcome; readonly rule: string; readonly file: string; readonly framework: string; readonly title: string }>
@@ -62,8 +70,8 @@ function ruleLink(rule: string): string {
   return `[\`noctcore-${short}/${name}\`](${SITE_BASE}/rules/${short}/${name}/)`;
 }
 
-function scoreCells(score: Score): string {
-  return `${score.tp} | ${score.fn} | ${score.fp} | ${score.tn} | ${percent(score.detection)} | ${percent(score.falseAlarm)} | **${signed(score.j)}**`;
+function scoreCells(score: Score & { readonly extra: number }): string {
+  return `${score.tp} | ${score.fn} | ${score.fp} | ${score.tn} | ${score.extra} | ${percent(score.detection)} | ${percent(score.falseAlarm)} | **${signed(score.j)}**`;
 }
 
 const OUTCOME_SECTIONS: readonly { outcome: Outcome; heading: string }[] = [
@@ -94,28 +102,34 @@ export function renderBenchPage(baseline: BenchBaseline): string {
     '- **Detection**: the share of vulnerable cases the rule reports on the labelled line (TP / (TP + FN)).',
     '- **False alarms**: the share of safe twins the rule reports anything in (FP / (FP + TN)).',
     '- **J** (Youden\'s J): detection minus false alarms. 100% is perfect, 0% is no better than chance.',
+    '- **Extra**: reports on an unlabelled line of a vulnerable case. Not in the four counts, and often a real false',
+    '  alarm on the code around the sink.',
+    '- **Elsewhere**: safe cases of other categories the rule reported, out of those it ran on (a preset rule runs on',
+    '  all of them). They are recorded as false alarms, but kept out of the rates, which compare paired twins.',
     '',
     'These rules are single-file and syntactic: they see one call at a time and no data flow across functions or files.',
-    'Read a miss below as a statement of that scope, not a promise it will be fixed. CI fails when any case gets worse',
-    `than the [committed baseline](${REPO_URL}/blob/main/bench/baseline.json), so these numbers only move up.`,
+    'Read a miss below as a statement of that scope, not a promise it will be fixed. CI fails when any recorded case',
+    `gets worse than the [committed baseline](${REPO_URL}/blob/main/bench/baseline.json): no rule loses a catch or gains`,
+    'a false alarm, and no handled case is deleted, without an explicit flag that shows up in review. New cases can',
+    'still lower a rate, because a case a rule misses may be added before the rule learns it.',
     '',
   ];
 
   for (const [short, plugin] of Object.entries(baseline.plugins)) {
     out.push(`## ${short}`, '', `\`${plugin.package}\`, every rule it exports:`, '');
-    out.push('| Rule | Enabled by | TP | FN | FP | TN | Detection | False alarms | J |');
-    out.push('| --- | --- | ---: | ---: | ---: | ---: | ---: | ---: | ---: |');
+    out.push('| Rule | Enabled by | TP | FN | FP | TN | Extra | Detection | False alarms | J | Elsewhere |');
+    out.push('| --- | --- | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: |');
     for (const name of plugin.rules) {
       const id = `${short}/${name}`;
       const score = baseline.rules[id];
       out.push(
         score === undefined
-          ? `| ${ruleLink(id)} | | | | | | no cases yet | | |`
-          : `| ${ruleLink(id)} | ${score.enabledBy} | ${scoreCells(score)} |`,
+          ? `| ${ruleLink(id)} | | | | | | | no cases yet | | | |`
+          : `| ${ruleLink(id)} | ${score.enabledBy} | ${scoreCells(score)} | ${score.crossFp} of ${score.crossSafe} |`,
       );
     }
-    out.push('', '| Category | CWE | Pairs | TP | FN | FP | TN | Detection | False alarms | J |');
-    out.push('| --- | --- | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: |');
+    out.push('', '| Category | CWE | Pairs | TP | FN | FP | TN | Extra | Detection | False alarms | J |');
+    out.push('| --- | --- | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: |');
     for (const [id, category] of Object.entries(baseline.categories)) {
       if (!id.startsWith(`${short}/`)) continue;
       out.push(`| ${text(category.title)} | ${category.cwe ?? '-'} | ${category.pairs} | ${scoreCells(category)} |`);
@@ -127,13 +141,15 @@ export function renderBenchPage(baseline: BenchBaseline): string {
       if (baseline.rules[id] === undefined) continue;
       out.push(`### \`${id}\``, '');
       const cases = Object.values(baseline.cases).filter((c) => c.rule === id);
+      // Own-category cases and safe cases elsewhere alike: a false alarm anywhere is listed.
       for (const { outcome, heading } of OUTCOME_SECTIONS) {
         const matching = cases.filter((c) => c.outcome === outcome);
         out.push(`**${heading}** (${matching.length})`, '');
         if (matching.length === 0) out.push('- none', '');
         else {
           for (const c of matching) {
-            out.push(`- ${text(c.title)} (${c.framework}, [${text(c.file.split('/').pop() ?? c.file)}](${REPO_URL}/blob/main/bench/corpus/${c.file}))`);
+            const name = (c.file.split('/').pop() ?? c.file).replace(/\.case$/, '');
+            out.push(`- ${text(c.title)} (${c.framework}, [${text(name)}](${REPO_URL}/blob/main/bench/corpus/${c.file}))`);
           }
           out.push('');
         }
