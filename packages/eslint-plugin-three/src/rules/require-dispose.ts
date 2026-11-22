@@ -126,7 +126,7 @@ export const requireDisposeRule = createRule<RuleOptions, MessageIds>({
   defaultOptions: [{}],
   create(context, [options]) {
     if (skipFile(context, options)) return {};
-    const imports = readThreeImports(context.sourceCode.ast);
+    const imports = readThreeImports(context.sourceCode.ast, options.extraModules);
     const keys = context.sourceCode.visitorKeys;
     const sourceCode = context.sourceCode;
 

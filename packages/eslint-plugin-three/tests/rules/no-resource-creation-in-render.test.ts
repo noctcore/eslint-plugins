@@ -16,6 +16,8 @@ ruleTester.run('no-resource-creation-in-render', noResourceCreationInRenderRule,
     { code: `${NS}function Box() { const ref = useRef(null); if (ref.current === null) ref.current = new THREE.BoxGeometry(); return <mesh geometry={ref.current} />; }`, filename: TSX },
     { code: `${NS}function Box() { const ref = useRef(null); ref.current ??= new THREE.BoxGeometry(); return <mesh geometry={ref.current} />; }`, filename: TSX },
     { code: `${NS}function Box() { const ref = useRef(null); if (!ref.current) { ref.current = new THREE.TextureLoader(); } return null; }`, filename: TSX },
+    { code: `${NS}function Box() { const ref = useRef(null); ref.current = ref.current ?? new THREE.BoxGeometry(); return <mesh geometry={ref.current} />; }`, filename: TSX },
+    { code: `${NS}function Box() { const ref = useRef(null); if (ref.current === undefined) ref.current = new THREE.BoxGeometry(); return <mesh geometry={ref.current} />; }`, filename: TSX },
     // Module scope.
     { code: `${NS}const mat = new THREE.MeshBasicMaterial();\nfunction Box() { return <mesh material={mat} />; }`, filename: TSX },
     // Inside an effect or a handler.
@@ -37,6 +39,35 @@ ruleTester.run('no-resource-creation-in-render', noResourceCreationInRenderRule,
     },
   ],
   invalid: [
+    {
+      // A fallback in render builds a geometry on every render without the prop.
+      code: `${NS}function Box(props) { const geo = props.geometry ?? new THREE.BoxGeometry(); return <mesh geometry={geo} />; }`,
+      filename: TSX,
+      errors: [{ messageId: 'resourceInRender' }],
+    },
+    {
+      // A guard on another ref, or one with the wrong polarity.
+      code: `${NS}function Box() { const myref = useRef(null); const ref = useRef(null); if (!myref.current) ref.current = new THREE.BoxGeometry(); return <mesh geometry={ref.current} />; }`,
+      filename: TSX,
+      errors: [{ messageId: 'resourceInRender' }],
+    },
+    {
+      code: `${NS}function Box() { const ref = useRef(null); if (flag) ref.current = new THREE.BoxGeometry(); return <mesh geometry={ref.current} />; }`,
+      filename: TSX,
+      errors: [{ messageId: 'resourceInRender' }],
+    },
+    {
+      code: `${NS}function Box() { const ref = useRef(null); if (ref.current !== null) ref.current = new THREE.BoxGeometry(); return <mesh geometry={ref.current} />; }`,
+      filename: TSX,
+      errors: [{ messageId: 'resourceInRender' }],
+    },
+    {
+      // Classes from a module in extraModules.
+      code: "import { BoxGeometry } from '@acme/engine';\nfunction Box() { const geo = new BoxGeometry(); return <mesh geometry={geo} />; }",
+      filename: TSX,
+      options: [{ extraModules: ['@acme/engine'] }],
+      errors: [{ messageId: 'resourceInRender' }],
+    },
     {
       code: `${NS}function Box() { const mat = new THREE.MeshBasicMaterial(); return <mesh material={mat} />; }`,
       filename: TSX,

@@ -90,7 +90,7 @@ export const noAllocationInFrameLoopRule = createRule<RuleOptions, MessageIds>({
   create(context, [options]) {
     if (skipFile(context, options)) return {};
     const program = context.sourceCode.ast;
-    const imports = readThreeImports(program);
+    const imports = readThreeImports(program, options.extraModules);
     const loops = new FrameLoops(context.sourceCode, imports);
     if (loops.size === 0) return {};
     const text = (node: TSESTree.Node): string => context.sourceCode.getText(node);
@@ -101,7 +101,7 @@ export const noAllocationInFrameLoopRule = createRule<RuleOptions, MessageIds>({
         if (name === null) return;
         const isMath = MATH_CLASSES.has(name);
         if (!isMath && !isGpuResourceClass(name)) return;
-        if (loops.enclosingLoop(node) === null || isLazyInit(node, text)) return;
+        if (loops.enclosingLoop(node) === null || isLazyInit(node)) return;
         context.report({
           node,
           messageId: isMath ? 'mathAllocation' : 'resourceAllocation',

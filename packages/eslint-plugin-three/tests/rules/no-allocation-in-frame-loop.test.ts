@@ -22,9 +22,19 @@ ruleTester.run('no-allocation-in-frame-loop', noAllocationInFrameLoopRule, {
     // Lazy initialisation runs once.
     `${R3F}useFrame(() => { tmp.current ??= new THREE.Vector3(); tmp.current.set(1, 2, 3); });`,
     `${R3F}useFrame(() => { if (!tmp.current) tmp.current = new THREE.Vector3(); });`,
-    `${R3F}useFrame(() => { const v = cache.v ?? new THREE.Vector3(); });`,
+    `${R3F}useFrame(() => { cache.v = cache.v ?? new THREE.Vector3(); });`,
+    `${R3F}useFrame(() => { cache.v ||= new THREE.Vector3(); });`,
+    `${R3F}useFrame(() => { if (tmp.current == null) { tmp.current = new THREE.Vector3(); } });`,
+    `${R3F}useFrame(() => { if (tmp.current) use(tmp.current); else tmp.current = new THREE.Vector3(); });`,
     // Lazy initialisation behind an early return: the gate's probe.
     `${R3F}useFrame(() => { if (v.current) return; v.current = new THREE.Vector3(); });`,
+    `${R3F}useFrame(() => { if (v.current !== null) return; v.current = new THREE.Vector3(); });`,
+    `${R3F}useFrame(() => { if (paused || v.current) return; v.current = new THREE.Vector3(); });`,
+    // A re-export of three.js the file names in extraModules, used outside the loop.
+    {
+      code: "import { Vector3, useFrame } from '@acme/engine';\nconst v = new Vector3();\nuseFrame(() => { v.set(0, 1, 0); });",
+      options: [{ extraModules: ['@acme/engine'] }],
+    },
     // A one-shot requestAnimationFrame is not a loop.
     `${VANILLA}requestAnimationFrame(() => { camera.position.copy(new Vector3(0, 0, 5)); });`,
     // A loop that does not reschedule itself by name.
@@ -105,6 +115,48 @@ ruleTester.run('no-allocation-in-frame-loop', noAllocationInFrameLoopRule, {
     {
       // An early return that tests something else does not make it lazy.
       code: `${R3F}useFrame(() => { if (paused) return; v.current = new THREE.Vector3(); });`,
+      errors: [{ messageId: 'mathAllocation' }],
+    },
+    {
+      // A test whose text contains the target's name is still another variable.
+      code: `${R3F}useFrame(() => { if (dev) return; v = new THREE.Vector3(); });`,
+      errors: [{ messageId: 'mathAllocation' }],
+    },
+    {
+      code: `${R3F}useFrame(() => { if (myref.current) return; ref.current = new THREE.Vector3(); });`,
+      errors: [{ messageId: 'mathAllocation' }],
+    },
+    {
+      // The inverted guard runs the allocation on every frame once it is set.
+      code: `${R3F}useFrame(() => { if (!r.current) return; r.current = new THREE.Vector3(); });`,
+      errors: [{ messageId: 'mathAllocation' }],
+    },
+    {
+      code: `${R3F}useFrame(() => { if (r.current) r.current = new THREE.Vector3(); });`,
+      errors: [{ messageId: 'mathAllocation' }],
+    },
+    {
+      code: `${R3F}useFrame(() => { if (paused && v.current) return; v.current = new THREE.Vector3(); });`,
+      errors: [{ messageId: 'mathAllocation' }],
+    },
+    {
+      // A fallback whose result is not stored back allocates whenever p.v is unset.
+      code: `${R3F}useFrame(() => { const v = p.v || new THREE.Vector3(); v.set(0, 1, 0); });`,
+      errors: [{ messageId: 'mathAllocation' }],
+    },
+    {
+      code: `${R3F}useFrame(() => { other.v = cache.v ?? new THREE.Vector3(); });`,
+      errors: [{ messageId: 'mathAllocation' }],
+    },
+    {
+      // Classes and useFrame from a module in extraModules.
+      code: "import { Vector3, useFrame } from '@acme/engine';\nuseFrame(() => { const v = new Vector3(); });",
+      options: [{ extraModules: ['@acme/engine'] }],
+      errors: [{ messageId: 'mathAllocation' }],
+    },
+    {
+      code: "import * as ENGINE from '@acme/engine/core';\nimport { useFrame } from '@react-three/fiber';\nuseFrame(() => { const v = new ENGINE.Vector3(); });",
+      options: [{ extraModules: ['@acme/engine'] }],
       errors: [{ messageId: 'mathAllocation' }],
     },
     {

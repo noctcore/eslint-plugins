@@ -82,6 +82,16 @@ ruleTester.run('require-dispose', requireDisposeRule, {
   ],
   invalid: [
     {
+      // Classes from a module in extraModules.
+      code: `import { BoxGeometry, Mesh } from '@acme/engine';
+      useEffect(() => {
+        const geometry = new BoxGeometry();
+        scene.add(new Mesh(geometry, material));
+      }, []);`,
+      options: [{ extraModules: ['@acme/engine'] }],
+      errors: [{ messageId: 'notDisposed', data: { name: 'geometry', className: 'BoxGeometry' } }],
+    },
+    {
       code: `${NS}useEffect(() => {
         const geometry = new THREE.BoxGeometry();
         const material = new THREE.MeshStandardMaterial();

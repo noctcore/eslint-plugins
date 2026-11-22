@@ -99,7 +99,7 @@ export const noReactStateInFrameLoopRule = createRule<RuleOptions, MessageIds>({
   create(context, [options]) {
     if (skipFile(context, options)) return {};
     const program = context.sourceCode.ast;
-    const imports = readThreeImports(program);
+    const imports = readThreeImports(program, options.extraModules);
     const loops = new FrameLoops(context.sourceCode, imports);
     if (loops.size === 0) return {};
 

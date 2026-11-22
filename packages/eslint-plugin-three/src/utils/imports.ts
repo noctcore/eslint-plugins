@@ -27,14 +27,25 @@ export interface ThreeImports {
   readonly fiber: ReadonlyMap<string, string>;
 }
 
+function matchesModule(source: string, module: string): boolean {
+  return source === module || source.startsWith(`${module}/`);
+}
+
 function importedName(specifier: TSESTree.ImportSpecifier): string {
   return specifier.imported.type === AST_NODE_TYPES.Identifier
     ? specifier.imported.name
     : String(specifier.imported.value);
 }
 
-/** Reads the file's import declarations once. Type-only imports are ignored. */
-export function readThreeImports(program: TSESTree.Program): ThreeImports {
+/**
+ * Reads the file's import declarations once. Type-only imports are ignored.
+ * A module in `extraModules` (or a subpath of one) counts as a re-export of
+ * all three: its named imports can be core classes, add-ons or React Three
+ * Fiber exports (`import { Vector3, useFrame } from '@acme/engine'`), and a
+ * namespace import of it reads like `import * as THREE from 'three'`.
+ * Dynamic `import()` and `require()` are not read.
+ */
+export function readThreeImports(program: TSESTree.Program, extraModules: readonly string[] = []): ThreeImports {
   const core = new Map<string, string>();
   const namespaces = new Set<string>();
   const addons = new Map<string, string>();
@@ -48,14 +59,15 @@ export function readThreeImports(program: TSESTree.Program): ThreeImports {
     const isCore = THREE_CORE.has(source);
     const isAddon = isThreeAddonSource(source);
     const isFiber = source === FIBER;
-    if (!isCore && !isAddon && !isFiber) continue;
+    const isExtra = extraModules.some((module) => matchesModule(source, module));
+    if (!isCore && !isAddon && !isFiber && !isExtra) continue;
 
     for (const specifier of statement.specifiers) {
       if (specifier.type === AST_NODE_TYPES.ImportSpecifier) {
         if (specifier.importKind === 'type') continue;
-        const target = isCore ? core : isAddon ? addons : fiber;
-        target.set(specifier.local.name, importedName(specifier));
-      } else if (isCore) {
+        const targets = isExtra ? [core, addons, fiber] : [isCore ? core : isAddon ? addons : fiber];
+        for (const target of targets) target.set(specifier.local.name, importedName(specifier));
+      } else if (isCore || isExtra) {
         namespaces.add(specifier.local.name);
       }
     }
@@ -124,18 +136,16 @@ export const extraModulesSchema = {
   items: { type: 'string', minLength: 1 },
   uniqueItems: true,
   description:
-    'More module specifiers that mark a file as three.js code, for a project that re-exports three.js through its own module (`@acme/engine`). A specifier also matches its subpaths. Empty by default.',
+    'More module specifiers that mark a file as three.js code, for a project that re-exports three.js through its own module (`@acme/engine`). A specifier also matches its subpaths, and its imports count as three.js classes and React Three Fiber hooks. Empty by default.',
 } as const;
-
-function matchesModule(source: string, module: string): boolean {
-  return source === module || source.startsWith(`${module}/`);
-}
 
 /**
  * True when the file imports `three`, any `three/*` subpath, `three-stdlib`, any
  * `@react-three/*` package, or one of `extraModules` (type-only and side-effect
  * imports count). Rules that match by name (`camera.fov`, `setPixelRatio`) run
  * only in such files, so a Phaser or Babylon camera is never read as a three.js one.
+ * Dynamic `import()` and `require()` are not read, so a file that only loads
+ * three.js that way is skipped: the gate can miss a report, never add one.
  */
 export function isThreeFile(program: TSESTree.Program, extraModules: readonly string[] = []): boolean {
   return program.body.some((statement) => {

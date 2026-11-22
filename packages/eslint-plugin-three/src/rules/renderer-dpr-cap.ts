@@ -122,7 +122,7 @@ export const rendererDprCapRule = createRule<RuleOptions, MessageIds>({
   create(context, [options]) {
     if (skipFile(context, options)) return {};
     const maxDpr = options.maxDpr ?? 2;
-    const canvas = fiberLocal(readThreeImports(context.sourceCode.ast), 'Canvas');
+    const canvas = fiberLocal(readThreeImports(context.sourceCode.ast, options.extraModules), 'Canvas');
 
     const report = (node: TSESTree.Node, verdict: Verdict): void => {
       if (verdict === null) return;

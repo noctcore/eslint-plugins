@@ -113,7 +113,7 @@ export const noResourceCreationInRenderRule = createRule<RuleOptions, MessageIds
   defaultOptions: [{}],
   create(context, [options]) {
     if (skipFile(context, options)) return {};
-    const imports = readThreeImports(context.sourceCode.ast);
+    const imports = readThreeImports(context.sourceCode.ast, options.extraModules);
     const keys = context.sourceCode.visitorKeys;
     const verdicts = new Map<FunctionNode, boolean>();
 
@@ -124,7 +124,7 @@ export const noResourceCreationInRenderRule = createRule<RuleOptions, MessageIds
         const fn = enclosingFunction(node);
         if (fn === null) return;
         const { parent } = logicalParent(node);
-        if (isHookCall(parent) || isLazyInit(node, (n) => context.sourceCode.getText(n))) return;
+        if (isHookCall(parent) || isLazyInit(node)) return;
         let isComponent = verdicts.get(fn);
         if (isComponent === undefined) {
           isComponent = looksLikeComponent(fn, keys);
