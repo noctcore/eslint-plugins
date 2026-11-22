@@ -92,6 +92,39 @@ export default [
 | [`server-action-through-client`](https://noctcore.github.io/eslint-plugins/rules/security/server-action-through-client/) | In a `'use server'` module every exported action must be built from a configured action client; a raw exported function bypasses input validation, error shaping and middleware. | 🔘 | ⚙️ |  |  |  |
 <!-- end generated rules -->
 
+### CWE ids and SARIF
+
+Every rule names the weakness it reports in `meta.docs.cwe` (and its OWASP Top 10 2021 category in
+`meta.docs.owasp`), so a SARIF consumer such as GitHub code scanning can classify a finding:
+
+| Rule | CWE | OWASP |
+| --- | --- | --- |
+| `auth-cookie-flags` | CWE-614, CWE-1004, CWE-1275 | A05:2021 |
+| `bcrypt-rounds-min` | CWE-916 | A02:2021 |
+| `no-shell-interpolation` | CWE-78 | A03:2021 |
+| `no-timing-unsafe-compare` | CWE-208 | A02:2021 |
+| `no-user-controlled-fetch-url` | CWE-918 | A10:2021 |
+| `no-user-controlled-redirect` | CWE-601 | A01:2021 |
+| `presigned-post-requires-policy` | CWE-434, CWE-770 | A04:2021 |
+| `require-path-containment` | CWE-22 | A01:2021 |
+| `require-sanitized-html` | CWE-79 | A03:2021 |
+| `server-action-through-client` | CWE-862 | A01:2021 |
+
+`@microsoft/eslint-formatter-sarif` copies only a rule's docs URL, category and description into
+SARIF, so the ids are lost there. The package ships a formatter that runs it and adds the tags code
+scanning tools read (`security`, `external/cwe/cwe-078`, `external/owasp/a03:2021`) to every rule
+that declares ids, from this plugin or any other. Install the Microsoft formatter next to the
+plugin, then name the formatter by path (ESLint reads a scoped `--format` name as an
+`eslint-formatter-*` package):
+
+```sh
+npm i -D @microsoft/eslint-formatter-sarif
+npx eslint -f ./node_modules/@noctcore/eslint-plugin-security/dist/sarif.js -o eslint.sarif .
+```
+
+In code, `addTaxonomyTags(log, rulesMeta)` from `@noctcore/eslint-plugin-security/sarif` adds the
+same tags to a SARIF log you already have.
+
 ## Severity policy
 
 Every rule is `error` or `off`, never `warn`: a warning is a rule nobody obeys. See the
