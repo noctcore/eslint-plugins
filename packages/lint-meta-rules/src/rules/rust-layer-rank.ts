@@ -1,7 +1,7 @@
 import type { IMetaCtx, IMetaRule, IViolation } from '@noctcore/harness';
 
 import { matchesAnyGlob } from './glob-match';
-import { escapeRegExp, globFiles, stripYamlComment } from './shared';
+import { escapeRegExp, globFiles, stripTrailingSlashes, stripYamlComment } from './shared';
 import { lineAt, rustFiles, rustScanText } from './rust-source';
 
 /** An edge that is reported whatever the ranks say, with the message to show. */
@@ -159,7 +159,7 @@ export function createRustLayerRankRule(options: RustLayerRankOptions = {}): IMe
   }
 
   function runModule(ctx: IMetaCtx, opts: RustModuleRankOptions): IViolation[] {
-    const root = (opts.root ?? 'src').replace(/\/+$/u, '');
+    const root = stripTrailingSlashes(opts.root ?? 'src');
     const facades = opts.facades ?? {};
     const groups = opts.toleratedGroups ?? [];
     const tolerated = (from: string, to: string): boolean =>

@@ -7,6 +7,7 @@
  */
 
 import { matchesAnyGlob } from './glob-match';
+import { stripTrailingSlashes } from './shared';
 
 /** What {@link maskRust} blanks out. */
 export interface MaskRustOptions {
@@ -113,7 +114,7 @@ export function maskRust(text: string, options: MaskRustOptions = {}): string {
 }
 
 const TEST_ATTRIBUTE = /^\s*#\[cfg\(test\)\]/u;
-const MOD_WITH_BODY = /^\s*(?:pub(?:\([^)]*\))?\s+)?mod\s+\w+[^;]*\{/u;
+const MOD_WITH_BODY = /^\s*(?:pub(?:\([^)]*\))?\s+)?mod\s+\w+\s*\{/u;
 
 /**
  * The line ranges, 0-based and inclusive, of every `#[cfg(test)] mod name { ... }`
@@ -199,7 +200,7 @@ export function rustFiles(
 ): string[] {
   const found = new Set<string>();
   for (const root of roots) {
-    for (const file of glob(`${root.replace(/\/+$/u, '')}/**/*.rs`)) {
+    for (const file of glob(`${stripTrailingSlashes(root)}/**/*.rs`)) {
       if (!file.split('/').includes('target') && !matchesAnyGlob(file, exclude)) found.add(file);
     }
   }
