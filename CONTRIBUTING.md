@@ -325,6 +325,17 @@ middleware a router guards with) go on a sub-entry point grouped by the seam the
 (`src/session.ts`, `src/trpc.ts`) and stay out of `RULE_FACTORIES`, so `createAllRules()` never
 registers a rule that checks nothing. These docs are counted by the parity guard but their examples are not executed.
 
+## Measuring a rule: the bench
+
+`bench/` scores rules against a labeled corpus of paired vulnerable and safe cases and publishes the
+result on the site's [Benchmark](https://noctcore.github.io/eslint-plugins/bench/) page. The CI job
+`bench · ratchet` runs `bun run bench --check` (after `bun run build`) and fails when a case got
+worse than `bench/baseline.json`, or when that file is out of date. So a change to a measured rule
+(today: six security rules) may need `bun run bench --update` and the new `bench/baseline.json` in
+the same PR: always for an improvement, and `--allow-regressions` plus a reason in the PR for a
+deliberate trade. A false-negative or false-positive fix is best proven by adding the case to the
+corpus first. The case format is in [`bench/README.md`](bench/README.md).
+
 ## Changesets
 
 Every change to a published package needs a changeset in `.changeset/`. `bun run changeset` walks
