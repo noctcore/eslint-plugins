@@ -92,8 +92,9 @@ export function readLastExport(): Buffer {
 ```
 
 `path.basename` keeps a value inside the base only for a sink that acts on a file. For a sink that
-removes, lists, copies, moves, trashes or opens a directory (`rm`, `rmdir`, `readdir`, `opendir`,
-`cp`, `rename`, `shell.trashItem`, `shell.openPath`) it is not containment: `path.basename('..')` is
+removes, lists, copies, moves, changes the mode of, links to, trashes or opens a directory (`rm`,
+`rmdir`, `readdir`, `opendir`, `cp`, `rename`, `chmod`, `symlink`, `shell.trashItem`,
+`shell.openPath`, in every form) it is not containment: `path.basename('..')` is
 `'..'`, and `''` or `'.'` joined under the base is the base itself, so the setting can still name
 the parent folder or the whole base:
 
@@ -159,7 +160,7 @@ flat config's `files`, as the other rules in this plugin are.
 
 | Option | Type | Default | Meaning |
 | --- | --- | --- | --- |
-| `sources` | array of `{ object, method, keys? }` or `{ function, returns?, keys? }` | `[]` | Calls whose result the renderer can write. `{ object: 'store', method: 'get' }` matches `store.get(...)` and `this.store.get(...)`; `{ function: 'loadSettings' }` matches `loadSettings()` and `this.loadSettings()` and treats every property of the result as a setting. Empty, the rule reports nothing. |
+| `sources` | array of `{ object, method, keys? }` or `{ function, returns?, keys? }` | `[]` | Calls whose result the renderer can write. `{ object: 'store', method: 'get' }` matches `store.get(...)`, `this.store.get(...)` and `store['get'](...)`; `{ function: 'loadSettings' }` matches `loadSettings()` and `this.loadSettings()` and treats every property of the result as a setting. Empty, the rule reports nothing. |
 | `sources[].returns` | `'object'` or `'value'` | `'object'` | For a `{ function }` source: `'object'` is a loader that returns the settings object, `'value'` a getter (`getSetting('key')`) that returns one setting. |
 | `sources[].keys` | `string[]` (globs) | unset | Only these keys count: the first argument of a store call or getter, the property read off a loader's object. `*` matches any run of characters except `/`, so `theme.*` matches every key under `theme`. |
 | `sanitizers` | `string[]` | `[]` | Functions that check a path stays inside its base and throw or return false otherwise. A call to one that takes a binding of the chain, before the sink, ends it. Add `includes` to accept an allowlist check such as `ALLOWED.includes(name)`. |
