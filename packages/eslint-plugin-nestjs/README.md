@@ -3,7 +3,8 @@
 NestJS and BullMQ rules for the background work a request handler hands off: queue jobs that run
 twice when a producer retries, queue and job names that drift between producer and worker,
 schedules that run in whatever time zone the host happens to have, workers whose failures nobody
-hears, and workers that are never closed on shutdown.
+hears, workers that are never closed on shutdown, and, in apps on `@noctcore/jobs`, BullMQ used
+around it by hand.
 
 **Docs:** [noctcore.github.io/eslint-plugins/packages/nestjs](https://noctcore.github.io/eslint-plugins/packages/nestjs/)
 
@@ -82,16 +83,35 @@ export default [
 
 | Rule | Description | Preset | ⚙️ | 🔧 | 💡 | 💭 |
 | --- | --- | :-: | :-: | :-: | :-: | :-: |
+| [`add-requires-dedupe`](https://noctcore.github.io/eslint-plugins/rules/nestjs/add-requires-dedupe/) | Require every `add()` on a `@noctcore/jobs` queue to pass an explicit `dedupe` choice, and report a raw `jobId` or `deduplication` in its options. | ✅ |  |  |  |  |
 | [`job-name-must-be-constant`](https://noctcore.github.io/eslint-plugins/rules/nestjs/job-name-must-be-constant/) | Require queue and job names passed to `@Processor(...)`, `@InjectQueue(...)` and `<queue>.add(...)` to be shared constants, not inline string literals. | 🔘 |  |  |  |  |
 | [`job-options-must-set-attempts`](https://noctcore.github.io/eslint-plugins/rules/nestjs/job-options-must-set-attempts/) | Require every BullMQ `.add` / `.addBulk` job to state `attempts`, and a `backoff` when it retries, in its options or its queue's `defaultJobOptions`. | 🔘 |  |  |  |  |
+| [`no-direct-rate-limit`](https://noctcore.github.io/eslint-plugins/rules/nestjs/no-direct-rate-limit/) | Report BullMQ `rateLimit()` calls and `Worker.RateLimitError()` in apps that use `@noctcore/jobs`, where `pauseQueue` / `pauseFor` never shorten a longer pause. | ✅ |  |  |  |  |
+| [`no-dynamic-job-name`](https://noctcore.github.io/eslint-plugins/rules/nestjs/no-dynamic-job-name/) | Require the job name of `add()` on a `@noctcore/jobs` queue and the name of a `@Sweep()` to be fixed strings, not built at run time. | ✅ |  |  |  |  |
+| [`no-raw-bullmq-queue-add`](https://noctcore.github.io/eslint-plugins/rules/nestjs/no-raw-bullmq-queue-add/) | Report `.add()` / `.addBulk()` on a BullMQ `Queue` (`queue.bull` included) in apps that use `@noctcore/jobs`, which skip its context envelope, dedupe and fail-fast enqueue. | ✅ |  |  |  |  |
 | [`queue-add-requires-dedup-key`](https://noctcore.github.io/eslint-plugins/rules/nestjs/queue-add-requires-dedup-key/) | Require every BullMQ `.add` / `.addBulk` job to carry a `jobId` or `deduplication` in literal options, so a producer retry cannot enqueue the same work twice. | 🔘 |  |  |  |  |
 | [`queue-options-must-set-retention`](https://noctcore.github.io/eslint-plugins/rules/nestjs/queue-options-must-set-retention/) | Require every BullMQ `.add` job to state `removeOnComplete` and `removeOnFail` in its options or its queue's `defaultJobOptions`, so finished jobs do not pile up in Redis. | 🔘 |  |  |  |  |
+| [`queue-registration-through-define-queue`](https://noctcore.github.io/eslint-plugins/rules/nestjs/queue-registration-through-define-queue/) | Report BullMQ queues, workers and queue events built by hand (`new Queue(...)`, `BullModule.registerQueue(...)`) in apps that use `@noctcore/jobs`, where queues come from `defineQueue` and `JobsModule.forFeature`. | ✅ |  |  |  |  |
 | [`redis-client-from-factory`](https://noctcore.github.io/eslint-plugins/rules/nestjs/redis-client-from-factory/) | Require every Redis client and every inline BullMQ `connection` to take its options from a configured factory function, not from literal host, port or URL values. | 🔘 | ⚙️ |  |  |  |
 | [`schedule-states-time-zone`](https://noctcore.github.io/eslint-plugins/rules/nestjs/schedule-states-time-zone/) | Require a `@Cron` to state `timeZone` (or `utcOffset`) and a BullMQ cron schedule to state `tz`, so it does not run in whatever zone the host has. | ✅ |  |  |  |  |
 | [`worker-concurrency`](https://noctcore.github.io/eslint-plugins/rules/nestjs/worker-concurrency/) | Require a literal BullMQ worker `concurrency`, on `new Worker(...)` or `@Processor(queue, options)`, to be a positive integer, and with `requireExplicit` require it to be stated. | 🔘 |  |  |  |  |
+| [`worker-extends-job-host`](https://noctcore.github.io/eslint-plugins/rules/nestjs/worker-extends-job-host/) | Require a class decorated with `@Worker(queue)` from `@noctcore/jobs` to extend `JobHost`, and report NestJS `@Processor` / `WorkerHost` workers in apps that use `@noctcore/jobs`. | ✅ |  |  |  |  |
 | [`worker-must-implement-close`](https://noctcore.github.io/eslint-plugins/rules/nestjs/worker-must-implement-close/) | Require a class that creates a BullMQ `Worker` in a field to call `.close()` on it in a shutdown method such as `onModuleDestroy`, so in-flight jobs are not abandoned. | ✅ |  |  |  |  |
 | [`worker-must-listen-failed`](https://noctcore.github.io/eslint-plugins/rules/nestjs/worker-must-listen-failed/) | Require every BullMQ `new Worker(...)` to have a `.on('failed', ...)` listener in the same file, so a failing job is not silent. | ✅ |  |  |  |  |
 <!-- end generated rules -->
+
+### Apps on `@noctcore/jobs`
+
+Six rules keep an app on [`@noctcore/jobs`](https://github.com/noctcore/jobs) once it uses it:
+`@Worker` classes that extend `JobHost`, job and sweep names fixed at write time, an explicit
+`dedupe` on every `add()`, and no raw BullMQ adds, hand-built queues or `rateLimit` calls beside it.
+They are on in `recommended` and check for the package themselves: `worker-extends-job-host`,
+`no-dynamic-job-name` and `add-requires-dedupe` read files that import `@noctcore/jobs`, and
+`no-raw-bullmq-queue-add`, `queue-registration-through-define-queue` and `no-direct-rate-limit`
+(with the `@Processor` half of `worker-extends-job-host`) also read files of a project whose
+`package.json` declares it. A repo without the package sees nothing from them. In such an app, leave
+the opt-in `queue-add-requires-dedup-key` off: it asks for the `jobId` that `add-requires-dedupe`
+reports.
 
 ## Severity policy
 
