@@ -27,14 +27,17 @@ import {
   REPO_URL,
   listRuleDocs,
   loadInventory,
+  loadRuleDetails,
   ruleRoute,
   type PackageEntry,
+  type RuleDetails,
   type RuleEntry,
 } from './inventory';
 import { readBenchBaseline, renderBenchPage } from './bench';
-import { deprecationSentence, stripRuleHeader } from './readmes';
+import { MESSAGES_BEGIN, MESSAGES_END, deprecationSentence, stripRuleHeader } from './readmes';
+import { DIAGRAM_IMAGE, diagramFigure, escapeHtml } from '../src/lib/diagrams';
 import { HERO } from '../src/lib/stacks';
-import { checkRuleDocSections } from './structure';
+import { checkOptionsTable, checkRuleDocSections, isRulePage } from './structure';
 
 const SITE_DIR = resolve(dirname(fileURLToPath(import.meta.url)), '..');
 const RULES_OUT = join(SITE_DIR, 'src', 'content', 'docs', 'rules');
@@ -101,6 +104,11 @@ export function parseFenceMeta(meta: string): FenceMeta {
     // `relocation`, `reconfigured` and anything else only steer the test harness.
   }
   return out;
+}
+
+/** A `text report` fence: what ESLint prints for the bad example above it. */
+function isReportFence(rawMeta: string): boolean {
+  return rawMeta.trim() === 'report';
 }
 
 function fenceTitle(meta: FenceMeta): string | null {
@@ -240,7 +248,13 @@ export function heroExample(
  * its facts panel (src/lib/facts.ts, rendered by the page's components), and
  * showing both would say everything twice.
  */
-export function renderRuleDoc(source: string, docPath: string, _pkg: PackageEntry, rule: RuleEntry): string {
+export function renderRuleDoc(
+  source: string,
+  docPath: string,
+  _pkg: PackageEntry,
+  rule: RuleEntry,
+  details?: RuleDetails,
+): string {
   const lines = stripRuleHeader(source.replace(/\r\n/g, '\n')).split('\n');
   // The blockquote summary: the first run of `>` lines after the heading.
   const { title, quote, end: i } = docHead(lines, docPath);
@@ -253,6 +267,10 @@ export function renderRuleDoc(source: string, docPath: string, _pkg: PackageEntr
     if (fence && !inFence) {
       inFence = true;
       const [, indent, lang, rawMeta] = fence as unknown as [string, string, string, string];
+      if (isReportFence(rawMeta)) {
+        body.push(`${indent}\`\`\`${lang} title="What ESLint prints" verdict=report wrap`);
+        continue;
+      }
       const meta = parseFenceMeta(rawMeta);
       const title = fenceTitle(meta);
       const attrs = [lang];
@@ -260,7 +278,10 @@ export function renderRuleDoc(source: string, docPath: string, _pkg: PackageEntr
       if (meta.verdict === 'bad' || meta.verdict === 'good') attrs.push(`verdict=${meta.verdict}`);
       body.push(`${indent}\`\`\`${attrs.join(' ')}`);
       const comment = LINE_COMMENT[lang];
-      if (meta.options && comment) body.push(`${indent}${comment} rule options: ${meta.options}`);
+      if (meta.options && comment) {
+        if (isRulePage(rule)) for (const part of optionsComment(meta.options)) body.push(`${indent}${comment} ${part}`);
+        else body.push(`${indent}${comment} rule options: ${meta.options}`);
+      }
       continue;
     }
     if (fence && inFence && fence[2] === '' && fence[3] === '') {
@@ -272,6 +293,13 @@ export function renderRuleDoc(source: string, docPath: string, _pkg: PackageEntr
       body.push(line);
       continue;
     }
+    const image = DIAGRAM_IMAGE.exec(line);
+    if (image) {
+      const [, description, target, caption] = image as unknown as [string, string, string, string | undefined];
+      if (!caption) throw new Error(`${docPath}: the diagram ${target} needs a caption as its image title`);
+      body.push(diagramFigure({ path: resolve(dirname(docPath), target), description, caption }));
+      continue;
+    }
     body.push(
       line.replace(/\]\((\.{1,2}\/[^)\s]+)\)/g, (_, target: string) => {
         return `](${rewriteLink(target, docPath)})`;
@@ -280,6 +308,12 @@ export function renderRuleDoc(source: string, docPath: string, _pkg: PackageEntr
   }
   if (inFence) throw new Error(`${docPath}: unterminated code fence`);
   checkRuleDocSections(source, docPath, rule);
+  if (details && isRulePage(rule)) checkOptionsTable(source, docPath, details);
+  if (isRulePage(rule)) {
+    const shaped = shapeRulePage(body);
+    body.length = 0;
+    body.push(...shaped);
+  }
 
   const repoPath = relative(REPO_ROOT, docPath);
   const frontmatter = [
@@ -295,6 +329,106 @@ export function renderRuleDoc(source: string, docPath: string, _pkg: PackageEntr
     '',
   ];
   return [...frontmatter, ...body].join('\n').replace(/\n{3,}/g, '\n\n');
+}
+
+/** One generated message as HTML: code spans kept, `{{name}}` placeholders as `<var>`. */
+/**
+ * The options of an example as a comment that fits a phone-width code frame:
+ * the compact JSON broken after commas into lines of at most `width`.
+ */
+export function optionsComment(options: string, width = 56): string[] {
+  const lines = ['rule options:'];
+  let line = '';
+  for (const piece of options.split(/(?<=,)/)) {
+    if (line && line.length + piece.length > width) {
+      lines.push(`  ${line}`);
+      line = '';
+    }
+    line += piece;
+  }
+  if (line) lines.push(`  ${line}`);
+  return lines;
+}
+
+export function messageHtml(text: string): string {
+  return text
+    .split(/(`[^`]*`)/)
+    .map((part, i) => {
+      const html = escapeHtml(i % 2 === 1 ? part.slice(1, -1) : part).replace(
+        /\{\{\s*(\w+)\s*\}\}/g,
+        '<var class="ph">$1</var>',
+      );
+      return i % 2 === 1 ? `<code>${html}</code>` : html;
+    })
+    .join('');
+}
+
+/** The generated message list of a rule page as the site's message cards. */
+function messagesHtml(lines: readonly string[]): string {
+  const items = lines.flatMap((line) => {
+    const match = /^- `([^`]+)`( \(suggestion\))?: (.*)$/.exec(line);
+    if (!match) return [];
+    const [, id, suggestion, text] = match as unknown as [string, string, string | undefined, string];
+    const kind = suggestion ? 'Editor suggestion' : 'Report';
+    return [
+      `<li class="rule-message${suggestion ? ' is-suggestion' : ''}"><p class="rule-message-text">${messageHtml(text)}</p><p class="rule-message-meta"><span>${kind}</span><code>${escapeHtml(id)}</code></p></li>`,
+    ];
+  });
+  return `<ul class="rule-messages" role="list">${items.join('')}</ul>`;
+}
+
+/**
+ * The rule page shape on the site, applied to the Markdown body after fences
+ * and links are rewritten: `In short` becomes the summary band, the message
+ * list becomes message cards, and each `**The fix:**` note sits in its own
+ * frame between the bad and the good example.
+ */
+export function shapeRulePage(body: readonly string[]): string[] {
+  const out: string[] = [];
+  let inFence = false;
+  let inShort = false;
+  let messages: string[] | null = null;
+  let inFix = false;
+  for (const line of body) {
+    if (inFix && line.trim() === '') {
+      out.push('', '</div>');
+      inFix = false;
+    }
+    if (/^\s*```/.test(line)) inFence = !inFence;
+    if (inFence || /^\s*```/.test(line)) {
+      out.push(line);
+      continue;
+    }
+    if (messages !== null) {
+      if (line.trim() === MESSAGES_END) {
+        out.push(messagesHtml(messages));
+        messages = null;
+      } else messages.push(line);
+      continue;
+    }
+    if (line.trim() === MESSAGES_BEGIN) {
+      messages = [];
+      continue;
+    }
+    if (line.startsWith('## ') && inShort) {
+      out.push('</div>', '');
+      inShort = false;
+    }
+    if (line.trim() === '## In short') {
+      out.push('<div class="rule-inshort">', '', line);
+      inShort = true;
+      continue;
+    }
+    if (line.startsWith('**The fix:**')) {
+      out.push('<div class="rule-fix">', '', line.replace(/^\*\*The fix:\*\*\s*/, '<span class="rule-fix-label">The fix</span> '));
+      inFix = true;
+      continue;
+    }
+    out.push(line);
+  }
+  if (inFix) out.push('', '</div>');
+  if (inShort) out.push('</div>');
+  return out;
 }
 
 /**
@@ -314,6 +448,7 @@ export type CatalogEntry = ReturnType<typeof catalogOf>[number];
 
 async function main(): Promise<void> {
   const inventory = await loadInventory();
+  const details = await loadRuleDetails('dist');
   const docs = listRuleDocs();
 
   // The parity test is the real guard; failing here too keeps a broken tree
@@ -335,7 +470,8 @@ async function main(): Promise<void> {
     const { pkg, rule } = byKey.get(`${doc.short}/${doc.rule}`)!;
     const out = join(RULES_OUT, doc.short, `${doc.rule}.md`);
     mkdirSync(dirname(out), { recursive: true });
-    writeFileSync(out, renderRuleDoc(readFileSync(doc.path, 'utf8'), doc.path, pkg, rule));
+    const ruleDetails = details.get(`${doc.short}/${doc.rule}`);
+    writeFileSync(out, renderRuleDoc(readFileSync(doc.path, 'utf8'), doc.path, pkg, rule, ruleDetails));
   }
 
   mkdirSync(dirname(CATALOG_OUT), { recursive: true });

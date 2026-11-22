@@ -15,7 +15,7 @@ function pluginVerdict() {
     hooks: {
       postprocessRenderedBlock: ({ codeBlock, renderData }) => {
         const verdict = codeBlock.metaOptions.getString('verdict');
-        if (verdict !== 'bad' && verdict !== 'good') return;
+        if (verdict !== 'bad' && verdict !== 'good' && verdict !== 'report') return;
         const props = renderData.blockAst.properties;
         const existing = Array.isArray(props.className) ? props.className : [];
         props.className = [...existing, `verdict-${verdict}`];
