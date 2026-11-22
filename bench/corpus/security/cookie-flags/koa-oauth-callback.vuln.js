@@ -1,0 +1,21 @@
+// @bench category=cookie-flags cwe=CWE-1004 framework=koa pair=koa-oauth-callback title="oauth callback cookie spreads shared defaults lacking httpOnly"
+const Router = require('@koa/router');
+const { exchange } = require('./oauth');
+
+const router = new Router();
+
+const AUTH_COOKIE = {
+  path: '/',
+  secure: true,
+  sameSite: 'lax',
+  maxAge: 3600_000,
+  overwrite: true,
+};
+
+router.get('/callback', async (ctx) => {
+  const tokens = await exchange(ctx.query.code);
+  ctx.cookies.set('access_token', tokens.access, { ...AUTH_COOKIE }); // expect: security/auth-cookie-flags
+  ctx.redirect('/home');
+});
+
+module.exports = router;
