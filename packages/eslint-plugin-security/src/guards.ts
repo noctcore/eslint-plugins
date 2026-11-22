@@ -30,15 +30,28 @@ import { AST_NODE_TYPES, ASTUtils, type TSESLint, type TSESTree } from '@typescr
  * a regex that ends in a literal domain (`^(app|docs)\.example\.com$`).
  */
 
-/** Where a value lands, which decides the characters a regex may admit. */
-export type GuardContext = 'shell' | 'html' | 'path';
+/**
+ * Characters a shell value must not start with: a leading `-` turns the value
+ * into an option (argument injection, CWE-88) and a leading `#` comments out
+ * the rest of the line.
+ */
+const SHELL_LEADING = '-#';
 
+/**
+ * Where a value lands, which decides the characters a regex may admit.
+ * `shell-word` is a shell value glued to text before it in the same word
+ * (`--author=${x}`), where a leading `-` or `#` is not an option or a comment.
+ */
+export type GuardContext = 'shell' | 'shell-word' | 'html' | 'path';
+
+const SHELL_UNSAFE = ';&|$`()<>{}[]*?!~\'"\\^\n\r \t\v\f';
 /** Characters each context must never receive from a value it cannot see. */
 const UNSAFE_CHARACTERS: Readonly<Record<GuardContext, string>> = {
-  // Command separators, substitution, quoting, redirection, globbing and
-  // escapes. Space, `-`, `%` and `#` split, flag or comment but cannot start a
-  // second command.
-  shell: ';&|$`()<>{}[]*?!~\'"\\^\n\r',
+  // Command separators, substitution, quoting, redirection, globbing,
+  // escapes and whitespace (which splits one value into several arguments).
+  // A leading `-` or `#` is refused apart (see `SHELL_LEADING`).
+  shell: SHELL_UNSAFE,
+  'shell-word': SHELL_UNSAFE,
   html: '<>&"\'`',
   // Separators (and a drive letter's `:`) are what move a path elsewhere.
   path: '/\\:\0',
@@ -86,6 +99,8 @@ interface RegexToken {
   readonly chars?: string;
   /** For `chars`: a single literal character, as written. */
   readonly literal?: boolean;
+  /** For `quantifier`: true when it allows zero repetitions (`*`, `?`, `{0,n}`). */
+  readonly optional?: boolean;
 }
 
 /** Splits a pattern into tokens; null for syntax this reader does not handle. */
@@ -119,7 +134,11 @@ const LETTER_PROPERTIES: ReadonlySet<string> = new Set([
  * characters it stands for (a letter, as a representative: none of these is
  * unsafe anywhere) and its length; null for other escapes.
  */
-function propertyEscape(text: string, index: number, unicode: boolean): { chars: string; length: number } | null {
+function propertyEscape(
+  text: string,
+  index: number,
+  unicode: boolean,
+): { chars: string; length: number } | null {
   if (!unicode || !text.startsWith('\\p{', index)) {
     return null;
   }
@@ -182,7 +201,7 @@ function tokenize(pattern: string, unicode = false): RegexToken[] | null {
       tokens.push({ kind: 'alt' });
       i += 1;
     } else if (char === '*' || char === '+' || char === '?') {
-      tokens.push({ kind: 'quantifier' });
+      tokens.push({ kind: 'quantifier', optional: char !== '+' });
       i += 1;
     } else if (char === '{') {
       const match = /^\{\d+(,\d*)?\}/u.exec(pattern.slice(i));
@@ -190,7 +209,7 @@ function tokenize(pattern: string, unicode = false): RegexToken[] | null {
         tokens.push({ kind: 'chars', chars: '{', literal: true });
         i += 1;
       } else {
-        tokens.push({ kind: 'quantifier' });
+        tokens.push({ kind: 'quantifier', optional: /^\{0[,}]/u.test(match[0]) });
         i += match[0].length;
       }
     } else if (char === '.') {
@@ -346,12 +365,46 @@ export function regexAdmitsOnlySafe(
     return false;
   }
   const unsafe = UNSAFE_CHARACTERS[context];
-  return body.every(
+  const admitsOnlySafe = body.every(
     (token) =>
       token.kind !== 'any' &&
       token.kind !== 'unknown' &&
       (token.kind !== 'chars' || ![...(token.chars ?? '')].some((char) => unsafe.includes(char))),
   );
+  if (!admitsOnlySafe || context !== 'shell') {
+    return admitsOnlySafe;
+  }
+  const admitsLeading = body.some(
+    (token) =>
+      token.kind === 'chars' && [...(token.chars ?? '')].some((c) => SHELL_LEADING.includes(c)),
+  );
+  if (!admitsLeading) {
+    return true;
+  }
+  const first = firstCharacters(body);
+  return first !== null && ![...first].some((char) => SHELL_LEADING.includes(char));
+}
+
+/**
+ * Every character an anchored body can start with, or null when its start is
+ * not a plain run of character tokens (a group or an alternation).
+ */
+function firstCharacters(body: readonly RegexToken[]): string | null {
+  let chars = '';
+  let i = 0;
+  while (i < body.length) {
+    const token = body[i];
+    if (token?.kind !== 'chars') {
+      return null;
+    }
+    chars += token.chars ?? '';
+    const next = body[i + 1];
+    if (next?.kind !== 'quantifier' || next.optional !== true) {
+      return chars;
+    }
+    i += 2;
+  }
+  return chars;
 }
 
 /**
@@ -702,14 +755,74 @@ function isLiteralSet(node: TSESTree.Node, sourceCode: SourceCode): boolean {
   );
 }
 
-/** The regex literal an expression is, inline or behind a `const`. */
+const REGEX_READS: ReadonlySet<string> = new Set(['test', 'exec']);
+/** Calls that only read a regex passed to them. */
+const REGEX_TAKING_METHODS: ReadonlySet<string> = new Set([
+  'pattern',
+  'regex',
+  'match',
+  'matchAll',
+  'search',
+  'replace',
+  'replaceAll',
+  'split',
+]);
+
+/**
+ * True when a `const` regex binding never changes: not exported, and every use
+ * is a `.test` / `.exec` call on it or an argument of a call that only reads
+ * it (`.pattern(re)`, `s.match(re)`). `re.test = ...` or `re.compile(...)`
+ * would change what the check does.
+ */
+function isUnchangedRegex(node: TSESTree.Identifier, sourceCode: SourceCode): boolean {
+  const variable = variableOf(node, sourceCode);
+  const def = variable?.defs[0];
+  if (
+    variable === null ||
+    def?.type !== 'Variable' ||
+    def.parent.parent.type === AST_NODE_TYPES.ExportNamedDeclaration
+  ) {
+    return false;
+  }
+  return variable.references.every((reference) => {
+    if (reference.init === true) {
+      return true;
+    }
+    const identifier = reference.identifier;
+    if (!reference.isRead() || reference.isWrite()) {
+      return false;
+    }
+    if (isMethodReceiver(identifier, REGEX_READS)) {
+      return true;
+    }
+    const call = identifier.parent;
+    return (
+      call?.type === AST_NODE_TYPES.CallExpression &&
+      call.arguments.includes(identifier as TSESTree.Expression) &&
+      call.callee.type === AST_NODE_TYPES.MemberExpression &&
+      !call.callee.computed &&
+      call.callee.property.type === AST_NODE_TYPES.Identifier &&
+      REGEX_TAKING_METHODS.has(call.callee.property.name)
+    );
+  });
+}
+
+/** The regex literal an expression is, inline or behind a `const` that never changes. */
 function regexOf(
   node: TSESTree.Node,
   sourceCode: SourceCode,
 ): { pattern: string; flags: string } | null {
-  const resolved = resolveConst(node, sourceCode);
-  if (resolved.type === AST_NODE_TYPES.Literal && 'regex' in resolved) {
-    return resolved.regex;
+  let current = unwrap(node);
+  for (let depth = 0; depth < MAX_DEPTH && current.type === AST_NODE_TYPES.Identifier; depth += 1) {
+    const variable = variableOf(current, sourceCode);
+    const init = variable === null ? null : constInit(variable);
+    if (init === null || !isUnchangedRegex(current, sourceCode)) {
+      return null;
+    }
+    current = unwrap(init);
+  }
+  if (current.type === AST_NODE_TYPES.Literal && 'regex' in current) {
+    return current.regex;
   }
   return null;
 }
@@ -990,6 +1103,15 @@ function guardedBefore(
 }
 
 /** True when `variable` holds a value checked against `judge` before `sink`. */
+/**
+ * True for an imported binding. An `import { cur }` is a live view of a
+ * binding the other module can reassign at any time, so a check on it says
+ * nothing about the value read later.
+ */
+function isImportBinding(variable: Variable): boolean {
+  return variable.defs.some((def) => def.type === 'ImportBinding');
+}
+
 function variableGuarded(
   variable: Variable,
   readAt: number,
@@ -997,6 +1119,9 @@ function variableGuarded(
   judge: RegexJudge,
   sourceCode: SourceCode,
 ): boolean {
+  if (isImportBinding(variable)) {
+    return false;
+  }
   return guardedBefore(
     sink,
     (test, negated) =>
@@ -1082,9 +1207,25 @@ function isStringLiteral(node: TSESTree.Node | undefined): boolean {
  * string name or message is fine), or `valid` / `enum` / `literal` of literals.
  */
 function schemaConfines(node: TSESTree.Node, judge: RegexJudge, sourceCode: SourceCode): boolean {
-  let current = resolveConst(node, sourceCode);
+  let current = unwrap(node);
   let confined = false;
-  for (let depth = 0; depth < 16 && current.type === AST_NODE_TYPES.CallExpression; depth += 1) {
+  for (let depth = 0; depth < 32; depth += 1) {
+    if (current.type === AST_NODE_TYPES.Identifier) {
+      if (isSchemaModule(current, sourceCode)) {
+        return confined;
+      }
+      // A `const` holding a chain is read on, under the same allowlist.
+      const variable = variableOf(current, sourceCode);
+      const init = variable === null ? null : constInit(variable);
+      if (init === null) {
+        return false;
+      }
+      current = unwrap(init);
+      continue;
+    }
+    if (current.type !== AST_NODE_TYPES.CallExpression) {
+      return false;
+    }
     const callee = current.callee;
     if (
       callee.type !== AST_NODE_TYPES.MemberExpression ||
@@ -1123,7 +1264,75 @@ function schemaConfines(node: TSESTree.Node, judge: RegexJudge, sourceCode: Sour
     }
     current = unwrap(callee.object);
   }
-  return confined && current.type === AST_NODE_TYPES.Identifier;
+  return false;
+}
+
+const SCHEMA_MODULES: ReadonlySet<string> = new Set([
+  'zod',
+  'zod/v3',
+  'zod/v4',
+  'joi',
+  '@hapi/joi',
+]);
+
+/** The name a schema module's root is imported under (`import { z } from 'zod'`). */
+const SCHEMA_ROOT_EXPORTS: ReadonlySet<string> = new Set(['z', 'default']);
+
+/**
+ * True when `node` names the root of a zod or joi import: `import { z } from
+ * 'zod'`, `import * as z from 'zod'`, `import Joi from 'joi'`,
+ * `const Joi = require('joi')` or `const { z } = require('zod')`. A parameter
+ * or any other binding could be an object with `pattern` methods of its own.
+ */
+function isSchemaModule(node: TSESTree.Identifier, sourceCode: SourceCode): boolean {
+  const variable = variableOf(node, sourceCode);
+  const def = variable?.defs[0];
+  if (variable === null || variable.defs.length !== 1 || def === undefined) {
+    return false;
+  }
+  if (def.type === 'ImportBinding') {
+    const specifier = def.node;
+    return (
+      def.parent.type === AST_NODE_TYPES.ImportDeclaration &&
+      SCHEMA_MODULES.has(def.parent.source.value) &&
+      (specifier.type !== AST_NODE_TYPES.ImportSpecifier ||
+        (specifier.imported.type === AST_NODE_TYPES.Identifier
+          ? SCHEMA_ROOT_EXPORTS.has(specifier.imported.name)
+          : SCHEMA_ROOT_EXPORTS.has(String(specifier.imported.value))))
+    );
+  }
+  if (def.type !== 'Variable' || def.parent.kind !== 'const' || def.node.init === null) {
+    return false;
+  }
+  const init = unwrap(def.node.init);
+  const required =
+    init.type === AST_NODE_TYPES.CallExpression &&
+    isGlobal(init.callee, 'require', sourceCode) &&
+    init.arguments.length === 1 &&
+    init.arguments[0]?.type === AST_NODE_TYPES.Literal &&
+    typeof init.arguments[0].value === 'string' &&
+    SCHEMA_MODULES.has(init.arguments[0].value);
+  if (!required) {
+    return false;
+  }
+  const id = def.node.id;
+  return (
+    id.type === AST_NODE_TYPES.Identifier ||
+    (id.type === AST_NODE_TYPES.ObjectPattern && destructuresRoot(id, variable.name))
+  );
+}
+
+/** True when `{ z }` (or `{ z: name }`) binds `name` to the module's `z` export. */
+function destructuresRoot(pattern: TSESTree.ObjectPattern, name: string): boolean {
+  return pattern.properties.some(
+    (property) =>
+      property.type === AST_NODE_TYPES.Property &&
+      !property.computed &&
+      property.key.type === AST_NODE_TYPES.Identifier &&
+      SCHEMA_ROOT_EXPORTS.has(property.key.name) &&
+      property.value.type === AST_NODE_TYPES.Identifier &&
+      property.value.name === name,
+  );
 }
 
 /** `schema.parse(x)` (throws on failure) whose schema is confined. */
@@ -1219,22 +1428,13 @@ function objectFieldSchema(
     ) {
       return null;
     }
-    if (callee.property.name === 'object' && callee.object.type === AST_NODE_TYPES.Identifier) {
+    if (
+      callee.property.name === 'object' &&
+      callee.object.type === AST_NODE_TYPES.Identifier &&
+      isSchemaModule(callee.object, sourceCode)
+    ) {
       const shape = current.arguments[0] === undefined ? null : unwrap(current.arguments[0]);
-      if (shape?.type !== AST_NODE_TYPES.ObjectExpression) {
-        return null;
-      }
-      for (const property of shape.properties) {
-        if (
-          property.type === AST_NODE_TYPES.Property &&
-          !property.computed &&
-          ((property.key.type === AST_NODE_TYPES.Identifier && property.key.name === field) ||
-            (property.key.type === AST_NODE_TYPES.Literal && property.key.value === field))
-        ) {
-          return property.value;
-        }
-      }
-      return null;
+      return shape?.type === AST_NODE_TYPES.ObjectExpression ? shapeField(shape, field) : null;
     }
     if (!SCHEMA_NARROWING_METHODS.has(callee.property.name)) {
       return null;
@@ -1242,6 +1442,119 @@ function objectFieldSchema(
     current = unwrap(callee.object);
   }
   return null;
+}
+
+/**
+ * The value schema of `field` in an object shape, or null when the field is
+ * missing or something after it could replace it: a spread (`...base`), a
+ * computed key or a later key of the same name.
+ */
+function shapeField(shape: TSESTree.ObjectExpression, field: string): TSESTree.Node | null {
+  let found: TSESTree.Node | null = null;
+  for (const property of shape.properties) {
+    if (property.type !== AST_NODE_TYPES.Property || property.computed) {
+      if (found !== null) {
+        return null;
+      }
+      continue;
+    }
+    const key =
+      property.key.type === AST_NODE_TYPES.Identifier
+        ? property.key.name
+        : property.key.type === AST_NODE_TYPES.Literal
+          ? String(property.key.value)
+          : null;
+    if (key === field) {
+      if (found !== null) {
+        return null;
+      }
+      found = property.value;
+    }
+  }
+  return found;
+}
+
+/**
+ * True when `id` (a reference to an object) is the object of a member read
+ * that does not change it: not assigned, updated, deleted, destructured into,
+ * looped into or called as a method. `parsed.mode = x`, `parsed['mode'] = x`
+ * and `delete parsed.mode` are changes.
+ */
+function isReadOnlyMember(id: TSESTree.Node): boolean {
+  const member = id.parent;
+  if (member?.type !== AST_NODE_TYPES.MemberExpression || member.object !== id) {
+    return false;
+  }
+  let outer: TSESTree.Node = member;
+  while (
+    outer.parent !== undefined &&
+    (outer.parent.type === AST_NODE_TYPES.ChainExpression ||
+      outer.parent.type === AST_NODE_TYPES.TSNonNullExpression ||
+      outer.parent.type === AST_NODE_TYPES.TSAsExpression ||
+      outer.parent.type === AST_NODE_TYPES.TSSatisfiesExpression ||
+      outer.parent.type === AST_NODE_TYPES.TSTypeAssertion)
+  ) {
+    outer = outer.parent;
+  }
+  const use = outer.parent;
+  if (use === undefined) {
+    return true;
+  }
+  switch (use.type) {
+    case AST_NODE_TYPES.AssignmentExpression:
+    case AST_NODE_TYPES.AssignmentPattern:
+    case AST_NODE_TYPES.ForInStatement:
+    case AST_NODE_TYPES.ForOfStatement:
+      return use.left !== outer;
+    case AST_NODE_TYPES.UpdateExpression:
+    case AST_NODE_TYPES.ArrayPattern:
+    case AST_NODE_TYPES.RestElement:
+      return false;
+    case AST_NODE_TYPES.UnaryExpression:
+      return use.operator !== 'delete';
+    case AST_NODE_TYPES.CallExpression:
+      return use.callee !== outer;
+    case AST_NODE_TYPES.Property:
+      return use.parent.type !== AST_NODE_TYPES.ObjectPattern || use.value !== outer;
+    default:
+      return true;
+  }
+}
+
+/**
+ * True when nothing changes the object a parse returned: every use of the
+ * binding is a read of one of its fields (`parsed.mode`). Any other use
+ * (`Object.assign(parsed, x)`, `mutate(parsed)`, an alias) could change a field.
+ */
+function isUnchangedObject(variable: Variable): boolean {
+  return variable.references.every(
+    (reference) => reference.init === true || isReadOnlyMember(reference.identifier),
+  );
+}
+
+/**
+ * True when nothing changes the `data` object of a `safeParse` result: every
+ * use of the binding reads `result.success`, or reads a field of
+ * `result.data` without changing it (`result.data.mode = x` is a change).
+ */
+function isUnchangedResultData(result: Variable): boolean {
+  return result.references.every((reference) => {
+    if (reference.init === true) {
+      return true;
+    }
+    const id = reference.identifier;
+    const member = id.parent;
+    if (
+      member?.type !== AST_NODE_TYPES.MemberExpression ||
+      member.object !== id ||
+      member.computed ||
+      member.property.type !== AST_NODE_TYPES.Identifier ||
+      !isReadOnlyMember(id)
+    ) {
+      return false;
+    }
+    return member.property.name === 'success' || isReadOnlyMember(member);
+  });
 }
 
 /** The schema of a `schema.parse(x)` call, a `const` bound to one, else null. */
@@ -1267,10 +1580,22 @@ function isConfinedParsedField(
     return false;
   }
   const field = node.property.name;
-  let schema = parsedSchemaOf(node.object, sourceCode);
-  if (schema === null && isConfinedSafeParseResult(node.object, sink, sourceCode)) {
-    const object = unwrap(node.object) as TSESTree.MemberExpression;
-    const call = memberCall(resolveConst(object.object, sourceCode), 'safeParse');
+  const object = unwrap(node.object);
+  let schema = parsedSchemaOf(object, sourceCode);
+  if (schema !== null && object.type === AST_NODE_TYPES.Identifier) {
+    // `const parsed = Body.parse(x); parsed.mode = other` changes the field.
+    const parsed = variableOf(object, sourceCode);
+    if (parsed === null || !isUnchangedObject(parsed)) {
+      return false;
+    }
+  }
+  if (schema === null && isConfinedSafeParseResult(object, sink, sourceCode)) {
+    const data = object as TSESTree.MemberExpression;
+    const result = variableOf(data.object as TSESTree.Identifier, sourceCode);
+    if (result === null || !isUnchangedResultData(result)) {
+      return false;
+    }
+    const call = memberCall(resolveConst(data.object, sourceCode), 'safeParse');
     schema =
       call !== null && call.callee.type === AST_NODE_TYPES.MemberExpression
         ? call.callee.object
@@ -1498,14 +1823,13 @@ const ENV_PRESERVING_METHODS: ReadonlySet<string> = new Set([
 ]);
 
 /** `process.env.X` or `process.env['X']`; a computed key (`process.env[name]`) is not read. */
-function isProcessEnvRead(node: TSESTree.Node): boolean {
+function isProcessEnvRead(node: TSESTree.Node, sourceCode: SourceCode): boolean {
   return (
     node.type === AST_NODE_TYPES.MemberExpression &&
     (!node.computed || isStringLiteral(node.property)) &&
     node.object.type === AST_NODE_TYPES.MemberExpression &&
     !node.object.computed &&
-    node.object.object.type === AST_NODE_TYPES.Identifier &&
-    node.object.object.name === 'process' &&
+    isGlobal(node.object.object, 'process', sourceCode) &&
     node.object.property.type === AST_NODE_TYPES.Identifier &&
     node.object.property.name === 'env'
   );
@@ -1520,10 +1844,10 @@ function isEnvironmentValue(raw: TSESTree.Node, sourceCode: SourceCode, depth: n
   if (depth > MAX_DEPTH) {
     return false;
   }
-  const node = peelStringWrappers(raw);
+  const node = peelStringWrappers(raw, sourceCode);
   const next = (child: TSESTree.Node): boolean =>
     isStaticLiteral(child) || isEnvironmentValue(child, sourceCode, depth + 1);
-  if (isProcessEnvRead(node)) {
+  if (isProcessEnvRead(node, sourceCode)) {
     return true;
   }
   switch (node.type) {
@@ -1712,7 +2036,7 @@ function hostPinned(
     return false;
   }
   const variable = variableOf(node, sourceCode);
-  if (variable === null) {
+  if (variable === null || isImportBinding(variable)) {
     return false;
   }
   if (urlObjectPinned(variable, sink, sourceCode)) {
@@ -1922,7 +2246,7 @@ export function isSameSitePath(
     return false;
   }
   const variable = variableOf(inner, sourceCode);
-  if (variable === null) {
+  if (variable === null || isImportBinding(variable)) {
     return false;
   }
   if (

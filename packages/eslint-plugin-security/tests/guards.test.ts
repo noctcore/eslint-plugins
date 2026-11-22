@@ -1,13 +1,19 @@
 import { describe, expect, it } from 'vitest';
 
-import { regexAdmitsOnlySafe, regexPinsHost, regexPinsLocalPath } from '../src/guards';
+import {
+  type GuardContext,
+  regexAdmitsOnlySafe,
+  regexPinsHost,
+  regexPinsLocalPath,
+} from '../src/guards';
 
-const safe = (pattern: string, context: 'shell' | 'html' | 'path', flags = ''): boolean =>
+const safe = (pattern: string, context: GuardContext, flags = ''): boolean =>
   regexAdmitsOnlySafe(pattern, flags, context);
 
 describe('regexAdmitsOnlySafe', () => {
   it.each([
-    ['^[a-z0-9_-]+$', 'shell'],
+    ['^[a-z0-9_][a-z0-9_-]*$', 'shell'],
+    ['^[a-z0-9_-]+$', 'path'],
     ['^(asc|desc)$', 'shell'],
     ['^\\d{1,6}$', 'path'],
     ['^[\\w.-]+$', 'path'],
@@ -37,6 +43,16 @@ describe('regexAdmitsOnlySafe', () => {
     ['^[ -~]+$', 'html'],
     ['^\\S+$', 'shell'],
     ['^a.b$', 'shell'],
+    // Whitespace splits one value into several arguments.
+    ['^[\\w .-]+$', 'shell'],
+    ['^[a-z\t]+$', 'shell'],
+    ['^[a-z\\s]+$', 'shell'],
+    // A leading `-` makes the value an option, a leading `#` a comment.
+    ['^[a-z0-9_-]+$', 'shell'],
+    ['^-?[a-z]+$', 'shell'],
+    ['^[a-z]*-[a-z]+$', 'shell'],
+    ['^[a-z#]+$', 'shell'],
+    ['^(-|a)[a-z]+$', 'shell'],
     // Lookarounds and back references are not read.
     ['^(?=a)[a-z]+$', 'shell'],
     ['^(a)\\1$', 'shell'],
@@ -45,13 +61,19 @@ describe('regexAdmitsOnlySafe', () => {
   });
 
   it('reads Unicode letter and number classes with the u flag only', () => {
-    expect(safe('^[\\p{L}\\p{N}_-]+$', 'shell', 'u')).toBe(true);
+    expect(safe('^[\\p{L}\\p{N}_]+$', 'shell', 'u')).toBe(true);
     expect(safe('^\\p{Letter}+$', 'html', 'u')).toBe(true);
     // Without `u`, `\\p` is not a property escape.
     expect(safe('^[\\p{L}]+$', 'shell')).toBe(false);
     // Other properties are not read.
     expect(safe('^\\p{P}+$', 'html', 'u')).toBe(false);
     expect(safe('^\\P{L}+$', 'html', 'u')).toBe(false);
+  });
+
+  it('allows a leading - or # only inside a shell word', () => {
+    expect(safe('^[\\w.-]+$', 'shell')).toBe(false);
+    expect(safe('^[\\w.-]+$', 'shell-word')).toBe(true);
+    expect(safe('^[\\w #]+$', 'shell-word')).toBe(false);
   });
 
   it('rejects the m and v flags', () => {
