@@ -7,6 +7,30 @@ const JOBS = `import { dedupe, InjectQueue, JobQueue } from '@noctcore/jobs';\n`
 ruleTester.run('add-requires-dedupe', addRequiresDedupeRule, {
   valid: [
     {
+      name: 'a task queue field built with another constructor',
+      code: `${JOBS}import PQueue from 'p-queue';
+class Tasks {
+  private readonly queue = new PQueue({ concurrency: 2 });
+  run(kind: string) { return this.queue.add(() => kind, { priority: 1 }); }
+}`,
+    },
+    {
+      name: 'an object literal whose name looks like a queue',
+      code: `${JOBS}const queueMetrics = { add(a, b) {} };
+queueMetrics.add(\`m-\${kind}\`, 2);`,
+    },
+    {
+      name: 'a parameter annotated with another type',
+      code: `${JOBS}function track(queue: Counter) { return queue.add('x', 1); }`,
+    },
+    {
+      name: 'a field annotated JobQueue or null still counts as a JobQueue',
+      code: `${JOBS}class Mail {
+  private queue: JobQueue<typeof mail> | null = null;
+  send() { return this.queue!.add('x', d, { dedupe: dedupe.none() }); }
+}`,
+    },
+    {
       name: 'dedupe.window',
       code: `${JOBS}await queue.add('x', d, { dedupe: dedupe.window(['order', id], '1h') });`,
     },
@@ -55,6 +79,19 @@ await queue.add('x', d, { jobId: id });`,
     },
   ],
   invalid: [
+    {
+      name: 'a field annotated JobQueue or null, assigned later',
+      code: `${JOBS}class Mail {
+  private queue: JobQueue<typeof mail> | null = null;
+  send() { return this.queue!.add('x', d, { jobId: id }); }
+}`,
+      errors: [{ messageId: 'missingDedupe' }, { messageId: 'rawKey' }],
+    },
+    {
+      name: 'a queue typed as any is still read by its name',
+      code: `${JOBS}function enqueue(queue: any) { return queue.add('x', d); }`,
+      errors: [{ messageId: 'missingDedupe' }],
+    },
     {
       name: 'a raw jobId and no dedupe',
       code: `${JOBS}await queue.add('x', d, { jobId: \`order:\${id}\` });`,

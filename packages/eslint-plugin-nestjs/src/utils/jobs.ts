@@ -14,7 +14,7 @@ import {
   workerBinding,
   type ClassNode,
 } from './bullmq';
-import { receiverLooksLikeQueue } from './queue';
+import { isUndefined, receiverLooksLikeQueue } from './queue';
 
 /*
  * Shared ground for the rules that keep an app on `@noctcore/jobs`: whether a
@@ -122,24 +122,75 @@ export function usesJobs(context: Readonly<TSESLint.RuleContext<string, readonly
   );
 }
 
-/** What a call's receiver is known to hold. */
-export type ReceiverKind = 'jobQueue' | 'bullmqQueue' | 'bullmqWorker';
+/**
+ * What a call's receiver is known to hold. `other` means its declaration is
+ * known and is none of the three (a `new PQueue()`, an object literal, an
+ * annotation naming another type), so no guess from its name applies.
+ */
+export type ReceiverKind = 'jobQueue' | 'bullmqQueue' | 'bullmqWorker' | 'other';
 
-/** The kind an annotation like `JobQueue<...>`, `Queue` or `Worker` names, or null. */
+/** The first kind that names a queue or worker, else `other` if any says so, else null. */
+function firstKind(...kinds: readonly (ReceiverKind | null)[]): ReceiverKind | null {
+  return kinds.find((kind) => kind !== null && kind !== 'other') ?? (kinds.includes('other') ? 'other' : null);
+}
+
+/** Annotations that say nothing about the value: `any` and `unknown`. */
+const OPEN_ANNOTATIONS: ReadonlySet<string> = new Set([AST_NODE_TYPES.TSAnyKeyword, AST_NODE_TYPES.TSUnknownKeyword]);
+
+/**
+ * The kind an annotation names: `JobQueue<...>` from `@noctcore/jobs`, `Queue`
+ * or `Worker` from `bullmq`, `other` for any other type, and null for no
+ * annotation, `any` or `unknown`.
+ */
 function annotationKind(
   annotation: TSESTree.TSTypeAnnotation | undefined,
   sourceCode: Readonly<TSESLint.SourceCode>,
 ): ReceiverKind | null {
-  const type = annotation?.typeAnnotation;
-  if (type?.type !== AST_NODE_TYPES.TSTypeReference || type.typeName.type !== AST_NODE_TYPES.Identifier) {
-    return null;
+  return typeKind(annotation?.typeAnnotation, sourceCode);
+}
+
+/** `annotationKind` for one type; `T | null | undefined` reads as `T`. */
+function typeKind(type: TSESTree.TypeNode | undefined, sourceCode: Readonly<TSESLint.SourceCode>): ReceiverKind | null {
+  if (type === undefined || OPEN_ANNOTATIONS.has(type.type)) return null;
+  if (type.type === AST_NODE_TYPES.TSUnionType) {
+    const rest = type.types.filter(
+      (member) => member.type !== AST_NODE_TYPES.TSNullKeyword && member.type !== AST_NODE_TYPES.TSUndefinedKeyword,
+    );
+    return rest.length === 1 ? typeKind(rest[0], sourceCode) : 'other';
+  }
+  if (type.type !== AST_NODE_TYPES.TSTypeReference || type.typeName.type !== AST_NODE_TYPES.Identifier) {
+    return 'other';
   }
   const ref = importRef(type.typeName, sourceCode.getScope(type.typeName));
-  if (ref === null) return null;
-  if (ref.module === JOBS_MODULE && ref.name === 'JobQueue') return 'jobQueue';
-  if (ref.module === BULLMQ_MODULE && ref.name === 'Queue') return 'bullmqQueue';
-  if (ref.module === BULLMQ_MODULE && ref.name === 'Worker') return 'bullmqWorker';
-  return null;
+  if (ref?.module === JOBS_MODULE && ref.name === 'JobQueue') return 'jobQueue';
+  if (ref?.module === BULLMQ_MODULE && ref.name === 'Queue') return 'bullmqQueue';
+  if (ref?.module === BULLMQ_MODULE && ref.name === 'Worker') return 'bullmqWorker';
+  return 'other';
+}
+
+/** Initialisers whose value is plainly not a queue the rules know: anything but a bullmq `new`. */
+const PLAIN_VALUES: ReadonlySet<string> = new Set([
+  AST_NODE_TYPES.NewExpression,
+  AST_NODE_TYPES.ObjectExpression,
+  AST_NODE_TYPES.ArrayExpression,
+  AST_NODE_TYPES.Literal,
+  AST_NODE_TYPES.TemplateLiteral,
+  AST_NODE_TYPES.ArrowFunctionExpression,
+  AST_NODE_TYPES.FunctionExpression,
+  AST_NODE_TYPES.ClassExpression,
+]);
+
+/**
+ * The kind an initialiser gives: a bullmq `new Queue(...)` or `new Worker(...)`,
+ * `other` for any other construction or literal, and null for a call or a
+ * read, which may return a `JobQueue` (`runtime.queue(mail)`).
+ */
+function initKind(init: TSESTree.Node | null | undefined, sourceCode: Readonly<TSESLint.SourceCode>): ReceiverKind | null {
+  if (init === null || init === undefined) return null;
+  const value = stripTypeWrappers(init);
+  // `= null` and `= undefined` hold a place for a value assigned later.
+  if ((value.type === AST_NODE_TYPES.Literal && value.value === null) || isUndefined(value)) return null;
+  return constructedKind(init, sourceCode) ?? (PLAIN_VALUES.has(stripTypeWrappers(init).type) ? 'other' : null);
 }
 
 /** The kind an `@InjectQueue(...)` among `decorators` injects, or null. */
@@ -182,10 +233,10 @@ function parameterKind(
   }
   if (node.type === AST_NODE_TYPES.AssignmentPattern) node = node.left;
   if (node.type !== AST_NODE_TYPES.Identifier) return null;
-  return (
-    decoratorKind(decorators, sourceCode) ??
-    decoratorKind(node.decorators, sourceCode) ??
-    annotationKind(node.typeAnnotation, sourceCode)
+  return firstKind(
+    decoratorKind(decorators, sourceCode),
+    decoratorKind(node.decorators, sourceCode),
+    annotationKind(node.typeAnnotation, sourceCode),
   );
 }
 
@@ -211,7 +262,7 @@ function memberKind(
       member.key.type === AST_NODE_TYPES.Identifier &&
       member.key.name === name
     ) {
-      return annotationKind(member.typeAnnotation, sourceCode) ?? constructedKind(member.value, sourceCode);
+      return firstKind(annotationKind(member.typeAnnotation, sourceCode), initKind(member.value, sourceCode));
     }
     if (member.type === AST_NODE_TYPES.MethodDefinition && member.kind === 'constructor') {
       const parameter = member.value.params.find((param) => parameterPropertyName(param) === name);
@@ -242,7 +293,7 @@ function variableKind(
     return parameterKind(holder, sourceCode);
   }
   if (def?.type === 'Variable' && def.node.id.type === AST_NODE_TYPES.Identifier) {
-    return annotationKind(def.node.id.typeAnnotation, sourceCode) ?? constructedKind(def.node.init, sourceCode);
+    return firstKind(annotationKind(def.node.id.typeAnnotation, sourceCode), initKind(def.node.init, sourceCode));
   }
   return null;
 }

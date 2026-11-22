@@ -8,6 +8,19 @@ const OPTS = `{ dedupe: dedupe.none() }`;
 ruleTester.run('no-dynamic-job-name', noDynamicJobNameRule, {
   valid: [
     {
+      name: 'a task queue field built with another constructor',
+      code: `${JOBS}import PQueue from 'p-queue';
+class Tasks {
+  private readonly queue = new PQueue({ concurrency: 2 });
+  run(kind: string) { return this.queue.add(\`task-\${kind}\`, { priority: 1 }); }
+}`,
+    },
+    {
+      name: 'an object literal whose name looks like a queue',
+      code: `${JOBS}const queueMetrics = { add(a, b) {} };
+queueMetrics.add(\`m-\${kind}\`, 2);`,
+    },
+    {
       name: 'a literal name',
       code: `${JOBS}await this.queue.add('send', { kind }, ${OPTS});`,
     },
