@@ -56,11 +56,39 @@ ruleTester.run('no-user-controlled-fetch-url', noUserControlledFetchUrlRule, {
       options: [{ trustedOrigins: ['this.config.apiUrl'], sanitizers: ['toSafePath'] }],
     },
     // Not a configured callee: a custom client is not this rule's business by default.
-    { code: 'http.get(url);', filename: TS },
+    { code: 'client.get(url);', filename: TS },
     // A method *definition* named fetch is not a call.
     { code: 'const client = { fetch(url: unknown) { return url; } };', filename: TS },
     // A numeric segment is author text too.
     { code: `fetch('https://api.example.com/v' + 2 + '/todos');`, filename: TS },
+    // Node clients, axios config objects and sockets with fixed targets.
+    { code: "http.get('http://internal.example.com/health');", filename: TS },
+    { code: 'https.request(`https://api.example.com/users/${id}`);', filename: TS },
+    { code: "http.get({ host: 'internal.example.com', path: `/users/${id}` });", filename: TS },
+    { code: "const HOST = 'internal.example.com'; http.request({ hostname: HOST, path });", filename: TS },
+    { code: 'http.get({ path: `/users/${id}` });', filename: TS },
+    { code: "axios.request({ method: 'get', url: `/api/users/${id}` });", filename: TS },
+    { code: "const config = { method: 'get', url: 'https://api.example.com/x' }; await axios.request(config);", filename: TS },
+    { code: "axios({ url: '/api/ping', timeout: 1000 });", filename: TS },
+    { code: "axios('https://api.example.com/x', { timeout: 1000 });", filename: TS },
+    { code: "net.connect(6379, 'cache.internal');", filename: TS },
+    { code: "tls.connect({ host: 'db.internal', port: 5432 });", filename: TS },
+    { code: "net.connect('/var/run/app.sock');", filename: TS },
+    { code: 'net.connect(port, () => ready());', filename: TS },
+    { code: 'net.createConnection(port);', filename: TS },
+    // A URL whose host passed an anchored allowlist first.
+    {
+      code: "function probe(input: string) { let host = ''; try { host = new URL(String(input)).hostname; } catch { return; } if (!/^(api|assets)\\.example\\.com$/.test(host)) return; const target = input; http.get(target); }",
+      filename: TS,
+    },
+    {
+      code: "function probe(input: string) { const host = new URL(input).hostname; if (!['api.example.com'].includes(host)) throw new Error('host'); const outbound = { method: 'get', url: String(input) }; return axios.request(outbound); }",
+      filename: TS,
+    },
+    {
+      code: "function probe(input: string) { const host = new URL(input).hostname; if (!/^api\\.example\\.com$/.test(host)) return; net.connect(80, new URL(String(input)).hostname); }",
+      filename: TS,
+    },
   ],
   invalid: [
     // The shared wrapper list, string form.
@@ -108,6 +136,49 @@ ruleTester.run('no-user-controlled-fetch-url', noUserControlledFetchUrlRule, {
       filename: TS,
       options: [{ fetchCallees: [{ object: 'this.http', name: 'request', urlArgument: 1 }] }],
       errors: [error],
+    },
+    // Node clients, axios config objects and sockets with runtime targets.
+    { code: 'http.get(req.query.url);', filename: TS, errors: [error] },
+    { code: 'https.get(String(target), (res) => res.resume());', filename: TS, errors: [error] },
+    { code: 'http.request({ host: req.query.host, path: "/" });', filename: TS, errors: [{ messageId: 'userControlledSocketHost' }] },
+    { code: 'axios.request({ method: "get", url: String(target) });', filename: TS, errors: [error] },
+    {
+      code: "const outbound = { method: 'get', url: String(target), timeout: 5000 }; await axios.request(outbound);",
+      filename: TS,
+      errors: [error],
+    },
+    { code: 'axios({ url: target });', filename: TS, errors: [error] },
+    { code: 'axios(target, { timeout: 1000 });', filename: TS, errors: [error] },
+    { code: 'net.connect(80, host);', filename: TS, errors: [{ messageId: 'userControlledSocketHost' }] },
+    {
+      code: 'net.connect(80, new URL(String(target)).hostname);',
+      filename: TS,
+      errors: [{ messageId: 'userControlledSocketHost' }],
+    },
+    { code: 'tls.connect({ host: target, port: 443 });', filename: TS, errors: [{ messageId: 'userControlledSocketHost' }] },
+    { code: 'net.createConnection(port, host, () => ready());', filename: TS, errors: [{ messageId: 'userControlledSocketHost' }] },
+    // Near misses of the host allowlist.
+    {
+      code: "function probe(input: string) { const host = new URL(input).hostname; if (!/api\\.example\\.com/.test(host)) return; http.get(input); }",
+      filename: TS,
+      errors: [error],
+    },
+    {
+      code: "function probe(input: string, other: string) { const host = new URL(other).hostname; if (!/^api\\.example\\.com$/.test(host)) return; http.get(input); }",
+      filename: TS,
+      errors: [error],
+    },
+    {
+      code: "function probe(input: string) { http.get(input); const host = new URL(input).hostname; if (!/^api\\.example\\.com$/.test(host)) return; }",
+      filename: TS,
+      errors: [error],
+    },
+    // A replaced socket list drops the defaults.
+    {
+      code: 'sockets.open(80, host);',
+      filename: TS,
+      options: [{ socketCallees: ['sockets.open'] }],
+      errors: [{ messageId: 'userControlledSocketHost' }],
     },
   ],
 });
