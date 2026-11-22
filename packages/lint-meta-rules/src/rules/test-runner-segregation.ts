@@ -68,7 +68,7 @@ export function createTestRunnerSegregationRule(
             violations.push({
               file: f,
               rule: 'test-runner-segregation',
-              message: `Bun-side test imports '${foreignRunnerImport}' — use '${bunRunnerImport}'.`,
+              message: `Bun-side test imports '${foreignRunnerImport}': use '${bunRunnerImport}'.`,
             });
           }
           if (!bunRe.test(body)) {
@@ -87,7 +87,7 @@ export function createTestRunnerSegregationRule(
             violations.push({
               file: f,
               rule: 'test-runner-segregation',
-              message: `Foreign-side test imports '${bunRunnerImport}' — use '${foreignRunnerImport}'.`,
+              message: `Foreign-side test imports '${bunRunnerImport}': use '${foreignRunnerImport}'.`,
             });
           }
         }

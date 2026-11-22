@@ -144,13 +144,13 @@ export const requireFetchTimeoutRule = createRule<RuleOptions, MessageIds>({
     type: 'problem',
     docs: {
       description:
-        'A `fetch` (or configured wrapper) call must carry a `signal`/`timeout` in its options — an unbounded request can hang forever.',
+        'A `fetch` (or configured wrapper) call must carry a `signal`/`timeout` in its options: an unbounded request can hang forever.',
     },
     hasSuggestions: true,
     schema: [optionSchema],
     messages: {
       missingTimeout:
-        '`{{callee}}` has no timeout — pass a `signal` (e.g. `AbortSignal.timeout({{ms}})`) or a `timeout` option so the request cannot hang indefinitely.',
+        '`{{callee}}` has no timeout: pass a `signal` (e.g. `AbortSignal.timeout({{ms}})`) or a `timeout` option so the request cannot hang indefinitely.',
       addTimeout: 'Add `signal: AbortSignal.timeout({{ms}})`.',
     },
   },

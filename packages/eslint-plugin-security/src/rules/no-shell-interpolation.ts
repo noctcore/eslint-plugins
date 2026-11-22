@@ -194,7 +194,7 @@ export const noShellInterpolationRule = createRule<RuleOptions, MessageIds>({
     schema: [optionSchema],
     messages: {
       shellInterpolation:
-        'A dynamically-built command string is passed to `{{callee}}`, which runs it through a shell — a command-injection sink. Pass the program and its arguments separately instead (e.g. `execFile(cmd, [arg1, arg2])`), where no shell re-parses the string.',
+        'A dynamically-built command string is passed to `{{callee}}`, which runs it through a shell (a command-injection sink). Pass the program and its arguments separately instead (e.g. `execFile(cmd, [arg1, arg2])`), where no shell re-parses the string.',
     },
   },
   defaultOptions: [{ extraCallees: [] }],

@@ -121,7 +121,7 @@ export const noEffectDerivedStateRule = createRule<[], MessageIds>({
     type: 'suggestion',
     docs: {
       description:
-        'An effect whose entire body is `setState` calls with values derived purely from its dependencies is the "you might not need an effect" anti-pattern — compute the value during render (or with `useMemo`) instead.',
+        'An effect whose entire body is `setState` calls with values derived purely from its dependencies is the "you might not need an effect" anti-pattern: compute the value during render (or with `useMemo`) instead.',
     },
     schema: [],
     messages: {

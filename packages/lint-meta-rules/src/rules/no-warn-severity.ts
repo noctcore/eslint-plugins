@@ -41,7 +41,7 @@ export function createNoWarnSeverityRule(options: NoWarnSeverityOptions = {}): I
             violations.push({
               file: configFile,
               rule: 'no-warn-severity',
-              message: `Line ${i + 1}: ESLint 'warn' severity is forbidden — use 'error' or 'off'.`,
+              message: `Line ${i + 1}: ESLint 'warn' severity is forbidden: use 'error' or 'off'.`,
               line: i + 1,
             });
           }

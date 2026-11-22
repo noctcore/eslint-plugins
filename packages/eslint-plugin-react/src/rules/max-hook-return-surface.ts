@@ -67,7 +67,7 @@ export const maxHookReturnSurfaceRule = createRule<RuleOptions, MessageIds>({
     schema: [optionSchema],
     messages: {
       returnSurfaceTooWide:
-        "'{{hook}}' returns an object exposing {{count}} members (max {{max}}) — a god-controller in the making. Split the hook into focused hooks or return cohesive sub-objects. (Each spread counts as 1 but hides arbitrary extra surface.)",
+        "'{{hook}}' returns an object exposing {{count}} members (max {{max}}): a god-controller in the making. Split the hook into focused hooks or return cohesive sub-objects. (Each spread counts as 1 but hides arbitrary extra surface.)",
     },
   },
   defaultOptions: [{ max: DEFAULT_MAX }],

@@ -73,7 +73,7 @@ not. Pick whichever matches how your packages are meant to be consumed.
 
 | Rule | Description | Preset | ⚙️ | 🔧 | 💡 | 💭 |
 | --- | --- | :-: | :-: | :-: | :-: | :-: |
-| [`no-deep-package-imports`](https://noctcore.github.io/eslint-plugins/rules/monorepo/no-deep-package-imports/) | Workspace packages in the configured `scopes` must be consumed through their package barrel only — never via a deep subpath into package internals. | 🔘 | ⚙️ |  |  |  |
+| [`no-deep-package-imports`](https://noctcore.github.io/eslint-plugins/rules/monorepo/no-deep-package-imports/) | Workspace packages in the configured `scopes` must be consumed through their package barrel only, never via a deep subpath into package internals. | 🔘 | ⚙️ |  |  |  |
 | [`no-unexported-subpath-import`](https://noctcore.github.io/eslint-plugins/rules/monorepo/no-unexported-subpath-import/) | Importing a `@scope/pkg/<subpath>` that the target workspace package's `exports` map does not expose. Reads the target `package.json` from disk. | 🔘 | ⚙️ |  |  |  |
 <!-- end generated rules -->
 

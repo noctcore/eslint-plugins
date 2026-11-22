@@ -80,12 +80,12 @@ export const noJsxInHooksRule = createRule<[], MessageIds>({
     type: 'problem',
     docs: {
       description:
-        'A `use*`-named function must not return JSX — that is a component wearing a hook costume. Rename it to a PascalCase component, or return values instead of elements.',
+        'A `use*`-named function must not return JSX: that is a component wearing a hook costume. Rename it to a PascalCase component, or return values instead of elements.',
     },
     schema: [],
     messages: {
       jsxInHook:
-        '`{{name}}` is named like a hook but returns JSX. Hooks return data and handlers, not markup — rename it to a PascalCase component, or return values instead of elements.',
+        '`{{name}}` is named like a hook but returns JSX. Hooks return data and handlers, not markup. Rename it to a PascalCase component, or return values instead of elements.',
     },
   },
   defaultOptions: [],

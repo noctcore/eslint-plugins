@@ -67,7 +67,7 @@ export function createUiPrimitiveShapeRule(options: UiPrimitiveShapeOptions = {}
             violations.push({
               file: flat,
               rule: 'ui-primitive-shape',
-              message: `ui flat primitive '${name}${extension}' has a sibling ${name}.${role}${extension} at the ui root — move both into a '${name}/' folder with ${barrelFile}.`,
+              message: `ui flat primitive '${name}${extension}' has a sibling ${name}.${role}${extension} at the ui root: move both into a '${name}/' folder with ${barrelFile}.`,
             });
           }
         }

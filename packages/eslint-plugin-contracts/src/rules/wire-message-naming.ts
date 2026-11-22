@@ -90,7 +90,7 @@ export const wireMessageNamingRule = createRule<RuleOptions, MessageIds>({
     schema: [optionSchema],
     messages: {
       typeMismatch:
-        "Wire `type` literal '{{actual}}' for `{{name}}` must be '{{expected}}' — kebab-case of the const name minus its role suffix.",
+        "Wire `type` literal '{{actual}}' for `{{name}}` must be '{{expected}}' (kebab-case of the const name minus its role suffix).",
     },
   },
   defaultOptions: [{ roleSuffixes: ['Event', 'Command', 'Query'] }],

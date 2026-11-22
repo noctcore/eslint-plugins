@@ -100,7 +100,7 @@ export const maxImportDepthRule = createRule<RuleOptions, MessageIds>({
     schema: [optionSchema],
     messages: {
       tooDeep:
-        'Relative import `{{source}}` climbs {{depth}} levels — over the limit of {{max}}. Use a path alias instead of reaching this far up the tree.',
+        'Relative import `{{source}}` climbs {{depth}} levels, over the limit of {{max}}. Use a path alias instead of reaching this far up the tree.',
     },
   },
   defaultOptions: [{ max: DEFAULT_MAX, alias: {} }],

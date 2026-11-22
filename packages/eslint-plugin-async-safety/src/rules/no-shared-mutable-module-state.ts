@@ -344,7 +344,7 @@ export const noSharedMutableModuleStateRule = createRule<RuleOptions, MessageIds
     schema: [optionSchema],
     messages: {
       sharedMutableState:
-        'Module-scoped mutable `{{name}}` is written inside exported `{{fn}}` — concurrent requests share this state and can contaminate each other. Scope it per request, or guard it.',
+        'Module-scoped mutable `{{name}}` is written inside exported `{{fn}}`: concurrent requests share this state and can contaminate each other. Scope it per request, or guard it.',
     },
   },
   defaultOptions: [{ include: [], allow: [] }],

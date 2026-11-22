@@ -235,7 +235,7 @@ export const noLeakyRaceTimeoutRule = createRule<RuleOptions, MessageIds>({
     type: 'problem',
     docs: {
       description:
-        'A `setTimeout` timeout raced with `Promise.race` must be cleared — otherwise the timer outlives the race whenever the other promise wins.',
+        'A `setTimeout` timeout raced with `Promise.race` must be cleared, otherwise the timer outlives the race whenever the other promise wins.',
     },
     schema: [],
     messages: {

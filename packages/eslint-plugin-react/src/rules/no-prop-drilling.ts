@@ -121,7 +121,7 @@ export const noPropDrillingRule = createRule<RuleOptions, MessageIds>({
     schema: [optionSchema],
     messages: {
       forwardedBundle:
-        '{{count}} props ({{props}}) are forwarded unchanged to <{{child}}> — this component is a wire, not an owner. Pass a grouped object, render children, or consume a scoped context instead.',
+        '{{count}} props ({{props}}) are forwarded unchanged to <{{child}}>: this component is a wire, not an owner. Pass a grouped object, render children, or consume a scoped context instead.',
     },
   },
   defaultOptions: [{ maxForwarded: DEFAULT_MAX_FORWARDED }],

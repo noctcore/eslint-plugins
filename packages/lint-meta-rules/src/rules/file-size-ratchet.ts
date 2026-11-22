@@ -98,13 +98,13 @@ export function createFileSizeRatchetRule(options: FileSizeRatchetOptions = {}):
       for (const [file, n] of Object.entries(currentOffenders(ctx))) {
         if (isGrandfathered(baseline, file, n)) {
           console.error(
-            `[grandfathered] ${id} (${file}): ${n} lines frozen by baseline (cap ${cap}) — split to ratchet down.`,
+            `[grandfathered] ${id} (${file}): ${n} lines frozen by baseline (cap ${cap}): split to ratchet down.`,
           );
         } else {
           violations.push({
             file,
             rule: id,
-            message: `file exceeds the ${cap}-line cap: ${n} lines. New files never join the baseline and frozen files may not grow — split it.`,
+            message: `file exceeds the ${cap}-line cap: ${n} lines. New files never join the baseline and frozen files may not grow. Split it.`,
           });
         }
       }
@@ -116,7 +116,7 @@ export function createFileSizeRatchetRule(options: FileSizeRatchetOptions = {}):
           violations.push({
             file,
             rule: id,
-            message: `baseline entry is stale — the file no longer exists. Remove it and update the baseline.`,
+            message: `baseline entry is stale: the file no longer exists. Remove it and update the baseline.`,
           });
           continue;
         }
@@ -125,13 +125,13 @@ export function createFileSizeRatchetRule(options: FileSizeRatchetOptions = {}):
           violations.push({
             file,
             rule: id,
-            message: `baseline entry is stale — the file is now within the ${cap}-line cap (${n} lines). Remove it and update the baseline.`,
+            message: `baseline entry is stale: the file is now within the ${cap}-line cap (${n} lines). Remove it and update the baseline.`,
           });
         } else if (n < frozen * tightenRatio) {
           violations.push({
             file,
             rule: id,
-            message: `baseline entry is over-generous — the file shrank below its frozen ${frozen} (now ${n} lines). Tighten it and update the baseline.`,
+            message: `baseline entry is over-generous: the file shrank below its frozen ${frozen} (now ${n} lines). Tighten it and update the baseline.`,
           });
         }
       }
