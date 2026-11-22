@@ -95,7 +95,65 @@ not seen. A runner wrapped some other way than `promisify` (a hand-written `new 
 `exec`) is not followed either; name the wrapper in `extraCallees`.
 
 A fully static command is not flagged either: `exec('ls -la')`, a template literal with no
-expressions, or a `+` of literals only (`'ls ' + '-la'`).
+expressions, or a `+` of literals only (`'ls ' + '-la'`). Neither is a part that is an in-file
+`const` literal (`const BIN = '/usr/bin/git'`).
+
+### Values the function already checked
+
+A runtime part is left alone when the function gave up on any other value before the call: an
+`if` whose branch ends in `return`, `throw`, `break` or `continue`, earlier in an enclosing block,
+or an `if (check) { ... }` around the call. The check must be one the rule can read:
+
+- an allowlist of literals: `includes` on an array literal, `has` on a `new Set([...])` (inline or
+  in a `const`), or `===` / `!==` against literals;
+- `test` with a regex (inline or in a `const`) anchored at both ends, without the `m` flag, whose
+  every character is shell-inert: no `.`, no `\s` (it admits a newline), no negated class, and
+  none of ``;&|$`()<>{}[]*?!~'"\^`` or a line break. Space, `-`, `%` and `#` are allowed;
+- a schema with such a pattern or a literal set: `const { error, value } = schema.validate(x)`
+  followed by an exiting `if (error)`, or `schema.parse(x)` (which throws), where the schema is an
+  in-file chain with `.pattern(re)` / `.regex(re)` or `.valid(...)` / `.enum([...])` / `.literal(...)`.
+
+Every write to the checked binding must come before the check, and the rule follows `const`
+aliases (`const picked = sort`) and `String(x)`:
+
+```ts bad
+// the check does not stop the call: it only logs
+function list(sort: string) {
+  if (!['asc', 'desc'].includes(sort)) log('unknown sort');
+  exec(`ls --sort ${sort}`);
+}
+```
+
+```ts good
+// only `asc` or `desc` reach the shell
+function list(sort: string) {
+  if (!['asc', 'desc'].includes(sort)) return;
+  exec(`ls --sort ${sort}`);
+}
+```
+
+```ts good
+// an anchored, shell-inert pattern
+function list(name: string) {
+  if (!/^[a-z0-9_-]+$/.test(name)) throw new Error('bad name');
+  exec(`ls ${name}`);
+}
+```
+
+A check that runs after the call, tests another variable, uses a list the rule cannot see
+(`list.includes(x)` on a parameter), or a regex that is unanchored (`/[a-z]+/`) or admits a
+metacharacter keeps the report.
+
+### Values the operator sets
+
+A value read from `process.env` is set by whoever runs the process, not by the requester, so it is
+left alone: directly, through `const` bindings, `String()`, string methods with literal arguments
+(`.trim()`, `.replace(/\0/g, '')`), literal fallbacks (`|| ''`), and templates or `+` of such
+values and literals.
+
+```ts good
+exec(`git -C ${process.env.REPO_DIR} status`);
+```
 
 ## Options
 
@@ -109,5 +167,6 @@ expressions, or a `+` of literals only (`'ls ' + '-la'`).
 
 ## When not to use it
 
-If a call site is provably safe (a hard-coded allowlist of commands, no user input in the string),
-refactor to `execFile` anyway — it is clearer — or disable the rule for that line.
+If a call site is safe in a way the rule cannot read (a check in another function, a list from
+another module), refactor to `execFile` anyway, since it is clearer, or disable the rule for that
+line.
