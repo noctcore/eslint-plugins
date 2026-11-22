@@ -12,3 +12,5 @@ Six new rules for apps on `@noctcore/jobs`, all on in `recommended`:
 - `no-direct-rate-limit`: BullMQ `rateLimit()` on a queue or worker, `Worker.RateLimitError()` and `new RateLimitError()` are reported; pause with `pauseQueue` / `pauseFor`.
 
 Each rule checks for the package itself. `worker-extends-job-host` (for `@Worker`), `no-dynamic-job-name` and `add-requires-dedupe` only read files that import `@noctcore/jobs`; the other three, and the `@Processor` half of `worker-extends-job-host`, also read files of a project whose `package.json` (from the file's directory up to the workspace root) declares it. A project that spreads `recommended` and does not use `@noctcore/jobs` sees no new errors. A project that does use it will see errors wherever BullMQ is used beside it by hand, which is what the rules are for; `allowIn` on the three BullMQ rules exempts files such as seed scripts and tests.
+
+`queue-add-requires-dedup-key` (opt-in) now skips files that import `@noctcore/jobs`, whose `JobQueue`s take `dedupe` and drop a `jobId`; there it could not be satisfied together with `add-requires-dedupe`. Outside such files nothing changes.

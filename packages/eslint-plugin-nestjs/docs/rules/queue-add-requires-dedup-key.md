@@ -63,6 +63,9 @@ await this.mailQueue.addBulk(users.map((user) => ({ name: JOBS.WELCOME, data: { 
 - Calls on receivers that do not look like a queue: `set.add(value)`, `this.repository.add(...)`.
 - A queue reached through a name that does not match the pattern: the check is by name, with no
   type information. Widen `queuePattern` if your queues are named otherwise.
+- Any file that imports `@noctcore/jobs`. Its queues are `JobQueue`s, which take `dedupe` and drop
+  a `jobId`, so this rule and [`add-requires-dedupe`](/eslint-plugins/rules/nestjs/add-requires-dedupe/) could not both be
+  satisfied there; `add-requires-dedupe` checks those calls instead.
 
 ```ts good
 await this.mailQueue.add(JOBS.WELCOME, { userId }, { attempts: 3, jobId: `welcome:${userId}` });
@@ -71,6 +74,12 @@ await this.mailQueue.addBulk(
   users.map((user) => ({ name: JOBS.WELCOME, data: { id: user.id }, opts: { jobId: `welcome:${user.id}` } })),
 );
 seen.add(userId);
+```
+
+```ts good
+import { dedupe } from '@noctcore/jobs';
+
+await this.mailQueue.add('welcome', { userId }, { dedupe: dedupe.until(['welcome', userId]) });
 ```
 
 ## Options

@@ -4,6 +4,15 @@ import { queueAddRequiresDedupKeyRule } from '../../src/rules/queue-add-requires
 
 ruleTester.run('queue-add-requires-dedup-key', queueAddRequiresDedupKeyRule, {
   valid: [
+    {
+      name: 'a file that imports @noctcore/jobs is left to add-requires-dedupe',
+      code: `import { dedupe, InjectQueue, JobQueue } from '@noctcore/jobs';
+class Mail {
+  constructor(@InjectQueue(mail) private readonly queue: JobQueue<typeof mail>) {}
+  send() { return this.queue.add('x', d, { dedupe: dedupe.none() }); }
+}
+await emailQueue.add('y', d, { dedupe: dedupe.until(id) });`,
+    },
     // A deterministic key: a producer retry lands on the same job.
     { code: `this.queue.add(JOB.SEND, withJobContext(data), { jobId });` },
     { code: `this.queue.add(JOB.SEND, data, { priority: 5, jobId: \`w-\${id}\` });` },
