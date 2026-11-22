@@ -410,6 +410,9 @@ export const noUnescapedHtmlResponseRule = createRule<RuleOptions, MessageIds>({
     docs: {
       description:
         'HTML built from a runtime value and sent with `res.send` / `res.end` / `res.write`, or bound to a raw template variable (`| safe`, `<%-`), must escape or sanitize the value: unescaped, it is server-side XSS.',
+      cwe: ['CWE-79'],
+      owasp: ['A03:2021'],
+      securitySeverity: 6.1,
     },
     schema: [optionSchema],
     messages: {

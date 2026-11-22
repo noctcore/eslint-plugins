@@ -106,6 +106,7 @@ Every rule names the weakness it reports in `meta.docs.cwe` (and its OWASP Top 1
 | `bcrypt-rounds-min` | CWE-916 | A02:2021 | 5.9 (medium) |
 | `no-shell-interpolation` | CWE-78 | A03:2021 | 9.8 (critical) |
 | `no-timing-unsafe-compare` | CWE-208 | A02:2021 | 5.9 (medium) |
+| `no-unescaped-html-response` | CWE-79 | A03:2021 | 6.1 (medium) |
 | `no-user-controlled-fetch-url` | CWE-918 | A10:2021 | 8.6 (high) |
 | `no-user-controlled-redirect` | CWE-601 | A01:2021 | 6.1 (medium) |
 | `presigned-post-requires-policy` | CWE-434, CWE-770 | A04:2021 | 6.5 (medium) |
