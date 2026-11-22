@@ -531,7 +531,7 @@ export const requireSchemaParseAtBoundaryRule = createRule<RuleOptions, MessageI
     schema: [optionSchema],
     messages: {
       castedBoundaryData:
-        'Boundary data is asserted with `as` here, not parsed. A cast is unchecked — validate this with a runtime schema (e.g. `Schema.parse(...)`) so a wire-shape change fails loudly.',
+        'Boundary data is asserted with `as` here, not parsed. A cast is unchecked. Validate this with a runtime schema (e.g. `Schema.parse(...)`) so a wire-shape change fails loudly.',
     },
   },
   defaultOptions: [{}],
