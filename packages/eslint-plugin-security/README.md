@@ -46,7 +46,7 @@ export default [
 
 ## Opt-in rules
 
-Five rules are exported but left out of `recommended`. Enable them, with your own options where a rule needs them:
+Six rules are exported but left out of `recommended`. Enable them, with your own options where a rule needs them:
 
 ```js
 // eslint.config.js
@@ -60,6 +60,8 @@ export default [
       'noctcore-security/auth-cookie-flags': ['error', { trustedConfigNames: ['AUTH_COOKIE_OPTIONS'] }],
       // Opt-in only because a rule entering `recommended` is a major in 1.x; raise minRounds to your policy.
       'noctcore-security/bcrypt-rounds-min': ['error', { minRounds: 12 }],
+      // Opt-in only because a rule entering `recommended` is a major in 1.x; name your escaper if the defaults miss it.
+      'noctcore-security/no-unescaped-html-response': ['error', { sanitizers: ['escapeHtml', 'he.encode'] }],
       // High false-positive rate; enable where request objects reach the filesystem.
       'noctcore-security/require-path-containment': ['error', { requestObjects: ['req', 'ctx'] }],
       // Name the HTML producers you trust.
@@ -84,6 +86,7 @@ export default [
 | [`bcrypt-rounds-min`](https://noctcore.github.io/eslint-plugins/rules/security/bcrypt-rounds-min/) | A bcrypt `hash` / `hashSync` / `genSalt` / `genSaltSync` call must not pass a literal cost below `minRounds` (default 10). | 🔘 |  |  |  |  |
 | [`no-shell-interpolation`](https://noctcore.github.io/eslint-plugins/rules/security/no-shell-interpolation/) | A dynamically-interpolated command string must not flow into a shell runner (`exec`/`execSync`, or `spawn`/`execFile` with a `shell` option that is not `false`), including through `promisify(exec)`. Pass the program and arguments separately. | ✅ |  |  |  |  |
 | [`no-timing-unsafe-compare`](https://noctcore.github.io/eslint-plugins/rules/security/no-timing-unsafe-compare/) | An HMAC digest or signature must not be compared with `===` / `!==` / `==` / `!=` or `Buffer#equals`; use `crypto.timingSafeEqual`. | ✅ |  |  |  |  |
+| [`no-unescaped-html-response`](https://noctcore.github.io/eslint-plugins/rules/security/no-unescaped-html-response/) | HTML built from a runtime value and sent with `res.send` / `res.end` / `res.write`, or bound to a raw template variable (`\| safe`, `<%-`), must escape or sanitize the value: unescaped, it is server-side XSS. | 🔘 |  |  |  |  |
 | [`no-user-controlled-fetch-url`](https://noctcore.github.io/eslint-plugins/rules/security/no-user-controlled-fetch-url/) | Disallow HTTP requests whose origin is not fixed at authoring time: a runtime-controlled host enables SSRF. | ✅ |  |  |  |  |
 | [`no-user-controlled-redirect`](https://noctcore.github.io/eslint-plugins/rules/security/no-user-controlled-redirect/) | Disallow redirects whose target origin is not fixed at authoring time: a user-controlled target is an open redirect. | ✅ |  |  |  |  |
 | [`presigned-post-requires-policy`](https://noctcore.github.io/eslint-plugins/rules/security/presigned-post-requires-policy/) | A `createPresignedPost` call must pin the upload size and Content-Type in literal `Conditions`. | ✅ |  |  |  |  |
