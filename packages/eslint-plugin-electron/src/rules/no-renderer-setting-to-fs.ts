@@ -1,6 +1,5 @@
 import {
   calleeName,
-  calleePath,
   enclosingFunction,
   fileMatchesAnyGlob,
   globToRegExp,
@@ -129,8 +128,9 @@ const FS_TWO_PATHS: ReadonlySet<string> = new Set([
 ]);
 /**
  * Sinks that act on a directory as well as a file: removing, listing, copying,
- * moving, trashing or opening `..` or the base itself does damage, so a
- * `path.basename` does not contain a value that reaches them.
+ * moving, changing the mode of, linking to, trashing or opening `..` or the
+ * base itself does damage, so a `path.basename` does not contain a value that
+ * reaches them.
  */
 const DIRECTORY_SINKS: ReadonlySet<string> = new Set([
   'rm',
@@ -145,6 +145,10 @@ const DIRECTORY_SINKS: ReadonlySet<string> = new Set([
   'cpSync',
   'rename',
   'renameSync',
+  'chmod',
+  'chmodSync',
+  'symlink',
+  'symlinkSync',
   'shell.trashItem',
   'shell.openPath',
 ]);
@@ -201,6 +205,20 @@ function staticString(node: TSESTree.Node | undefined): string | null {
     return value.quasis[0]?.value.cooked ?? null;
   }
   return null;
+}
+
+/**
+ * The dotted path of a callee or receiver, like `calleePath` but reading a
+ * computed string key too: `settings['getSetting']` is `settings.getSetting`.
+ */
+function memberPath(node: TSESTree.Node): string | null {
+  const value = unwrap(node);
+  if (value.type === AST_NODE_TYPES.Identifier) return value.name;
+  if (value.type === AST_NODE_TYPES.ThisExpression) return 'this';
+  if (value.type !== AST_NODE_TYPES.MemberExpression) return null;
+  const key = staticPropertyName(value);
+  const object = key === null ? null : memberPath(value.object);
+  return object === null ? null : `${object}.${key}`;
 }
 
 /** True when a dotted callee or receiver path is `name` or ends in `.name`. */
@@ -327,7 +345,7 @@ export const noRendererSettingToFsRule = createRule<RuleOptions, MessageIds>({
       const callee = unwrap(call.callee);
       for (const source of sources) {
         if ('function' in source) {
-          if (!pathEndsWith(calleePath(callee, { allowThis: true }), source.function)) continue;
+          if (!pathEndsWith(memberPath(callee), source.function)) continue;
           if (source.returns !== 'value') {
             return fresh(shortLabel(`${sourceCode.getText(callee)}()`), source.keys ?? null);
           }
@@ -340,7 +358,7 @@ export const noRendererSettingToFsRule = createRule<RuleOptions, MessageIds>({
         if (
           callee.type !== AST_NODE_TYPES.MemberExpression ||
           staticPropertyName(callee) !== source.method ||
-          !pathEndsWith(calleePath(unwrap(callee.object), { allowThis: true }), source.object)
+          !pathEndsWith(memberPath(callee.object), source.object)
         ) {
           continue;
         }

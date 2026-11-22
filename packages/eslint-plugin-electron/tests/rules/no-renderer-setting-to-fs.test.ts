@@ -310,5 +310,31 @@ ruleTester.run('no-renderer-setting-to-fs', noRendererSettingToFsRule, {
       options: GETTER_KEYED,
       errors: [ERROR],
     },
+    // chmod and symlink act on a directory too: a basename of '..' changes or links the parent.
+    {
+      code: `${FS}fs.chmodSync(path.join(D, path.basename(store.get('a'))), 0o777);`,
+      filename: MAIN,
+      options: STORE,
+      errors: [ERROR],
+    },
+    {
+      code: `${FS}async function f() {\n  await fs.promises.chmod(path.join(D, path.basename(store.get('a'))), 0o755);\n  fs.symlinkSync(path.join(D, path.basename(store.get('b'))), LINK);\n  await fs.promises.symlink(TARGET, path.join(D, path.basename(store.get('c'))));\n}`,
+      filename: MAIN,
+      options: STORE,
+      errors: [ERROR, ERROR, ERROR],
+    },
+    // A computed member callee with a string key is the same source.
+    {
+      code: `${FS}fs.readFileSync(settings['getSetting']('dir'));`,
+      filename: MAIN,
+      options: GETTER,
+      errors: [ERROR],
+    },
+    {
+      code: `${FS}fs.readFileSync(this['store']['get']('dir'));`,
+      filename: MAIN,
+      options: STORE,
+      errors: [ERROR],
+    },
   ],
 });
