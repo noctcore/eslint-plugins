@@ -3,6 +3,7 @@ import { ASTUtils } from '@typescript-eslint/utils';
 import type { JSONSchema4 } from '@typescript-eslint/utils/json-schema';
 
 import { createRule } from '../createRule';
+import { isProvenSafeValue } from '../guards';
 
 const RULE_NAME = 'no-shell-interpolation';
 
@@ -30,6 +31,10 @@ type MessageIds = 'shellInterpolation';
  *    array-args, no-shell forms are safe and left entirely alone.
  *  - A binding made with `promisify(exec)` (or `util.promisify(cp.exec)`) is
  *    followed through scope and checked like the runner it wraps.
+ *  - A runtime part the function already proved harmless is accepted (see
+ *    `../guards`): checked before the call against an allowlist of literals
+ *    or a shell-inert anchored regex, the output of a schema with such a
+ *    pattern, an in-file `const` literal, or a value read from `process.env`.
  * `exec` called as a member on a non-`child_process` object (notably
  * `regex.exec(...)`) is excluded so RegExp usage never false-positives. There is
  * no autofix — the safe rewrite changes the call shape.
@@ -105,6 +110,17 @@ function isDynamicCommandString(node: TSESTree.Node): boolean {
     return concatHasDynamicPart(node);
   }
   return false;
+}
+
+/** The runtime parts of a dynamic command string: template expressions and non-literal `+` operands. */
+function dynamicParts(node: TSESTree.Node): TSESTree.Node[] {
+  if (node.type === AST_NODE_TYPES.TemplateLiteral) {
+    return [...node.expressions];
+  }
+  if (node.type === AST_NODE_TYPES.BinaryExpression && node.operator === '+') {
+    return [...dynamicParts(node.left), ...dynamicParts(node.right)];
+  }
+  return node.type === AST_NODE_TYPES.Literal ? [] : [node];
 }
 
 /**
@@ -235,6 +251,15 @@ export const noShellInterpolationRule = createRule<RuleOptions, MessageIds>({
           return;
         }
         if (!isDynamicCommandString(command)) {
+          return;
+        }
+        // Every runtime part already proven harmless: checked against an
+        // allowlist or a shell-inert anchored regex, a schema with such a
+        // pattern, an in-file constant, or a value from `process.env`.
+        const provenSafe = dynamicParts(command).every((part) =>
+          isProvenSafeValue(part, node, 'shell', context.sourceCode, { trustEnvironment: true }),
+        );
+        if (provenSafe) {
           return;
         }
         context.report({

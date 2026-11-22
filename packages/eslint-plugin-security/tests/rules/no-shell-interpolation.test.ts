@@ -43,6 +43,60 @@ ruleTester.run('no-shell-interpolation', noShellInterpolationRule, {
       code: "const execAsync = promisify(exec); function f(execAsync) { return execAsync(`x ${y}`); }",
       filename: TS,
     },
+    // Guarded values: the function exits unless the value passed a check
+    // that leaves no shell metacharacter.
+    {
+      code: "const SORTS = ['asc', 'desc']; function list(sort: string) { if (!SORTS.includes(sort)) return; exec(`ls --sort ${sort}`); }",
+      filename: TS,
+    },
+    {
+      code: "function run(bin: string) { if (!['ls', 'date'].includes(bin)) { log('no'); return; } const allowed = bin; execSync('echo ' + allowed); }",
+      filename: TS,
+    },
+    {
+      code: "const ALLOWED = new Set(['a', 'b']); function run(x: string) { if (!ALLOWED.has(x)) throw new Error('bad'); exec(`tool ${x}`); }",
+      filename: TS,
+    },
+    {
+      code: "function run(x: string) { if (x !== 'fast' && x !== 'slow') return; exec(`tool --mode ${x}`); }",
+      filename: TS,
+    },
+    {
+      code: "function run(x: string) { if (x === 'fast' || x === 'slow') { exec(`tool --mode ${x}`); } }",
+      filename: TS,
+    },
+    {
+      code: "function run(raw: string) { const name = decodeURIComponent(raw); if (!/^(asc|desc|name)$/.test(String(name))) { return; } const picked = name; spawn('echo ' + picked, { shell: true }); }",
+      filename: TS,
+    },
+    {
+      code: "const SAFE = /^[a-zA-Z0-9 _.%\\-]+$/; function run(x: string) { if (!SAFE.test(x)) return; execSync('echo ' + x); }",
+      filename: TS,
+    },
+    {
+      code: "function run(x: string) { if (!/^\\w+$/u.test(x) || x.length > 20) return; exec(`echo ${x}`); }",
+      filename: TS,
+    },
+    {
+      code: "function run(input: string) { let x; try { x = JSON.parse(input).v; } catch { x = input; } if (!['ls', 'cat'].includes(x)) return; const bin = x; exec('echo ' + bin); }",
+      filename: TS,
+    },
+    // A schema whose pattern is anchored and shell-inert.
+    {
+      code: "const schema = joi.string().pattern(/^[a-z0-9_-]+$/).required(); function run(x: string) { const { error, value } = schema.validate(x); if (error) return; exec('echo ' + value); }",
+      filename: TS,
+    },
+    {
+      code: "const Mode = z.enum(['fast', 'slow']); function run(x: string) { const mode = Mode.parse(x); exec(`tool ${mode}`); }",
+      filename: TS,
+    },
+    // Values the operator sets, and in-file constants.
+    { code: "exec('git -C ' + process.env.REPO_DIR);", filename: TS },
+    {
+      code: "const dir = String(process.env.APP_DIR || '').replace(/\\0/g, ''); exec(`ls ${dir}`);",
+      filename: TS,
+    },
+    { code: "const BIN = '/usr/bin/git'; exec(`${BIN} status`);", filename: TS },
   ],
   invalid: [
     // exec with an interpolated template.
@@ -125,6 +179,99 @@ ruleTester.run('no-shell-interpolation', noShellInterpolationRule, {
       code: 'runShell(`ls ${d}`);',
       filename: TS,
       options: [{ extraCallees: ['runShell'] }],
+      errors: [{ messageId: 'shellInterpolation' }],
+    },
+    // Near misses of a guard keep the report.
+    {
+      code: "function run(x: string) { exec(`echo ${x}`); if (!['a'].includes(x)) return; }",
+      filename: TS,
+      errors: [{ messageId: 'shellInterpolation' }],
+    },
+    {
+      code: "function run(x: string) { if (!['a', 'b'].includes(x)) { log('bad'); } exec(`echo ${x}`); }",
+      filename: TS,
+      errors: [{ messageId: 'shellInterpolation' }],
+    },
+    {
+      code: "function run(x: string, y: string) { if (!['a', 'b'].includes(y)) return; exec(`echo ${x}`); }",
+      filename: TS,
+      errors: [{ messageId: 'shellInterpolation' }],
+    },
+    {
+      code: "function run(x: string, list: string[]) { if (!list.includes(x)) return; exec(`echo ${x}`); }",
+      filename: TS,
+      errors: [{ messageId: 'shellInterpolation' }],
+    },
+    {
+      code: "function run(x: string) { if (!/[a-z]+/.test(x)) return; exec(`echo ${x}`); }",
+      filename: TS,
+      errors: [{ messageId: 'shellInterpolation' }],
+    },
+    {
+      code: "function run(x: string) { if (!/^[a-z]+$/m.test(x)) return; exec(`echo ${x}`); }",
+      filename: TS,
+      errors: [{ messageId: 'shellInterpolation' }],
+    },
+    {
+      code: "function run(x: string) { if (!/^[\\w\\s]+$/.test(x)) return; exec(`echo ${x}`); }",
+      filename: TS,
+      errors: [{ messageId: 'shellInterpolation' }],
+    },
+    {
+      code: "function run(x: string) { if (!/^.+$/.test(x)) return; exec(`echo ${x}`); }",
+      filename: TS,
+      errors: [{ messageId: 'shellInterpolation' }],
+    },
+    {
+      code: "function run(x: string) { if (!/^[a-z;]+$/.test(x)) return; exec(`echo ${x}`); }",
+      filename: TS,
+      errors: [{ messageId: 'shellInterpolation' }],
+    },
+    {
+      code: "function run(x: string) { if (!/^a$|^b/.test(x)) return; exec(`echo ${x}`); }",
+      filename: TS,
+      errors: [{ messageId: 'shellInterpolation' }],
+    },
+    {
+      code: "function run(input: string) { let x = input; if (!['a'].includes(x)) return; x = input + ';'; exec(`echo ${x}`); }",
+      filename: TS,
+      errors: [{ messageId: 'shellInterpolation' }],
+    },
+    {
+      code: "function run(input: string) { let x = 'a'; const copy = x; x = input; if (!['a'].includes(x)) return; exec(`echo ${copy}`); }",
+      filename: TS,
+      errors: [{ messageId: 'shellInterpolation' }],
+    },
+    {
+      code: "function run(x: string) { if (['a', 'b'].includes(x)) { log(x); } else { exec(`echo ${x}`); } }",
+      filename: TS,
+      errors: [{ messageId: 'shellInterpolation' }],
+    },
+    {
+      code: "const schema = joi.string().pattern(/^.+$/); function run(x: string) { const { error, value } = schema.validate(x); if (error) return; exec('echo ' + value); }",
+      filename: TS,
+      errors: [{ messageId: 'shellInterpolation' }],
+    },
+    {
+      code: "const schema = joi.string().pattern(/^[a-z]+$/); function run(x: string) { const { value } = schema.validate(x); exec('echo ' + value); }",
+      filename: TS,
+      errors: [{ messageId: 'shellInterpolation' }],
+    },
+    // One guarded part does not cover an unguarded one.
+    {
+      code: "function run(x: string, y: string) { if (!['a'].includes(x)) return; exec(`echo ${x} ${y}`); }",
+      filename: TS,
+      errors: [{ messageId: 'shellInterpolation' }],
+    },
+    // Only `process.env` reads are the operator's; other globals are not.
+    {
+      code: "exec('git -C ' + config.repoDir);",
+      filename: TS,
+      errors: [{ messageId: 'shellInterpolation' }],
+    },
+    {
+      code: "exec('git -C ' + process.env.REPO_DIR + userInput);",
+      filename: TS,
       errors: [{ messageId: 'shellInterpolation' }],
     },
   ],
