@@ -99,7 +99,7 @@ describe('diagram files', () => {
     for (const d of drawings) {
       const body = d.source.replace(/<style>[\s\S]*?<\/style>/, '');
       expect({ name: d.name, id: /\sid="/.test(d.source) }).toEqual({ name: d.name, id: false });
-      expect({ name: d.name, dash: /[–—]/.test(d.source) }).toEqual({ name: d.name, dash: false });
+      expect({ name: d.name, dash: /[\u2013\u2014]/.test(d.source) }).toEqual({ name: d.name, dash: false });
       expect({ name: d.name, inline: /\s(fill|stroke|style)="/.test(body) }).toEqual({ name: d.name, inline: false });
     }
   });
