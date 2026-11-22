@@ -1,0 +1,19 @@
+// @bench category=server-side-xss cwe=CWE-79 framework=express pair=express-report-email title="HTML report concatenates customer name into markup"
+import express, { Request, Response } from 'express';
+import { loadOrders } from './orders';
+
+const app = express();
+
+app.get('/reports/orders', async (req: Request, res: Response) => {
+  const customer = String(req.query.customer ?? 'unknown');
+  const orders = await loadOrders(customer);
+  let html = '<html><body><h1>Order report</h1>';
+  html += '<h2>Customer: ' + customer + '</h2><ul>'; // expect: security/require-sanitized-html
+  for (const order of orders) {
+    html += '<li>' + order.id + ': ' + order.total + '</li>';
+  }
+  html += '</ul></body></html>';
+  res.send(html);
+});
+
+app.listen(3004);

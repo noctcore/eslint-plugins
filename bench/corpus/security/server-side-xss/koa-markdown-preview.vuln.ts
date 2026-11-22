@@ -1,0 +1,19 @@
+// @bench category=server-side-xss cwe=CWE-79 framework=koa pair=koa-markdown-preview title="markdown preview sends marked output unfiltered"
+import Koa from 'koa';
+import bodyParser from 'koa-bodyparser';
+import { marked } from 'marked';
+
+const app = new Koa();
+app.use(bodyParser());
+
+app.use(async (ctx) => {
+  if (ctx.method !== 'POST' || ctx.path !== '/preview') {
+    ctx.status = 404;
+    return;
+  }
+  const md: string = String((ctx.request.body as { md?: string }).md ?? '');
+  ctx.type = 'text/html';
+  ctx.body = `<article>${marked(md)}</article>`; // expect: security/require-sanitized-html
+});
+
+app.listen(4003);

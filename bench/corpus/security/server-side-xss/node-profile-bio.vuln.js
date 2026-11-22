@@ -1,0 +1,17 @@
+// @bench category=server-side-xss cwe=CWE-79 framework=node pair=node-profile-bio title="profile server interpolates the stored bio into HTML"
+const http = require('node:http');
+const { bios } = require('./fake-db');
+
+http
+  .createServer(async (req, res) => {
+    const id = new URL(req.url, 'http://x').searchParams.get('id');
+    if (!id) {
+      res.writeHead(400);
+      res.end('id required');
+      return;
+    }
+    const bio = await bios.get(id);
+    res.writeHead(200, { 'Content-Type': 'text/html' });
+    res.end(`<div class="bio"><h1>About</h1><p>${bio}</p></div>`); // expect: security/require-sanitized-html
+  })
+  .listen(5002);

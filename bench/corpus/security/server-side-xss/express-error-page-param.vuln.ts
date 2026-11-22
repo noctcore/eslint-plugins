@@ -1,0 +1,17 @@
+// @bench category=server-side-xss cwe=CWE-79 framework=express pair=express-error-page-param title="error page echoes the :page route param unescaped"
+import express, { Request, Response } from 'express';
+
+const app = express();
+const known = new Set(['home', 'pricing', 'about']);
+
+app.get('/pages/:page', (req: Request, res: Response) => {
+  const page: string = req.params.page;
+  if (known.has(page)) {
+    res.send(`<main><h1>${page}</h1></main>`);
+    return;
+  }
+  res.status(404);
+  res.send(`<h1>Not found</h1><p>No page called "${page}" exists.</p>`); // expect: security/require-sanitized-html
+});
+
+app.listen(3000);

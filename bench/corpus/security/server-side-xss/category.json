@@ -1,0 +1,6 @@
+{
+  "title": "Server-side XSS",
+  "cwe": "CWE-79",
+  "rules": ["security/require-sanitized-html"],
+  "overrides": { "security/require-sanitized-html": "error" }
+}
