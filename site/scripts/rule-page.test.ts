@@ -9,7 +9,7 @@ import { describe, expect, test } from 'bun:test';
 import type { RuleDetails } from './inventory';
 import { applyMessagesBlock, MESSAGES_BEGIN, renderMessagesBlock } from './readmes';
 import { checkOptionsTable, checkRulePageBody, schemaType } from './structure';
-import { messageHtml, optionsLine, repeatsMessages, shapeRulePage } from './sync';
+import { messageHtml, optionsLine, repeatsMessages, shapeRulePage, snippetTitle } from './sync';
 
 function failures(check: () => void): string | null {
   try {
@@ -191,5 +191,13 @@ describe('repeated output and shape blocks', () => {
     expect(html.match(/<section class="rule-shape">/g)?.length).toBe(2);
     expect(html.match(/<\/section>/g)?.length).toBe(2);
     expect(html.indexOf('</div>', html.indexOf('rule-fix-label'))).toBeLessThan(html.lastIndexOf('</section>'));
+  });
+});
+
+describe('config snippet titles', () => {
+  test('a rule entry or a config is eslint.config.js, anything else the options', () => {
+    expect(snippetTitle("'noctcore-architecture/max-import-depth': ['error', {")).toBe('eslint.config.js');
+    expect(snippetTitle('// eslint.config.js')).toBe('eslint.config.js');
+    expect(snippetTitle("{ enumCategory: 'type' }")).toBe('Rule options');
   });
 });

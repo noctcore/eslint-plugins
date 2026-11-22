@@ -171,7 +171,7 @@ rest. After the title, the blockquote summary and the generated header:
 | `## What you will see` | The generated message list (`bun run docs:readmes` writes it from `meta.messages`, between `<!-- begin generated messages -->` markers), then one sentence naming each `{{placeholder}}` |
 | `## Code that triggers it` | Why the rule exists, then one `###` per distinct shape it reports. Diagrams go here |
 | `## What it does not flag` | The legitimate look-alikes and the known blind spots, with `good` examples where they help. Notes such as "Edits to other files" go here as `###` |
-| `## Options` | Present exactly when the rule takes options: the `Option / Type / Default / Meaning` table, the enabling snippet, then `###` notes per option ("In `recommended`" goes here) |
+| `## Options` | Present exactly when the rule takes options: the `Option / Type / Default / Meaning` table, the enabling snippet, then `###` notes per option, and a plain "**In `recommended`:**" line when the rule is left out of the presets |
 | `## When not to use it` | Who should leave it off |
 | `## Related` | Optional: sibling rules and how they differ |
 | `## Credits` | Optional: the licence credit, verbatim, last |

@@ -264,6 +264,8 @@ export function renderRuleDoc(
   let inFence = false;
   let report: { open: string; lines: string[] } | null = null;
   let lastOptions: string | null = null;
+  let section = '';
+  let pendingSnippet: { indent: string; attrs: string[] } | null = null;
   for (const line of lines.slice(i)) {
     const fence = FENCE.exec(line);
     if (fence && !inFence) {
@@ -284,6 +286,11 @@ export function renderRuleDoc(
         body.push(`${indent}${optionsLine(meta.options)}`, '');
       }
       lastOptions = meta.options ?? null;
+      // A config snippet under Options names what it is from its first line.
+      if (isRulePage(rule) && section === 'Options' && !title && !meta.verdict && lang === 'js') {
+        pendingSnippet = { indent, attrs };
+        continue;
+      }
       body.push(`${indent}\`\`\`${attrs.join(' ')}`);
       const comment = LINE_COMMENT[lang];
       if (meta.options && comment && !isRulePage(rule)) body.push(`${indent}${comment} rule options: ${meta.options}`);
@@ -291,6 +298,10 @@ export function renderRuleDoc(
     }
     if (fence && inFence && fence[2] === '' && fence[3] === '') {
       inFence = false;
+      if (pendingSnippet) {
+        body.push(`${pendingSnippet.indent}\`\`\`${pendingSnippet.attrs.join(' ')}`);
+        pendingSnippet = null;
+      }
       if (report) {
         if (!repeatsMessages(report.lines, details)) body.push(report.open, ...report.lines, line);
         report = null;
@@ -298,11 +309,17 @@ export function renderRuleDoc(
       continue;
     }
     if (inFence) {
+      if (pendingSnippet) {
+        const label = snippetTitle(line);
+        body.push(`${pendingSnippet.indent}\`\`\`${[...pendingSnippet.attrs, `title=${JSON.stringify(label)}`].join(' ')}`);
+        pendingSnippet = null;
+      }
       if (report) report.lines.push(line);
       else body.push(line);
       continue;
     }
     if (/^#{2,3} /.test(line)) lastOptions = null;
+    if (line.startsWith('## ')) section = line.slice(3).trim();
     const image = DIAGRAM_IMAGE.exec(line);
     if (image) {
       const [, description, target, caption] = image as unknown as [string, string, string, string | undefined];
@@ -362,6 +379,14 @@ export function repeatsMessages(lines: readonly string[], details: RuleDetails |
   const plain = new Set(Object.values(details.messages).filter((m) => !m.includes('{{')).map(flat));
   const printed = lines.join('\n').split(/\n\s*\n/).map(flat).filter(Boolean);
   return printed.length > 0 && printed.every((message) => plain.has(message));
+}
+
+/**
+ * The frame title of a config snippet under Options: a rule entry or a whole
+ * config goes in eslint.config.js, anything else is the options object.
+ */
+export function snippetTitle(firstLine: string): string {
+  return /^\s*('noctcore-|export default|\/\/ eslint\.config)/.test(firstLine) ? 'eslint.config.js' : 'Rule options';
 }
 
 export function messageHtml(text: string): string {
