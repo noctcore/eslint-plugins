@@ -35,7 +35,7 @@ What each plugin is for, when it is a bad fit, and every rule with its options a
 
 ## Packages
 
-Fifteen ESLint plugins, plus `@noctcore/lint-meta-rules` for whole-repo checks and
+Sixteen ESLint plugins, plus `@noctcore/lint-meta-rules` for whole-repo checks and
 `@noctcore/eslint-utils`, the shared building block they are made with. Each plugin is versioned
 and installed on its own.
 
@@ -53,6 +53,7 @@ and installed on its own.
 | [`@noctcore/eslint-plugin-query`](./packages/eslint-plugin-query) | [![npm](https://img.shields.io/npm/v/@noctcore/eslint-plugin-query?label=)](https://www.npmjs.com/package/@noctcore/eslint-plugin-query) | TanStack Query and tRPC cache correctness (invalidations that reach infinite queries, mutation callbacks that survive a remount, handled mutation errors) |
 | [`@noctcore/eslint-plugin-electron`](./packages/eslint-plugin-electron) | [![npm](https://img.shields.io/npm/v/@noctcore/eslint-plugin-electron?label=)](https://www.npmjs.com/package/@noctcore/eslint-plugin-electron) | Electron main-process security (renderer isolation flags, IPC sender checks, `shell` kept to one module) |
 | [`@noctcore/eslint-plugin-dates`](./packages/eslint-plugin-dates) | [![npm](https://img.shields.io/npm/v/@noctcore/eslint-plugin-dates?label=)](https://www.npmjs.com/package/@noctcore/eslint-plugin-dates) | Calendar days read in one zone (local `Date` accessors, date-only parsing, hand-rolled day arithmetic kept to one calendar module); needs your calendar module |
+| [`@noctcore/eslint-plugin-three`](./packages/eslint-plugin-three) | [![npm](https://img.shields.io/npm/v/@noctcore/eslint-plugin-three?label=)](https://www.npmjs.com/package/@noctcore/eslint-plugin-three) | three.js and React Three Fiber performance and leaks (capped pixel ratio, disposed GPU resources, camera projection updates, no allocations or React state per frame, instance buffer uploads) |
 | [`@noctcore/eslint-plugin-prisma`](./packages/eslint-plugin-prisma) | [![npm](https://img.shields.io/npm/v/@noctcore/eslint-plugin-prisma?label=)](https://www.npmjs.com/package/@noctcore/eslint-plugin-prisma) | Prisma tenancy, soft-delete and transaction guardrails (tenant-scope escape hatches, raw SQL, request-body writes, single-writer models, audit placement) |
 | [`@noctcore/eslint-plugin-architecture`](./packages/eslint-plugin-architecture) | [![npm](https://img.shields.io/npm/v/@noctcore/eslint-plugin-architecture?label=)](https://www.npmjs.com/package/@noctcore/eslint-plugin-architecture) | Module and folder shape (folder-per-component, barrels, feature boundaries, import depth, colocated tests) |
 | [`@noctcore/eslint-plugin-monorepo`](./packages/eslint-plugin-monorepo) | [![npm](https://img.shields.io/npm/v/@noctcore/eslint-plugin-monorepo?label=)](https://www.npmjs.com/package/@noctcore/eslint-plugin-monorepo) | Workspace package boundaries (barrel-only and exports-map-aware imports); needs your workspace scope |

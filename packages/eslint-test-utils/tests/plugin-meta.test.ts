@@ -30,6 +30,7 @@ import query from '../../eslint-plugin-query/src/index';
 import react from '../../eslint-plugin-react/src/index';
 import rsc from '../../eslint-plugin-rsc/src/index';
 import security from '../../eslint-plugin-security/src/index';
+import three from '../../eslint-plugin-three/src/index';
 
 interface MetaPlugin {
   readonly meta?: { readonly name?: string; readonly version?: string };
@@ -51,6 +52,7 @@ const PLUGINS: Record<string, MetaPlugin> = {
   react,
   rsc,
   security,
+  three,
 };
 
 const packagesDir = fileURLToPath(new URL('../../', import.meta.url));

@@ -1,0 +1,31 @@
+---
+title: "@noctcore/eslint-plugin-three"
+description: "three.js and React Three Fiber performance and leaks: capped pixel ratios, disposed GPU resources, camera projections that update, and frame loops that neither allocate nor re-render."
+sidebar:
+  label: three
+  order: 15
+---
+
+import QuickStart from '../../../components/QuickStart.astro';
+import RuleTable from '../../../components/RuleTable.astro';
+
+three.js and React Three Fiber performance and leaks: capped pixel ratios, disposed GPU resources, camera projections that update, and frame loops that neither allocate nor re-render.
+
+## What it solves
+
+A 3D scene fails slowly. An uncapped pixel ratio, a geometry that is never disposed, a `new Vector3()` in the frame loop or a React state update on every frame all pass review and every test, then show up as dropped frames, a hot phone and GPU memory that climbs each time a component remounts. Neither TypeScript nor a generic linter knows what a frame loop or a GPU resource is; these rules do, without type information. They run only in files that import `three`, a `three/*` subpath, `three-stdlib` or an `@react-three/*` package (or a module you name in `extraModules`), so another engine's `camera.fov` is left alone.
+
+## What it will yell at you about
+
+It will yell at you about **`setPixelRatio(window.devicePixelRatio)`** and a `<Canvas dpr>` above 2, **geometries, materials and textures an effect creates and never disposes**, the same resources **built in a component body**, **`new Vector3()` and friends inside `useFrame`**, **state setters called on every frame**, **`camera.fov` changed without `updateProjectionMatrix()`** and **`setMatrixAt()` without `instanceMatrix.needsUpdate`**. Two opt-in rules cover WebGL support checks that pass on software renderers and shadow maps above a size budget. **It is a bad fit** for code that never touches three.js, and it matches by syntax: a mesh handed to your own disposal helper is trusted to be disposed there.
+
+## Install and configure
+
+<QuickStart pkg="three" />
+
+## Rules
+
+Each rule links to its page, with the options it takes and Incorrect and Correct examples. A good first
+read is [`require-dispose`](/eslint-plugins/rules/three/require-dispose/).
+
+<RuleTable pkg="three" />
