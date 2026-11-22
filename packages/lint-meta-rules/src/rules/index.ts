@@ -10,6 +10,7 @@ import { createGithubActionsConcurrencyExplicitRule } from './github-actions-con
 import { createGithubActionsExpressionSyntaxRule } from './github-actions-expression-syntax';
 import { createGithubActionsLeastPrivilegePermissionsRule } from './github-actions-least-privilege-permissions';
 import { createGithubActionsNoTemplateInjectionRule } from './github-actions-no-template-injection';
+import { createGithubActionsPackageCacheRule } from './github-actions-package-cache';
 import { createGithubActionsPathsFilterPermissionsRule } from './github-actions-paths-filter-permissions';
 import { createGithubActionsPipInstallPinnedRule } from './github-actions-pip-install-pinned';
 import { createGithubActionsRunnerPinnedRule } from './github-actions-runner-pinned';
@@ -27,6 +28,7 @@ import { createPnpmHardeningSettingsRule } from './pnpm-hardening-settings';
 import { createPnpmOverrideLedgerRule } from './pnpm-override-ledger';
 import { createSecurityScannerVersionParityRule } from './security-scanner-version-parity';
 import { createServiceImageDigestPinRule } from './service-image-digest-pin';
+import { createSharedToolVersionParityRule } from './shared-tool-version-parity';
 import { createTestFilesRequireSourceSiblingRule } from './test-files-require-source-sibling';
 import { createTestRunnerSegregationRule } from './test-runner-segregation';
 import { createTestSiblingEnforcementRule } from './test-sibling-enforcement';
@@ -55,6 +57,8 @@ export { createGithubActionsLeastPrivilegePermissionsRule } from './github-actio
 export type { GithubActionsLeastPrivilegePermissionsOptions } from './github-actions-least-privilege-permissions';
 export { createGithubActionsNoTemplateInjectionRule } from './github-actions-no-template-injection';
 export type { GithubActionsNoTemplateInjectionOptions } from './github-actions-no-template-injection';
+export { createGithubActionsPackageCacheRule } from './github-actions-package-cache';
+export type { GithubActionsPackageCacheOptions, PackageCacheManager } from './github-actions-package-cache';
 export { createGithubActionsPathsFilterPermissionsRule } from './github-actions-paths-filter-permissions';
 export type { GithubActionsPathsFilterPermissionsOptions } from './github-actions-paths-filter-permissions';
 export { createGithubActionsPipInstallPinnedRule } from './github-actions-pip-install-pinned';
@@ -89,6 +93,8 @@ export { createSecurityScannerVersionParityRule } from './security-scanner-versi
 export type { SecurityScannerVersionParityOptions } from './security-scanner-version-parity';
 export { createServiceImageDigestPinRule } from './service-image-digest-pin';
 export type { ServiceImageDigestPinOptions } from './service-image-digest-pin';
+export { createSharedToolVersionParityRule } from './shared-tool-version-parity';
+export type { SharedToolVersionParityOptions } from './shared-tool-version-parity';
 export { createTestFilesRequireSourceSiblingRule } from './test-files-require-source-sibling';
 export type { TestFilesRequireSourceSiblingOptions } from './test-files-require-source-sibling';
 export { createTestRunnerSegregationRule } from './test-runner-segregation';
@@ -132,6 +138,7 @@ export const RULE_FACTORIES = {
   'github-actions-expression-syntax': createGithubActionsExpressionSyntaxRule,
   'github-actions-least-privilege-permissions': createGithubActionsLeastPrivilegePermissionsRule,
   'github-actions-no-template-injection': createGithubActionsNoTemplateInjectionRule,
+  'github-actions-package-cache': createGithubActionsPackageCacheRule,
   'github-actions-paths-filter-permissions': createGithubActionsPathsFilterPermissionsRule,
   'github-actions-pip-install-pinned': createGithubActionsPipInstallPinnedRule,
   'github-actions-runner-pinned': createGithubActionsRunnerPinnedRule,
@@ -149,6 +156,7 @@ export const RULE_FACTORIES = {
   'pnpm-override-ledger': createPnpmOverrideLedgerRule,
   'security-scanner-version-parity': createSecurityScannerVersionParityRule,
   'service-image-digest-pin': createServiceImageDigestPinRule,
+  'shared-tool-version-parity': createSharedToolVersionParityRule,
   'test-files-require-source-sibling': createTestFilesRequireSourceSiblingRule,
   'test-runner-segregation': createTestRunnerSegregationRule,
   'test-sibling-enforcement': createTestSiblingEnforcementRule,
@@ -166,7 +174,11 @@ export const RULE_IDS = Object.keys(RULE_FACTORIES) as (keyof typeof RULE_FACTOR
  * named in `optIn`. Code that iterates {@link RULE_FACTORIES} or
  * {@link RULE_IDS} itself still builds them unless it filters these ids out.
  */
-export const OPT_IN_RULE_IDS: readonly (keyof typeof RULE_FACTORIES)[] = ['test-files-require-source-sibling'];
+export const OPT_IN_RULE_IDS: readonly (keyof typeof RULE_FACTORIES)[] = [
+  'github-actions-package-cache',
+  'shared-tool-version-parity',
+  'test-files-require-source-sibling',
+];
 
 /**
  * Instantiate every catalog rule with its default options, except the ids in

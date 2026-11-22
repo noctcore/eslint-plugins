@@ -75,7 +75,13 @@ export function globFiles(
 
 /** A YAML line with its trailing comment removed (a `#` at the start or after whitespace). */
 export function stripYamlComment(line: string): string {
-  return line.replace(/(^|\s)#.*$/u, '');
+  // A scan, not `/(^|\s)#.*$/`, which backtracks quadratically on a long run of ` #`.
+  for (let index = 0; index < line.length; index += 1) {
+    if (line[index] !== '#') continue;
+    if (index === 0) return '';
+    if (/\s/u.test(line[index - 1] ?? '')) return line.slice(0, index - 1);
+  }
+  return line;
 }
 
 /** A YAML scalar with surrounding quotes removed. */
