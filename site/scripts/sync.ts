@@ -262,13 +262,15 @@ export function renderRuleDoc(
 
   const body: string[] = [...lead(quote), ...deprecationBanner(rule)];
   let inFence = false;
+  let report: { open: string; lines: string[] } | null = null;
+  let lastOptions: string | null = null;
   for (const line of lines.slice(i)) {
     const fence = FENCE.exec(line);
     if (fence && !inFence) {
       inFence = true;
       const [, indent, lang, rawMeta] = fence as unknown as [string, string, string, string];
       if (isReportFence(rawMeta)) {
-        body.push(`${indent}\`\`\`${lang} title="What ESLint prints" verdict=report wrap`);
+        report = { open: `${indent}\`\`\`${lang} title="What ESLint prints" verdict=report wrap`, lines: [] };
         continue;
       }
       const meta = parseFenceMeta(rawMeta);
@@ -276,7 +278,12 @@ export function renderRuleDoc(
       const attrs = [lang];
       if (title) attrs.push(`title=${JSON.stringify(title)}`);
       if (meta.verdict === 'bad' || meta.verdict === 'good') attrs.push(`verdict=${meta.verdict}`);
-      if (meta.options && isRulePage(rule)) body.push(`${indent}${optionsLine(meta.options)}`, '');
+      // Within one shape, an example that lints with the same options as the
+      // one before it does not repeat the line.
+      if (meta.options && isRulePage(rule) && meta.options !== lastOptions) {
+        body.push(`${indent}${optionsLine(meta.options)}`, '');
+      }
+      lastOptions = meta.options ?? null;
       body.push(`${indent}\`\`\`${attrs.join(' ')}`);
       const comment = LINE_COMMENT[lang];
       if (meta.options && comment && !isRulePage(rule)) body.push(`${indent}${comment} rule options: ${meta.options}`);
@@ -284,13 +291,18 @@ export function renderRuleDoc(
     }
     if (fence && inFence && fence[2] === '' && fence[3] === '') {
       inFence = false;
-      body.push(line);
+      if (report) {
+        if (!repeatsMessages(report.lines, details)) body.push(report.open, ...report.lines, line);
+        report = null;
+      } else body.push(line);
       continue;
     }
     if (inFence) {
-      body.push(line);
+      if (report) report.lines.push(line);
+      else body.push(line);
       continue;
     }
+    if (/^#{2,3} /.test(line)) lastOptions = null;
     const image = DIAGRAM_IMAGE.exec(line);
     if (image) {
       const [, description, target, caption] = image as unknown as [string, string, string, string | undefined];
@@ -339,6 +351,19 @@ export function optionsLine(options: string): string {
   return `<p class="rule-example-options"><span>Options</span> <code>${escaped}</code></p>`;
 }
 
+/**
+ * Whether a "What ESLint prints" fence only repeats the message cards: every
+ * message it prints is, word for word, a message with no placeholders. The
+ * page then leaves it out; the doc test still checks it against the output.
+ */
+export function repeatsMessages(lines: readonly string[], details: RuleDetails | undefined): boolean {
+  if (!details) return false;
+  const flat = (text: string) => text.replace(/\s+/g, ' ').trim();
+  const plain = new Set(Object.values(details.messages).filter((m) => !m.includes('{{')).map(flat));
+  const printed = lines.join('\n').split(/\n\s*\n/).map(flat).filter(Boolean);
+  return printed.length > 0 && printed.every((message) => plain.has(message));
+}
+
 export function messageHtml(text: string): string {
   return text
     .split(/(`[^`]*`)/)
@@ -381,8 +406,19 @@ export function shapeRulePage(body: readonly string[]): string[] {
   let inSee = false;
   let inOptions = false;
   let inTable = false;
+  let inCode = false;
+  let inShape = false;
   for (const line of body) {
+    if (inShape && !inFence && /^#{2,3} /.test(line)) {
+      if (inFix) {
+        out.push('', '</div>');
+        inFix = false;
+      }
+      out.push('', '</section>', '');
+      inShape = false;
+    }
     if (line.startsWith('## ')) {
+      inCode = line.trim() === '## Code that triggers it';
       if (inSee) out.push('<p class="rule-jump"><a href="#code-that-triggers-it">See the code that triggers it, and the fix</a></p>', '');
       inSee = line.trim() === '## What you will see';
       inOptions = line.trim() === '## Options';
@@ -428,6 +464,11 @@ export function shapeRulePage(body: readonly string[]): string[] {
       out.push('<div class="rule-options">', '');
       inTable = true;
     }
+    if (inCode && !inFence && line.startsWith('### ')) {
+      out.push('<section class="rule-shape">', '', line);
+      inShape = true;
+      continue;
+    }
     if (line.startsWith('**The fix:**')) {
       const note = line.replace(/^\*\*The fix:\*\*\s*/, '');
       const sentence = note.charAt(0).toUpperCase() + note.slice(1);
@@ -438,6 +479,7 @@ export function shapeRulePage(body: readonly string[]): string[] {
     out.push(line);
   }
   if (inFix || inTable) out.push('', '</div>');
+  if (inShape) out.push('', '</section>');
   if (inShort) out.push('</div>');
   return out;
 }

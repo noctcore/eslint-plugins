@@ -9,7 +9,7 @@ import { describe, expect, test } from 'bun:test';
 import type { RuleDetails } from './inventory';
 import { applyMessagesBlock, MESSAGES_BEGIN, renderMessagesBlock } from './readmes';
 import { checkOptionsTable, checkRulePageBody, schemaType } from './structure';
-import { messageHtml, optionsLine, shapeRulePage } from './sync';
+import { messageHtml, optionsLine, repeatsMessages, shapeRulePage } from './sync';
 
 function failures(check: () => void): string | null {
   try {
@@ -172,5 +172,24 @@ describe('example options', () => {
   test('the Options table is wrapped so phones can restack it', () => {
     const html = shapeRulePage(['## Options', '', '| Option | Type | Default | Meaning |', '| --- | --- | --- | --- |', '| `a` | `boolean` | `true` | A. |', '', 'After.']).join('\n');
     expect(html).toMatch(/<div class="rule-options">\n\n\| Option[\s\S]*\| A\. \|\n\n<\/div>\n\nAfter\./);
+  });
+});
+
+describe('repeated output and shape blocks', () => {
+  const plain: RuleDetails = { ...details, messages: { plain: 'Do not do that.', filled: 'Use {{x}}.' } };
+
+  test('a report fence that only repeats placeholder-free messages is left out', () => {
+    expect(repeatsMessages(['Do not do that.', '', 'Do not   do that.'], plain)).toBe(true);
+    expect(repeatsMessages(['Use y.'], plain)).toBe(false);
+    expect(repeatsMessages(['Do not do that.', '', 'Use y.'], plain)).toBe(false);
+    expect(repeatsMessages(['Do not do that.'], undefined)).toBe(false);
+  });
+
+  test('each shape under Code that triggers it is its own section', () => {
+    const two = page.replace('## Code that triggers it\n', '## Code that triggers it\n\n### First\n\nText.\n');
+    const html = shapeRulePage(two.split('\n')).join('\n');
+    expect(html.match(/<section class="rule-shape">/g)?.length).toBe(2);
+    expect(html.match(/<\/section>/g)?.length).toBe(2);
+    expect(html.indexOf('</div>', html.indexOf('rule-fix-label'))).toBeLessThan(html.lastIndexOf('</section>'));
   });
 });
