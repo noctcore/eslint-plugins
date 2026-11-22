@@ -91,10 +91,14 @@ export function read(req, res) {
 The flow stops at `path.basename(x)` and `path.extname(x)` (neither keeps a separator), a number
 conversion (`Number`, `parseInt`, `parseFloat`), a callee named in `sanitizers`, a read from an
 in-file `const` table of literal file names (`FILES[id]`, `MAP.get(id)`), a confined schema's output
-(including a field of a parsed `z.object(...)` whose schema admits no separator), and at a binding the function checked before the call with an `if`
-that exits (or an `if` around the call): an allowlist (`includes` / `has` on in-file literals,
-`===` against literals) or a regex anchored at both ends, without the `m` flag or a `.`, that
-admits no `/`, `\` or `:`. A path built by `join` / `resolve` passes when the containment test
+(including a field of a parsed `z.object(...)` whose schema admits no separator), and at a
+binding the function checked before the call with an `if` that exits (or an `if` around the
+call): an allowlist (`includes` / `has` on in-file literals, `===` against literals) or a regex anchored at both ends, without the `m` flag or a `.`, that
+admits no `/`, `\` or `:`. A request member checked the same way against a literal allowlist
+(`if (!allowed.includes(req.params.name)) return res.status(404).end()`) is clean where it is
+used next, also directly in `join(BASE, req.params.name)`, as long as nothing writes that member
+or an object on its path (`req.params.name = x`, `Object.assign(req.params, x)`); a regex check on
+a member does not count. A path built by `join` / `resolve` passes when the containment test
 above takes it.
 
 ```ts good
