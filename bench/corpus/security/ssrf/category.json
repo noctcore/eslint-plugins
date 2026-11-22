@@ -1,0 +1,6 @@
+{
+  "title": "Server-side request forgery",
+  "cwe": "CWE-918",
+  "rules": ["security/no-user-controlled-fetch-url"],
+  "overrides": {}
+}
