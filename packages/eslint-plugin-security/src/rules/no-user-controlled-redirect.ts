@@ -15,7 +15,7 @@ import { AST_NODE_TYPES, type TSESLint, type TSESTree } from '@typescript-eslint
 import type { JSONSchema4 } from '@typescript-eslint/utils/json-schema';
 
 import { createRule } from '../createRule';
-import { isHostPinned } from '../guards';
+import { isHostPinned, isLiteralTableRead, isSameSitePath } from '../guards';
 import {
   calleeSpecSchema,
   hasFixedOrigin,
@@ -253,7 +253,12 @@ export const noUserControlledRedirectRule = createRule<RuleOptions, MessageIds>(
         if (urlArg === undefined) {
           return;
         }
-        if (hasFixedOrigin(urlArg, trust, sourceCode) || isHostPinned(urlArg, node, sourceCode)) {
+        if (
+          hasFixedOrigin(urlArg, trust, sourceCode) ||
+          isHostPinned(urlArg, node, sourceCode) ||
+          isSameSitePath(urlArg, node, sourceCode) ||
+          isLiteralTableRead(urlArg, sourceCode)
+        ) {
           return;
         }
         context.report({
