@@ -32,15 +32,19 @@ const justThisOne = createGithubActionsPackageCacheRule({ managers: ['pnpm'] });
 
 Per job, line based like the other workflow rules:
 
-- a job that installs with npm, pnpm or yarn and has an `actions/setup-node` step with no `cache:`
-  (or an empty one), reported at the setup step;
-- the same step with a `cache:` that names a different manager (`cache: npm` in a job that runs
-  `pnpm install`), reported at the setup step;
+- a job that installs with npm, pnpm or yarn where no `actions/setup-node` step sets a `cache:`
+  (or every one is empty), reported at the first setup step;
+- the same with a `cache:` that names a different manager (`cache: npm` in a job that runs
+  `pnpm install`), reported at the first setup step. A job with several setup steps passes when
+  any one of them caches the manager it installs with;
 - a job that runs `bun install` with no cache step, reported at the install step.
 
 An install is `npm ci`, `npm install` / `npm i`, `pnpm install` / `pnpm i`, `yarn install` or a bare
 `yarn`, and `bun install` / `bun i`, at the start of a `run:` line or after `&&`, `||`, `;`, `|` or
 `(`. A job that installs with two managers gets one violation per manager.
+
+The `with:` inputs are read as a block (`cache: pnpm` on its own line) or as a flow mapping on one
+line (`with: { node-version: 22, cache: pnpm }`). Lines may end in CRLF.
 
 ```yaml
 # Bad
@@ -96,7 +100,10 @@ jobs:
   resolves to.
 - npm with no `cache:` when the root `package.json` names npm in `packageManager` or
   `devEngines.packageManager` and the step does not set `package-manager-cache: false`: setup-node
-  from v5 turns the npm cache on by itself there.
+  turns the npm cache on by itself there. v5 did this for any `packageManager`; v6 and later do it
+  for npm only, which is the behaviour the rule assumes.
+- A setup step whose `with:` is a flow mapping wrapped over several lines: the rule does not parse
+  it, so it skips the step rather than report it.
 - A job that installs with npm, pnpm or yarn but has no `actions/setup-node` step (Node from the
   runner image, or set up some other way): there is no `cache:` input to check.
 - Commands that fetch no project tree: a global install (`-g`, `--global`), `bun install
@@ -121,7 +128,8 @@ createGithubActionsPackageCacheRule(options?: GithubActionsPackageCacheOptions):
 
 The rule checks that a cache is restored, not that it is keyed well: an `actions/cache` step with a
 `path` that is not the manager's store passes. The automatic npm cache is assumed for setup-node at
-any version, while it only exists from v5. A workflow whose jobs run on self-hosted runners that keep
+any version, while it only exists from v5, and the rule follows v6 and later: under v5, which also
+cached pnpm and yarn by itself, a pnpm or yarn job with no `cache:` is reported though it is cached. A workflow whose jobs run on self-hosted runners that keep
 the store between runs does not need the cache: leave the rule off, or narrow `workflowGlobs`.
 
 ## Related
