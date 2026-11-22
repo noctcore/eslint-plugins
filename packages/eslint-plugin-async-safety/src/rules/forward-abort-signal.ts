@@ -135,7 +135,7 @@ export const forwardAbortSignalRule = createRule<RuleOptions, MessageIds>({
     schema: [],
     messages: {
       unforwardedSignal:
-        '`{{name}}` is an AbortSignal but is never forwarded to a call in this function — thread it into the awaited work (e.g. `fetch(url, { signal })`) so the operation can be cancelled.',
+        '`{{name}}` is an AbortSignal but is never forwarded to a call in this function. Thread it into the awaited work (e.g. `fetch(url, { signal })`) so the operation can be cancelled.',
     },
   },
   defaultOptions: [],

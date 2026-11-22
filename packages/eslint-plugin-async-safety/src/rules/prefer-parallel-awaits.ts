@@ -148,7 +148,7 @@ export const preferParallelAwaitsRule = createRule<RuleOptions, MessageIds>({
     schema: [],
     messages: {
       parallelizable:
-        '{{count}} consecutive independent awaits run sequentially — they have no data dependency and could run concurrently with `await Promise.all([...])`.',
+        '{{count}} consecutive independent awaits run sequentially: they have no data dependency and could run concurrently with `await Promise.all([...])`.',
       useParallel: 'Combine into a single `await Promise.all([...])`.',
     },
   },
