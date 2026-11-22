@@ -62,6 +62,14 @@ import { reports } from './queues';
 export class ReportsModule {}
 ```
 
+
+### Reads `package.json`
+
+Whether a file belongs to an app that uses `@noctcore/jobs` is decided from the file's imports and
+from the `package.json` files between its directory and the workspace root. ESLint's `--cache` does
+not see an edit to a `package.json`, so a cached file keeps its old result until it changes; see
+[rules that read other files](https://noctcore.github.io/eslint-plugins/filesystem-rules/).
+
 ## What it does not flag
 
 - `new FlowProducer(...)`: `@noctcore/jobs` has no flows, so a flow producer has nowhere else to come
@@ -112,6 +120,6 @@ them.
 
 ## Related
 
-- [`worker-extends-job-host`](./worker-extends-job-host.md) reports NestJS `@Processor` workers in
+- [`worker-extends-job-host`](/eslint-plugins/rules/nestjs/worker-extends-job-host/) reports NestJS `@Processor` workers in
   the same apps.
-- [`no-raw-bullmq-queue-add`](./no-raw-bullmq-queue-add.md) reports jobs added to such queues.
+- [`no-raw-bullmq-queue-add`](/eslint-plugins/rules/nestjs/no-raw-bullmq-queue-add/) reports jobs added to such queues.

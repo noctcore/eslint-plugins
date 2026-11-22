@@ -82,6 +82,14 @@ export class ReportService {
 }
 ```
 
+
+### Reads `package.json`
+
+Whether a file belongs to an app that uses `@noctcore/jobs` is decided from the file's imports and
+from the `package.json` files between its directory and the workspace root. ESLint's `--cache` does
+not see an edit to a `package.json`, so a cached file keeps its old result until it changes; see
+[rules that read other files](https://noctcore.github.io/eslint-plugins/filesystem-rules/).
+
 ## What it does not flag
 
 - Reads through `x.bull` (`getJob`, `getWaitingCount`): that is what it is exposed for.
@@ -139,6 +147,6 @@ files in `allowIn`.
 
 ## Related
 
-- [`add-requires-dedupe`](./add-requires-dedupe.md) checks the options of `add()` on a `JobQueue`.
-- [`queue-registration-through-define-queue`](./queue-registration-through-define-queue.md) reports
+- [`add-requires-dedupe`](/eslint-plugins/rules/nestjs/add-requires-dedupe/) checks the options of `add()` on a `JobQueue`.
+- [`queue-registration-through-define-queue`](/eslint-plugins/rules/nestjs/queue-registration-through-define-queue/) reports
   the hand-built BullMQ queues these raw adds usually go to.

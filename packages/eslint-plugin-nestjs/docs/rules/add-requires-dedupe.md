@@ -87,7 +87,7 @@ export class MailService {
   only reads what it can see, and the types check the rest.
 - A `dedupe` value held in a variable.
 - `add()` on a BullMQ queue (`queue.bull.add(...)`, `new Queue(...)` from `bullmq`, a receiver
-  annotated `Queue` from `bullmq`): [`no-raw-bullmq-queue-add`](./no-raw-bullmq-queue-add.md)
+  annotated `Queue` from `bullmq`): [`no-raw-bullmq-queue-add`](/eslint-plugins/rules/nestjs/no-raw-bullmq-queue-add/)
   reports those.
 - A file that does not import `@noctcore/jobs`, and an `add` with fewer than two arguments.
 
@@ -137,5 +137,5 @@ as anything the rule can read.
 
 ## Related
 
-- [`queue-add-requires-dedup-key`](./queue-add-requires-dedup-key.md) is the plain BullMQ
+- [`queue-add-requires-dedup-key`](/eslint-plugins/rules/nestjs/queue-add-requires-dedup-key/) is the plain BullMQ
   counterpart and asks for the `jobId` this rule reports. Do not turn both on for the same files.

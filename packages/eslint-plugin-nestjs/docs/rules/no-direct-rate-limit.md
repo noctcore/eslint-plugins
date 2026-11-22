@@ -77,6 +77,14 @@ export class MailProcessor extends JobHost<typeof mail> {
 }
 ```
 
+
+### Reads `package.json`
+
+Whether a file belongs to an app that uses `@noctcore/jobs` is decided from the file's imports and
+from the `package.json` files between its directory and the workspace root. ESLint's `--cache` does
+not see an edit to a `package.json`, so a cached file keeps its old result until it changes; see
+[rules that read other files](https://noctcore.github.io/eslint-plugins/filesystem-rules/).
+
 ## What it does not flag
 
 - `pauseQueue(ms)` and `pauseFor(ms)`.
@@ -127,4 +135,4 @@ stop on purpose), list that file in `allowIn`.
 
 ## Related
 
-- [`worker-extends-job-host`](./worker-extends-job-host.md): `pauseQueue` is a `JobHost` method.
+- [`worker-extends-job-host`](/eslint-plugins/rules/nestjs/worker-extends-job-host/): `pauseQueue` is a `JobHost` method.

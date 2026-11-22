@@ -91,7 +91,7 @@ export class MailService {
   the map's names (`name: N` with `N extends keyof MailJobs`): it names one value of the map.
 - A file that does not import `@noctcore/jobs`.
 - `add()` on a BullMQ queue (`queue.bull.add(...)`, a receiver annotated `Queue` from `bullmq`):
-  [`no-raw-bullmq-queue-add`](./no-raw-bullmq-queue-add.md) reports those.
+  [`no-raw-bullmq-queue-add`](/eslint-plugins/rules/nestjs/no-raw-bullmq-queue-add/) reports those.
 - An `add` with fewer than two arguments, which is not an enqueue (a `Set`, a task queue).
 
 ```ts good
@@ -143,5 +143,5 @@ turn the rule off for that file.
 
 ## Related
 
-- [`job-name-must-be-constant`](./job-name-must-be-constant.md), an opt-in convention, goes further
+- [`job-name-must-be-constant`](/eslint-plugins/rules/nestjs/job-name-must-be-constant/), an opt-in convention, goes further
   and reports inline literals too, asking for shared constants. A constant satisfies both rules.

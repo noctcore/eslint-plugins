@@ -76,6 +76,14 @@ export class MailProcessor extends JobHost<typeof mail> {
 }
 ```
 
+
+### Reads `package.json`
+
+Whether a file belongs to an app that uses `@noctcore/jobs` is decided from the file's imports and
+from the `package.json` files between its directory and the workspace root. ESLint's `--cache` does
+not see an edit to a `package.json`, so a cached file keeps its old result until it changes; see
+[rules that read other files](https://noctcore.github.io/eslint-plugins/filesystem-rules/).
+
 ## What it does not flag
 
 - A class that extends `JobHost` through a base class declared in the same file.
@@ -116,5 +124,5 @@ for the whole app, so a new `@Worker` class is still checked.
 
 ## Related
 
-- [`queue-registration-through-define-queue`](./queue-registration-through-define-queue.md) reports
+- [`queue-registration-through-define-queue`](/eslint-plugins/rules/nestjs/queue-registration-through-define-queue/) reports
   the BullMQ queues and workers such an app builds by hand.
