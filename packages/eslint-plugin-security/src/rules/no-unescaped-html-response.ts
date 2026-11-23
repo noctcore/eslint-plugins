@@ -1,25 +1,51 @@
-import { AST_NODE_TYPES, ASTUtils, type TSESLint, type TSESTree } from '@typescript-eslint/utils';
+import { AST_NODE_TYPES, type TSESLint, type TSESTree } from '@typescript-eslint/utils';
 import type { JSONSchema4 } from '@typescript-eslint/utils/json-schema';
 
 import { createRule } from '../createRule';
-import { isProvenSafeValue } from '../guards';
+import {
+  CONTEXT_LABELS,
+  contextAt,
+  feedText,
+  feedValue,
+  type HtmlContext,
+  type HtmlState,
+  START_STATE,
+  stateKey,
+} from '../html-context';
+import {
+  encodingSafeIn,
+  HtmlSafety,
+  propertyKey,
+  propertyName,
+  returnedExpression,
+  staticString,
+  unwrap,
+} from '../html-safety';
 
 const RULE_NAME = 'no-unescaped-html-response';
 
 export interface NoUnescapedHtmlResponseOptions {
-  /** Receivers whose `send` / `end` / `write` write the response body. Replaces the defaults. */
+  /** Receivers whose `send` / `end` / `write` write an HTML-capable response body (Express, Node). Replaces the defaults. */
   readonly responseObjects?: readonly string[];
   /**
-   * Functions whose result is safe to place in HTML: escapers and sanitizers.
-   * An entry with a dot (`he.encode`) matches that callee exactly; an entry
-   * without one (`escapeHtml`) matches a bare call or any method of that name.
-   * Replaces the defaults.
+   * Receivers whose `send` sends a string as `text/plain` unless an HTML
+   * content type is set on them (Fastify `reply`). Replaces the defaults.
+   */
+  readonly replyObjects?: readonly string[];
+  /** Receivers whose `body` assignment is the response (Koa `ctx`). Replaces the defaults. */
+  readonly contextObjects?: readonly string[];
+  /**
+   * Escapers trusted to encode `&`, `<`, `>` and `"`. An entry with a dot
+   * (`utils.escapeHtml`) matches that callee text; an entry without one
+   * (`escapeHtml`) matches a call by that bare name, never a method. Modules
+   * that escape are recognized by their import whatever this says. Replaces
+   * the defaults.
    */
   readonly sanitizers?: readonly string[];
 }
 
 type RuleOptions = [NoUnescapedHtmlResponseOptions];
-type MessageIds = 'unescapedHtmlResponse' | 'rawTemplateValue';
+type MessageIds = 'unescapedHtmlResponse' | 'unsafeContext' | 'rawTemplateValue';
 
 /*
  * Server-side XSS, OPT-IN. Express sends a string as `text/html`, so
@@ -31,70 +57,34 @@ type MessageIds = 'unescapedHtmlResponse' | 'rawTemplateValue';
  * way `no-shell-interpolation` judges a command: a value read from the
  * database (stored XSS) counts the same as one read from the request.
  *
- *  - `res.send` / `res.end` / `res.write` (also after chained calls such as
- *    `res.status(200).send`) of a template or `+` concatenation, followed
- *    through in-file `const` bindings, whose author-written text contains a
- *    tag (`<` then a letter, `/` or `!`) and a runtime part that is not proven
- *    safe;
- *  - `renderString(template, context)` (nunjucks) and `ejs.render(template,
- *    data)` with a literal template that marks a key raw, when the context
- *    object binds that key to a value that is not proven safe.
+ * Each runtime part is judged where it lands (`../html-context`): element
+ * text, a quoted or unquoted attribute, the start of a URL attribute, an event
+ * handler, or a script or style element. An escaper is enough only where it
+ * is enough (`../html-safety`): `escapeHtml(x)` in `<a href="${...}">` still
+ * lets `javascript:` through, and in `<script>` it stops nothing.
  *
- * Proven safe: literals and in-file `const` literals, numbers, the result of a
- * configured escaper or sanitizer (the outermost call decides), a `.replace`
- * chain that encodes `&`, `<`, `>` and `"`, and a value checked before the sink
- * against an allowlist or an anchored regex that admits none of `<>&"'` and
- * backtick (`../guards`). A function that first sets a non-HTML content type
- * is skipped, and `res.json` is never a sink.
+ * Sinks: `res.send` / `res.end` / `res.write` (Express, Node), `reply.send`
+ * with an HTML content type (Fastify), `ctx.body = ...` (Koa), `new
+ * Response(body, { headers: { 'content-type': 'text/html' } })` (fetch, Next
+ * route handlers), the return value of a Nest handler with
+ * `@Header('Content-Type', 'text/html')`, and nunjucks `renderString` /
+ * `ejs.render` with a literal template.
  */
 
 export const DEFAULT_RESPONSE_OBJECTS: readonly string[] = ['res', 'response'];
-
-export const DEFAULT_SANITIZERS: readonly string[] = [
-  'escapeHtml',
-  'escapeHTML',
-  'htmlEscape',
-  'encodeHTML',
-  'escape',
-  'he.encode',
-  'he.escape',
-  'sanitize',
-  'sanitizeHtml',
-  'xss',
-  'filterXSS',
-  // React escapes text it renders; raw HTML needs `dangerouslySetInnerHTML`,
-  // which `require-sanitized-html` checks.
-  'renderToString',
-  'renderToStaticMarkup',
-];
-
-/**
- * Escaping and sanitizing exports of common modules, by module name. An
- * import or `require` of one of these under any local name counts as a
- * sanitizer, so `import { encode } from 'he'` makes `encode(x)` safe.
- * `default` stands for the module's default export (or the `require` result).
- */
-const ESCAPING_MODULES: Readonly<Record<string, readonly string[]>> = {
-  he: ['encode', 'escape'],
-  entities: ['encode', 'encodeHTML', 'escape', 'escapeUTF8'],
-  'escape-html': ['default'],
-  'html-escaper': ['escape'],
-  'lodash.escape': ['default'],
-  'lodash/escape': ['default'],
-  lodash: ['escape'],
-  'lodash-es': ['escape'],
-  xss: ['default', 'filterXSS'],
-  'sanitize-html': ['default'],
-  'react-dom/server': ['renderToString', 'renderToStaticMarkup'],
-};
+export const DEFAULT_REPLY_OBJECTS: readonly string[] = ['reply'];
+export const DEFAULT_CONTEXT_OBJECTS: readonly string[] = ['ctx'];
+export const DEFAULT_SANITIZERS: readonly string[] = ['escapeHtml', 'escapeHTML', 'htmlEscape', 'encodeHTML'];
 
 const BODY_WRITERS: ReadonlySet<string> = new Set(['send', 'end', 'write']);
 /** Response methods that return the response, so a writer after them is on the response. */
 const CHAINABLE: ReadonlySet<string> = new Set([
   'status',
+  'code',
   'type',
   'set',
   'header',
+  'headers',
   'append',
   'cookie',
   'clearCookie',
@@ -103,304 +93,524 @@ const CHAINABLE: ReadonlySet<string> = new Set([
   'location',
   'contentType',
 ]);
-const CONTENT_TYPE_SETTERS: ReadonlySet<string> = new Set(['set', 'header', 'setHeader']);
-const NUMERIC_CALLS: ReadonlySet<string> = new Set(['Number', 'parseInt', 'parseFloat']);
-const NUMERIC_PROPERTIES: ReadonlySet<string> = new Set(['length', 'size']);
-/** The characters a hand-written escape chain must encode. */
-const MUST_ENCODE = ['&', '<', '>', '"'];
+const HEADER_SETTERS: ReadonlySet<string> = new Set(['set', 'header', 'setHeader', 'headers']);
 const TAG = /<[a-z!/]/iu;
+/** Content types a browser renders as markup that can run script. */
+const SCRIPTABLE_TYPE = /htm|xml|svg/iu;
 const MAX_DEPTH = 8;
+const MAX_STATES = 24;
+
+const stringArray = (description: string): JSONSchema4 => ({
+  type: 'array',
+  items: { type: 'string' },
+  uniqueItems: true,
+  description,
+});
 
 const optionSchema: JSONSchema4 = {
   type: 'object',
   additionalProperties: false,
   properties: {
-    responseObjects: {
-      type: 'array',
-      items: { type: 'string' },
-      uniqueItems: true,
-      description:
-        'Receivers whose `send`, `end` and `write` calls write the response body. Replaces the defaults (`res`, `response`).',
-    },
-    sanitizers: {
-      type: 'array',
-      items: { type: 'string' },
-      uniqueItems: true,
-      description:
-        'Functions whose result is safe in HTML. An entry with a dot (`he.encode`) matches that callee; one without (`escapeHtml`) matches a bare call or any method of that name. Replaces the defaults.',
-    },
+    responseObjects: stringArray(
+      'Receivers whose `send`, `end` and `write` calls write an HTML-capable response body. Replaces the defaults (`res`, `response`).',
+    ),
+    replyObjects: stringArray(
+      'Receivers whose `send` sends a string as text unless an HTML content type is set on them (Fastify). Replaces the defaults (`reply`).',
+    ),
+    contextObjects: stringArray('Receivers whose `body` assignment is the response (Koa). Replaces the defaults (`ctx`).'),
+    sanitizers: stringArray(
+      'Escapers trusted to encode `&`, `<`, `>` and `"`. An entry with a dot matches that callee; one without matches a call by that bare name, never a method. Replaces the defaults.',
+    ),
   },
 };
 
 type SourceCode = Readonly<TSESLint.SourceCode>;
+type FunctionLike = TSESTree.ArrowFunctionExpression | TSESTree.FunctionExpression | TSESTree.FunctionDeclaration;
 
 function squash(text: string): string {
   return text.replace(/\s+/gu, '');
 }
 
-function unwrap(node: TSESTree.Node): TSESTree.Node {
-  let current = node;
-  while (
-    current.type === AST_NODE_TYPES.TSAsExpression ||
-    current.type === AST_NODE_TYPES.TSSatisfiesExpression ||
-    current.type === AST_NODE_TYPES.TSNonNullExpression ||
-    current.type === AST_NODE_TYPES.TSTypeAssertion ||
-    current.type === AST_NODE_TYPES.AwaitExpression
-  ) {
-    current = current.type === AST_NODE_TYPES.AwaitExpression ? current.argument : current.expression;
-  }
-  return current;
+function isFunction(node: TSESTree.Node): node is FunctionLike {
+  return (
+    node.type === AST_NODE_TYPES.ArrowFunctionExpression ||
+    node.type === AST_NODE_TYPES.FunctionExpression ||
+    node.type === AST_NODE_TYPES.FunctionDeclaration
+  );
 }
 
-/** The initializer of an in-file `const` the identifier names, else null. */
-function constInit(node: TSESTree.Identifier, sourceCode: SourceCode): TSESTree.Expression | null {
-  const variable = ASTUtils.findVariable(sourceCode.getScope(node), node);
-  const def = variable?.defs[0];
-  if (
-    variable?.defs.length !== 1 ||
-    def?.type !== 'Variable' ||
-    def.parent.kind !== 'const' ||
-    def.node.id.type !== AST_NODE_TYPES.Identifier ||
-    def.node.init === null
-  ) {
-    return null;
-  }
-  return def.node.init;
-}
-
-/** Follows `const` bindings to the expression they were built from. */
-function resolve(node: TSESTree.Node, sourceCode: SourceCode): TSESTree.Node {
-  let current = unwrap(node);
-  for (let depth = 0; depth < MAX_DEPTH && current.type === AST_NODE_TYPES.Identifier; depth += 1) {
-    const init = constInit(current, sourceCode);
-    if (init === null) {
+function enclosingFunction(node: TSESTree.Node): FunctionLike | TSESTree.Program | null {
+  let current = node.parent;
+  while (current !== undefined) {
+    if (isFunction(current) || current.type === AST_NODE_TYPES.Program) {
       return current;
     }
-    current = unwrap(init);
-  }
-  return current;
-}
-
-/** The receiver with response-returning calls peeled: `res.status(200)` gives `res`. */
-function rootReceiver(node: TSESTree.Node): TSESTree.Node {
-  let current = node;
-  while (
-    current.type === AST_NODE_TYPES.CallExpression &&
-    current.callee.type === AST_NODE_TYPES.MemberExpression &&
-    !current.callee.computed &&
-    current.callee.property.type === AST_NODE_TYPES.Identifier &&
-    CHAINABLE.has(current.callee.property.name)
-  ) {
-    current = current.callee.object;
-  }
-  return current;
-}
-
-interface HtmlParts {
-  readonly text: string;
-  readonly dynamic: TSESTree.Node[];
-}
-
-/** Author text and runtime parts of a template or `+` chain; null for any other shape. */
-function htmlParts(node: TSESTree.Node, sourceCode: SourceCode): HtmlParts | null {
-  const resolved = resolve(node, sourceCode);
-  if (resolved.type !== AST_NODE_TYPES.TemplateLiteral && resolved.type !== AST_NODE_TYPES.BinaryExpression) {
-    return null;
-  }
-  if (resolved.type === AST_NODE_TYPES.BinaryExpression && resolved.operator !== '+') {
-    return null;
-  }
-  let text = '';
-  const dynamic: TSESTree.Node[] = [];
-  const visit = (part: TSESTree.Node): void => {
-    const inner = unwrap(part);
-    if (inner.type === AST_NODE_TYPES.Literal) {
-      text += String(inner.value);
-    } else if (inner.type === AST_NODE_TYPES.TemplateLiteral) {
-      inner.quasis.forEach((quasi, index) => {
-        text += quasi.value.cooked ?? quasi.value.raw;
-        const expression = inner.expressions[index];
-        if (expression !== undefined) {
-          visit(expression);
-        }
-      });
-    } else if (inner.type === AST_NODE_TYPES.BinaryExpression && inner.operator === '+') {
-      visit(inner.left);
-      visit(inner.right);
-    } else {
-      dynamic.push(inner);
-    }
-  };
-  visit(resolved);
-  return { text, dynamic };
-}
-
-/** Characters a `.replace` / `.replaceAll` first argument encodes. */
-function replacedCharacters(argument: TSESTree.Node | undefined): string {
-  if (argument === undefined) {
-    return '';
-  }
-  const inner = unwrap(argument);
-  if (inner.type !== AST_NODE_TYPES.Literal) {
-    return '';
-  }
-  if (typeof inner.value === 'string') {
-    return inner.value.length === 1 ? inner.value : '';
-  }
-  if ('regex' in inner) {
-    const pattern = inner.regex.pattern.replace(/\\(.)/gu, '$1');
-    if (pattern.startsWith('[') && pattern.endsWith(']') && !pattern.startsWith('[^')) {
-      return pattern.slice(1, -1);
-    }
-    return pattern.length === 1 ? pattern : '';
-  }
-  return '';
-}
-
-class SafetyJudge {
-  constructor(
-    private readonly sourceCode: SourceCode,
-    private readonly sanitizerTexts: ReadonlySet<string>,
-    private readonly sanitizerNames: ReadonlySet<string>,
-  ) {}
-
-  /** True when `node`, written into HTML at `sink`, cannot carry markup. */
-  isSafe(node: TSESTree.Node, sink: TSESTree.Node, depth = 0): boolean {
-    if (depth > MAX_DEPTH) {
-      return false;
-    }
-    const inner = unwrap(node);
-    if (isProvenSafeValue(inner, sink, 'html', this.sourceCode)) {
-      return true;
-    }
-    switch (inner.type) {
-      case AST_NODE_TYPES.Literal:
-        return true;
-      case AST_NODE_TYPES.UnaryExpression:
-        return inner.operator === '-' || inner.operator === '+' || inner.operator === '!' || inner.operator === 'typeof';
-      case AST_NODE_TYPES.BinaryExpression:
-        // Arithmetic yields a number and comparisons a boolean; only `+` can build text.
-        return inner.operator !== '+';
-      case AST_NODE_TYPES.ConditionalExpression:
-        return this.isSafe(inner.consequent, sink, depth + 1) && this.isSafe(inner.alternate, sink, depth + 1);
-      case AST_NODE_TYPES.LogicalExpression:
-        return this.isSafe(inner.left, sink, depth + 1) && this.isSafe(inner.right, sink, depth + 1);
-      case AST_NODE_TYPES.TemplateLiteral:
-        return inner.expressions.every((expression) => this.isSafe(expression, sink, depth + 1));
-      case AST_NODE_TYPES.MemberExpression:
-        return (
-          !inner.computed &&
-          inner.property.type === AST_NODE_TYPES.Identifier &&
-          NUMERIC_PROPERTIES.has(inner.property.name)
-        );
-      case AST_NODE_TYPES.CallExpression:
-        return this.isSafeCall(inner, sink, depth);
-      case AST_NODE_TYPES.Identifier: {
-        const init = constInit(inner, this.sourceCode);
-        return init !== null && this.isSafe(init, sink, depth + 1);
-      }
-      default:
-        return false;
-    }
-  }
-
-  private isSafeCall(node: TSESTree.CallExpression, sink: TSESTree.Node, depth: number): boolean {
-    const callee = node.callee;
-    if (callee.type === AST_NODE_TYPES.Identifier) {
-      return NUMERIC_CALLS.has(callee.name) || this.sanitizerNames.has(callee.name);
-    }
-    if (callee.type !== AST_NODE_TYPES.MemberExpression || callee.computed) {
-      return false;
-    }
-    if (this.sanitizerTexts.has(squash(this.sourceCode.getText(callee)))) {
-      return true;
-    }
-    if (callee.property.type !== AST_NODE_TYPES.Identifier) {
-      return false;
-    }
-    const method = callee.property.name;
-    if (this.sanitizerNames.has(method)) {
-      return true;
-    }
-    if (callee.object.type === AST_NODE_TYPES.Identifier && callee.object.name === 'Math') {
-      return true;
-    }
-    if (method === 'toFixed' || method === 'toPrecision') {
-      return true;
-    }
-    if (method === 'replace' || method === 'replaceAll') {
-      return this.encodesHtml(node);
-    }
-    if (method === 'toString' && node.arguments.length === 0) {
-      return this.isSafe(callee.object, sink, depth + 1);
-    }
-    return false;
-  }
-
-  /** True for a `.replace` chain that encodes at least `&`, `<`, `>` and `"`. */
-  private encodesHtml(node: TSESTree.CallExpression): boolean {
-    let encoded = '';
-    let current: TSESTree.Node = node;
-    for (let depth = 0; depth < 16; depth += 1) {
-      const inner = unwrap(current);
-      if (
-        inner.type !== AST_NODE_TYPES.CallExpression ||
-        inner.callee.type !== AST_NODE_TYPES.MemberExpression ||
-        inner.callee.computed ||
-        inner.callee.property.type !== AST_NODE_TYPES.Identifier ||
-        (inner.callee.property.name !== 'replace' && inner.callee.property.name !== 'replaceAll')
-      ) {
-        break;
-      }
-      encoded += replacedCharacters(inner.arguments[0]);
-      current = inner.callee.object;
-    }
-    return MUST_ENCODE.every((char) => encoded.includes(char));
-  }
-}
-
-/** Keys a literal template marks raw: nunjucks `{{ key | safe }}` and EJS `<%- key %>`. */
-function rawKeys(template: string): Set<string> {
-  const keys = new Set<string>();
-  for (const match of template.matchAll(/\{\{-?\s*([A-Za-z_$][\w$]*)\s*((?:\|\s*[\w$]+(?:\([^)]*\))?\s*)+)-?\}\}/gu)) {
-    const filters = (match[2] ?? '').split('|').map((filter) => filter.trim().replace(/\(.*$/u, ''));
-    if (filters.includes('safe') && match[1] !== undefined) {
-      keys.add(match[1]);
-    }
-  }
-  for (const match of template.matchAll(/<%-\s*([A-Za-z_$][\w$]*)\s*-?%>/gu)) {
-    if (match[1] !== undefined) {
-      keys.add(match[1]);
-    }
-  }
-  return keys;
-}
-
-/** The literal text of a template argument (a string or expression-free template), else null. */
-function literalText(node: TSESTree.Node, sourceCode: SourceCode): string | null {
-  const resolved = resolve(node, sourceCode);
-  if (resolved.type === AST_NODE_TYPES.Literal && typeof resolved.value === 'string') {
-    return resolved.value;
-  }
-  if (resolved.type === AST_NODE_TYPES.TemplateLiteral && resolved.expressions.length === 0) {
-    return resolved.quasis.map((quasi) => quasi.value.cooked ?? quasi.value.raw).join('');
+    current = current.parent;
   }
   return null;
 }
 
-/** True for `renderString(...)` (nunjucks, on any receiver) or `ejs.render(...)`. */
-function isTemplateRender(node: TSESTree.CallExpression, sourceCode: SourceCode): boolean {
-  const callee = node.callee;
-  if (callee.type === AST_NODE_TYPES.Identifier) {
-    return callee.name === 'renderString';
+/** The receiver with response-returning calls peeled: `res.status(200)` gives `res`. */
+function rootReceiver(node: TSESTree.Node): TSESTree.Node {
+  let current = unwrap(node);
+  while (current.type === AST_NODE_TYPES.CallExpression) {
+    const callee = unwrap(current.callee);
+    if (callee.type !== AST_NODE_TYPES.MemberExpression || !CHAINABLE.has(propertyName(callee) ?? '')) {
+      break;
+    }
+    current = unwrap(callee.object);
   }
-  if (callee.type !== AST_NODE_TYPES.MemberExpression || callee.computed || callee.property.type !== AST_NODE_TYPES.Identifier) {
+  return current;
+}
+
+function receiverText(node: TSESTree.Node, sourceCode: SourceCode): string {
+  const root = rootReceiver(node);
+  if (root.type === AST_NODE_TYPES.MemberExpression) {
+    // `this.res` and `ctx.response` keep their path, without TS wrappers.
+    const name = propertyName(root);
+    return name === null ? squash(sourceCode.getText(root)) : `${receiverText(root.object, sourceCode)}.${name}`;
+  }
+  return squash(sourceCode.getText(root));
+}
+
+function dedupe(states: readonly HtmlState[]): HtmlState[] {
+  const seen = new Map<string, HtmlState>();
+  for (const state of states) {
+    seen.set(stateKey(state), state);
+  }
+  if (seen.size > MAX_STATES) {
+    // Too many ways to get here: judge what follows as if it were in a tag.
+    return [{ mode: 'tag-name', tag: '?', attr: '', value: '' }];
+  }
+  return [...seen.values()];
+}
+
+/** True for a string piece (literal or template text) containing `<`, shallowly through `+`, `?:` and `||`. */
+function buildsMarkup(node: TSESTree.Node, depth = 0): boolean {
+  if (depth > MAX_DEPTH) {
     return false;
   }
-  if (callee.property.name === 'renderString') {
-    return true;
+  const inner = unwrap(node);
+  switch (inner.type) {
+    case AST_NODE_TYPES.Literal:
+      return typeof inner.value === 'string' && inner.value.includes('<');
+    case AST_NODE_TYPES.TemplateLiteral:
+      return (
+        inner.quasis.some((quasi) => (quasi.value.cooked ?? quasi.value.raw).includes('<')) ||
+        inner.expressions.some((expression) => buildsMarkup(expression, depth + 1))
+      );
+    case AST_NODE_TYPES.TaggedTemplateExpression:
+      return buildsMarkup(inner.quasi, depth + 1);
+    case AST_NODE_TYPES.BinaryExpression:
+      return inner.operator === '+' && (buildsMarkup(inner.left, depth + 1) || buildsMarkup(inner.right, depth + 1));
+    case AST_NODE_TYPES.ConditionalExpression:
+      return buildsMarkup(inner.consequent, depth + 1) || buildsMarkup(inner.alternate, depth + 1);
+    case AST_NODE_TYPES.LogicalExpression:
+      return buildsMarkup(inner.left, depth + 1) || buildsMarkup(inner.right, depth + 1);
+    case AST_NODE_TYPES.CallExpression: {
+      const callee = unwrap(inner.callee);
+      return (
+        callee.type === AST_NODE_TYPES.MemberExpression &&
+        propertyName(callee) === 'join' &&
+        buildsMarkup(callee.object, depth + 1)
+      );
+    }
+    case AST_NODE_TYPES.ArrayExpression:
+      return inner.elements.some(
+        (element) => element !== null && element.type !== AST_NODE_TYPES.SpreadElement && buildsMarkup(element, depth + 1),
+      );
+    default:
+      return false;
   }
-  return callee.property.name === 'render' && squash(sourceCode.getText(callee.object)) === 'ejs';
+}
+
+interface Part {
+  readonly node: TSESTree.Node;
+  readonly contexts: ReadonlySet<HtmlContext>;
+}
+
+/**
+ * Walks the expression a body is built from, author text and runtime parts in
+ * order, tracking every HTML state each path through it can reach: through
+ * templates and `+`, both sides of `?:` and `||`, `const` bindings that build
+ * markup, `let` accumulators (`html += ...`), `String.raw`, array and
+ * `.map(...).join(...)` building, and in-file helpers that return markup
+ * (their parameters bound to the call's arguments).
+ */
+class HtmlBuilder {
+  readonly parts: Part[] = [];
+  text = '';
+  /** Author text before the first runtime part on the first path, which decides Koa's content type. */
+  leading = '';
+  private sawDynamic = false;
+  private readonly active = new Set<unknown>();
+  private readonly bound = new Map<TSESLint.Scope.Variable, TSESTree.Node>();
+
+  constructor(
+    private readonly judge: HtmlSafety,
+    private readonly sink: TSESTree.Node,
+  ) {}
+
+  run(node: TSESTree.Node): void {
+    this.visit(node, [START_STATE], 0);
+  }
+
+  private feed(states: readonly HtmlState[], text: string): HtmlState[] {
+    this.text += text;
+    if (!this.sawDynamic) {
+      this.leading += text;
+    }
+    return dedupe(states.map((state) => feedText(state, text)));
+  }
+
+  private dynamic(node: TSESTree.Node, states: readonly HtmlState[]): HtmlState[] {
+    this.sawDynamic = true;
+    this.parts.push({ node, contexts: new Set(states.map(contextAt)) });
+    return dedupe(states.map(feedValue));
+  }
+
+  private visit(node: TSESTree.Node, states: HtmlState[], depth: number): HtmlState[] {
+    if (depth > MAX_DEPTH) {
+      return this.dynamic(node, states);
+    }
+    const inner = unwrap(node);
+    switch (inner.type) {
+      case AST_NODE_TYPES.Literal:
+        return this.feed(states, inner.value === null ? 'null' : String(inner.value));
+      case AST_NODE_TYPES.TemplateLiteral:
+        return this.visitTemplate(inner, states, depth, false);
+      case AST_NODE_TYPES.TaggedTemplateExpression: {
+        const tag = unwrap(inner.tag);
+        if (
+          tag.type === AST_NODE_TYPES.MemberExpression &&
+          propertyName(tag) === 'raw' &&
+          this.judge.isGlobal(unwrap(tag.object), 'String')
+        ) {
+          return this.visitTemplate(inner.quasi, states, depth, true);
+        }
+        return this.dynamic(inner, states);
+      }
+      case AST_NODE_TYPES.BinaryExpression:
+        if (inner.operator !== '+') {
+          return this.dynamic(inner, states);
+        }
+        return this.visit(inner.right, this.visit(inner.left, states, depth + 1), depth + 1);
+      case AST_NODE_TYPES.ConditionalExpression:
+        return dedupe([
+          ...this.visit(inner.consequent, states, depth + 1),
+          ...this.visit(inner.alternate, states, depth + 1),
+        ]);
+      case AST_NODE_TYPES.LogicalExpression:
+        // `a && b` writes `a` only when it is falsy (`false`, `0`, `''`, `null`), which is plain text.
+        return dedupe([
+          ...(inner.operator === '&&' ? states : this.visit(inner.left, states, depth + 1)),
+          ...this.visit(inner.right, states, depth + 1),
+        ]);
+      case AST_NODE_TYPES.Identifier:
+        return this.visitIdentifier(inner, states, depth);
+      case AST_NODE_TYPES.CallExpression:
+        return this.visitCall(inner, states, depth);
+      default:
+        return this.dynamic(inner, states);
+    }
+  }
+
+  private visitTemplate(
+    template: TSESTree.TemplateLiteral,
+    states: HtmlState[],
+    depth: number,
+    raw: boolean,
+  ): HtmlState[] {
+    let current = states;
+    template.quasis.forEach((quasi, index) => {
+      current = this.feed(current, raw ? quasi.value.raw : (quasi.value.cooked ?? quasi.value.raw));
+      const expression = template.expressions[index];
+      if (expression !== undefined) {
+        current = this.visit(expression, current, depth + 1);
+      }
+    });
+    return current;
+  }
+
+  private visitIdentifier(node: TSESTree.Identifier, states: HtmlState[], depth: number): HtmlState[] {
+    const variable = this.judge.variableOf(node);
+    if (variable !== null && this.active.has(variable)) {
+      // The accumulator read in its own update (`html = html + x`): its text so far.
+      return states;
+    }
+    const argument = variable === null ? undefined : this.bound.get(variable);
+    if (argument !== undefined && variable !== null) {
+      // A helper's parameter: the call's argument, written here.
+      this.bound.delete(variable);
+      const result = this.visit(argument, states, depth + 1);
+      this.bound.set(variable, argument);
+      return result;
+    }
+    const init = this.judge.constInit(node);
+    if (init !== null && buildsMarkup(init) && variable !== null) {
+      this.active.add(variable);
+      const result = this.visit(init, states, depth + 1);
+      this.active.delete(variable);
+      return result;
+    }
+    const writes = variable === null ? null : this.accumulatorWrites(variable);
+    if (writes === null || variable === null) {
+      return this.dynamic(node, states);
+    }
+    this.active.add(variable);
+    let current = states;
+    for (const write of writes) {
+      if (write.type === AST_NODE_TYPES.VariableDeclarator) {
+        current = write.init === null ? current : this.visit(write.init, current, depth + 1);
+      } else if (write.operator === '+=') {
+        current = this.visit(write.right, current, depth + 1);
+      } else if (this.startsWithSelf(write.right, variable)) {
+        current = this.visit(write.right, current, depth + 1);
+      } else {
+        // A fresh value: it may replace what was built, or only in some branch.
+        current = dedupe([...current, ...this.visit(write.right, states, depth + 1)]);
+      }
+    }
+    this.active.delete(variable);
+    return current;
+  }
+
+  private startsWithSelf(node: TSESTree.Node, variable: TSESLint.Scope.Variable): boolean {
+    let inner = unwrap(node);
+    while (inner.type === AST_NODE_TYPES.BinaryExpression && inner.operator === '+') {
+      inner = unwrap(inner.left);
+    }
+    if (inner.type === AST_NODE_TYPES.TemplateLiteral && inner.quasis[0]?.value.cooked === '') {
+      const first = inner.expressions[0];
+      inner = first === undefined ? inner : unwrap(first);
+    }
+    return inner.type === AST_NODE_TYPES.Identifier && this.judge.variableOf(inner) === variable;
+  }
+
+  /**
+   * The writes that build a `let` / `var` string before the sink, in source
+   * order: its initializer, `=` and `+=`. Null when it is written any other
+   * way (destructuring, `++`, a loop binding) or is a parameter.
+   */
+  private accumulatorWrites(
+    variable: TSESLint.Scope.Variable,
+  ): (TSESTree.VariableDeclarator | TSESTree.AssignmentExpression)[] | null {
+    const def = variable.defs[0];
+    if (
+      variable.defs.length !== 1 ||
+      def?.type !== 'Variable' ||
+      def.parent.kind === 'const' ||
+      def.node.id.type !== AST_NODE_TYPES.Identifier ||
+      def.parent.parent?.type === AST_NODE_TYPES.ForOfStatement ||
+      def.parent.parent?.type === AST_NODE_TYPES.ForInStatement
+    ) {
+      return null;
+    }
+    const writes: (TSESTree.VariableDeclarator | TSESTree.AssignmentExpression)[] = [def.node];
+    for (const reference of variable.references) {
+      if (!reference.isWrite() || reference.init === true) {
+        continue;
+      }
+      const parent = reference.identifier.parent;
+      if (
+        parent?.type !== AST_NODE_TYPES.AssignmentExpression ||
+        parent.left !== reference.identifier ||
+        (parent.operator !== '=' && parent.operator !== '+=')
+      ) {
+        return null;
+      }
+      if (parent.range[1] <= this.sink.range[0]) {
+        writes.push(parent);
+      }
+    }
+    return writes.sort((a, b) => a.range[0] - b.range[0]);
+  }
+
+  private visitCall(call: TSESTree.CallExpression, states: HtmlState[], depth: number): HtmlState[] {
+    const callee = unwrap(call.callee);
+    if (callee.type === AST_NODE_TYPES.MemberExpression && propertyName(callee) === 'join' && call.arguments.length <= 1) {
+      const joined = this.visitJoin(call, callee, states, depth);
+      if (joined !== null) {
+        return joined;
+      }
+    }
+    const fn = this.judge.functionOf(callee);
+    const returned = fn === null ? null : returnedExpression(fn);
+    if (fn === null || returned === null || !buildsMarkup(returned) || this.active.has(fn)) {
+      return this.dynamic(call, states);
+    }
+    // A helper that returns markup: its parameters are the call's arguments.
+    const bound: TSESLint.Scope.Variable[] = [];
+    fn.params.forEach((param, index) => {
+      const argument = call.arguments[index];
+      if (param.type === AST_NODE_TYPES.Identifier && argument !== undefined && argument.type !== AST_NODE_TYPES.SpreadElement) {
+        const variable = this.judge.variableOf(param);
+        if (variable !== null) {
+          this.bound.set(variable, argument);
+          bound.push(variable);
+        }
+      }
+    });
+    this.active.add(fn);
+    const result = this.visit(returned, states, depth + 1);
+    this.active.delete(fn);
+    for (const variable of bound) {
+      this.bound.delete(variable);
+    }
+    return result;
+  }
+
+  /** `[a, b].join(sep)` and `list.map(fn).join(sep)`, the mapped markup repeated any number of times. */
+  private visitJoin(
+    call: TSESTree.CallExpression,
+    callee: TSESTree.MemberExpression,
+    states: HtmlState[],
+    depth: number,
+  ): HtmlState[] | null {
+    const [separatorNode] = call.arguments;
+    const separator = separatorNode === undefined ? ',' : staticString(separatorNode);
+    if (separator === null) {
+      return null;
+    }
+    const list = unwrap(callee.object);
+    if (list.type === AST_NODE_TYPES.ArrayExpression) {
+      let current = states;
+      list.elements.forEach((element, index) => {
+        if (index > 0) {
+          current = this.feed(current, separator);
+        }
+        if (element !== null) {
+          current =
+            element.type === AST_NODE_TYPES.SpreadElement
+              ? this.dynamic(element.argument, current)
+              : this.visit(element, current, depth + 1);
+        }
+      });
+      return current;
+    }
+    if (list.type !== AST_NODE_TYPES.CallExpression) {
+      return null;
+    }
+    const mapCallee = unwrap(list.callee);
+    const mapper = list.arguments[0];
+    const fn = mapper === undefined || mapper.type === AST_NODE_TYPES.SpreadElement ? null : this.judge.functionOf(mapper);
+    const body = fn === null ? null : returnedExpression(fn);
+    if (mapCallee.type !== AST_NODE_TYPES.MemberExpression || propertyName(mapCallee) !== 'map' || body === null) {
+      return null;
+    }
+    let all = dedupe(states);
+    let current = all;
+    for (let round = 0; round < 3; round += 1) {
+      const next = this.feed(this.visit(body, current, depth + 1), separator);
+      const merged = dedupe([...all, ...next]);
+      if (merged.length === all.length) {
+        break;
+      }
+      all = merged;
+      current = next;
+    }
+    return all;
+  }
+}
+
+/** One output of a literal template: the value path it prints, whether raw, and where it lands. */
+interface TemplateOutput {
+  readonly path: readonly string[];
+  readonly raw: boolean;
+  readonly contexts: ReadonlySet<HtmlContext>;
+}
+
+const PATH = /^\s*([A-Za-z_$][\w$]*(?:\.[A-Za-z_$][\w$]*)*)\s*/u;
+
+/** The outputs of a nunjucks template, with `{% autoescape %}` blocks and the `safe` / `escape` filters read. */
+function nunjucksOutputs(template: string, autoescape: boolean): TemplateOutput[] {
+  const outputs: TemplateOutput[] = [];
+  const escaping: boolean[] = [autoescape];
+  let state = START_STATE;
+  let last = 0;
+  for (const match of template.matchAll(/\{\{-?([\s\S]*?)-?\}\}|\{%-?([\s\S]*?)-?%\}|\{#[\s\S]*?#\}/gu)) {
+    state = feedText(state, template.slice(last, match.index));
+    last = match.index + match[0].length;
+    const tag = match[2];
+    if (tag !== undefined) {
+      const block = /^\s*(autoescape|endautoescape)\b\s*(\S*)/u.exec(tag);
+      if (block?.[1] === 'autoescape') {
+        // Anything but a literal `true` may switch escaping off.
+        escaping.push(block[2] === 'true');
+      } else if (block?.[1] === 'endautoescape' && escaping.length > 1) {
+        escaping.pop();
+      }
+      continue;
+    }
+    const expression = match[1];
+    if (expression === undefined) {
+      continue;
+    }
+    // A value path, then anything (`["key"]`, `[0]`, `~ other`) up to the filters.
+    const output = PATH.exec(expression);
+    const [head = '', ...filters] = (output === null ? '' : expression.slice(output[0].length)).split('|');
+    if (output?.[1] !== undefined && !head.trimStart().startsWith('(')) {
+      let marked = false;
+      let escaped = false;
+      for (const filter of filters.map((part) => part.trim().replace(/\(.*$/u, ''))) {
+        if (filter === 'safe') {
+          marked = true;
+        } else if ((filter === 'escape' || filter === 'e') && !marked) {
+          escaped = true;
+          marked = true;
+        } else if (filter === 'forceescape') {
+          escaped = true;
+          marked = true;
+        }
+      }
+      outputs.push({
+        path: output[1].split('.'),
+        raw: !escaped && (marked || escaping.at(-1) !== true),
+        contexts: new Set([contextAt(state)]),
+      });
+    }
+    state = feedValue(state);
+  }
+  return outputs;
+}
+
+/** The outputs of an EJS template: `<%=` escaped, `<%-` raw. */
+function ejsOutputs(template: string): TemplateOutput[] {
+  const outputs: TemplateOutput[] = [];
+  let state = START_STATE;
+  let last = 0;
+  for (const match of template.matchAll(/<%%|<%([=\-_#]?)([\s\S]*?)[-_]?%>/gu)) {
+    state = feedText(state, template.slice(last, match.index));
+    last = match.index + match[0].length;
+    const kind = match[1];
+    if (match[0] === '<%%') {
+      // A literal `<%`.
+      state = feedText(state, '<%');
+      continue;
+    }
+    if (kind !== '=' && kind !== '-') {
+      continue;
+    }
+    const path = PATH.exec(match[2] ?? '');
+    const rest = path === null ? '' : (match[2] ?? '').slice(path[0].length);
+    if (path?.[1] !== undefined && !rest.startsWith('(')) {
+      const segments = path[1].split('.');
+      outputs.push({
+        path: segments[0] === 'locals' && segments.length > 1 ? segments.slice(1) : segments,
+        raw: kind === '-',
+        contexts: new Set([contextAt(state)]),
+      });
+    }
+    state = feedValue(state);
+  }
+  return outputs;
+}
+
+interface WriteSink {
+  readonly kind: 'write' | 'reply' | 'koa' | 'plain';
+  readonly node: TSESTree.Node;
+  readonly body: TSESTree.Node;
+  readonly receiver: string;
 }
 
 export const noUnescapedHtmlResponseRule = createRule<RuleOptions, MessageIds>({
@@ -409,7 +619,7 @@ export const noUnescapedHtmlResponseRule = createRule<RuleOptions, MessageIds>({
     type: 'problem',
     docs: {
       description:
-        'HTML built from a runtime value and sent with `res.send` / `res.end` / `res.write`, or bound to a raw template variable (`| safe`, `<%-`), must escape or sanitize the value: unescaped, it is server-side XSS.',
+        'HTML built from a runtime value and sent as a response (`res.send`, `ctx.body`, `new Response`, ...), or bound to a raw template variable (`| safe`, `<%-`), must escape or sanitize the value for where it lands: unescaped, it is server-side XSS.',
       cwe: ['CWE-79'],
       owasp: ['A03:2021'],
       securitySeverity: 6.1,
@@ -418,225 +628,579 @@ export const noUnescapedHtmlResponseRule = createRule<RuleOptions, MessageIds>({
     messages: {
       unescapedHtmlResponse:
         '`{{value}}` is written into an HTML response without escaping, so markup in it runs in the browser (XSS). Escape it (`escapeHtml(value)`), sanitize it, or send JSON with `res.json`.',
+      unsafeContext:
+        '`{{value}}` is safe in HTML text but lands in {{where}} (XSS). Use an encoder made for that place, check it against a literal allowlist, or move it into element text or a quoted attribute.',
       rawTemplateValue:
         '`{{key}}` is marked raw in the template, so `{{value}}` is rendered without escaping (XSS). Drop the raw marker and let the engine escape it, or sanitize the value first.',
     },
   },
-  defaultOptions: [{ responseObjects: DEFAULT_RESPONSE_OBJECTS, sanitizers: DEFAULT_SANITIZERS }],
+  defaultOptions: [
+    {
+      responseObjects: DEFAULT_RESPONSE_OBJECTS,
+      replyObjects: DEFAULT_REPLY_OBJECTS,
+      contextObjects: DEFAULT_CONTEXT_OBJECTS,
+      sanitizers: DEFAULT_SANITIZERS,
+    },
+  ],
   create(context, [options]) {
     const { sourceCode } = context;
     const responseObjects = new Set((options.responseObjects ?? DEFAULT_RESPONSE_OBJECTS).map(squash));
+    const replyObjects = new Set((options.replyObjects ?? DEFAULT_REPLY_OBJECTS).map(squash));
+    const contextObjects = new Set((options.contextObjects ?? DEFAULT_CONTEXT_OBJECTS).map(squash));
     const entries = (options.sanitizers ?? DEFAULT_SANITIZERS).map((entry) => squash(entry).replace(/\(\)$/u, ''));
-    const sanitizerTexts = new Set(entries.filter((entry) => entry.includes('.')));
-    const sanitizerNames = new Set(entries.filter((entry) => !entry.includes('.')));
-    const judge = new SafetyJudge(sourceCode, sanitizerTexts, sanitizerNames);
+    const judge = new HtmlSafety(sourceCode, {
+      sanitizerNames: new Set(entries.filter((entry) => !entry.includes('.'))),
+      sanitizerTexts: new Set(entries.filter((entry) => entry.includes('.'))),
+    });
 
-    /** Records the local names an escaping module is bound to. */
-    const bindEscapingModule = (module: string, local: string, imported: string | null): void => {
-      const exports = ESCAPING_MODULES[module];
-      if (exports === undefined) {
+    const sinks: WriteSink[] = [];
+    const templateCalls: TSESTree.CallExpression[] = [];
+    const factoryDeclarators: TSESTree.VariableDeclarator[] = [];
+    const purifierConfigs: TSESTree.CallExpression[] = [];
+    let nunjucksRawEverywhere = false;
+    const reported = new Set<string>();
+
+    const report = (node: TSESTree.Node, messageId: MessageIds, data: Record<string, string>): void => {
+      const key = `${node.range[0]}:${node.range[1]}:${messageId}`;
+      if (!reported.has(key)) {
+        reported.add(key);
+        context.report({ node, messageId, data });
+      }
+    };
+
+    const bindModule = (identifier: TSESTree.Node, module: string, imported: string): void => {
+      if (identifier.type !== AST_NODE_TYPES.Identifier) {
         return;
       }
-      if (imported === null) {
-        // The namespace or the `require` result: its methods, and itself when callable.
-        for (const name of exports) {
-          if (name === 'default') {
-            sanitizerNames.add(local);
-          } else {
-            sanitizerTexts.add(`${local}.${name}`);
-          }
-        }
-      } else if (exports.includes(imported)) {
-        sanitizerNames.add(local);
+      const variable = judge.variableOf(identifier);
+      if (variable !== null) {
+        judge.bindings.set(variable, { module, imported });
       }
-    };
-    const requiredModule = (node: TSESTree.Node | null): string | null => {
-      const inner = node === null ? null : unwrap(node);
-      return inner?.type === AST_NODE_TYPES.CallExpression &&
-        inner.callee.type === AST_NODE_TYPES.Identifier &&
-        inner.callee.name === 'require' &&
-        inner.arguments[0]?.type === AST_NODE_TYPES.Literal &&
-        typeof inner.arguments[0].value === 'string'
-        ? inner.arguments[0].value
-        : null;
     };
 
-    /** A literal non-HTML content type set on the response before `sink` in its function. */
-    const sentAsNonHtml = (sink: TSESTree.CallExpression): boolean => {
-      const isNonHtml = (value: TSESTree.Node | undefined): boolean => {
-        const text = value === undefined ? null : literalText(value, sourceCode);
-        return text !== null && !/html/iu.test(text);
-      };
-      let found = false;
-      let scope: TSESTree.Node | null | undefined = sink.parent;
-      while (
-        scope != null &&
-        scope.type !== AST_NODE_TYPES.FunctionDeclaration &&
-        scope.type !== AST_NODE_TYPES.FunctionExpression &&
-        scope.type !== AST_NODE_TYPES.ArrowFunctionExpression &&
-        scope.type !== AST_NODE_TYPES.Program
-      ) {
-        scope = scope.parent;
+    /** The module and export a `require(...)` (or `require(...).name`) reads. */
+    const requiredModule = (node: TSESTree.Node | null): { module: string; imported: string } | null => {
+      if (node === null) {
+        return null;
       }
-      if (scope == null) {
+      let inner = unwrap(node);
+      let imported = '*';
+      if (inner.type === AST_NODE_TYPES.MemberExpression) {
+        imported = propertyName(inner) ?? '';
+        inner = unwrap(inner.object);
+      }
+      if (
+        inner.type === AST_NODE_TYPES.CallExpression &&
+        judge.isGlobal(unwrap(inner.callee), 'require') &&
+        inner.arguments[0] !== undefined
+      ) {
+        const module = staticString(inner.arguments[0]);
+        return module === null || imported === '' ? null : { module, imported };
+      }
+      return null;
+    };
+
+    /* ---- content types ------------------------------------------------- */
+
+    interface TypeSetter {
+      readonly value: string | null;
+      /** True when it runs on every path to the sink. */
+      readonly always: boolean;
+    }
+
+    /** The content type a header object literal sets: null when absent, `?` when unknown. */
+    const headerObjectType = (node: TSESTree.Node | undefined): string | null => {
+      const object = node === undefined ? null : unwrap(node);
+      if (object?.type !== AST_NODE_TYPES.ObjectExpression) {
+        return node === undefined ? null : '?';
+      }
+      for (const property of object.properties) {
+        if (property.type !== AST_NODE_TYPES.Property) {
+          return '?';
+        }
+        const key = propertyKey(property);
+        if (key === null) {
+          return '?';
+        }
+        if (key.toLowerCase() === 'content-type') {
+          return staticString(property.value) ?? '?';
+        }
+      }
+      return null;
+    };
+
+    /** The content type a call or assignment sets on `receiver`, `undefined` when it sets none. */
+    const typeSetBy = (node: TSESTree.Node, receiver: string): string | null | undefined => {
+      if (node.type === AST_NODE_TYPES.AssignmentExpression && node.operator === '=') {
+        const left = unwrap(node.left);
+        if (left.type !== AST_NODE_TYPES.MemberExpression || propertyName(left) !== 'type') {
+          return undefined;
+        }
+        const target = receiverText(left.object, sourceCode);
+        return target === receiver || target === `${receiver}.response` ? staticString(node.right) : undefined;
+      }
+      if (node.type !== AST_NODE_TYPES.CallExpression) {
+        return undefined;
+      }
+      const callee = unwrap(node.callee);
+      const method = callee.type === AST_NODE_TYPES.MemberExpression ? propertyName(callee) : null;
+      if (callee.type !== AST_NODE_TYPES.MemberExpression || method === null) {
+        return undefined;
+      }
+      const target = receiverText(callee.object, sourceCode);
+      if (target !== receiver && target !== `${receiver}.response`) {
+        return undefined;
+      }
+      const [first, second] = node.arguments;
+      if (method === 'type' || method === 'contentType') {
+        return first === undefined ? undefined : staticString(first);
+      }
+      if (HEADER_SETTERS.has(method) && first !== undefined) {
+        const name = staticString(first);
+        if (name !== null) {
+          return name.toLowerCase() === 'content-type' ? (second === undefined ? null : staticString(second)) : undefined;
+        }
+        const type = headerObjectType(first);
+        return type === '?' ? null : (type ?? undefined);
+      }
+      if (method === 'writeHead') {
+        const type = headerObjectType(node.arguments.at(-1));
+        return type === '?' ? null : (type ?? undefined);
+      }
+      return undefined;
+    };
+
+    /** True when `node` (a setter) runs whenever the code reaches `sink`, before it. */
+    const runsBefore = (node: TSESTree.Node, sink: TSESTree.Node): boolean => {
+      let statement: TSESTree.Node = node;
+      while (
+        statement.parent !== undefined &&
+        ((statement.parent.type === AST_NODE_TYPES.MemberExpression && statement.parent.object === statement) ||
+          (statement.parent.type === AST_NODE_TYPES.CallExpression && statement.parent.callee === statement) ||
+          statement.parent.type === AST_NODE_TYPES.AwaitExpression)
+      ) {
+        statement = statement.parent;
+      }
+      if (statement.parent?.type !== AST_NODE_TYPES.ExpressionStatement) {
         return false;
       }
+      statement = statement.parent;
+      const block = statement.parent;
+      return (
+        (block?.type === AST_NODE_TYPES.BlockStatement || block?.type === AST_NODE_TYPES.Program) &&
+        block.range[0] <= sink.range[0] &&
+        sink.range[1] <= block.range[1] &&
+        statement.range[1] <= sink.range[0]
+      );
+    };
+
+    /** The content type setters on `receiver` before `sink` in its function, and in the sink's own chain. */
+    const typeSetters = (sink: TSESTree.Node, receiver: string): TypeSetter[] => {
+      const setters: TypeSetter[] = [];
+      const scope = enclosingFunction(sink);
       const visit = (node: TSESTree.Node): void => {
-        if (found || node.range[0] >= sink.range[1]) {
+        if (node.range[0] >= sink.range[0] || (node !== scope && isFunction(node))) {
           return;
         }
-        if (
-          node.type === AST_NODE_TYPES.CallExpression &&
-          node.callee.type === AST_NODE_TYPES.MemberExpression &&
-          !node.callee.computed &&
-          node.callee.property.type === AST_NODE_TYPES.Identifier &&
-          responseObjects.has(squash(sourceCode.getText(rootReceiver(node.callee.object))))
-        ) {
-          const method = node.callee.property.name;
-          const [first, second] = node.arguments;
-          if ((method === 'type' || method === 'contentType') && isNonHtml(first)) {
-            found = true;
-          } else if (
-            CONTENT_TYPE_SETTERS.has(method) &&
-            first !== undefined &&
-            literalText(first, sourceCode)?.toLowerCase() === 'content-type' &&
-            isNonHtml(second)
-          ) {
-            found = true;
-          }
+        const value = typeSetBy(node, receiver);
+        if (value !== undefined) {
+          setters.push({ value, always: runsBefore(node, sink) });
         }
         for (const key of sourceCode.visitorKeys[node.type] ?? []) {
           const child = (node as unknown as Record<string, unknown>)[key];
-          if (Array.isArray(child)) {
-            for (const item of child) {
-              if (item !== null && typeof item === 'object' && 'type' in item) {
-                visit(item as TSESTree.Node);
-              }
+          for (const item of Array.isArray(child) ? child : [child]) {
+            if (item !== null && typeof item === 'object' && 'type' in item) {
+              visit(item as TSESTree.Node);
             }
-          } else if (child !== null && typeof child === 'object' && 'type' in child) {
-            visit(child as TSESTree.Node);
           }
         }
       };
-      visit(scope);
-      return found;
+      if (scope !== null) {
+        visit(scope.type === AST_NODE_TYPES.Program ? scope : scope.body);
+      }
+      // `res.type('text/plain').send(...)`: set on the way to the writer, always.
+      if (sink.type === AST_NODE_TYPES.CallExpression) {
+        let current: TSESTree.Node = unwrap(sink.callee);
+        while (current.type === AST_NODE_TYPES.MemberExpression) {
+          const object = unwrap(current.object);
+          if (object.type !== AST_NODE_TYPES.CallExpression) {
+            break;
+          }
+          const value = typeSetBy(object, receiver);
+          if (value !== undefined) {
+            setters.push({ value, always: true });
+          }
+          current = unwrap(object.callee);
+        }
+      }
+      return setters;
     };
 
-    const checkResponseWrite = (node: TSESTree.CallExpression): void => {
-      const callee = node.callee;
-      if (
-        callee.type !== AST_NODE_TYPES.MemberExpression ||
-        callee.computed ||
-        callee.property.type !== AST_NODE_TYPES.Identifier ||
-        !BODY_WRITERS.has(callee.property.name) ||
-        !responseObjects.has(squash(sourceCode.getText(rootReceiver(callee.object))))
-      ) {
-        return;
+    const isScriptable = (type: string | null): boolean => type === null || SCRIPTABLE_TYPE.test(type);
+
+    /* ---- judging -------------------------------------------------------- */
+
+    const judgeParts = (parts: readonly Part[], sink: TSESTree.Node): void => {
+      for (const part of parts) {
+        for (const where of part.contexts) {
+          if (judge.safeIn(part.node, where, sink)) {
+            continue;
+          }
+          const value = sourceCode.getText(part.node);
+          if (where !== 'text' && judge.safeIn(part.node, 'text', sink)) {
+            report(part.node, 'unsafeContext', { value, where: CONTEXT_LABELS[where] });
+          } else {
+            report(part.node, 'unescapedHtmlResponse', { value });
+          }
+          break;
+        }
       }
-      const body = node.arguments[0];
-      if (body === undefined || body.type === AST_NODE_TYPES.SpreadElement) {
-        return;
-      }
-      const parts = htmlParts(body, sourceCode);
-      if (parts === null || !TAG.test(parts.text)) {
-        return;
-      }
-      const unsafe = parts.dynamic.find((part) => !judge.isSafe(part, node));
-      if (unsafe === undefined || sentAsNonHtml(node)) {
-        return;
-      }
-      context.report({
-        node: unsafe,
-        messageId: 'unescapedHtmlResponse',
-        data: { value: sourceCode.getText(unsafe) },
-      });
     };
 
-    const checkTemplateRender = (node: TSESTree.CallExpression): void => {
-      if (!isTemplateRender(node, sourceCode)) {
+    const checkSink = (sink: WriteSink): void => {
+      const setters = sink.kind === 'plain' ? [] : typeSetters(sink.node, sink.receiver);
+      const htmlTyped = setters.some((setter) => setter.value !== null && SCRIPTABLE_TYPE.test(setter.value));
+      const plainEverywhere =
+        setters.some((setter) => setter.always && !isScriptable(setter.value)) &&
+        !setters.some((setter) => isScriptable(setter.value));
+      if (plainEverywhere || (sink.kind === 'reply' && !htmlTyped)) {
         return;
       }
-      const [template, data] = node.arguments;
-      if (template === undefined || data === undefined || template.type === AST_NODE_TYPES.SpreadElement || data.type === AST_NODE_TYPES.SpreadElement) {
+      const builder = new HtmlBuilder(judge, sink.node);
+      builder.run(sink.body);
+      if (!TAG.test(builder.text)) {
         return;
       }
-      const text = literalText(template, sourceCode);
-      const object = resolve(data, sourceCode);
+      // Koa sends a string that does not start with `<` as text, unless a type is set.
+      const leading = builder.leading.trimStart();
+      if (sink.kind === 'koa' && !setters.some((setter) => setter.value !== null) && leading !== '' && !leading.startsWith('<')) {
+        return;
+      }
+      judgeParts(builder.parts, sink.node);
+    };
+
+    /** The value a template path reads from a literal context object, through nested literals. */
+    const lookup = (object: TSESTree.ObjectExpression, path: readonly string[]): TSESTree.Node | null => {
+      const [head, ...rest] = path;
+      let value: TSESTree.Node | null = null;
+      for (const property of object.properties) {
+        if (property.type === AST_NODE_TYPES.Property && propertyKey(property) === head) {
+          value = property.value;
+        }
+      }
+      if (value === null || rest.length === 0) {
+        return value;
+      }
+      let inner = unwrap(value);
+      if (inner.type === AST_NODE_TYPES.Identifier) {
+        const init = judge.constInit(inner);
+        inner = init === null ? inner : unwrap(init);
+      }
+      return inner.type === AST_NODE_TYPES.ObjectExpression ? lookup(inner, rest) : value;
+    };
+
+    const isEjs = (node: TSESTree.Node): boolean => {
+      const inner = unwrap(node);
+      return (
+        inner.type === AST_NODE_TYPES.Identifier &&
+        (inner.name === 'ejs' || judge.bindings.get(judge.variableOf(inner) as TSESLint.Scope.Variable)?.module === 'ejs')
+      );
+    };
+
+    const templateEngine = (call: TSESTree.CallExpression): 'nunjucks' | 'ejs' | null => {
+      const callee = unwrap(call.callee);
+      if (callee.type === AST_NODE_TYPES.Identifier) {
+        const variable = judge.variableOf(callee);
+        const binding = variable === null ? undefined : judge.bindings.get(variable);
+        if (callee.name === 'renderString') {
+          return 'nunjucks';
+        }
+        return binding?.module === 'ejs' && binding.imported === 'render' ? 'ejs' : null;
+      }
+      if (callee.type !== AST_NODE_TYPES.MemberExpression) {
+        return null;
+      }
+      const method = propertyName(callee);
+      if (method === 'renderString') {
+        return 'nunjucks';
+      }
+      return method === 'render' && isEjs(callee.object) ? 'ejs' : null;
+    };
+
+    const checkTemplateRender = (call: TSESTree.CallExpression): void => {
+      const engine = templateEngine(call);
+      const [template, data] = call.arguments;
+      if (engine === null || template === undefined || data === undefined) {
+        return;
+      }
+      if (template.type === AST_NODE_TYPES.SpreadElement || data.type === AST_NODE_TYPES.SpreadElement) {
+        return;
+      }
+      let templateNode = unwrap(template);
+      if (templateNode.type === AST_NODE_TYPES.Identifier) {
+        templateNode = unwrap(judge.constInit(templateNode) ?? templateNode);
+      }
+      const text = staticString(templateNode);
+      let object = unwrap(data);
+      if (object.type === AST_NODE_TYPES.Identifier) {
+        object = unwrap(judge.constInit(object) ?? object);
+      }
       if (text === null || object.type !== AST_NODE_TYPES.ObjectExpression) {
         return;
       }
-      const raw = rawKeys(text);
-      for (const property of object.properties) {
-        if (property.type !== AST_NODE_TYPES.Property || property.computed) {
+      const outputs = engine === 'nunjucks' ? nunjucksOutputs(text, !nunjucksRawEverywhere) : ejsOutputs(text);
+      for (const output of outputs) {
+        const value = lookup(object, output.path);
+        if (value === null || value.type === AST_NODE_TYPES.AssignmentPattern || !('type' in value)) {
           continue;
         }
-        const key =
-          property.key.type === AST_NODE_TYPES.Identifier
-            ? property.key.name
-            : property.key.type === AST_NODE_TYPES.Literal
-              ? String(property.key.value)
-              : null;
-        if (key === null || !raw.has(key)) {
-          continue;
+        for (const where of output.contexts) {
+          if ((!output.raw && encodingSafeIn('escape-all', where)) || judge.safeIn(value, where, call)) {
+            continue;
+          }
+          const valueText = sourceCode.getText(value);
+          if (output.raw && !judge.safeIn(value, 'text', call)) {
+            report(value, 'rawTemplateValue', { key: output.path.join('.'), value: valueText });
+          } else {
+            report(value, 'unsafeContext', { value: valueText, where: CONTEXT_LABELS[where] });
+          }
+          break;
         }
-        const value = property.value;
-        if (
-          value.type === AST_NODE_TYPES.AssignmentPattern ||
-          value.type === AST_NODE_TYPES.ArrayPattern ||
-          value.type === AST_NODE_TYPES.ObjectPattern ||
-          value.type === AST_NODE_TYPES.TSEmptyBodyFunctionExpression ||
-          judge.isSafe(value, node)
-        ) {
-          continue;
-        }
-        context.report({
-          node: value,
-          messageId: 'rawTemplateValue',
-          data: { key, value: sourceCode.getText(value) },
-        });
       }
     };
+
+    /* ---- sink discovery ------------------------------------------------- */
+
+    /** The content type `new Response(body, init)` sets in its literal headers. */
+    const responseInitType = (init: TSESTree.Node | undefined): string | null => {
+      if (init === undefined) {
+        return null;
+      }
+      let object = unwrap(init);
+      if (object.type === AST_NODE_TYPES.Identifier) {
+        object = unwrap(judge.constInit(object) ?? object);
+      }
+      if (object.type !== AST_NODE_TYPES.ObjectExpression) {
+        return null;
+      }
+      for (const property of object.properties) {
+        if (property.type !== AST_NODE_TYPES.Property || propertyKey(property) !== 'headers') {
+          continue;
+        }
+        let headers = unwrap(property.value);
+        if (headers.type === AST_NODE_TYPES.NewExpression && judge.isGlobal(unwrap(headers.callee), 'Headers')) {
+          const [first] = headers.arguments;
+          headers = first === undefined ? headers : unwrap(first);
+        }
+        if (headers.type === AST_NODE_TYPES.ArrayExpression) {
+          for (const pair of headers.elements) {
+            const entry = pair === null ? null : unwrap(pair);
+            if (entry?.type === AST_NODE_TYPES.ArrayExpression && entry.elements.length === 2) {
+              const [name, value] = entry.elements;
+              if (name && value && staticString(name)?.toLowerCase() === 'content-type') {
+                return staticString(value);
+              }
+            }
+          }
+          return null;
+        }
+        const type = headerObjectType(headers);
+        return type === '?' ? null : type;
+      }
+      return null;
+    };
+
+    const isResponseConstructor = (callee: TSESTree.Node): boolean => {
+      const inner = unwrap(callee);
+      if (judge.isGlobal(inner, 'Response')) {
+        return true;
+      }
+      if (inner.type !== AST_NODE_TYPES.Identifier) {
+        return false;
+      }
+      const variable = judge.variableOf(inner);
+      const binding = variable === null ? undefined : judge.bindings.get(variable);
+      return binding?.module === 'next/server' && binding.imported === 'NextResponse';
+    };
+
+    /** True when a Nest handler carries `@Header('Content-Type', '<html type>')` from `@nestjs/common`. */
+    const isHtmlNestHandler = (fn: FunctionLike): boolean => {
+      const method = fn.parent;
+      if (method?.type !== AST_NODE_TYPES.MethodDefinition || method.value !== fn) {
+        return false;
+      }
+      return method.decorators.some((decorator) => {
+        const expression = unwrap(decorator.expression);
+        if (expression.type !== AST_NODE_TYPES.CallExpression) {
+          return false;
+        }
+        const callee = unwrap(expression.callee);
+        const variable = callee.type === AST_NODE_TYPES.Identifier ? judge.variableOf(callee) : null;
+        const binding = variable === null ? undefined : judge.bindings.get(variable);
+        const [name, value] = expression.arguments;
+        return (
+          binding?.module === '@nestjs/common' &&
+          binding.imported === 'Header' &&
+          name !== undefined &&
+          value !== undefined &&
+          staticString(name)?.toLowerCase() === 'content-type' &&
+          SCRIPTABLE_TYPE.test(staticString(value) ?? '')
+        );
+      });
+    };
+
+    const returns: TSESTree.ReturnStatement[] = [];
+    const responses: TSESTree.NewExpression[] = [];
+    const environmentCalls: (TSESTree.CallExpression | TSESTree.NewExpression)[] = [];
 
     return {
       ImportDeclaration(node): void {
         const module = String(node.source.value);
         for (const specifier of node.specifiers) {
           if (specifier.type === AST_NODE_TYPES.ImportNamespaceSpecifier) {
-            bindEscapingModule(module, specifier.local.name, null);
+            bindModule(specifier.local, module, '*');
           } else if (specifier.type === AST_NODE_TYPES.ImportDefaultSpecifier) {
-            bindEscapingModule(module, specifier.local.name, 'default');
+            bindModule(specifier.local, module, 'default');
           } else {
             const imported =
-              specifier.imported.type === AST_NODE_TYPES.Identifier
-                ? specifier.imported.name
-                : String(specifier.imported.value);
-            bindEscapingModule(module, specifier.local.name, imported);
+              specifier.imported.type === AST_NODE_TYPES.Identifier ? specifier.imported.name : String(specifier.imported.value);
+            bindModule(specifier.local, module, imported);
           }
         }
       },
       VariableDeclarator(node): void {
-        const module = requiredModule(node.init);
-        if (module === null) {
-          return;
-        }
-        if (node.id.type === AST_NODE_TYPES.Identifier) {
-          bindEscapingModule(module, node.id.name, null);
-        } else if (node.id.type === AST_NODE_TYPES.ObjectPattern) {
-          for (const property of node.id.properties) {
-            if (
-              property.type === AST_NODE_TYPES.Property &&
-              !property.computed &&
-              property.key.type === AST_NODE_TYPES.Identifier &&
-              property.value.type === AST_NODE_TYPES.Identifier
-            ) {
-              bindEscapingModule(module, property.value.name, property.key.name);
+        const required = requiredModule(node.init);
+        if (required !== null) {
+          if (node.id.type === AST_NODE_TYPES.Identifier) {
+            bindModule(node.id, required.module, required.imported);
+          } else if (node.id.type === AST_NODE_TYPES.ObjectPattern && required.imported === '*') {
+            for (const property of node.id.properties) {
+              if (property.type === AST_NODE_TYPES.Property) {
+                const key = propertyKey(property);
+                const value = unwrap(property.value);
+                if (key !== null && value.type === AST_NODE_TYPES.Identifier) {
+                  bindModule(value, required.module, key);
+                }
+              }
             }
           }
+          return;
+        }
+        if (node.id.type === AST_NODE_TYPES.Identifier && node.init !== null && unwrap(node.init).type === AST_NODE_TYPES.CallExpression) {
+          factoryDeclarators.push(node);
         }
       },
       CallExpression(node): void {
-        checkResponseWrite(node);
-        checkTemplateRender(node);
+        const callee = unwrap(node.callee);
+        if (callee.type === AST_NODE_TYPES.MemberExpression) {
+          const method = propertyName(callee);
+          if (method !== null && BODY_WRITERS.has(method)) {
+            const receiver = receiverText(callee.object, sourceCode);
+            const body = node.arguments[0];
+            if (body !== undefined && body.type !== AST_NODE_TYPES.SpreadElement) {
+              if (responseObjects.has(receiver)) {
+                sinks.push({ kind: 'write', node, body, receiver });
+              } else if (replyObjects.has(receiver) && method === 'send') {
+                sinks.push({ kind: 'reply', node, body, receiver });
+              }
+            }
+          }
+          if (method === 'setConfig') {
+            purifierConfigs.push(node);
+          }
+          if (method === 'configure') {
+            environmentCalls.push(node);
+          }
+        }
+        templateCalls.push(node);
+      },
+      NewExpression(node): void {
+        responses.push(node);
+        const callee = unwrap(node.callee);
+        if (
+          (callee.type === AST_NODE_TYPES.Identifier && callee.name === 'Environment') ||
+          (callee.type === AST_NODE_TYPES.MemberExpression && propertyName(callee) === 'Environment')
+        ) {
+          environmentCalls.push(node);
+        }
+      },
+      AssignmentExpression(node): void {
+        const left = unwrap(node.left);
+        if (node.operator !== '=' || left.type !== AST_NODE_TYPES.MemberExpression || propertyName(left) !== 'body') {
+          return;
+        }
+        let receiver = receiverText(left.object, sourceCode);
+        if (receiver.endsWith('.response')) {
+          receiver = receiver.slice(0, -'.response'.length);
+        }
+        if (contextObjects.has(receiver)) {
+          sinks.push({ kind: 'koa', node, body: node.right, receiver });
+        }
+      },
+      ReturnStatement(node): void {
+        if (node.argument !== null) {
+          returns.push(node);
+        }
+      },
+      'Program:exit'(): void {
+        // Bindings first: instances, weakened configs, global engine settings.
+        for (const declarator of factoryDeclarators) {
+          const init = unwrap(declarator.init as TSESTree.Node) as TSESTree.CallExpression;
+          if (judge.isPurifierFactory(init.callee)) {
+            const variable = judge.variableOf(declarator.id as TSESTree.Identifier);
+            if (variable !== null) {
+              judge.purifiers.add(variable);
+            }
+          }
+        }
+        for (const call of purifierConfigs) {
+          const object = unwrap((unwrap(call.callee) as TSESTree.MemberExpression).object);
+          const variable = object.type === AST_NODE_TYPES.Identifier ? judge.variableOf(object) : null;
+          if (variable !== null && (judge.purifiers.has(variable) || judge.bindings.get(variable)?.module.includes('dompurify') === true)) {
+            if (!judge.domPurifyConfigSafe(call.arguments[0])) {
+              judge.weakenedPurifiers.add(variable);
+            }
+          }
+        }
+        nunjucksRawEverywhere = environmentCalls.some((call) =>
+          call.arguments.some((arg) => {
+            const object = unwrap(arg);
+            return (
+              object.type === AST_NODE_TYPES.ObjectExpression &&
+              object.properties.some(
+                (property) =>
+                  property.type === AST_NODE_TYPES.Property &&
+                  propertyKey(property) === 'autoescape' &&
+                  !(unwrap(property.value).type === AST_NODE_TYPES.Literal && (unwrap(property.value) as TSESTree.Literal).value === true),
+              )
+            );
+          }),
+        );
+        for (const node of responses) {
+          const [body, init] = node.arguments;
+          const type = responseInitType(init);
+          if (
+            body !== undefined &&
+            body.type !== AST_NODE_TYPES.SpreadElement &&
+            isResponseConstructor(node.callee) &&
+            type !== null &&
+            SCRIPTABLE_TYPE.test(type)
+          ) {
+            sinks.push({ kind: 'plain', node, body, receiver: '' });
+          }
+        }
+        for (const node of returns) {
+          const fn = enclosingFunction(node);
+          if (fn !== null && fn.type !== AST_NODE_TYPES.Program && isHtmlNestHandler(fn) && node.argument !== null) {
+            sinks.push({ kind: 'plain', node, body: node.argument, receiver: '' });
+          }
+        }
+        for (const sink of sinks) {
+          checkSink(sink);
+        }
+        for (const call of templateCalls) {
+          checkTemplateRender(call);
+        }
       },
     };
   },
