@@ -139,16 +139,38 @@ the rule can read:
   (no options argument; a string name or message is fine) or `.valid(...)` / `.enum([...])` /
   `.literal(...)`, and every other method in the chain only narrows (`min`, `max`, `length`,
   `required`, `optional`, `trim`, `lowercase` and the like). A chain with `default`, `catch`, `failover`, `pipe`, `transform`, `allow` or any other method
-  can let another value through and is not read. Every `const` in the chain, and the zod or joi
-  root, must stay unchanged: not exported, and every use a method call or property read that
-  writes nothing, an unchanged alias, an argument of another schema call (`z.object({ mode: S })`)
-  or a type position (`z.infer<typeof S>`). `S.parse = (v) => v`, `Object.assign(S, x)`,
-  `delete Body.shape.mode` or a helper call such as `patch(S)` (or `extendZod(z)`) cancels it.
+  can let another value through and is not read. Every `const` in the chain must stay unchanged:
+  not exported, and every use a type position (`z.infer<typeof S>`), a direct `parse` /
+  `safeParse` / `validate` call (or their async forms), a chain step (`S.min(1)`) or an argument
+  of a schema builder (`z.object({ mode: S })`, `z.array(S)`) whose result is itself used only
+  these ways, or the initializer of a binding that follows the same rules. Anything else cancels
+  it: `S.parse = (v) => v`, `S._def.checks.pop()`, `const d = S._def`, `Object.assign(S, x)`, a
+  helper call such as `patch(S)`, or a change through a schema that holds it
+  (`const B = z.object({ m: S }); B.shape.m.parse = ...`). The zod or joi root may only be used
+  through calls (`z.string()`, `z.coerce.number()`) and in types, so `extendZod(z)` or
+  `z.ZodString.prototype.parse = ...` cancels every schema in the file.
 
-A value in the program-name position (first in the command, after `;`, `&`, `|`, `(`, a backtick
-or a line break, after `sudo`, `env`, `xargs`, a shell reserved word or `NAME=value`, or glued to a
-path such as `/usr/bin/${tool}`) is proven only by a literal allowlist, a literal `enum` / `valid`
-schema or a constant. No regex or schema pattern proves it: `^[a-z]+$` admits `reboot` and `sh`.
+A value in a word that runs as a program is proven only by a literal allowlist, a literal
+`enum` / `valid` schema or a constant. No regex or schema pattern proves it: `^[a-z]+$` admits
+`reboot` and `sh`. A word runs as a program when it is:
+
+- the first word of a command: first in the string, or after `;`, `&`, `|`, `(`, `)`, a backtick or
+  a line break, after `NAME=value`, after a redirect (`>out`, `2>/dev/null`, `< in`), or after a
+  reserved word (`!`, `{`, `if`, `then`, `else`, `elif`, `do`, `while`, `until`); a value glued to a
+  path there (`/usr/bin/${tool}`, `./${tool}`) counts too;
+- any word after a wrapper, up to the next separator, options included (`sudo -u deploy ${tool}`,
+  `timeout 30 ${tool}`, `sh -c '${cmd}'`). The wrappers are `sudo`, `doas`, `su`, `runuser`,
+  `env`, `nice`, `ionice`, `nohup`, `setsid`, `timeout`, `stdbuf`, `taskset`, `flock`, `time`,
+  `watch`, `xargs`, `strace`, `ltrace`, `chroot`, `nsenter`, `unshare`, `exec`, `command`,
+  `builtin`, `eval`, `source`, `.`, `coproc`, `ssh` (everything after the host runs remotely),
+  the shells `sh`, `bash`, `zsh`, `dash`, `ksh`, `fish` and `busybox`, and the package runners
+  `npx`, `bunx`, `uvx`, `pipx`, `npm exec`, `pnpm dlx` / `exec`, `yarn dlx` / `exec` and
+  `bun x`, plus `find ... -exec` / `-execdir` / `-ok` / `-okdir`. They match by basename and with
+  quotes stripped (`/usr/bin/env`, `'sudo'`).
+
+An in-file `const` bound to a string (`const P = 'sudo'`, `const SEP = ';'`) is read as its text.
+This is a list: a command not on it that runs its arguments is not seen. Quotes do not hide
+separators here, so `` `echo "a; ${x}"` `` reads `x` as a program, which only reports more.
 
 ```ts bad
 function run(tool: string, file: string) {
@@ -172,7 +194,10 @@ can run at any time. A binding declared outside the checking function (a closure
 can run between the outer writes (hoisted above them, or resumed after an `await`). A change made
 through an alias (`const p = parts; p.push(y)`), `Object.assign` or `Reflect.set` counts as a
 write, and so does a list or `Set` changed through another `const` name for it. A count written as
-`{00}` allows zero repetitions like `{0}`. A direct `eval(s)` in the function after the check, or
+`{00}` allows zero repetitions like `{0}`. A value glued right after a `/` (`` `rm -rf /srv/${x}` ``)
+is a path segment, so its regex must refuse `.` and `..` as well as the empty string. A direct
+`eval(s)` (also behind a type-only wrapper such as `eval!(s)` or `(eval as any)(s)`) in the
+function after the check, or
 in any function nested in the one that declares the binding, counts as a write. A global with no
 declaration in the file (one the config declares writable) is never treated as checked: another
 script can reassign it, across an `await` for instance. The rule follows `const` aliases (`const picked = sort`)
@@ -236,6 +261,10 @@ export function status() {
 ```
 
 ### What the rule does not see
+
+A value from a literal allowlist is taken as the author wrote it: an allowlist that holds a wrapper
+(`sudo`) or a separator lets the words after it be read as arguments. A wrapper command that is not
+on the list above is not seen.
 
 A checked array changed in place after the check (`parts.push(y)`, `parts[0] = y`) cancels the
 check. Handing it to a function, or storing it in an array or object, after the check also cancels
