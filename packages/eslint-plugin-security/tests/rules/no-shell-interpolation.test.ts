@@ -851,6 +851,28 @@ ruleTester.run('no-shell-interpolation', noShellInterpolationRule, {
       filename: TS,
       errors: [{ messageId: 'shellInterpolation' }],
     },
+    // A direct `eval` behind a type-only wrapper.
+    {
+      code: 'function h(x: string, s: string) { if (!/^[a-z]+$/.test(x)) return; eval!(s); exec(`ls ${x}`); }',
+      filename: TS,
+      errors: [{ messageId: 'shellInterpolation' }],
+    },
+    {
+      code: 'function h(x: string, s: string) { if (!/^[a-z]+$/.test(x)) return; (eval as any)(s); exec(`ls ${x}`); }',
+      filename: TS,
+      errors: [{ messageId: 'shellInterpolation' }],
+    },
+    {
+      code: 'function h(x: string, s: string) { if (!/^[a-z]+$/.test(x)) return; (eval satisfies (s: string) => unknown)(s); exec(`ls ${x}`); }',
+      filename: TS,
+      errors: [{ messageId: 'shellInterpolation' }],
+    },
+    {
+      code: 'function h(x: string, s: string) { if (!/^[a-z]+$/.test(x)) return; (<any>eval)(s); exec(`ls ${x}`); }',
+      filename: TS,
+      languageOptions: { parserOptions: { ecmaFeatures: { jsx: false } } },
+      errors: [{ messageId: 'shellInterpolation' }],
+    },
     // A path segment glued after a `/` must not be `.` or `..`.
     {
       code: 'function h(x: string) { if (!/^[a-z.]+$/.test(x)) return; exec(`rm -rf /srv/${x}`); }',

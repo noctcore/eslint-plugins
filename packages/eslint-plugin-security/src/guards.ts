@@ -693,11 +693,25 @@ function directEvalCalls(variable: Variable): Reference[] {
   return [...global.through, ...(global.set.get('eval')?.references ?? [])].filter(
     (reference) => {
       const id = reference.identifier;
+      if (id.type !== AST_NODE_TYPES.Identifier || id.name !== 'eval') {
+        return false;
+      }
+      // `eval!(s)`, `(eval as any)(s)`, `(eval satisfies F)(s)` and
+      // `(<any>eval)(s)` still call `eval` directly: the wrappers are types only.
+      let callee: TSESTree.Node = id;
+      while (
+        callee.parent !== undefined &&
+        (callee.parent.type === AST_NODE_TYPES.TSNonNullExpression ||
+          callee.parent.type === AST_NODE_TYPES.TSAsExpression ||
+          callee.parent.type === AST_NODE_TYPES.TSSatisfiesExpression ||
+          callee.parent.type === AST_NODE_TYPES.TSTypeAssertion) &&
+        callee.parent.expression === callee
+      ) {
+        callee = callee.parent;
+      }
       return (
-        id.type === AST_NODE_TYPES.Identifier &&
-        id.name === 'eval' &&
-        id.parent?.type === AST_NODE_TYPES.CallExpression &&
-        id.parent.callee === id &&
+        callee.parent?.type === AST_NODE_TYPES.CallExpression &&
+        callee.parent.callee === callee &&
         id.range[0] >= start &&
         id.range[1] <= end
       );
