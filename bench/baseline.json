@@ -59,19 +59,19 @@
     "security/no-unescaped-html-response": {
       "tp": 0,
       "fn": 0,
-      "fp": 2,
-      "tn": 28,
+      "fp": 1,
+      "tn": 29,
       "detection": null,
-      "falseAlarm": 0.0667,
+      "falseAlarm": 0.0333,
       "j": null,
-      "extra": 10,
+      "extra": 24,
       "crossFp": 0,
       "crossSafe": 0,
       "enabledBy": "override",
       "categories": [
         "security/server-side-xss"
       ],
-      "description": "HTML built from a runtime value and sent with `res.send` / `res.end` / `res.write`, or bound to a raw template variable (`| safe`, `<%-`), must escape or sanitize the value: unescaped, it is server-side XSS.",
+      "description": "HTML built from a runtime value and sent as a response (`res.send`, `ctx.body`, `new Response`, ...), or bound to a raw template variable (`| safe`, `<%-`), must escape or sanitize the value for where it lands: unescaped, it is server-side XSS.",
       "url": "https://noctcore.github.io/eslint-plugins/rules/security/no-unescaped-html-response/"
     },
     "security/no-user-controlled-fetch-url": {
@@ -223,12 +223,12 @@
     "security/server-side-xss": {
       "tp": 7,
       "fn": 23,
-      "fp": 2,
-      "tn": 58,
+      "fp": 1,
+      "tn": 59,
       "detection": 0.2333,
-      "falseAlarm": 0.0333,
-      "j": 0.2,
-      "extra": 10,
+      "falseAlarm": 0.0167,
+      "j": 0.2166,
+      "extra": 24,
       "title": "Server-side XSS",
       "cwe": "CWE-79",
       "rules": [
@@ -6443,11 +6443,11 @@
       "title": "comment encoded with he.encode before the preview"
     },
     "security/server-side-xss/express-comment-preview.safe.ts.case#security/no-unescaped-html-response": {
-      "outcome": "FP",
+      "outcome": "TN",
       "category": "security/server-side-xss",
       "rule": "security/no-unescaped-html-response",
       "file": "security/server-side-xss/express-comment-preview.safe.ts.case",
-      "line": 18,
+      "line": null,
       "pair": "express-comment-preview",
       "framework": "express",
       "cwe": "CWE-79",
@@ -6905,11 +6905,11 @@
       "title": "customer name cleaned with sanitize-html before the report"
     },
     "security/server-side-xss/express-report-email.safe.ts.case#security/no-unescaped-html-response": {
-      "outcome": "TN",
+      "outcome": "FP",
       "category": "security/server-side-xss",
       "rule": "security/no-unescaped-html-response",
       "file": "security/server-side-xss/express-report-email.safe.ts.case",
-      "line": null,
+      "line": 16,
       "pair": "express-report-email",
       "framework": "express",
       "cwe": "CWE-79",
@@ -8093,11 +8093,11 @@
       "title": "bio checked with an anchored regex and rejected otherwise"
     },
     "security/server-side-xss/node-profile-bio.safe.js.case#security/no-unescaped-html-response": {
-      "outcome": "FP",
+      "outcome": "TN",
       "category": "security/server-side-xss",
       "rule": "security/no-unescaped-html-response",
       "file": "security/server-side-xss/node-profile-bio.safe.js.case",
-      "line": 23,
+      "line": null,
       "pair": "node-profile-bio",
       "framework": "node",
       "cwe": "CWE-79",
