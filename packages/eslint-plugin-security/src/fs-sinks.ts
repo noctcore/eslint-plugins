@@ -101,9 +101,10 @@ export const FS_TWO_PATH_FUNCTIONS: ReadonlySet<string> = new Set([
   'symlink',
   'symlinkSync',
 ]);
-/** Response methods that serve a file from disk (Express). */
+/** Response methods that serve a file from disk (Express, and `@fastify/static` on `reply`). */
 const RESPONSE_FILE_METHODS: ReadonlySet<string> = new Set(['sendFile', 'download']);
 const RESPONSE_OBJECTS: ReadonlySet<string> = new Set(['res', 'response']);
+const FASTIFY_REPLY_OBJECTS: ReadonlySet<string> = new Set(['reply']);
 
 export interface PathBindings {
   /** Local names of the `path` module. */
@@ -388,11 +389,41 @@ function rootOption(node: TSESTree.Node | undefined): TSESTree.Node | null {
 }
 
 /**
+ * The roots a Fastify `reply.sendFile` / `reply.download` call passes, which
+ * override the root registered with `@fastify/static`:
+ * `reply.sendFile(f, rootPath)`, `reply.sendFile(f, { root })`,
+ * `reply.sendFile(f, rootPath, opts)`, `reply.download(f, { root })` and
+ * `reply.download(f, name, { root })`.
+ */
+function fastifyRoots(method: string, args: readonly TSESTree.Expression[]): TSESTree.Node[] {
+  const roots: TSESTree.Node[] = [];
+  const second = args[1];
+  if (method === 'sendFile' && second !== undefined) {
+    const inner = peel(second);
+    if (inner.type === AST_NODE_TYPES.ObjectExpression) {
+      const root = rootOption(inner);
+      if (root !== null) roots.push(root);
+    } else {
+      // A string root, or a value this rule cannot tell from an options object.
+      roots.push(second);
+    }
+  }
+  for (const arg of args.slice(1)) {
+    const root = peel(arg).type === AST_NODE_TYPES.ObjectExpression ? rootOption(arg) : null;
+    if (root !== null && !roots.includes(root)) roots.push(root);
+  }
+  return roots;
+}
+
+/**
  * The path arguments of a filesystem call, with the name to report: an fs
- * function on an fs module or imported by name, or Express's `res.sendFile` /
- * `res.download`. With a `root` option, Express (through `send`) refuses a
- * path with a `..` segment after decoding it and serves it under the root, so
- * the root is the path that matters there. Empty for any other call.
+ * function on an fs module or imported by name, Express's `res.sendFile` /
+ * `res.download`, or Fastify's `reply.sendFile` / `reply.download`. With a
+ * `root` option, Express (through `send`) refuses a path with a `..` segment
+ * after decoding it and serves it under the root, so the root is the path that
+ * matters there. `@fastify/static` always serves under a root (the one
+ * registered with the plugin, or one the call passes) and refuses `..`
+ * segments, so only a root the call passes is checked. Empty for any other call.
  */
 export function fsPathArguments(
   node: TSESTree.CallExpression,
@@ -407,11 +438,7 @@ export function fsPathArguments(
     return { method: fsName, paths: args.slice(0, FS_TWO_PATH_FUNCTIONS.has(fsName) ? 2 : 1) };
   }
   const callee = peel(node.callee);
-  if (
-    callee.type !== AST_NODE_TYPES.MemberExpression ||
-    callee.object.type !== AST_NODE_TYPES.Identifier ||
-    !RESPONSE_OBJECTS.has(callee.object.name)
-  ) {
+  if (callee.type !== AST_NODE_TYPES.MemberExpression || callee.object.type !== AST_NODE_TYPES.Identifier) {
     return none;
   }
   const name = propertyName(callee);
@@ -419,6 +446,12 @@ export function fsPathArguments(
     return none;
   }
   const method = `${callee.object.name}.${name}`;
+  if (FASTIFY_REPLY_OBJECTS.has(callee.object.name)) {
+    return { method, paths: fastifyRoots(name, args) };
+  }
+  if (!RESPONSE_OBJECTS.has(callee.object.name)) {
+    return none;
+  }
   const root = args.slice(1).map(rootOption).find((value) => value !== null);
   if (root != null) {
     return { method, paths: [root] };
