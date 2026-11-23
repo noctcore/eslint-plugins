@@ -20,6 +20,7 @@ import {
   isChangedConstObject,
   isFixedValue,
   isFunctionValue,
+  peelTypes,
   readOptions,
   type RequestOptions,
 } from '../request-options';
@@ -153,18 +154,20 @@ function isAxiosCreate(node: TSESTree.Node): boolean {
 }
 
 /** True for a `const api = axios.create(...)` binding read here. */
-function isAxiosInstance(node: TSESTree.Node, sourceCode: Readonly<TSESLint.SourceCode>): boolean {
+function isAxiosInstance(raw: TSESTree.Node, sourceCode: Readonly<TSESLint.SourceCode>): boolean {
+  const node = peelTypes(raw);
   if (node.type !== AST_NODE_TYPES.Identifier) {
     return false;
   }
   const variable = ASTUtils.findVariable(sourceCode.getScope(node), node);
   const def = variable?.defs[0];
+  const init = def?.type === 'Variable' && def.node.init !== null ? peelTypes(def.node.init) : null;
   return (
     variable?.defs.length === 1 &&
     def?.type === 'Variable' &&
     def.parent.kind === 'const' &&
-    def.node.init?.type === AST_NODE_TYPES.CallExpression &&
-    isAxiosCreate(def.node.init.callee)
+    init?.type === AST_NODE_TYPES.CallExpression &&
+    isAxiosCreate(init.callee)
   );
 }
 
@@ -173,7 +176,7 @@ function requestInput(
   node: TSESTree.Node,
   sourceCode: Readonly<TSESLint.SourceCode>,
 ): TSESTree.Expression | null {
-  let current = node;
+  let current = peelTypes(node);
   if (current.type === AST_NODE_TYPES.Identifier) {
     const variable = ASTUtils.findVariable(sourceCode.getScope(current), current);
     const def = variable?.defs[0];
@@ -185,7 +188,7 @@ function requestInput(
     ) {
       return null;
     }
-    current = def.node.init;
+    current = peelTypes(def.node.init);
   }
   if (
     current.type !== AST_NODE_TYPES.NewExpression ||
@@ -404,7 +407,8 @@ export const noUserControlledFetchUrlRule = createRule<RuleOptions, MessageIds>(
           }
           return;
         case 'proxy': {
-          if (value.type === AST_NODE_TYPES.Literal && value.value === false) {
+          const bare = peelTypes(value);
+          if (bare.type === AST_NODE_TYPES.Literal && bare.value === false) {
             return;
           }
           const proxy = read(value);
@@ -455,7 +459,7 @@ export const noUserControlledFetchUrlRule = createRule<RuleOptions, MessageIds>(
         if (
           second !== undefined &&
           second.type !== AST_NODE_TYPES.SpreadElement &&
-          second.type !== AST_NODE_TYPES.ObjectExpression &&
+          peelTypes(second).type !== AST_NODE_TYPES.ObjectExpression &&
           !isFunctionValue(second, sourceCode) &&
           read(second) === undefined
         ) {
@@ -488,7 +492,17 @@ export const noUserControlledFetchUrlRule = createRule<RuleOptions, MessageIds>(
       const [first, second, third] = node.arguments;
       const urlArgument = first?.type === AST_NODE_TYPES.SpreadElement ? undefined : first;
       if (form === 'create') {
-        checkTrailing(first, AXIOS_KEYS, node);
+        // The config is the only argument and every instance request starts from it,
+        // so one the rule cannot read is reported, like a first-argument URL.
+        if (first === undefined) {
+          return;
+        }
+        const config = read(first);
+        if (config === undefined) {
+          reportOption(first, 'config', first);
+          return;
+        }
+        checkOptions(config, AXIOS_KEYS, node);
         return;
       }
       if (form === 'call' || form === 'request') {

@@ -129,6 +129,10 @@ ruleTester.run('no-user-controlled-fetch-url', noUserControlledFetchUrlRule, {
       code: "const HOSTS = ['api.example.com']; function probe(input: string) { const host = new URL(input).hostname; if (!HOSTS.includes(host)) return; https.get({ hostname: new URL(input).hostname, path: '/x' }); }",
       filename: TS,
     },
+    // A fixed options object behind a type wrapper is read as written.
+    { code: "const opts = { hostname: 'api.example.com' } satisfies RequestOptions; https.get(opts);", filename: TS },
+    { code: "https.get({ hostname: 'api.example.com', path: '/x' } as https.RequestOptions);", filename: TS },
+    { code: "axios.create({ baseURL: 'https://api.example.com' } as const); axios.create();", filename: TS },
   ],
   invalid: [
     // The shared wrapper list, string form.
@@ -333,5 +337,21 @@ ruleTester.run('no-user-controlled-fetch-url', noUserControlledFetchUrlRule, {
       filename: TS,
       errors: [error],
     },
+    // Type wrappers do not hide an options or config object.
+    {
+      code: "const config = { baseURL: hook.url, timeout: 5000 } satisfies CreateAxiosDefaults; const client = axios.create(config); await client.post('/', event);",
+      filename: TS,
+      errors: [error],
+    },
+    { code: 'axios.create({ baseURL: hook.url, timeout: 5000 } as CreateAxiosDefaults);', filename: TS, errors: [error] },
+    { code: "https.get('https://api.example.com/x', { hostname: req.query.h } as https.RequestOptions);", filename: TS, errors: [host] },
+    { code: 'const opts = { hostname: req.query.h } satisfies https.RequestOptions; https.request(url, opts);', filename: TS, errors: [host, error] },
+    { code: "tls.connect(443, 'api.example.com', { host: req.query.h } as tls.ConnectionOptions);", filename: TS, errors: [host] },
+    { code: "axios.get('/x', { baseURL: req.query.b } as any);", filename: TS, errors: [error] },
+    { code: "const opts = { hostname: 'api.example.com', port: req.query.p }; https.get(opts!);", filename: TS, errors: [option] },
+    // An axios.create config the rule cannot read is reported, like a first-argument URL.
+    { code: 'axios.create(req.body);', filename: TS, errors: [option] },
+    { code: 'function mk(cfg) { return axios.create(cfg); }', filename: TS, errors: [option] },
+    { code: 'axios.create(c ? { baseURL: x } : {});', filename: TS, errors: [option] },
   ],
 });
