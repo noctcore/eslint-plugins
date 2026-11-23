@@ -133,12 +133,13 @@ the rule can read:
   changes the parsed object or the result (every use of `parsed` reads a field and every use of
   `result` reads `success`, `error` or `data`, so no `parsed.mode = other`, `result.data = other`
   or `Object.assign(parsed, other)`, before or after the check) and no spread, computed key or
-  later key of the same name follows the field in the shape. The schema is an in-file chain that starts at
-  the zod or joi import (`import { z } from 'zod'`, `import Joi from 'joi'`, `require('joi')`),
-  possibly through `const` chains read under the same rules, with `.pattern(re)` / `.regex(re)`
-  (no options argument; a string name or message is fine) or `.valid(...)` / `.enum([...])` /
-  `.literal(...)`, and every other method in the chain only narrows (`min`, `max`, `length`,
-  `required`, `optional`, `trim`, `lowercase` and the like). A chain with `default`, `catch`, `failover`, `pipe`, `transform`, `allow` or any other method
+  later key of the same name follows the field in the shape. The schema is an in-file chain that
+  starts at the zod or joi import (`import { z } from 'zod'`, `import Joi from 'joi'`,
+  `require('joi')`), possibly through `const` chains read under the same rules, with `.pattern(re)`
+  / `.regex(re)` (no options argument; a string name or message is fine) or `.valid(...)` /
+  `.enum([...])` / `.literal(...)`, and every other method in the chain only narrows (`min`, `max`,
+  `length`, `required`, `optional`, `trim`, `lowercase` and the like). A chain with `default`,
+  `catch`, `failover`, `pipe`, `transform`, `allow` or any other method
   can let another value through and is not read. Every `const` in the chain must stay unchanged:
   not exported, and every use a type position (`z.infer<typeof S>`), a direct `parse` /
   `safeParse` / `validate` call (or their async forms), a chain step (`S.min(1)`) or an argument
@@ -155,9 +156,11 @@ A value in a word that runs as a program is proven only by a literal allowlist, 
 `reboot` and `sh`. A word runs as a program when it is:
 
 - the first word of a command: first in the string, or after `;`, `&`, `|`, `(`, `)`, a backtick or
-  a line break, after `NAME=value` (whatever the value, `NODE_ENV=${mode}` included), after a
-  redirect (`>out`, `2>/dev/null`, `< in`), or after a reserved word (`!`, `{`, `if`, `then`, `else`, `elif`, `do`, `while`, `until`); a value glued to a
-  path there (`/usr/bin/${tool}`, `./${tool}`) counts too;
+  a line break, after `NAME=value` (whatever the value, `NODE_ENV=${mode}` included, and also when
+  a value forms the name, `${name}=x`), after bash's `NAME+=value` and `NAME[i]=value`, after a
+  redirect (`>out`, `2>/dev/null`, `< in`), or after a reserved word (`!`, `{`, `if`, `then`,
+  `else`, `elif`, `do`, `while`, `until`); a value glued to a path there (`/usr/bin/${tool}`,
+  `./${tool}`) counts too;
 - any word after a wrapper, up to the next separator, options included (`sudo -u deploy ${tool}`,
   `timeout 30 ${tool}`, `sh -c '${cmd}'`). The wrappers are `sudo`, `doas`, `su`, `runuser`,
   `env`, `nice`, `ionice`, `nohup`, `setsid`, `timeout`, `stdbuf`, `taskset`, `flock`, `time`,
@@ -196,14 +199,13 @@ can run at any time. A binding declared outside the checking function (a closure
 can run between the outer writes (hoisted above them, or resumed after an `await`). A change made
 through an alias (`const p = parts; p.push(y)`), `Object.assign` or `Reflect.set` counts as a
 write, and so does a list or `Set` changed through another `const` name for it. A count written as
-`{00}` allows zero repetitions like `{0}`. A value glued right after a `/` (`` `rm -rf /srv/${x}` ``)
-is a path segment, so its regex must refuse `.` and `..` as well as the empty string. A direct
-`eval(s)` (also behind a type-only wrapper such as `eval!(s)` or `(eval as any)(s)`) in the
-function after the check, or
-in any function nested in the one that declares the binding, counts as a write. A global with no
-declaration in the file (one the config declares writable) is never treated as checked: another
-script can reassign it, across an `await` for instance. The rule follows `const` aliases (`const picked = sort`)
-and the global `String(x)`:
+`{00}` allows zero repetitions like `{0}`. A value glued right after a `/`
+(`` `rm -rf /srv/${x}` ``) is a path segment, so its regex must refuse `.` and `..` as well as the
+empty string. A direct `eval(s)` (also behind a type-only wrapper such as `eval!(s)` or
+`(eval as any)(s)`) in the function after the check, or in any function nested in the one that
+declares the binding, counts as a write. A global with no declaration in the file (one the config
+declares writable) is never treated as checked: another script can reassign it, across an `await`
+for instance. The rule follows `const` aliases (`const picked = sort`) and the global `String(x)`:
 
 ```ts bad
 // the check does not stop the call: it only logs
