@@ -704,8 +704,17 @@ function subjectVariable(node: TSESTree.Node, sourceCode: SourceCode): Variable 
  * `const` declaration (a `var` can be read before its initializer runs). In a
  * sloppy-mode function, `arguments[0] = y` writes the first parameter, so a
  * parameter of a function that uses `arguments` is never taken as unchanged.
+ *
+ * `sink`, when given, is the call that uses the value: handing the binding to
+ * it as a direct argument (`fetch(u)`) is the use itself, not a change made
+ * before it, since the arguments are read before the callee runs.
  */
-function writtenOnlyBefore(variable: Variable, position: number, scope: Scope | null): boolean {
+function writtenOnlyBefore(
+  variable: Variable,
+  position: number,
+  scope: Scope | null,
+  sink?: TSESTree.Node,
+): boolean {
   const home = variable.scope.variableScope;
   // A global the config declares writable has no declaration in the file:
   // any other script can reassign it, across an `await` for instance.
@@ -723,7 +732,7 @@ function writtenOnlyBefore(variable: Variable, position: number, scope: Scope | 
       variable.references.every(
         (reference) =>
           (!reference.isWrite() || (reference.init === true && declaredOnce)) &&
-          contentChanges(reference)?.length === 0,
+          (isSinkArgument(reference, sink) || contentChanges(reference)?.length === 0),
       )
     );
   }
@@ -736,9 +745,25 @@ function writtenOnlyBefore(variable: Variable, position: number, scope: Scope | 
     if (reference.isWrite() && !before(reference)) {
       return false;
     }
+    if (isSinkArgument(reference, sink)) {
+      return true;
+    }
     const changes = contentChanges(reference);
     return changes !== null && changes.every(before);
   });
+}
+
+/** True when the reference is read as a direct argument of the sink call. */
+function isSinkArgument(reference: Reference, sink: TSESTree.Node | undefined): boolean {
+  const parent = reference.identifier.parent;
+  return (
+    sink !== undefined &&
+    !reference.isWrite() &&
+    parent === sink &&
+    (parent.type === AST_NODE_TYPES.CallExpression ||
+      parent.type === AST_NODE_TYPES.NewExpression) &&
+    parent.callee !== reference.identifier
+  );
 }
 
 /**
@@ -3288,7 +3313,7 @@ function urlObjectPinned(
       negated
         ? failsUnlessChecked(test, hostOfUrl, regexPinsHost, sourceCode)
         : holdsOnlyIfChecked(test, hostOfUrl, regexPinsHost, sourceCode),
-    (position, scope) => writtenOnlyBefore(variable, position, scope),
+    (position, scope) => writtenOnlyBefore(variable, position, scope, sink),
     sourceCode,
   );
 }

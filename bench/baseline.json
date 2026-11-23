@@ -56,13 +56,13 @@
       "url": "https://noctcore.github.io/eslint-plugins/rules/security/no-shell-interpolation/"
     },
     "security/no-user-controlled-fetch-url": {
-      "tp": 23,
-      "fn": 7,
-      "fp": 9,
-      "tn": 21,
-      "detection": 0.7667,
-      "falseAlarm": 0.3,
-      "j": 0.4667,
+      "tp": 20,
+      "fn": 10,
+      "fp": 18,
+      "tn": 12,
+      "detection": 0.6667,
+      "falseAlarm": 0.6,
+      "j": 0.0667,
       "extra": 0,
       "crossFp": 0,
       "crossSafe": 151,
@@ -221,13 +221,13 @@
       }
     },
     "security/ssrf": {
-      "tp": 23,
-      "fn": 7,
-      "fp": 9,
-      "tn": 21,
-      "detection": 0.7667,
-      "falseAlarm": 0.3,
-      "j": 0.4667,
+      "tp": 20,
+      "fn": 10,
+      "fp": 18,
+      "tn": 12,
+      "detection": 0.6667,
+      "falseAlarm": 0.6,
+      "j": 0.0667,
       "extra": 0,
       "title": "Server-side request forgery",
       "cwe": "CWE-918",
@@ -8006,11 +8006,11 @@
       "title": "src query parsed and its hostname looked up in a Set of image CDNs"
     },
     "security/ssrf/express-image-proxy.safe.js.case#security/no-user-controlled-fetch-url": {
-      "outcome": "TN",
+      "outcome": "FP",
       "category": "security/ssrf",
       "rule": "security/no-user-controlled-fetch-url",
       "file": "security/ssrf/express-image-proxy.safe.js.case",
-      "line": null,
+      "line": 14,
       "pair": "express-image-proxy",
       "framework": "express",
       "cwe": "CWE-918",
@@ -8050,11 +8050,11 @@
       "title": "posted URL parsed and its hostname checked against an allowlist"
     },
     "security/ssrf/express-link-preview.safe.js.case#security/no-user-controlled-fetch-url": {
-      "outcome": "TN",
+      "outcome": "FP",
       "category": "security/ssrf",
       "rule": "security/no-user-controlled-fetch-url",
       "file": "security/ssrf/express-link-preview.safe.js.case",
-      "line": null,
+      "line": 13,
       "pair": "express-link-preview",
       "framework": "express",
       "cwe": "CWE-918",
@@ -8116,7 +8116,7 @@
       "title": "parsed target must be https and on the probe host allowlist"
     },
     "security/ssrf/express-new-url.vuln.js.case#security/no-user-controlled-fetch-url": {
-      "outcome": "TP",
+      "outcome": "FN",
       "category": "security/ssrf",
       "rule": "security/no-user-controlled-fetch-url",
       "file": "security/ssrf/express-new-url.vuln.js.case",
@@ -8160,7 +8160,7 @@
       "title": "page URL allowlisted by hostname and resolved address checked for private ranges"
     },
     "security/ssrf/express-pdf-render.vuln.ts.case#security/no-user-controlled-fetch-url": {
-      "outcome": "TP",
+      "outcome": "FN",
       "category": "security/ssrf",
       "rule": "security/no-user-controlled-fetch-url",
       "file": "security/ssrf/express-pdf-render.vuln.ts.case",
@@ -8182,11 +8182,11 @@
       "title": "stored webhook URL rechecked against the allowed hosts at send time"
     },
     "security/ssrf/express-saved-webhook.safe.js.case#security/no-user-controlled-fetch-url": {
-      "outcome": "TN",
+      "outcome": "FP",
       "category": "security/ssrf",
       "rule": "security/no-user-controlled-fetch-url",
       "file": "security/ssrf/express-saved-webhook.safe.js.case",
-      "line": null,
+      "line": 17,
       "pair": "express-saved-webhook",
       "framework": "express",
       "cwe": "CWE-918",
@@ -8270,11 +8270,11 @@
       "title": "callback hostname must match an anchored regex on the partner domain"
     },
     "security/ssrf/express-webhook-test.safe.js.case#security/no-user-controlled-fetch-url": {
-      "outcome": "TN",
+      "outcome": "FP",
       "category": "security/ssrf",
       "rule": "security/no-user-controlled-fetch-url",
       "file": "security/ssrf/express-webhook-test.safe.js.case",
-      "line": null,
+      "line": 17,
       "pair": "express-webhook-test",
       "framework": "express",
       "cwe": "CWE-918",
@@ -8798,11 +8798,11 @@
       "title": "page URL allowlisted, resolved address checked for private ranges"
     },
     "security/ssrf/nest-pdf-render.safe.ts.case#security/no-user-controlled-fetch-url": {
-      "outcome": "TN",
+      "outcome": "FP",
       "category": "security/ssrf",
       "rule": "security/no-user-controlled-fetch-url",
       "file": "security/ssrf/nest-pdf-render.safe.ts.case",
-      "line": null,
+      "line": 23,
       "pair": "nest-pdf-render",
       "framework": "nest",
       "cwe": "CWE-918",
@@ -8886,11 +8886,11 @@
       "title": "callbackUrl hostname must match an anchored regex before fetch"
     },
     "security/ssrf/nest-webhook-tester.safe.ts.case#security/no-user-controlled-fetch-url": {
-      "outcome": "TN",
+      "outcome": "FP",
       "category": "security/ssrf",
       "rule": "security/no-user-controlled-fetch-url",
       "file": "security/ssrf/nest-webhook-tester.safe.ts.case",
-      "line": null,
+      "line": 21,
       "pair": "nest-webhook-tester",
       "framework": "nest",
       "cwe": "CWE-918",
@@ -8974,11 +8974,11 @@
       "title": "avatar URL must be https and resolve to a public address on an allowed host"
     },
     "security/ssrf/node-avatar-import.safe.js.case#security/no-user-controlled-fetch-url": {
-      "outcome": "TN",
+      "outcome": "FP",
       "category": "security/ssrf",
       "rule": "security/no-user-controlled-fetch-url",
       "file": "security/ssrf/node-avatar-import.safe.js.case",
-      "line": null,
+      "line": 18,
       "pair": "node-avatar-import",
       "framework": "node",
       "cwe": "CWE-918",
@@ -9040,7 +9040,7 @@
       "title": "src parsed with new URL and hostname looked up in a Set of CDN hosts"
     },
     "security/ssrf/node-image-proxy.vuln.ts.case#security/no-user-controlled-fetch-url": {
-      "outcome": "TP",
+      "outcome": "FN",
       "category": "security/ssrf",
       "rule": "security/no-user-controlled-fetch-url",
       "file": "security/ssrf/node-image-proxy.vuln.ts.case",
@@ -9062,11 +9062,11 @@
       "title": "url query parsed and hostname checked against an allowlist"
     },
     "security/ssrf/node-link-preview.safe.js.case#security/no-user-controlled-fetch-url": {
-      "outcome": "TN",
+      "outcome": "FP",
       "category": "security/ssrf",
       "rule": "security/no-user-controlled-fetch-url",
       "file": "security/ssrf/node-link-preview.safe.js.case",
-      "line": null,
+      "line": 18,
       "pair": "node-link-preview",
       "framework": "node",
       "cwe": "CWE-918",
@@ -9150,11 +9150,11 @@
       "title": "relay target hostname must match an anchored regex on the partner domain"
     },
     "security/ssrf/node-webhook-relay.safe.js.case#security/no-user-controlled-fetch-url": {
-      "outcome": "TN",
+      "outcome": "FP",
       "category": "security/ssrf",
       "rule": "security/no-user-controlled-fetch-url",
       "file": "security/ssrf/node-webhook-relay.safe.js.case",
-      "line": null,
+      "line": 20,
       "pair": "node-webhook-relay",
       "framework": "node",
       "cwe": "CWE-918",
