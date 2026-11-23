@@ -147,6 +147,28 @@ ruleTester.run('no-unescaped-html-response', noUnescapedHtmlResponseRule, {
       code: "import serialize from 'serialize-javascript'; res.send(`<script>window.__STATE__ = ${serialize(state)};</script>`);",
       filename: TS,
     },
+    // Serialized JSON in code position: after a closed string (escaped quotes included), a comment, or in `${}`.
+    {
+      code: "import serialize from 'serialize-javascript'; res.send(`<script>var a = 'it\\'s'; /* \"x */ // 'y\nvar s = ${serialize(state)};</script>`);",
+      filename: TS,
+    },
+    {
+      code: "import serialize from 'serialize-javascript'; res.send(`<script>var t = \\`x ${'${'}${serialize(state)}}\\`; var u = ${serialize(other)};</script>`);",
+      filename: TS,
+    },
+    {
+      code: "import htmlescape from 'htmlescape'; res.send(`<script>var a = ${htmlescape(one)}, b = ${htmlescape(two)};</script>`);",
+      filename: TS,
+    },
+    // A same-file function named like a configured escaper is judged by its body, which here encodes everything.
+    { code: "function escapeHtml(s) { return String(s)" + CHAIN + "; } res.send(`<p>${escapeHtml(q)}</p>`);", filename: TS },
+    {
+      code: "function escapeHtml(s) { return String(s)" + CHAIN + "; } res.send(`<p>${escapeHtml(q)}</p>`);",
+      filename: TS,
+      options: [{ sanitizers: ['escapeHtml'] }],
+    },
+    // The name is trusted for an import from a module this file cannot see into.
+    { code: "import { escapeHtml } from './util'; res.send(`<p>${escapeHtml(q)}</p>`);", filename: TS },
     { code: "function escapeHtml(s) { return String(s)" + CHAIN + ".replace(/'/g, '&#39;'); } res.send(`<a title='${escapeHtml(t)}'>x</a>`);", filename: TS },
     // Sanitizer options that keep protection on.
     {
@@ -193,6 +215,65 @@ ruleTester.run('no-unescaped-html-response', noUnescapedHtmlResponseRule, {
     },
   ],
   invalid: [
+    // A same-file function with a configured name is judged by its body, not its name.
+    {
+      code: "function escapeHtml(str) { return str.replace('&', '&amp;').replace('<', '&lt;').replace('>', '&gt;').replace('\"', '&quot;'); }\nexport function h(req, res) { res.send('<p>Results for ' + escapeHtml(req.query.q) + '</p>'); }",
+      filename: TS,
+      errors: html,
+    },
+    {
+      code: "function escapeHtml(str) { return str.replace('&', '&amp;').replace('<', '&lt;').replace('>', '&gt;').replace('\"', '&quot;'); }\nexport function h(req, res) { res.send('<p>Results for ' + escapeHtml(req.query.q) + '</p>'); }",
+      filename: TS,
+      options: [{ sanitizers: ['escapeHtml'] }],
+      errors: html,
+    },
+    {
+      code: "const htmlEscape = (s) => String(s).replace(/[&<>\"]/, (c) => '&#' + c.charCodeAt(0) + ';');\nexport function h(req, res) { res.send('<p>' + htmlEscape(req.query.q) + '</p>'); }",
+      filename: TS,
+      errors: html,
+    },
+    {
+      code: "function escapeHtml(s) { return String(s); }\nexport function h(req, res) { res.send('<p>' + escapeHtml(req.query.q) + '</p>'); }",
+      filename: TS,
+      errors: html,
+    },
+    {
+      code: "function escapeHtml(s) { return String(s); }\nexport function h(req, res) { res.send('<p>' + escapeHtml(req.query.q) + '</p>'); }",
+      filename: TS,
+      options: [{ sanitizers: ['escapeHtml'] }],
+      errors: html,
+    },
+    {
+      code: "const escapeHtml = (s) => s.replace('<', '&lt;');\nexport function h(req, res) { res.send('<p>' + escapeHtml(req.query.q) + '</p>'); }",
+      filename: TS,
+      errors: html,
+    },
+    // Serialized JSON inside a JS string, template or comment can close it.
+    {
+      code: "import serialize from 'serialize-javascript';\nres.send(`<script>window.__STATE__ = JSON.parse('${serialize(req.query.q, { isJSON: true })}');</script>`);",
+      filename: TS,
+      errors: where,
+    },
+    {
+      code: "import serialize from 'serialize-javascript';\nres.send(`<script>var s = \"${serialize(req.query.q)}\";</script>`);",
+      filename: TS,
+      errors: where,
+    },
+    {
+      code: "import serialize from 'serialize-javascript';\nres.send(`<script>var s = \\`${serialize(req.query.q)}\\`;</script>`);",
+      filename: TS,
+      errors: where,
+    },
+    {
+      code: "import htmlescape from 'htmlescape'; res.send(`<script>var s = 'a\\\\'b ${htmlescape(q)}';</script>`);",
+      filename: TS,
+      errors: where,
+    },
+    {
+      code: "import serialize from 'serialize-javascript'; res.send(`<script>// note\n/* ${serialize(q)} */</script>`);",
+      filename: TS,
+      errors: where,
+    },
     { code: "res.send('<div>' + data + '</div>');", filename: TS, errors: html },
     {
       code: "function h(req, res) { const raw = req.cookies.session; const data = raw && raw.length > 0 ? raw : 'default'; res.send('<div>' + data + '</div>'); }",
