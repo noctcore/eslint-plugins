@@ -488,9 +488,12 @@ function firstCharacters(body: readonly RegexToken[]): string | null {
 }
 
 /**
- * True when the regex can only accept host names under a literal domain:
- * anchored `^...$`, no `m` flag, no `.` wildcard, and every way it can end is
- * `\.` followed by literal letters (`^(app|docs)\.example\.com$`).
+ * True when the regex can only accept host names under a literal domain of at
+ * least two labels: anchored `^...$`, no `m` flag, no `.` wildcard, and every
+ * way it can end is that domain, right after `^`, a literal `\.`, a group whose
+ * every alternative ends in a literal `\.` (`^(?:[a-z0-9-]+\.)*example\.com$`)
+ * or, for an origin, a literal `://`. `^[a-z0-9.-]*example\.com$` (which
+ * accepts `evilexample.com`) and `^[a-z]+\.com$` (any `.com` host) do not count.
  */
 export function regexPinsHost(pattern: string, flags: string): boolean {
   const body = anchoredBody(pattern, flags);
@@ -500,47 +503,107 @@ export function regexPinsHost(pattern: string, flags: string): boolean {
   return endsWithLiteralDomain(body);
 }
 
+/** The index of the `open` token matching the `close` at `close`, else -1. */
+function matchingOpen(tokens: readonly RegexToken[], close: number): number {
+  let depth = 0;
+  for (let i = close; i >= 0; i -= 1) {
+    const token = tokens[i];
+    if (token?.kind === 'close') {
+      depth += 1;
+    } else if (token?.kind === 'open') {
+      depth -= 1;
+      if (depth === 0) {
+        return i;
+      }
+    }
+  }
+  return -1;
+}
+
+function isLiteral(token: RegexToken | undefined, char: string): boolean {
+  return token?.kind === 'chars' && token.literal === true && token.chars === char;
+}
+
+/** True when every alternative of the group `tokens[open..close]` ends in a literal `.`. */
+function groupEndsInDot(tokens: readonly RegexToken[], open: number, close: number): boolean {
+  return splitAlternatives(tokens.slice(open + 1, close)).every((alternative) =>
+    isLiteral(alternative.at(-1), '.'),
+  );
+}
+
+/**
+ * True when the text matched before `tokens[end]` always ends a label: the
+ * start of the body (`^`), a literal `.`, a group whose every alternative ends
+ * in a literal `.` (when the group or the `.` is optional, the same must hold
+ * before it), or a literal `://` (the host of an origin starts there).
+ */
+function labelBoundaryBefore(tokens: readonly RegexToken[], end: number): boolean {
+  if (end === 0) {
+    return true;
+  }
+  const previous = tokens[end - 1];
+  if (isLiteral(previous, '.')) {
+    return true;
+  }
+  if (previous?.kind === 'close') {
+    const open = matchingOpen(tokens, end - 1);
+    return open !== -1 && groupEndsInDot(tokens, open, end - 1);
+  }
+  if (previous?.kind === 'quantifier') {
+    const atom = tokens[end - 2];
+    let atomStart = end - 2;
+    if (atom?.kind === 'close') {
+      atomStart = matchingOpen(tokens, end - 2);
+      if (atomStart === -1 || !groupEndsInDot(tokens, atomStart, end - 2)) {
+        return false;
+      }
+    } else if (!isLiteral(atom, '.')) {
+      return false;
+    }
+    return previous.optional !== true || labelBoundaryBefore(tokens, atomStart);
+  }
+  return (
+    isLiteral(previous, '/') && isLiteral(tokens[end - 2], '/') && isLiteral(tokens[end - 3], ':')
+  );
+}
+
 function endsWithLiteralDomain(tokens: readonly RegexToken[]): boolean {
   const last = tokens.at(-1);
   if (last?.kind === 'close') {
-    // Find the matching open, then require every alternative inside to end in a literal domain.
-    let depth = 0;
-    let open = -1;
-    for (let i = tokens.length - 1; i >= 0; i -= 1) {
-      const token = tokens[i];
-      if (token?.kind === 'close') {
-        depth += 1;
-      } else if (token?.kind === 'open') {
-        depth -= 1;
-        if (depth === 0) {
-          open = i;
-          break;
-        }
-      }
-    }
+    // A group at the end: each alternative, read after what comes before the group.
+    const open = matchingOpen(tokens, tokens.length - 1);
     if (open === -1) {
       return false;
     }
-    return splitAlternatives(tokens.slice(open + 1, -1)).every(endsWithLiteralDomain);
+    const before = tokens.slice(0, open);
+    return splitAlternatives(tokens.slice(open + 1, -1)).every((alternative) =>
+      endsWithLiteralDomain([...before, ...alternative]),
+    );
   }
-  // Walk back over literal label characters to a literal `.`.
-  let i = tokens.length - 1;
-  let labelLength = 0;
-  while (i >= 0) {
-    const token = tokens[i];
-    if (token?.kind !== 'chars' || token.literal !== true) {
-      return false;
+  // Walk back over literal label characters and dots: the literal domain.
+  let start = tokens.length;
+  let domain = '';
+  while (start > 0) {
+    const token = tokens[start - 1];
+    if (
+      token?.kind !== 'chars' ||
+      token.literal !== true ||
+      !/^[a-z0-9.-]$/iu.test(token.chars ?? '')
+    ) {
+      break;
     }
-    if (token.chars === '.') {
-      return labelLength > 0;
-    }
-    if (!/^[a-z0-9-]$/iu.test(token.chars ?? '')) {
-      return false;
-    }
-    labelLength += 1;
-    i -= 1;
+    domain = (token.chars ?? '') + domain;
+    start -= 1;
   }
-  return false;
+  // A leading `.` after something else is itself the label boundary.
+  const bounded = (start > 0 && domain.startsWith('.')) || labelBoundaryBefore(tokens, start);
+  const labels = (domain.startsWith('.') ? domain.slice(1) : domain).split('.');
+  return (
+    bounded &&
+    !(start === 0 && domain.startsWith('.')) &&
+    labels.length >= 2 &&
+    labels.every((label) => label !== '')
+  );
 }
 
 function splitAlternatives(tokens: readonly RegexToken[]): RegexToken[][] {

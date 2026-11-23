@@ -110,12 +110,22 @@ describe('regexAdmitsOnlySafe', () => {
 });
 
 describe('regexPinsHost', () => {
-  it.each(['^example\\.com$', '^(app|docs)\\.example\\.com$', '^[a-z]+\\.example\\.com$'])(
-    'pins %s',
-    (pattern) => {
-      expect(regexPinsHost(pattern, '')).toBe(true);
-    },
-  );
+  it.each([
+    '^example\\.com$',
+    '^(app|docs)\\.example\\.com$',
+    '^[a-z]+\\.example\\.com$',
+    // An anchored group of subdomains ending in a literal dot.
+    '^(?:[a-z0-9-]+\\.)*example\\.com$',
+    '^([a-z]+\\.)?example\\.com$',
+    // An alternation of exact domains.
+    '^(app\\.example\\.com|docs\\.example\\.org)$',
+    '^(?:app|docs)\\.example\\.com$',
+    // An origin: the host starts after a literal `://`.
+    '^https:\\/\\/example\\.com$',
+    '^https:\\/\\/(?:[a-z0-9-]+\\.)?example\\.com$',
+  ])('pins %s', (pattern) => {
+    expect(regexPinsHost(pattern, '')).toBe(true);
+  });
 
   it.each([
     'example\\.com$',
@@ -126,6 +136,25 @@ describe('regexPinsHost', () => {
     '^([]|.*)\\.example\\.com$',
     '^[^]+$',
     '^app\\.example\\.com$|^evil$',
+    // A class or quantified atom that can end in a label character before the domain.
+    '^[a-z0-9.-]*example\\.com$',
+    '^[\\w.-]*example\\.com$',
+    '^[a-z]+example\\.com$',
+    '^https:\\/\\/[a-z0-9.-]*example\\.com$',
+    // A bare top-level domain.
+    '^[a-z0-9-]+\\.com$',
+    '^com$',
+    '^(?:[a-z]+\\.)*com$',
+    // An optional dot, or a group that can end without one.
+    '^[a-z]+\\.?example\\.com$',
+    '^[a-z]+(?:\\.)?example\\.com$',
+    '^[a-z]*(?:a|b\\.)example\\.com$',
+    '^[a-z]*(?:|b\\.)example\\.com$',
+    // One alternative that ends in a bare TLD or after a class.
+    '^(app\\.example\\.com|[a-z]+\\.com)$',
+    '^(app\\.example\\.com|[a-z]*example\\.com)$',
+    // An empty label.
+    '^\\.example\\.com$',
   ])('does not pin %s', (pattern) => {
     expect(regexPinsHost(pattern, '')).toBe(false);
   });

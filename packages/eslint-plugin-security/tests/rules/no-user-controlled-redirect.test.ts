@@ -196,6 +196,15 @@ ruleTester.run('no-user-controlled-redirect', noUserControlledRedirectRule, {
       code: "function h(req) { const u = new URL(String(req.query.next)); if (u.origin !== 'https://app.example.com') return; return new Response(null, { status: 302, headers: { Location: u.href } }); }",
       filename: TS,
     },
+    // Any subdomain of example.com, and an origin with an optional subdomain.
+    {
+      code: 'function h(req, res) { const next = String(req.query.next); if (!/^(?:[a-z0-9-]+\\.)*example\\.com$/.test(new URL(next).hostname)) return res.status(403).end(); res.redirect(next); }',
+      filename: TS,
+    },
+    {
+      code: 'function h(req) { const next = String(req.query.next); if (!/^https:\\/\\/([a-z0-9-]+\\.)?example\\.com$/.test(new URL(next).origin)) return; redirect(next); }',
+      filename: TS,
+    },
     // Fixed values in the other header forms.
     { code: "res.writeHead(302, ['Location', '/home', 'Cache-Control', cache]);", filename: TS },
     { code: "res.writeHead(302, [['Location', '/home'], ['Content-Type', type]]);", filename: TS },
@@ -665,6 +674,34 @@ ruleTester.run('no-user-controlled-redirect', noUserControlledRedirectRule, {
     // A holder that refers to itself still ends.
     {
       code: 'function h(res) { const headers = {}; Object.assign(headers, headers, { Location: target }); res.writeHead(302, headers); }',
+      filename: TS,
+      errors: [error],
+    },
+    // A host regex must end in a literal domain of at least two labels, right
+    // after `^`, a literal dot or a group ending in one: `evilexample.com` and
+    // any `.com` host pass these.
+    {
+      code: 'function h(req, res) { const next = String(req.query.next); if (!/^[a-z0-9.-]*example\\.com$/.test(new URL(next).hostname)) return res.status(403).end(); res.redirect(next); }',
+      filename: TS,
+      errors: [error],
+    },
+    {
+      code: 'function h(req, res) { const next = String(req.query.next); const host = new URL(next).hostname; if (!/^[\\w.-]*example\\.com$/.test(host)) return; res.redirect(next); }',
+      filename: TS,
+      errors: [error],
+    },
+    {
+      code: 'function h(req, res) { const next = String(req.query.next); if (!/^[a-z0-9-]+\\.com$/.test(new URL(next).hostname)) return; res.redirect(next); }',
+      filename: TS,
+      errors: [error],
+    },
+    {
+      code: 'function h(req) { const next = String(req.query.next); if (!/^https:\\/\\/[a-z0-9.-]*example\\.com$/.test(new URL(next).origin)) return; redirect(next); }',
+      filename: TS,
+      errors: [error],
+    },
+    {
+      code: "function h(req, res) { const next = String(req.query.next); const host = new URL(next).hostname; if (!/^[a-z]+\\.?example\\.com$/.test(host)) return; res.set('Location', next).sendStatus(302); }",
       filename: TS,
       errors: [error],
     },
