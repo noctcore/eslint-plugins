@@ -63,8 +63,8 @@ The default `fetchCallees` cover `fetch`, `axios` with its methods, `axios(confi
 `axios(url, config)`, `axios.request(config)`, and Node's `http.get`, `http.request`, `https.get`
 and `https.request`. An options or config object is read when it is an object literal, or an
 in-file `const` bound to one that nothing changes before the call (`opts.host = x`,
-`Object.assign(opts, ...)` or handing it to a helper makes it unreadable, and then it is reported as
-a runtime URL). Later keys win, a spread of such an object copies its keys, and a spread or computed
+`Object.assign(opts, ...)` or handing it to a helper makes it unreadable). `as`, `satisfies`, `!`
+and `<T>` around the object or the `const` are seen through. Later keys win, a spread of such an object copies its keys, and a spread or computed
 key the rule cannot read (`...req.body`, `[key]: value`) is reported, since it may set any key.
 
 **Node `http` / `https`.** The rule reads the options the way Node picks the target. With
@@ -185,10 +185,13 @@ export function probe(input: string) {
   the request there. Node's `http` / `https` do not follow redirects, but a wrapper that does
   (`follow-redirects`) has the same effect. When the allowed host can be made to redirect, send the
   request with `redirect: 'manual'` (`fetch`) or `maxRedirects: 0` (axios) and check each hop.
-- An options object the rule cannot see is not read: a parameter or a call result passed as the
-  second argument of `https.get(url, options)` or as an axios config after the URL. An in-file
-  `const` object changed before the call is reported in those places, and a first argument the rule
-  cannot see is reported as a runtime URL.
+- An options object the rule cannot read after the URL is left alone: a parameter or a call result
+  passed as the second argument of `https.get(url, options)` or as an axios config after the URL.
+  An in-file `const` object changed before the call is reported in those places. A first argument
+  the rule cannot read (a parameter, `req.body`, a conditional, a call result, a changed `const`)
+  is always reported: as a runtime URL for `fetch`, `http` / `https`, `axios(...)` and
+  `axios.request(...)`, as a runtime port, path or options object for a socket, and as a runtime
+  config for `axios.create(...)`.
 - An axios instance is seen only as a `const` bound to `axios.create(...)` in the same file.
 - A reverse proxy that forwards `req.url` as the `path` of a fixed host is reported: `req.url` can
   be a full URL. Name your path sanitizer in `sanitizers`.
