@@ -50,9 +50,18 @@ A redirect is also a `Location` header plus a 3xx status. On a receiver named in
 (`res`, `response`, `reply` by default), these are checked like `res.redirect`:
 
 - `res.location(url)` (in the default `redirectCallees`);
-- `res.set('Location', url)`, `res.header('location', url)`, `res.setHeader('Location', url)`, with
-  the header name in any case;
-- `res.set({ Location: url })` and `res.writeHead(302, { Location: url })`.
+- `res.set('Location', url)`, `res.header('location', url)`, `res.setHeader('Location', url)`,
+  `res.append('Location', url)` and `res.appendHeader('Location', url)`, with the header name in
+  any case, also when a binding holds it (`const L = 'Location'`), and through a computed method
+  (`res['setHeader'](...)`);
+- `res.set({ Location: url })`, `reply.headers({ Location: url })` and
+  `res.writeHead(302, { Location: url })`, also with a computed key (`{ [L]: url }`), Node's array
+  forms (`['Location', url]` and `[['Location', url]]`), `res.setHeaders(new Map(...))` or
+  `new Headers(...)`, and a headers holder built earlier in the file (`const headers = {}`, then
+  `headers.Location = url`, `headers.set(...)`, `headers.push(...)` or `Object.assign(headers, ...)`).
+
+Outside Express and Fastify, `Response.redirect(url)` (in the default `redirectCallees`) and the
+`headers` of `new Response(body, init)` or `new NextResponse(body, init)` are read the same way.
 
 A sink after calls that return the response is still on the response:
 `res.status(302).set('Location', url)`, `reply.code(302).header('Location', url)` and
@@ -61,6 +70,18 @@ A sink after calls that return the response is still on the response:
 ```ts bad
 export function back(req, res) {
   return res.status(302).set('Location', String(req.query.next)).end();
+}
+```
+
+```ts bad reports=2
+const LOCATION = 'location';
+
+export function back(req, res) {
+  res.writeHead(302, [LOCATION, String(req.query.next)]);
+}
+
+export function GET(request: Request) {
+  return Response.redirect(new URL(request.url).searchParams.get('next') ?? '/');
 }
 ```
 
@@ -78,13 +99,25 @@ export function back(req, res) {
   anchored at both ends, without the `m` flag or a `.` wildcard, whose every alternative ends in a
   literal domain (`^(app|docs)\.example\.com$`, `^([a-z]+\.)?example\.com$`). `const` aliases and
   `String(url)` are followed. The host can also be checked inline:
-  `if (!HOSTS.includes(new URL(url).hostname)) return;`.
+  `if (!HOSTS.includes(new URL(url).hostname)) return;`. A change to the URL object after the check
+  (`u.host = x`, `Object.assign(u, ...)`, `Reflect.set(u, ...)`, a write through an alias, or
+  handing `u` to a function) cancels it.
+- A `hostname` or `host` check counts only for a `Location` header a receiver in `responseObjects`
+  writes (`res.redirect`, `res.set(...)`, `reply.redirect` and the rest). Browsers refuse to follow
+  such a header to a scheme other than http(s). Any other sink (`redirect()`,
+  `NextResponse.redirect`, `Response.redirect`, `new Response(...)`, a configured callee) may hand
+  the URL to a client-side router, where `javascript://app.example.com/%0aalert(1)` passes a host
+  check and runs. There, only an `origin` check counts: the origin of a URL that is not http(s) is
+  `null`.
 - A same-site path: the function checked the binding before the redirect (an `if` that exits, or
-  an `if` around it) with `startsWith('/')` while refusing both `startsWith('//')` and
-  `startsWith('/\\')` (or `includes('\\')`), or with a regex that starts `^\/` followed by a
+  an `if` around it) with `startsWith('/')` while refusing `startsWith('//')`, `startsWith('/\\')`
+  (or `includes('\\')`) and a tab, a line feed and a carriage return (`includes('\t')`, ...,
+  or a one-class regex such as `/[\t\n\r]/`), or with a regex that starts `^\/` followed by a
   character that cannot be `/`, `\`, a tab or a line break (`^\/[a-z0-9]`, `^\/[^\/\\\s]`).
-  Browsers read `/\evil.com` and `/<tab>/evil.com` as `//evil.com`, so a check that refuses only
-  `//` keeps the report.
+  Browsers read `/\evil.com` and `/<tab>/evil.com` as `//evil.com`, and Node lets a tab through
+  in a raw header, so a check that refuses only `//` and `/\` keeps the report. When the value is
+  searched bare (`next.includes('\t')`), the `startsWith('/')` check must read the bare value too:
+  `String(next).startsWith('/')` with a bare `next.includes(...)` lets an array through.
 - A value read from an in-file table of literal destinations: `TABLE[key]`, `TABLE.key` or
   `MAP.get(key)` on a `const` object or `new Map([...])` whose values are all literals, never
   exported or changed (also with a literal fallback, `TABLE[key] ?? '/'`).
@@ -125,10 +158,19 @@ export function back(req, res) {
 }
 ```
 
+```ts bad
+// `/<tab>/evil.com` passes this check: the browser drops the tab
+export function back(req, res) {
+  const next = String(req.query.next);
+  if (!next.startsWith('/') || next.startsWith('//') || next.startsWith('/\\')) return res.end();
+  res.set('Location', next).sendStatus(302);
+}
+```
+
 ```ts good
 export function back(req, res) {
   const next = String(req.query.next);
-  if (!next.startsWith('/') || next.startsWith('//') || next.startsWith('/\\')) {
+  if (!next.startsWith('/') || next.startsWith('//') || next.startsWith('/\\') || /[\t\n\r]/.test(next)) {
     return res.redirect('/');
   }
   res.redirect(next);
@@ -179,7 +221,7 @@ throw redirect({ href: search.next });
 | Option | Type | Default | Meaning |
 | --- | --- | --- | --- |
 | `redirectCallees` | `CalleeSpec[]` | see below | Call shapes that redirect. Setting this replaces the defaults. |
-| `responseObjects` | `string[]` | `['res', 'response', 'reply']` | Receivers whose `set` / `header` / `setHeader` / `writeHead` calls are checked for a `Location` header. Setting this replaces the defaults. |
+| `responseObjects` | `string[]` | `['res', 'response', 'reply']` | Receivers whose header writes (`set`, `header`, `headers`, `setHeader`, `append`, `appendHeader`, `setHeaders`, `writeHead`) are checked for a `Location` header. A `hostname` / `host` check counts only for these receivers; other sinks need an `origin` check. Setting this replaces the defaults. |
 | `trustedOrigins` | `string[]` | `[]` | Expressions (source text) that are a fixed-origin URL. `name()` matches any call to `name`. |
 | `sanitizers` | `string[]` | `[]` | Functions whose result is a safe same-origin path. |
 | `trustedPaths` | `string[]` | `[]` | Expressions (source text) that hold a safe same-origin path, e.g. an imported constant. |
@@ -200,6 +242,7 @@ Default `redirectCallees`:
 | `response.redirect([status,] url)` (Express) | last |
 | `res.location(url)` (Express) | 0 |
 | `response.location(url)` (Express) | 0 |
+| `Response.redirect(url[, status])` (Fetch API) | 0 |
 
 `'last'` covers both Express forms: `res.redirect(url)` and `res.redirect(302, url)`.
 
@@ -244,6 +287,12 @@ res.redirect(302, `${this.shared.appUrl}${flow.returnTo}`);
 Entries match by source text with whitespace ignored. An entry ending in `()` matches any call to
 that callee, whatever its arguments. For Next.js middleware, `trustedOrigins: ['request.url']` lets
 `NextResponse.redirect(new URL('/login', request.url))` pass.
+
+### Limits
+
+The header name and the headers holder are read in the same file: a name imported from another
+module, a receiver under another name (`const r = res`), a destructured method
+(`const { setHeader } = res`) or a holder filled by a helper are not seen.
 
 ## When not to use it
 
