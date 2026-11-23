@@ -388,6 +388,37 @@ function anchoredBody(pattern: string, flags: string): RegexToken[] | null {
 }
 
 /**
+ * Whole values a context must never receive, whatever their characters. An
+ * empty shell value drops out of the command (`rm -rf /srv/${x}` with `x = ''`
+ * removes `/srv/`, and an empty unquoted argument shifts the ones after it); a
+ * path segment of `.` or `..` (or empty) names the directory itself or its parent.
+ */
+const FORBIDDEN_VALUES: Readonly<Record<GuardContext, readonly string[]>> = {
+  shell: [''],
+  'shell-word': [''],
+  command: [''],
+  html: [],
+  path: ['', '.', '..'],
+};
+
+/**
+ * True when the regex accepts one of `values`, tried on the compiled regex
+ * itself (without `g` or `y`, which would make the test depend on
+ * `lastIndex`). A pattern that does not compile here counts as accepting.
+ */
+function matchesAny(pattern: string, flags: string, values: readonly string[]): boolean {
+  if (values.length === 0) {
+    return false;
+  }
+  try {
+    const regex = new RegExp(pattern, flags.replace(/[gy]/gu, ''));
+    return values.some((value) => regex.test(value));
+  } catch {
+    return true;
+  }
+}
+
+/**
  * True when every string the regex accepts is made only of characters that are
  * harmless in `context`: anchored `^...$`, no `m` flag, no `.`, and no class or
  * escape that admits an unsafe character.
@@ -413,8 +444,11 @@ export function regexAdmitsOnlySafe(
       token.kind !== 'unknown' &&
       (token.kind !== 'chars' || ![...(token.chars ?? '')].some((char) => unsafe.includes(char))),
   );
-  if (!admitsOnlySafe || context !== 'shell') {
-    return admitsOnlySafe;
+  if (!admitsOnlySafe || matchesAny(pattern, flags, FORBIDDEN_VALUES[context])) {
+    return false;
+  }
+  if (context !== 'shell') {
+    return true;
   }
   const admitsLeading = body.some(
     (token) =>

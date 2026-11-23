@@ -19,8 +19,9 @@ describe('regexAdmitsOnlySafe', () => {
     ['^[a-z0-9_-]+$', 'path'],
     ['^(asc|desc)$', 'shell'],
     ['^\\d{1,6}$', 'path'],
-    ['^[\\w.-]+$', 'path'],
+    ['^[\\w-][\\w.-]*$', 'path'],
     ['^[a-zA-Z0-9 _.#%-]+$', 'html'],
+    ['^[a-z]*$', 'html'],
     ['^[\\]a]+$', 'html'],
     ['^(?:a|b)(?<n>c)$', 'shell'],
   ] as const)('accepts %s for %s', (pattern, context) => {
@@ -56,6 +57,18 @@ describe('regexAdmitsOnlySafe', () => {
     ['^[a-z]*-[a-z]+$', 'shell'],
     ['^[a-z#]+$', 'shell'],
     ['^(-|a)[a-z]+$', 'shell'],
+    // A value that can be empty drops out of the command or names the base directory.
+    ['^[a-z]*$', 'shell'],
+    ['^[a-z]{0,8}$', 'shell'],
+    ['^([a-z]+)?$', 'shell-word'],
+    ['^[a-z0-9_]*$', 'path'],
+    // `.` and `..` name the directory itself and its parent.
+    ['^[\\w.-]+$', 'path'],
+    ['^\\.\\.?$', 'path'],
+    ['^[a-z.]+$', 'path'],
+    // A program name is proven by a literal allowlist only.
+    ['^[a-z]+$', 'command'],
+    ['^(git|ls)$', 'command'],
     // `{00}` and `{00,}` allow zero repetitions as `{0}` does, so `-` can lead.
     ['^a{00}[-a-z]+$', 'shell'],
     ['^a{00,3}[-a-z]+$', 'shell'],

@@ -581,6 +581,17 @@ ruleTester.run('no-shell-interpolation', noShellInterpolationRule, {
       filename: TS,
       errors: [{ messageId: 'shellInterpolation' }],
     },
+    // A regex that admits the empty string: `rm -rf /srv/` with an empty value.
+    {
+      code: 'function h(x: string) { if (!/^[a-z]*$/.test(x)) return; exec(`rm -rf /srv/${x}`); }',
+      filename: TS,
+      errors: [{ messageId: 'shellInterpolation' }],
+    },
+    {
+      code: 'function h(x: string) { if (!/^([a-z]+)?$/.test(x)) return; exec(`tool --in ${x} --out f`); }',
+      filename: TS,
+      errors: [{ messageId: 'shellInterpolation' }],
+    },
     // `safeParse` without the exit, an unconfined field, a list that is not frozen and leaks.
     {
       code: "import { z } from 'zod'; const S = z.string().regex(/^[a-z]+$/); function run(x: string) { const r = S.safeParse(x); exec(`tool ${r.data}`); }",
