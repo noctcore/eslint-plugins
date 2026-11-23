@@ -97,7 +97,11 @@ export function GET(request: Request) {
   redirect (an `if` that exits, or an `if` around it), and the URL was not written after the read.
   The allowlist is `includes` / `has` on in-file literals, `===` against literals, or a regex
   anchored at both ends, without the `m` flag or a `.` wildcard, whose every alternative ends in a
-  literal domain (`^(app|docs)\.example\.com$`, `^([a-z]+\.)?example\.com$`). `const` aliases and
+  literal domain of at least two labels, bounded by `^` or a dot: right before the domain comes
+  `^`, a literal `\.`, a group whose every alternative ends in `\.`, or (for `origin`) a literal
+  `://` (`^(app|docs)\.example\.com$`, `^([a-z]+\.)?example\.com$`,
+  `^(?:[a-z0-9-]+\.)*example\.com$`). `^[a-z0-9.-]*example\.com$` accepts `evilexample.com` and
+  `^[a-z]+\.com$` accepts any `.com` host, so neither counts. `const` aliases and
   `String(url)` are followed. The host can also be checked inline:
   `if (!HOSTS.includes(new URL(url).hostname)) return;`. A change to the URL object after the check
   (`u.host = x`, `Object.assign(u, ...)`, `Reflect.set(u, ...)`, a write through an alias, or
