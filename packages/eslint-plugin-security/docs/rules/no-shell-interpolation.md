@@ -141,8 +141,13 @@ the rule can read:
 
 Every write to the checked binding must come before the check, in the function that declares it:
 a write from a nested function (`const reset = () => { x = other; }`) cancels the check, since it
-can run at any time. The rule follows `const` aliases (`const picked = sort`) and the global
-`String(x)`:
+can run at any time. A binding declared outside the checking function (a closure over an outer
+`let`) must never be written after its `let` or `const` declaration, since the checking function
+can run between the outer writes (hoisted above them, or resumed after an `await`). A change made
+through an alias (`const p = parts; p.push(y)`), `Object.assign` or `Reflect.set` counts as a
+write, and so does a list or `Set` changed through another `const` name for it. A count written as
+`{00}` allows zero repetitions like `{0}`. The rule follows `const` aliases (`const picked = sort`)
+and the global `String(x)`:
 
 ```ts bad
 // the check does not stop the call: it only logs
@@ -203,11 +208,15 @@ export function status() {
 
 ### What the rule does not see
 
-In sloppy-mode scripts `arguments[0] = other` also changes the first parameter; ES modules and
-TypeScript output are strict, where it does not. A checked array changed in place after the check
-(`parts.push(y)`, `parts[0] = y`) cancels the check, but one handed to a function that changes it
-is not tracked; check the string you interpolate. An imported binding (`import { mode } from
-'./state'`) is never treated as checked: the other module can reassign it after the check.
+A checked array changed in place after the check (`parts.push(y)`, `parts[0] = y`) cancels the
+check. Handing it to a function, or storing it in an array or object, after the check also cancels
+it when the function gave the binding an array, object or `new` value itself (`const parts =
+[x]`). A parameter that receives an array from the caller (an Express query string can produce
+one) and is then handed to a helper that changes it is not tracked; check the string you
+interpolate. In a sloppy-mode script, a parameter of a function that uses `arguments` is never
+treated as checked, since `arguments[0] = other` changes it; ES modules and TypeScript output are
+strict, where it does not. An imported binding (`import { mode } from './state'`) is never treated
+as checked: the other module can reassign it after the check.
 
 ## Options
 
