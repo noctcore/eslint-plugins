@@ -120,7 +120,47 @@ interface DynamicPart {
   readonly node: TSESTree.Node;
   /** True when static text right before it puts it inside a word (`--author=${x}`). */
   readonly midWord: boolean;
+  /**
+   * True when it is part of the word that names the program: first in the
+   * string, after a `;`, `&`, `|`, `(`, backtick or line break, or after a
+   * reserved word, a prefix command (`sudo`, `env`, `xargs`) or `NAME=value`.
+   */
+  readonly commandWord: boolean;
 }
+
+/** Characters after which the next word names a program. */
+const COMMAND_SEPARATORS = ';&|()`\n\r';
+
+/**
+ * Words after which the next word still names a program: shell reserved
+ * words and commands that run their arguments as a command.
+ */
+const COMMAND_PREFIXES: ReadonlySet<string> = new Set([
+  '!',
+  '{',
+  'if',
+  'then',
+  'else',
+  'elif',
+  'do',
+  'while',
+  'until',
+  'time',
+  'exec',
+  'command',
+  'builtin',
+  'sudo',
+  'doas',
+  'env',
+  'nohup',
+  'nice',
+  'timeout',
+  'stdbuf',
+  'xargs',
+]);
+
+/** `NAME=value` before a command sets a variable for it; the next word is still the program. */
+const ASSIGNMENT_WORD = /^[A-Za-z_]\w*=/u;
 
 /**
  * Static text before a value glues it into a word when it ends in a plain word
@@ -151,12 +191,35 @@ function dynamicParts(node: TSESTree.Node): DynamicPart[] {
   };
   collect(node);
   const parts: DynamicPart[] = [];
+  // Whether the word being read names the program, and the static text of it
+  // so far (a value inside it is marked so it never reads as a keyword).
+  let commandPosition = true;
+  let word = '';
   segments.forEach((segment, index) => {
-    if (typeof segment === 'string') {
+    if (typeof segment !== 'string') {
+      const before = segments[index - 1];
+      parts.push({
+        node: segment,
+        midWord: typeof before === 'string' && WORD_END.test(before),
+        commandWord: commandPosition,
+      });
+      word += '\u0000';
       return;
     }
-    const before = segments[index - 1];
-    parts.push({ node: segment, midWord: typeof before === 'string' && WORD_END.test(before) });
+    for (const char of segment) {
+      if (COMMAND_SEPARATORS.includes(char)) {
+        commandPosition = true;
+        word = '';
+      } else if (char === ' ' || char === '\t') {
+        if (word !== '') {
+          commandPosition =
+            commandPosition && (COMMAND_PREFIXES.has(word) || ASSIGNMENT_WORD.test(word));
+          word = '';
+        }
+      } else {
+        word += char;
+      }
+    }
   });
   return parts;
 }
@@ -298,12 +361,13 @@ export const noShellInterpolationRule = createRule<RuleOptions, MessageIds>({
         // from `process.env`.
         const trustEnvironment = options.trustEnvironment === true;
         // A value that starts a word must not start with `-` (an option) or
-        // `#` (a comment); one glued to text before it may.
+        // `#` (a comment); one glued to text before it may. A value in the
+        // program name is proven only by a literal allowlist or a constant.
         const provenSafe = dynamicParts(command).every((part) =>
           isProvenSafeValue(
             part.node,
             node,
-            part.midWord ? 'shell-word' : 'shell',
+            part.commandWord ? 'command' : part.midWord ? 'shell-word' : 'shell',
             context.sourceCode,
             { trustEnvironment },
           ),

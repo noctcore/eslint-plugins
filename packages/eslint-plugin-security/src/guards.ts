@@ -43,8 +43,10 @@ const SHELL_LEADING = '-#';
  * Where a value lands, which decides the characters a regex may admit.
  * `shell-word` is a shell value glued to text before it in the same word
  * (`--author=${x}`), where a leading `-` or `#` is not an option or a comment.
+ * `command` is a shell value in the program-name position, which no regex or
+ * schema pattern proves, only a literal allowlist or a constant.
  */
-export type GuardContext = 'shell' | 'shell-word' | 'html' | 'path';
+export type GuardContext = 'shell' | 'shell-word' | 'command' | 'html' | 'path';
 
 const SHELL_UNSAFE = ';&|$`()<>{}[]*?!~\'"\\^\n\r \t\v\f';
 /** Characters each context must never receive from a value it cannot see. */
@@ -54,6 +56,7 @@ const UNSAFE_CHARACTERS: Readonly<Record<GuardContext, string>> = {
   // A leading `-` or `#` is refused apart (see `SHELL_LEADING`).
   shell: SHELL_UNSAFE,
   'shell-word': SHELL_UNSAFE,
+  command: SHELL_UNSAFE,
   html: '<>&"\'`',
   // Separators (and a drive letter's `:`) are what move a path elsewhere.
   path: '/\\:\0',
@@ -394,6 +397,11 @@ export function regexAdmitsOnlySafe(
   flags: string,
   context: GuardContext,
 ): boolean {
+  if (context === 'command') {
+    // A program name is proven only by a literal allowlist: any regex that
+    // admits `reboot` or `sh` lets the requester pick the program.
+    return false;
+  }
   const body = anchoredBody(pattern, flags);
   if (body === null) {
     return false;

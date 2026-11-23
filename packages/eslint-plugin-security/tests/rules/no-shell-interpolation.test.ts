@@ -150,6 +150,11 @@ ruleTester.run('no-shell-interpolation', noShellInterpolationRule, {
       filename: TS,
     },
     { code: "const BIN = '/usr/bin/git'; exec(`${BIN} status`);", filename: TS },
+    // A program name from a literal allowlist, an argument from a regex.
+    {
+      code: "const TOOLS = ['git', 'ls']; function h(t: string, f: string) { if (!TOOLS.includes(t) || !/^[a-z]+$/.test(f)) return; exec(`${t} ${f}`); exec(`cd /tmp && ${t} -x`); }",
+      filename: TS,
+    },
     // A checked string handed to a function, or read through an alias, is still the checked text.
     {
       code: 'declare function log(v: unknown): void; function h(x: string) { if (!/^[a-z]+$/.test(x)) return; log(x); const safe = x; exec(`ls ${safe}`); }',
@@ -533,6 +538,47 @@ ruleTester.run('no-shell-interpolation', noShellInterpolationRule, {
       code: 'function h(x, y) { if (!/^[a-z]+$/.test(x)) return; arguments[0] = y; exec(`ls ${x}`); }',
       filename: 'runner.js',
       languageOptions: { parserOptions: { sourceType: 'script' } },
+      errors: [{ messageId: 'shellInterpolation' }],
+    },
+    // A value that names the program is proven by a literal allowlist only: a regex admits `reboot` or `sh`.
+    {
+      code: 'function h(tool: string) { if (!/^[a-z]+$/.test(tool)) return; execSync(`${tool}`); }',
+      filename: TS,
+      errors: [{ messageId: 'shellInterpolation' }],
+    },
+    {
+      code: 'function h(tool: string, file: string) { if (!/^[a-z]+$/.test(tool) || !/^[a-z]+$/.test(file)) return; exec(`${tool} ${file}`); }',
+      filename: TS,
+      errors: [{ messageId: 'shellInterpolation' }],
+    },
+    {
+      code: 'function h(tool: string) { if (!/^[a-z]+$/.test(tool)) return; exec(`cd /tmp && ${tool} -x`); }',
+      filename: TS,
+      errors: [{ messageId: 'shellInterpolation' }],
+    },
+    {
+      code: 'function h(tool: string) { if (!/^[a-z]+$/.test(tool)) return; exec(`ls; ${tool}`); }',
+      filename: TS,
+      errors: [{ messageId: 'shellInterpolation' }],
+    },
+    {
+      code: 'function h(tool: string) { if (!/^[a-z]+$/.test(tool)) return; exec(`/usr/bin/${tool} --help`); }',
+      filename: TS,
+      errors: [{ messageId: 'shellInterpolation' }],
+    },
+    {
+      code: 'function h(tool: string) { if (!/^[a-z]+$/.test(tool)) return; exec(`sudo ${tool}`); }',
+      filename: TS,
+      errors: [{ messageId: 'shellInterpolation' }],
+    },
+    {
+      code: 'function h(tool: string) { if (!/^[a-z]+$/.test(tool)) return; exec(`LANG=C ${tool}`); }',
+      filename: TS,
+      errors: [{ messageId: 'shellInterpolation' }],
+    },
+    {
+      code: "import { z } from 'zod'; const Tool = z.string().regex(/^[a-z]+$/); function h(t: string) { exec(`${Tool.parse(t)} --version`); }",
+      filename: TS,
       errors: [{ messageId: 'shellInterpolation' }],
     },
     // `safeParse` without the exit, an unconfined field, a list that is not frozen and leaks.
