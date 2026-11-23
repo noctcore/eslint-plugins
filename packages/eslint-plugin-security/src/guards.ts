@@ -3916,9 +3916,15 @@ function refusedDots(node: TSESTree.Node, subject: Subject, sourceCode: SourceCo
     readsVariable(test.arguments[0] as TSESTree.Node, subject, sourceCode)
   ) {
     const regex = regexOf(test.callee.object, sourceCode);
-    return regex === null
-      ? []
-      : DOT_SEGMENTS.filter((dots) => matchesAny(regex.pattern, regex.flags, [dots]));
+    // A `g` or `y` regex keeps `lastIndex` between calls, so a shared one
+    // (`const DOTS = /^\.{1,2}$/g`) answers `test('..')` true, then false.
+    // A literal written at the test is a new object, with `lastIndex` 0, each
+    // time the test runs.
+    const fresh = unwrap(test.callee.object).type === AST_NODE_TYPES.Literal;
+    if (regex === null || (/[gy]/u.test(regex.flags) && !fresh)) {
+      return [];
+    }
+    return DOT_SEGMENTS.filter((dots) => matchesAny(regex.pattern, regex.flags, [dots]));
   }
   return [];
 }
