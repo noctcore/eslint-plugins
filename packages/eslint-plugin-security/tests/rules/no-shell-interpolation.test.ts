@@ -595,5 +595,42 @@ ruleTester.run('no-shell-interpolation', noShellInterpolationRule, {
       filename: TS,
       errors: [{ messageId: 'shellInterpolation' }],
     },
+    // A whole `result.data` changed: before the check, through `Object.assign`, a call, an alias, a destructuring target.
+    {
+      code: "import { z } from 'zod'; const S = z.string().regex(/^[a-z]+$/); function run(x: string, e: string) { const r = S.safeParse(x); r.data = e; if (!r.success) return; exec(`ls ${r.data}`); }",
+      filename: TS,
+      errors: [{ messageId: 'shellInterpolation' }],
+    },
+    {
+      code: "import { z } from 'zod'; const S = z.string().regex(/^[a-z]+$/); function run(x: string, e: string) { const r = S.safeParse(x); if (!r.success) return; Object.assign(r, { data: e }); exec(`ls ${r.data}`); }",
+      filename: TS,
+      errors: [{ messageId: 'shellInterpolation' }],
+    },
+    {
+      code: "import { z } from 'zod'; const S = z.string().regex(/^[a-z]+$/); declare function mutate(v: unknown): void; function run(x: string) { const r = S.safeParse(x); if (!r.success) return; mutate(r); exec(`ls ${r.data}`); }",
+      filename: TS,
+      errors: [{ messageId: 'shellInterpolation' }],
+    },
+    {
+      code: "import { z } from 'zod'; const S = z.string().regex(/^[a-z]+$/); function run(x: string, e: string) { const r = S.safeParse(x); if (!r.success) return; const q = r; q.data = e; exec(`ls ${r.data}`); }",
+      filename: TS,
+      errors: [{ messageId: 'shellInterpolation' }],
+    },
+    {
+      code: "import { z } from 'zod'; const S = z.string().regex(/^[a-z]+$/); function run(x: string, e: string) { const r = S.safeParse(x); if (!r.success) return; ({ v: r.data } = { v: e }); exec(`ls ${r.data}`); }",
+      filename: TS,
+      errors: [{ messageId: 'shellInterpolation' }],
+    },
+    // A `-` or `+` right before the value does not glue it: `-${x}` with `x = '-output=f'` is a long option.
+    {
+      code: "const RE = /^[a-z-]+$/; function run(x: string) { if (!RE.test(x)) return; exec(`tool -${x}`); }",
+      filename: TS,
+      errors: [{ messageId: 'shellInterpolation' }],
+    },
+    {
+      code: "const RE = /^[a-z-]+$/; function run(x: string) { if (!RE.test(x)) return; exec('tool +' + x); }",
+      filename: TS,
+      errors: [{ messageId: 'shellInterpolation' }],
+    },
   ],
 });

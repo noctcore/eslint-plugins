@@ -122,8 +122,12 @@ interface DynamicPart {
   readonly midWord: boolean;
 }
 
-/** Static text before a value glues it into a word when it ends in a plain word character. */
-const WORD_END = /[\w=:,./@%+-]$/u;
+/**
+ * Static text before a value glues it into a word when it ends in a plain word
+ * character. A trailing `-` or `+` does not: `tool -${x}` with `x = '-output=f'`
+ * makes a long option.
+ */
+const WORD_END = /[\w=:,./@%]$/u;
 
 function dynamicParts(node: TSESTree.Node): DynamicPart[] {
   const segments: (string | TSESTree.Node)[] = [];
