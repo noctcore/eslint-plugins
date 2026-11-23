@@ -432,16 +432,21 @@ export function stateKey(state: HtmlState): string {
  *                  `with`, whose `)` ends a head a regex may follow
  *   `T`            a `/` where a regex may start: `/` or `*` make a comment
  *   `~`            a `/` after an operand: a comment, or division
+ *   `U`            a `/` of unknown kind: a comment, or else lost track
  *   `R` `C`        a regex body, and a `[...]` class inside it
  *   `/` `*`        a line or block comment; `+` is a `*` inside a block comment
  *   `?`            lost track: never a code position again
  *
  * Previous token: `r` (a regex may follow: the start, an operator,
- * punctuation, a keyword, or the `)` of an `if (...)` head), `d` (division
- * follows: any other `)`, `]`, a literal, a string or regex end), `w<word>` (an identifier or number so far), `W` (a
- * word too long to be a keyword), `p+` / `p-` (one `+` or `-`), `u` (unknown:
- * `++`, `--`, `.` and the rest). A `/` after an unknown token loses track, so
- * the rule reports rather than guess.
+ * punctuation, a reserved keyword, or the `)` of an `if (...)` head), `d`
+ * (division follows: any other `)`, `]`, a string or regex end, a finished
+ * name), `w<word>` (a name or number still being read), `x<word>` (the same,
+ * ended by whitespace, so the next word starts afresh), `W` (a name that
+ * cannot be a keyword: too long, or a property after `.`), `.` (just after a
+ * dot), `p+` / `p-` (one `+` or `-`), `u` (unknown: `++`, `--`, a `}`, and
+ * the rest). A `/` after an unknown token, a `.` or a contextual keyword
+ * (`of`, `await`, `yield`, `let`, ...) is of unknown kind: a comment is still
+ * read, anything else loses track, so the rule reports rather than guess.
  */
 const MAX_JS_DEPTH = 24;
 const LINE_ENDS = /[\n\r\u2028\u2029]/u;
@@ -455,7 +460,6 @@ const REGEX_KEYWORDS: ReadonlySet<string> = new Set([
   'typeof',
   'instanceof',
   'in',
-  'of',
   'new',
   'delete',
   'void',
@@ -463,9 +467,9 @@ const REGEX_KEYWORDS: ReadonlySet<string> = new Set([
   'case',
   'do',
   'else',
-  'yield',
-  'await',
 ]);
+/** Words that are keywords only in some places, so a `/` after them may be either. */
+const CONTEXTUAL_KEYWORDS: ReadonlySet<string> = new Set(['of', 'await', 'yield', 'get', 'set', 'async', 'let', 'static']);
 const LONGEST_KEYWORD = 10;
 /** Keywords whose `(...)` head is followed by a statement, so a `/` after its `)` starts a regex. */
 const HEAD_KEYWORDS: ReadonlySet<string> = new Set(['if', 'while', 'for', 'with']);
@@ -493,16 +497,26 @@ function slashStartsRegex(prev: string): boolean | null {
   if (prev === 'd' || prev === 'W') {
     return false;
   }
-  if (prev.startsWith('w')) {
-    return REGEX_KEYWORDS.has(prev.slice(1));
+  const word = wordOf(prev);
+  if (word !== null) {
+    return CONTEXTUAL_KEYWORDS.has(word) ? null : REGEX_KEYWORDS.has(word);
   }
   return null;
+}
+
+/** The name or number `prev` holds, read or finished, when it may still be a keyword. */
+function wordOf(prev: string): string | null {
+  return prev.startsWith('w') || prev.startsWith('x') ? prev.slice(1) : null;
 }
 
 /** One character of code (top level, or inside a template's `${`). */
 function jsCode(stack: string, prev: string, char: string): string {
   if (JS_SPACE.test(char)) {
-    return joinJs(stack, prev);
+    // Whitespace ends a word: `q\nreturn` is two words, not `qreturn`.
+    if (prev.startsWith('w')) {
+      return joinJs(stack, `x${prev.slice(1)}`);
+    }
+    return joinJs(stack, prev === 'W' ? 'd' : prev);
   }
   switch (char) {
     case "'":
@@ -511,7 +525,7 @@ function jsCode(stack: string, prev: string, char: string): string {
       return joinJs(stack + char, prev);
     case '/': {
       const regex = slashStartsRegex(prev);
-      return regex === null ? '?' : joinJs(stack + (regex ? 'T' : '~'), prev);
+      return joinJs(stack + (regex === null ? 'U' : regex ? 'T' : '~'), prev);
     }
     case '{':
       return joinJs(stack.includes('{') ? `${stack}b` : stack, 'r');
@@ -521,14 +535,15 @@ function jsCode(stack: string, prev: string, char: string): string {
         // Back to the template's text.
         return joinJs(stack.slice(0, -1), prev);
       }
-      return joinJs(top === 'b' ? stack.slice(0, -1) : stack, 'r');
+      // A block or an expression (`({}) / 2`): a `/` after it is unknown.
+      return joinJs(top === 'b' ? stack.slice(0, -1) : stack, 'u');
     }
     case '+':
     case '-':
       // `a++ / b` is division, `a + /b/` a regex: a doubled sign is unknown.
       return joinJs(stack, prev === `p${char}` ? 'u' : `p${char}`);
     case '(':
-      return joinJs(stack + (prev.startsWith('w') && HEAD_KEYWORDS.has(prev.slice(1)) ? 'K' : 'P'), 'r');
+      return joinJs(stack + (HEAD_KEYWORDS.has(wordOf(prev) ?? '') ? 'K' : 'P'), 'r');
     case ')': {
       const top = stack.at(-1);
       if (top !== 'P' && top !== 'K') {
@@ -539,11 +554,14 @@ function jsCode(stack: string, prev: string, char: string): string {
     }
     case ']':
       return joinJs(stack, 'd');
+    case '.':
+      return joinJs(stack, '.');
     default:
       break;
   }
   if (WORD_CHAR.test(char)) {
-    if (prev === 'W') {
+    // A property name after `.` is never a keyword (`a.return / 2`).
+    if (prev === 'W' || prev === '.') {
       return joinJs(stack, 'W');
     }
     const word = prev.startsWith('w') ? prev.slice(1) + char : char;
@@ -589,6 +607,9 @@ export function jsStep(js: string, char: string): string {
       }
       // Division: the operator is behind, so a regex may follow.
       return jsCode(rest, 'r', char);
+    case 'U':
+      // A comment is still a comment; a regex or a division cannot be told apart.
+      return char === '/' || char === '*' ? joinJs(rest + char, prev) : '?';
     case 'R':
       if (char === '\\' || char === '[') {
         return joinJs(stack + (char === '[' ? 'C' : '\\'), prev);
@@ -636,6 +657,8 @@ export function jsValue(js: string): string {
       return joinJs(stack.slice(0, -1), 'd');
     case 'T':
       return joinJs(`${stack.slice(0, -1)}R`, prev);
+    case 'U':
+      return '?';
     case '$':
       return joinJs(stack.slice(0, -1), prev);
     case '\\':
