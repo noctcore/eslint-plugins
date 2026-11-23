@@ -53,6 +53,10 @@ describe('regexAdmitsOnlySafe', () => {
     ['^[a-z]*-[a-z]+$', 'shell'],
     ['^[a-z#]+$', 'shell'],
     ['^(-|a)[a-z]+$', 'shell'],
+    // `{00}` and `{00,}` allow zero repetitions as `{0}` does, so `-` can lead.
+    ['^a{00}[-a-z]+$', 'shell'],
+    ['^a{00,3}[-a-z]+$', 'shell'],
+    ['^\\x61{00}[-a-z]+$', 'shell'],
     // Lookarounds and back references are not read.
     ['^(?=a)[a-z]+$', 'shell'],
     ['^(a)\\1$', 'shell'],

@@ -454,6 +454,12 @@ ruleTester.run('no-shell-interpolation', noShellInterpolationRule, {
       filename: TS,
       errors: [{ messageId: 'shellInterpolation' }],
     },
+    // `{00}` allows zero repetitions, so the value can start with `-` (an option).
+    {
+      code: 'function h(x: string) { if (!/^a{00}[-a-z]+$/.test(x)) return; exec(`ls ${x}`); }',
+      filename: TS,
+      errors: [{ messageId: 'shellInterpolation' }],
+    },
     // `safeParse` without the exit, an unconfined field, a list that is not frozen and leaks.
     {
       code: "import { z } from 'zod'; const S = z.string().regex(/^[a-z]+$/); function run(x: string) { const r = S.safeParse(x); exec(`tool ${r.data}`); }",

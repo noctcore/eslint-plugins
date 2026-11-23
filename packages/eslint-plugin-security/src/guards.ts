@@ -161,6 +161,9 @@ function propertyEscape(
   return { chars: 'a', length: close + 1 - index };
 }
 
+/** A `{n}` or `{n,m}` count whose lower bound is zero, however many zeros it is written with. */
+const OPTIONAL_COUNT = /^\{0+(?:,\d*)?\}/u;
+
 function tokenize(pattern: string, unicode = false): RegexToken[] | null {
   const tokens: RegexToken[] = [];
   let i = 0;
@@ -227,7 +230,8 @@ function tokenize(pattern: string, unicode = false): RegexToken[] | null {
         tokens.push({ kind: 'chars', chars: '{', literal: true });
         i += 1;
       } else {
-        tokens.push({ kind: 'quantifier', optional: /^\{0[,}]/u.test(match[0]) });
+        // `{0}`, `{00}` and `{0,n}` all allow zero repetitions.
+        tokens.push({ kind: 'quantifier', optional: OPTIONAL_COUNT.test(match[0]) });
         i += match[0].length;
       }
     } else if (char === '.') {
