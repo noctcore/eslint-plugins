@@ -216,6 +216,11 @@ ruleTester.run('require-path-containment', requirePathContainmentRule, {
       code: "function h(req, reply) { return reply.download(req.params.file, 'report.pdf', { root: '/srv/reports' }); }",
       filename: TS,
     },
+    // A fresh sticky regex is anchored at index 0 and matches both dot segments.
+    {
+      code: "import { basename, join } from 'node:path'; import fs from 'node:fs'; function h(req) { const n = basename(String(req.query.f)); if (/^\\.{1,2}$/y.test(n)) return; fs.rmSync(join(BASE, n), { recursive: true }); }",
+      filename: TS,
+    },
   ],
   invalid: [
     // `req.*` straight into path.join with no guard.
@@ -766,6 +771,12 @@ ruleTester.run('require-path-containment', requirePathContainmentRule, {
     },
     {
       code: "function h(req, reply) { return reply.download('a.pdf', { root: req.query.dir }); }",
+      filename: TS,
+      errors: FS,
+    },
+    // A fresh sticky regex is anchored at index 0: `/\.$/y.test('..')` is false.
+    {
+      code: "import { basename, join } from 'node:path'; import fs from 'node:fs'; function h(req) {\n  const n = basename(String(req.query.f));\n  if (/\\.$/y.test(n)) return;\n  fs.rmSync(join(B, n), { recursive: true });\n}",
       filename: TS,
       errors: FS,
     },

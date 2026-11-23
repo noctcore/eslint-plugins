@@ -3855,6 +3855,22 @@ function listStrings(node: TSESTree.Node, sourceCode: SourceCode): string[] | nu
 
 const DOT_SEGMENTS: readonly string[] = ['.', '..'];
 
+/**
+ * True when a fresh deny regex (`lastIndex` 0) matches `value` as the test at
+ * runtime does. Unlike {@link matchesAny}, which strips `g` and `y` and counts
+ * a pattern that does not compile as accepting, this keeps `y`, which anchors
+ * the match at index 0 (`/\.$/y.test('..')` is false), drops only `g` (no
+ * effect on a first `test` from index 0), and counts a pattern that does not
+ * compile here as refusing nothing.
+ */
+function denyRegexMatches(pattern: string, flags: string, value: string): boolean {
+  try {
+    return new RegExp(pattern, flags.replace(/g/gu, '')).test(value);
+  } catch {
+    return false;
+  }
+}
+
 /** Which of `.` and `..` `x === lit` (or `!==` when `negated`) singles out. */
 function comparedDots(
   node: TSESTree.Node,
@@ -3924,7 +3940,7 @@ function refusedDots(node: TSESTree.Node, subject: Subject, sourceCode: SourceCo
     if (regex === null || (/[gy]/u.test(regex.flags) && !fresh)) {
       return [];
     }
-    return DOT_SEGMENTS.filter((dots) => matchesAny(regex.pattern, regex.flags, [dots]));
+    return DOT_SEGMENTS.filter((dots) => denyRegexMatches(regex.pattern, regex.flags, dots));
   }
   return [];
 }
