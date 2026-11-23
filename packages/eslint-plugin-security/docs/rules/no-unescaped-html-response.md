@@ -129,7 +129,8 @@ HTML (tags, attributes and their quoting, comments, and the elements whose conte
 | A single-quoted attribute | an escaper that also encodes `'` (escape-html, he, lodash `escape`, html-escaper, entities, a `.replace` chain covering `'`), a guard as above |
 | An unquoted attribute | `encodeURIComponent`, the global `escape`, a guard that refuses whitespace, quotes and `<>&` |
 | The start of a URL attribute (`href`, `src`, `action`, `formaction`, ...) before the author text fixes a scheme | `encodeURIComponent` (no `:` survives), a guard that also refuses `/`, `\` and `:` |
-| A tag or attribute name, `<script>`, `<style>`, an event handler (`on*`), a `style` or `srcdoc` attribute, a URL after `javascript:` or after a scheme built from a runtime part | only a constant, a number, or a literal allowlist; in `<script>`, also serialize-javascript and htmlescape output |
+| A tag or attribute name, `<script>`, `<style>`, an event handler (`on*`), a `style` or `srcdoc` attribute, a URL after `javascript:` or after a scheme built from a runtime part | only a constant, a number, or a literal allowlist; in `<script>` code, also serialize-javascript and htmlescape output |
+| Inside a `'`, `"` or backtick string, or a comment, in a `<script>` | only a constant, a number, or a literal allowlist |
 
 A number (`Number()`, `parseInt`, `Math.*`, `.toFixed()`, arithmetic, `Date.now()`,
 `new Date().toISOString()`), a boolean, a literal, an in-file `const` literal and a value bound by
@@ -138,7 +139,12 @@ A number (`Number()`, `parseInt`, `Math.*`, `.toFixed()`, arithmetic, `Date.now(
 as `q[length]=...`).
 
 `JSON.stringify` inside a `<script>` is reported: a value of `</script><script>alert(1)//` closes
-the element. Use serialize-javascript or htmlescape there.
+the element. Use serialize-javascript or htmlescape there, as a JS expression, not inside a string:
+`var state = ${serialize(data)};` is safe, while `JSON.parse('${serialize(data)}')`,
+`"${serialize(data)}"` and a template literal are reported, because neither library escapes `'` or
+backticks and their own `"` closes a double-quoted string. The rule reads the script text before
+the value to tell: a quote escaped with `\` does not open or close a string, and a regex literal is
+read as code, so a quote inside one can only make the rule report more.
 
 ### What makes a value safe
 
@@ -165,9 +171,12 @@ the element. Use serialize-javascript or htmlescape there.
   that is not exported and is only handed to sanitizer calls; anything else (a spread, a shared
   config from another file) counts as unknown, so as unsafe.
 - **A configured escaper** in `sanitizers`, trusted to encode `&`, `<`, `>` and `"`: element text
-  and double-quoted attributes. An in-file function by that name that returns a proven escaping
-  expression counts for what that expression proves (a `.replace` chain covering `'` makes it safe
-  in single-quoted attributes too).
+  and double-quoted attributes. The name is trusted only for a helper the rule cannot read: one
+  imported from another file, or not declared in this file. A function declared in this file is
+  judged by its body alone, with the same proof as inline code, whether or not its name is in
+  `sanitizers`: a `function escapeHtml(s) { return s.replace('<', '&lt;'); }` is reported, and one
+  whose `.replace` chain also covers `'` is safe in single-quoted attributes too. Any other local
+  binding (a parameter, a reassigned function, a value built at run time) proves nothing.
 - **A `.replace` / `.replaceAll` chain** that encodes at least `&`, `<`, `>` and `"`. A step counts
   for a character only when it is global (`replaceAll`, or a regex with `g` and no `y`), its
   pattern consumes every occurrence of the character (`/</g`, `/[&<>"]/g`, `/&|</g`, not
@@ -224,7 +233,7 @@ without type information.
 | `responseObjects` | `string[]` | `['res', 'response']` | Receivers whose `send`, `end` and `write` write an HTML-capable response body. Setting this replaces the defaults. |
 | `replyObjects` | `string[]` | `['reply']` | Receivers whose `send` sends a string as text unless an HTML content type is set on them (Fastify). Setting this replaces the defaults. |
 | `contextObjects` | `string[]` | `['ctx']` | Receivers whose `body` assignment is the response (Koa). Setting this replaces the defaults. |
-| `sanitizers` | `string[]` | `['escapeHtml', 'escapeHTML', 'htmlEscape', 'encodeHTML']` | Escapers trusted to encode `&`, `<`, `>` and `"`. An entry with a dot (`utils.escapeHtml`) matches that callee; one without matches a call by that bare name, never a method. Setting this replaces the defaults. |
+| `sanitizers` | `string[]` | `['escapeHtml', 'escapeHTML', 'htmlEscape', 'encodeHTML']` | Escapers trusted to encode `&`, `<`, `>` and `"`, for helpers imported from another file or not declared in this one; a function declared in this file is judged by its body instead. An entry with a dot (`utils.escapeHtml`) matches that callee; one without matches a call by that bare name, never a method. Setting this replaces the defaults. |
 
 Escaping modules count by their import whatever `sanitizers` says (see above).
 
