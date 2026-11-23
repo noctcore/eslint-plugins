@@ -87,8 +87,10 @@ static import, `require`, dynamic `import()` (awaited or not) or `import fs = re
 
 `res.sendFile(path, { root })` and `res.download(path, name, { root })` are checked on the `root`
 instead: with a root, Express decodes the path, refuses any `..` segment and serves it under the
-root. Fastify's `reply.sendFile` always serves under the root registered with the plugin and is not
-a sink.
+root. Fastify's `reply.sendFile` / `reply.download` (`@fastify/static`) serve under the root
+registered with the plugin and refuse `..` segments, so only a root the call passes is checked:
+`reply.sendFile(file, rootPath)`, `reply.sendFile(file, { root })` and
+`reply.download(file, name, { root })`.
 
 The path is reported when request-shaped input reaches it through:
 
@@ -127,7 +129,11 @@ The flow stops at:
   match `.`, `..` or an empty value (`/^[\w-][\w.-]*$/` passes, `/^[\w.-]+$/` does not);
 - `path.basename(x)` stored in a binding that is refused as both `.` and `..` before the call
   (`if (name === '.' || name === '..') return`, `if (name.startsWith('.')) return`,
-  `if (['.', '..'].includes(name)) return`, or a regex test that matches both). A bare `basename`
+  `if (['.', '..'].includes(name)) return`, or a regex test that matches both; a `g` or `y` regex
+  counts only when it is written at the test, since a shared one keeps `lastIndex` between calls).
+  The check holds only for that binding read as it is: a part of it or a call on it is new text
+  (`'...'` passes the check, and `path.parse('...').name` and `basename('...', extname('...'))`
+  are `..`). A bare `basename`
   is not containment: `basename('..')` is `'..'`, so `join(BASE, basename(name), 'profile.json')`
   reads `BASE/../profile.json` and `rm(join(BASE, basename(name)), { recursive: true })` deletes
   the parent of `BASE`. Both refusals have to sit in one test;
@@ -144,10 +150,14 @@ an object on its path: a write (`req.params.name = x`, `req.params[key] = x`,
 alias are not seen. Only looking at the object (`if (req.params)`, `typeof req.params`) keeps it
 clean. A regex check on a member does not count.
 
-A proof holds only for the text it checked. Below a decoder (`decodeURIComponent`, `decodeURI`,
-`unescape`, `atob`, `Buffer.from(x, 'base64')`, `String.fromCharCode`) or a string method other
-than a case change, `toString` or `join` (`replace`, `slice`, `trim`, `normalize('NFKC')`), the
-checks above no longer cut the flow: `%2e%2e` passes a dot check and decodes to `..`, and
+A proof holds only for the text it checked. Below a call that is not known to keep its arguments'
+text, and below a member read of a checked value, the checks above no longer cut the flow. Calls
+that keep the text are `path.join`, `path.resolve`, `path.normalize`, a one argument
+`path.basename`, `String`, `encodeURIComponent`, `encodeURI`, and the methods `toLowerCase`,
+`toUpperCase`, `toString`, `valueOf`, `join` and `concat`. Everything else is new text: a decoder
+(`decodeURIComponent`, `atob`, `Buffer.from(x, 'base64')`), another string method (`replace`,
+`slice`, `trim`, `normalize('NFKC')`), `path.parse(x).name`, `basename(x, ext)`, `new URL(x)`,
+`fileURLToPath`, a library or local helper. `%2e%2e` passes a dot check and decodes to `..`, and
 `'a..'.slice(1)` is `..`. Decode first, then check.
 
 ```ts bad
