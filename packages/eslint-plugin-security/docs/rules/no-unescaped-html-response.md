@@ -143,8 +143,13 @@ the element. Use serialize-javascript or htmlescape there, as a JS expression, n
 `var state = ${serialize(data)};` is safe, while `JSON.parse('${serialize(data)}')`,
 `"${serialize(data)}"` and a template literal are reported, because neither library escapes `'` or
 backticks and their own `"` closes a double-quoted string. The rule reads the script text before
-the value to tell: a quote escaped with `\` does not open or close a string, and a regex literal is
-read as code, so a quote inside one can only make the rule report more.
+the value to tell: a quote escaped with `\` does not open or close a string, and a quote inside a
+regex literal (`/'/g`, `/[a-z']/`) opens nothing. A `/` starts a regex at the start, after an
+operator or punctuation (`( , = : [ ! & | ? { } ; + - * % < > ~ ^`), after a keyword such as
+`return` or `typeof`, and after the `)` of an `if`, `while`, `for` or `with` head; after any other
+`)`, a `]`, a name, a number or a string it is division. Where the rule cannot tell (a `/` right after `++`,
+`--` or `.`), it stops treating anything later in that script as code and reports. A value inside a
+regex body (`/${q}/i`) is never code.
 
 ### What makes a value safe
 
