@@ -14,14 +14,16 @@ const file = path.join(baseDir, req.params.file);
 ```
 
 A crafted `req.params.file` of `../../etc/passwd` walks out of `baseDir` and reads an arbitrary file.
-The safe pattern is to resolve, then verify the result still lives under the base directory before
-touching the filesystem:
+The safe pattern is to resolve, then verify the result still lives under the base directory and a
+separator before touching the filesystem:
 
 ```ts good
 // verify containment
 const resolved = path.resolve(baseDir, req.params.file);
-if (!resolved.startsWith(baseDir)) throw new ForbiddenError();
+if (!resolved.startsWith(baseDir + path.sep)) throw new ForbiddenError();
 ```
+
+The separator matters: without it, `/srv/app-evil/secret` passes a test for `/srv/app`.
 
 ## What it flags
 
@@ -41,10 +43,19 @@ export function download(req) {
 }
 ```
 
-A test is a call that takes the joined value: `full.startsWith(...)`, `path.relative(base, full)`,
-or a helper named in `containmentGuards`. The joined value is the variable the join is stored in,
-plus any variable initialised from it through `join`, `resolve` or `normalize`. A test of some other
-string does not count:
+A test takes the joined value and a base the requester does not pick:
+
+- `full.startsWith(base + sep)`, where the base ends in a separator (`base + path.sep`,
+  `` `${base}/` ``, a literal `'/srv/app/'`, or a `const` holding one of those);
+- a `path.relative(base, full)` result refused both when it climbs (`rel.startsWith('..')`) and when
+  it is absolute (`path.isAbsolute(rel)`): on Windows, `relative` across drives returns an absolute
+  path that does not start with `..`;
+- a call to a helper named in `containmentGuards` that takes the joined value.
+
+The joined value is the variable the join is stored in, plus any variable initialised from it
+through `normalize`, `realpath`, or a one argument `join` / `resolve`. A join that adds another
+segment (`join(full, req.query.name)`) makes a new value that needs its own test. A test of some
+other string does not count:
 
 ```ts bad
 // the guard tests the raw name, not the path that is used
@@ -55,18 +66,29 @@ function serve(req) {
 ```
 
 `path.normalize` on its own is not a test: it resolves `..` segments, so it happily returns a path
-outside the base directory.
+outside the base directory. A test that runs on the joined value but does not guard anything
+(`full.startsWith(base + sep);` as a statement, or `if (...) log()`) silences the join report, but
+not a filesystem call (see below).
 
 ### Filesystem sinks
 
-The path argument of an `fs` call that reads, writes or deletes is followed back through the
-function: `readFile`, `writeFile`, `appendFile`, `unlink`, `rm`, `rmdir`, `mkdir`, `readdir`,
-`stat`, `lstat`, `open`, `opendir`, `access`, `truncate`, `chmod`, `chown`, `createReadStream`,
-`createWriteStream`, `readlink`, `realpath` and their `Sync` forms, both paths of `copyFile`, `cp`,
-`rename`, `link` and `symlink`, and Express `res.sendFile` / `res.download`. The fs module is
-recognised as `fs`, `fsp`, `fsPromises`, `fs.promises`, a `require` or import of `fs`,
-`node:fs`, `fs/promises` or `node:fs/promises` under any name, and named imports of those
-functions.
+The path argument of an `fs` call is followed back through the function: `readFile`,
+`writeFile`, `appendFile`, `unlink`, `rm`, `rmdir`, `mkdir`, `mkdtemp`, `readdir`, `stat`,
+`lstat`, `statfs`, `exists`, `open`, `openAsBlob`, `opendir`, `access`, `truncate`, `chmod`,
+`lchmod`, `chown`, `lchown`, `utimes`, `lutimes`, `createReadStream`, `createWriteStream`,
+`readlink`, `realpath`, `watch`, `watchFile`, `unwatchFile`, `glob` and their `Sync` forms, both
+paths of `copyFile`, `cp`, `rename`, `link` and `symlink`, and Express `res.sendFile` /
+`res.download`. The fs module is recognised as `fs`, `fsp`, `fsPromises`, `fs.promises`, and a
+static import, `require`, dynamic `import()` (awaited or not) or `import fs = require(...)` of
+`fs`, `node:fs`, `fs/promises` or `node:fs/promises` under any name, also inside a function
+(`const { readFile } = await import('node:fs')`), with aliases (`const p = fs.promises`,
+`const { unlink } = p`), named imports, type wrappers (`(fs as any).readFileSync`) and string keys
+(`fs['readFileSync']`).
+
+`res.sendFile(path, { root })` and `res.download(path, name, { root })` are checked on the `root`
+instead: with a root, Express decodes the path, refuses any `..` segment and serves it under the
+root. Fastify's `reply.sendFile` always serves under the root registered with the plugin and is not
+a sink.
 
 The path is reported when request-shaped input reaches it through:
 
@@ -77,7 +99,11 @@ The path is reported when request-shaped input reaches it through:
   getters included;
 - any call that takes it as an argument, receiver or callee (`decodeURIComponent(x)`,
   `x.split(',').join(' ')`, a closure `read()` built from it);
-- `arr.push(x)` into an array that later becomes the path.
+- `arr.push(x)` into an array that later becomes the path;
+- a request object destructured in the body (`const { query } = req`), or a request field
+  destructured from a handler's first parameter (`({ query }) => ...`,
+  `({ params: { file } }) => ...`, under `query`, `params`, `body`, `headers`, `cookies`, `files`,
+  `file` or `request`).
 
 ```ts bad
 import fs from 'node:fs';
@@ -88,26 +114,60 @@ export function read(req, res) {
 }
 ```
 
-The flow stops at `path.basename(x)` and `path.extname(x)` (neither keeps a separator), a number
-conversion (`Number`, `parseInt`, `parseFloat`), a callee named in `sanitizers`, a read from an
-in-file `const` table of literal file names (`FILES[id]`, `MAP.get(id)`), a confined schema's output
-(including a field of a parsed `z.object(...)` whose schema admits no separator), and at a
-binding the function checked before the call with an `if` that exits (or an `if` around the
-call): an allowlist (`includes` / `has` on in-file literals, `===` against literals) or a regex anchored at both ends, without the `m` flag or a `.`, that
-admits no `/`, `\` or `:`. A request member checked the same way against a literal allowlist
-(`if (!allowed.includes(req.params.name)) return res.status(404).end()`) is clean where it is
-used next, also directly in `join(BASE, req.params.name)`, as long as nothing writes that member
-or an object on its path (`req.params.name = x`, `Object.assign(req.params, x)`); a regex check on
-a member does not count. A path built by `join` / `resolve` passes when the containment test
-above takes it.
+The flow stops at:
+
+- `path.extname(x)` (an empty string, `.` or `.ext`: never `..`, no separator), a number conversion
+  (`Number`, `parseInt`, `parseFloat`), or a callee named in `sanitizers`;
+- a read from an in-file `const` table of literal file names (`FILES[id]`, `MAP.get(id)`);
+- a confined schema's output, including a field of a parsed `z.object(...)`, whose regex admits no
+  separator and cannot match `.`, `..` or an empty value;
+- a binding the function checked before the call with an `if` that exits (or an `if` around the
+  call): an allowlist (`includes` / `has` on in-file literals, `===` against literals), or a regex
+  anchored at both ends, without the `m` flag or a `.`, that admits no `/`, `\` or `:` and cannot
+  match `.`, `..` or an empty value (`/^[\w-][\w.-]*$/` passes, `/^[\w.-]+$/` does not);
+- `path.basename(x)` stored in a binding that is refused as both `.` and `..` before the call
+  (`if (name === '.' || name === '..') return`, `if (name.startsWith('.')) return`,
+  `if (['.', '..'].includes(name)) return`, or a regex test that matches both). A bare `basename`
+  is not containment: `basename('..')` is `'..'`, so `join(BASE, basename(name), 'profile.json')`
+  reads `BASE/../profile.json` and `rm(join(BASE, basename(name)), { recursive: true })` deletes
+  the parent of `BASE`. Both refusals have to sit in one test;
+- a path built by `join` / `resolve` (or `normalize`, `realpath`) when a containment test above
+  takes it and runs before the call on every path to it: an `if` that exits, an `if` around the
+  call, or a call to a `containmentGuards` helper as a statement before it.
+
+A request member checked against a literal allowlist
+(`if (!allowed.includes(req.params.name)) return res.status(404).end()`) is clean where it is used
+next, also directly in `join(BASE, req.params.name)`, as long as nothing can change that member or
+an object on its path: a write (`req.params.name = x`, `req.params[key] = x`,
+`(req.params as P).name = x`, `Object.assign(req.params, x)`), or an object on the path handed on
+(`const p = req.params`, `const { params } = req`, `mutate(req)`), after which writes through the
+alias are not seen. Only looking at the object (`if (req.params)`, `typeof req.params`) keeps it
+clean. A regex check on a member does not count.
+
+A proof holds only for the text it checked. Below a decoder (`decodeURIComponent`, `decodeURI`,
+`unescape`, `atob`, `Buffer.from(x, 'base64')`, `String.fromCharCode`) or a string method other
+than a case change, `toString` or `join` (`replace`, `slice`, `trim`, `normalize('NFKC')`), the
+checks above no longer cut the flow: `%2e%2e` passes a dot check and decodes to `..`, and
+`'a..'.slice(1)` is `..`. Decode first, then check.
+
+```ts bad
+import fs from 'node:fs';
+import path from 'node:path';
+
+export function remove(req) {
+  // basename('..') is '..': this deletes the parent of /srv/files
+  fs.rmSync(path.join('/srv/files', path.basename(String(req.query.file))), { recursive: true });
+}
+```
 
 ```ts good
 import fs from 'node:fs';
 import path from 'node:path';
 
-export function read(req, res) {
-  const name = String(req.query.file).trim();
-  res.send(fs.readFileSync('/srv/files/' + path.basename(name), 'utf8'));
+export function remove(req) {
+  const name = path.basename(String(req.query.file));
+  if (name === '.' || name === '..') return;
+  fs.rmSync(path.join('/srv/files', name), { recursive: true });
 }
 ```
 
@@ -124,6 +184,40 @@ export function read(req, res) {
 ```
 
 A `join` with a direct `req.*` argument is reported once, at the join, not again at the fs call.
+
+### Helpers
+
+A call to a local function (a declaration or a `const` holding one) that passes one of its
+parameters to an fs path with no containment check is reported at the call, with the message id
+`unguardedFsHelper`, when request input reaches that argument. One level only: a helper that hands
+the path to another helper is not followed, and neither is a method (`this.load(...)`).
+
+```ts bad
+import fs from 'node:fs';
+
+function load(name) {
+  return fs.readFileSync('/srv/files/' + name, 'utf8');
+}
+
+export function read(req, res) {
+  res.send(load(req.query.file));
+}
+```
+
+```ts good
+import fs from 'node:fs';
+
+const FILES = ['terms.md', 'privacy.md'];
+
+function load(name) {
+  return fs.readFileSync('/srv/files/' + name, 'utf8');
+}
+
+export function read(req, res) {
+  if (!FILES.includes(req.query.file)) return res.status(404).end();
+  res.send(load(req.query.file));
+}
+```
 
 ### Escape hatch
 
@@ -151,8 +245,14 @@ return path.join(base, safe);
 A `join` or `resolve` imported from any other module (lodash, a DI container) is not a path builder.
 
 A `readFile` that is not the fs module's (`storage.readFile`, a local function) is not a sink. Flow
-across functions is not followed: a handler that passes `req.params.file` to a helper which builds
-the path is not seen.
+across functions is followed one call deep (see Helpers), not further.
+
+Symbolic links are not modelled: a path that passes the containment test can still be a link that
+points outside the base. Compare `fs.realpath` results when the directory can hold links the
+requester controls. `path.posix` and `path.win32` are never read as containment or as a sanitizer
+(`path.posix.basename` keeps `\`, which Windows reads as a separator). `path.extname` counts as a
+sanitizer even though it can return `.`, so gluing it to another lone `.` (`'.' + extname(x)`)
+can make `..`; that shape is not modelled.
 
 Broader user-input sources (arbitrary handler parameters, decoded JWT or payload fields) are not
 tracked by default. Proving them user-shaped needs type or dataflow analysis this syntactic rule
@@ -185,7 +285,7 @@ export async function clearSprite(settings) {
 | --- | --- | --- | --- |
 | `requestObjects` | `string[]` | `['req', 'request']` | Root object names treated as request-shaped input. |
 | `containmentGuards` | `string[]` | `[]` | Names of project helpers that verify containment; a call to one that takes the joined value counts as a test. |
-| `sanitizers` | `string[]` | `[]` | Callees (source text) whose result is a safe file name, so request input passed through one does not reach an fs path. `path.basename` always counts. |
+| `sanitizers` | `string[]` | `[]` | Callees (source text) whose result is a safe file name (never `.` or `..`, no separator), so request input passed through one does not reach an fs path. |
 
 ```js
 'noctcore-security/require-path-containment': [
