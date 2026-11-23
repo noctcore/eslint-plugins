@@ -3677,12 +3677,111 @@ function isWriteTarget(node: TSESTree.Node, sourceCode: SourceCode): boolean {
   );
 }
 
+/** Type wrappers and optional chains around `node`, which keep the same object. */
+function outerObject(node: TSESTree.Node): TSESTree.Node {
+  let outer = node;
+  while (
+    outer.parent !== undefined &&
+    (outer.parent.type === AST_NODE_TYPES.ChainExpression ||
+      outer.parent.type === AST_NODE_TYPES.TSNonNullExpression ||
+      outer.parent.type === AST_NODE_TYPES.TSAsExpression ||
+      outer.parent.type === AST_NODE_TYPES.TSSatisfiesExpression ||
+      outer.parent.type === AST_NODE_TYPES.TSTypeAssertion)
+  ) {
+    outer = outer.parent;
+  }
+  return outer;
+}
+
+/**
+ * True when the object `node` is only looked at where it stands: tested
+ * (`if (req.params)`, `typeof req.body`, `!req.query`), compared, or left as
+ * a bare statement. Any other use hands the object on (an alias, a call
+ * argument, a spread, a return), and whoever receives it can change it.
+ */
+function onlyInspected(node: TSESTree.Node): boolean {
+  const use = node.parent;
+  if (use === undefined) {
+    return true;
+  }
+  switch (use.type) {
+    case AST_NODE_TYPES.UnaryExpression:
+      return use.operator !== 'delete';
+    case AST_NODE_TYPES.BinaryExpression:
+    case AST_NODE_TYPES.ExpressionStatement:
+      return true;
+    case AST_NODE_TYPES.IfStatement:
+    case AST_NODE_TYPES.WhileStatement:
+    case AST_NODE_TYPES.DoWhileStatement:
+    case AST_NODE_TYPES.ConditionalExpression:
+      return use.test === node;
+    case AST_NODE_TYPES.LogicalExpression:
+      // `req.query && x` yields `req.query` only when it is falsy.
+      return use.left === node && use.operator === '&&';
+    default:
+      return false;
+  }
+}
+
+/** The property name a member step reads, or null for a computed key that is not a string literal. */
+function stepName(member: TSESTree.MemberExpression): string | null {
+  if (!member.computed && member.property.type === AST_NODE_TYPES.Identifier) {
+    return member.property.name;
+  }
+  return member.property.type === AST_NODE_TYPES.Literal && typeof member.property.value === 'string'
+    ? member.property.value
+    : null;
+}
+
+/**
+ * True when a reference to the root of `path` can change the member at the
+ * end of `path`: it writes the member or an object on its path (through type
+ * wrappers, optional chains and computed keys, which may name any step), or
+ * hands one of those objects on (`const p = req.params`, `mutate(req)`,
+ * `const { params } = req`), after which writes through the alias are not seen.
+ */
+function changesMember(
+  reference: Reference,
+  path: readonly string[],
+  sourceCode: SourceCode,
+): boolean {
+  if (reference.isWrite() && reference.init !== true) {
+    return true;
+  }
+  let current: TSESTree.Node = reference.identifier;
+  for (let index = 0; ; index += 1) {
+    current = outerObject(current);
+    if (isWriteTarget(current, sourceCode)) {
+      return true;
+    }
+    const parent = current.parent;
+    if (parent?.type === AST_NODE_TYPES.MemberExpression && parent.object === current) {
+      if (index >= path.length) {
+        // A read inside the member's own value.
+        return false;
+      }
+      const name = stepName(parent);
+      if (name !== null && name !== path[index]) {
+        // Another branch of the object (`req.get(...)`, `req.params.other`).
+        return false;
+      }
+      // The same step, or a computed key that may name it (`req.params[k] = x`).
+      current = parent;
+      continue;
+    }
+    // The member itself is a string: whoever receives it cannot change it.
+    return index < path.length && !onlyInspected(current);
+  }
+}
+
 /**
  * True when the member expression `node` (`req.params.name`) was checked
  * against a literal allowlist before `sink` (`if (!NAMES.includes(req.params.name))
- * return`) and nothing writes that member, or any object on its path, anywhere
- * (`req.params.name = x`, `req.params = {}`, `Object.assign(req.params, x)`).
- * Regex checks do not count.
+ * return`) and nothing can change that member, or any object on its path,
+ * anywhere: a write (`req.params.name = x`, `req.params[k] = x`,
+ * `(req.params as P).name = x`, `req.params = {}`, `Object.assign(req.params, x)`),
+ * or an object on the path handed on to code this check cannot follow
+ * (`const p = req.params; p.name = x`, `mutate(req)`). Regex checks do not count.
  */
 export function isAllowlistedMember(
   node: TSESTree.Node,
@@ -3694,30 +3793,9 @@ export function isAllowlistedMember(
   if (target === null || root === null || isImportBinding(root)) {
     return false;
   }
-  const changed = root.references.some((reference) => {
-    if (reference.isWrite() && reference.init !== true) {
-      return true;
-    }
-    // Climb the chain from the root while it follows the target's path.
-    let current: TSESTree.Node = reference.identifier;
-    for (let index = 0; ; index += 1) {
-      if (isWriteTarget(current, sourceCode)) {
-        return true;
-      }
-      const parent: TSESTree.Node | undefined = current.parent;
-      const step = parent === undefined ? null : memberPath(parent);
-      if (
-        index >= target.path.length ||
-        parent?.type !== AST_NODE_TYPES.MemberExpression ||
-        parent.object !== current ||
-        step === null ||
-        step.path[index] !== target.path[index]
-      ) {
-        return false;
-      }
-      current = parent;
-    }
-  });
+  const changed = root.references.some((reference) =>
+    changesMember(reference, target.path, sourceCode),
+  );
   if (changed) {
     return false;
   }
@@ -3740,4 +3818,171 @@ export function isAllowlistedMember(
     () => true,
     sourceCode,
   );
+}
+
+// ---------------------------------------------------------------------------
+// Dot segments and plain guards
+// ---------------------------------------------------------------------------
+
+/** The string a node holds when it is a literal or an in-file `const` string, else null. */
+function literalString(node: TSESTree.Node, sourceCode: SourceCode): string | null {
+  const value = unwrap(resolveConst(node, sourceCode));
+  if (value.type === AST_NODE_TYPES.Literal && typeof value.value === 'string') {
+    return value.value;
+  }
+  if (value.type === AST_NODE_TYPES.TemplateLiteral && value.expressions.length === 0) {
+    return value.quasis[0]?.value.cooked ?? null;
+  }
+  return null;
+}
+
+/** The string literals of a literal list (`['.', '..']`, frozen or behind a `const`), else null. */
+function listStrings(node: TSESTree.Node, sourceCode: SourceCode): string[] | null {
+  if (!isLiteralList(node, sourceCode)) {
+    return null;
+  }
+  const resolved = resolveConst(node, sourceCode);
+  const list = frozenArgument(resolved, sourceCode) ?? resolved;
+  if (list.type !== AST_NODE_TYPES.ArrayExpression) {
+    return null;
+  }
+  return list.elements.flatMap((element) =>
+    element !== null && element.type === AST_NODE_TYPES.Literal && typeof element.value === 'string'
+      ? [element.value]
+      : [],
+  );
+}
+
+const DOT_SEGMENTS: readonly string[] = ['.', '..'];
+
+/** Which of `.` and `..` `x === lit` (or `!==` when `negated`) singles out. */
+function comparedDots(
+  node: TSESTree.Node,
+  subject: Subject,
+  negated: boolean,
+  sourceCode: SourceCode,
+): string[] {
+  const inner = unwrap(node);
+  if (
+    inner.type !== AST_NODE_TYPES.BinaryExpression ||
+    !(negated ? ['!==', '!='] : ['===', '==']).includes(inner.operator)
+  ) {
+    return [];
+  }
+  const text = readsVariable(inner.left, subject, sourceCode)
+    ? literalString(inner.right, sourceCode)
+    : readsVariable(inner.right, subject, sourceCode)
+      ? literalString(inner.left, sourceCode)
+      : null;
+  return text !== null && DOT_SEGMENTS.includes(text) ? [text] : [];
+}
+
+/**
+ * Which of `.` and `..` a test is true for, when it reads `subject`:
+ * `x === '..'`, `x.startsWith('.')` (both), `x.includes('..')`,
+ * `['.', '..'].includes(x)`, or a regex test (`/^\.{1,2}$/.test(x)`).
+ */
+function refusedDots(node: TSESTree.Node, subject: Subject, sourceCode: SourceCode): string[] {
+  const inner = unwrap(node);
+  const compared = comparedDots(inner, subject, false, sourceCode);
+  if (compared.length > 0) {
+    return compared;
+  }
+  for (const method of ['startsWith', 'includes']) {
+    const call = memberCall(inner, method);
+    if (
+      call !== null &&
+      call.callee.type === AST_NODE_TYPES.MemberExpression &&
+      readsVariable(call.callee.object, subject, sourceCode)
+    ) {
+      const text = literalString(call.arguments[0] as TSESTree.Node, sourceCode);
+      // `startsWith(t)` and `includes(t)` hold for each dot segment that contains `t`.
+      return text === null || text === '' ? [] : DOT_SEGMENTS.filter((dots) => dots.includes(text));
+    }
+  }
+  const includes = memberCall(inner, 'includes');
+  if (
+    includes !== null &&
+    includes.callee.type === AST_NODE_TYPES.MemberExpression &&
+    readsVariable(includes.arguments[0] as TSESTree.Node, subject, sourceCode)
+  ) {
+    const list = listStrings(includes.callee.object, sourceCode) ?? [];
+    return DOT_SEGMENTS.filter((dots) => list.includes(dots));
+  }
+  const test = memberCall(inner, 'test');
+  if (
+    test !== null &&
+    test.callee.type === AST_NODE_TYPES.MemberExpression &&
+    readsVariable(test.arguments[0] as TSESTree.Node, subject, sourceCode)
+  ) {
+    const regex = regexOf(test.callee.object, sourceCode);
+    return regex === null
+      ? []
+      : DOT_SEGMENTS.filter((dots) => matchesAny(regex.pattern, regex.flags, [dots]));
+  }
+  return [];
+}
+
+/** Which of `.` and `..` a test is true only without: `x !== '..'`, `!x.startsWith('.')`. */
+function admittedOnlyWithoutDots(
+  node: TSESTree.Node,
+  subject: Subject,
+  sourceCode: SourceCode,
+): string[] {
+  const inner = unwrap(node);
+  if (inner.type === AST_NODE_TYPES.UnaryExpression && inner.operator === '!') {
+    return refusedDots(inner.argument, subject, sourceCode);
+  }
+  return comparedDots(inner, subject, true, sourceCode);
+}
+
+function coversDots(found: readonly string[]): boolean {
+  return DOT_SEGMENTS.every((dots) => found.includes(dots));
+}
+
+/**
+ * True when the binding `node` reads was refused as both `.` and `..` before
+ * `sink`, on every path to it, and is not written after that check:
+ * `if (name === '.' || name === '..') return`, `if (name.startsWith('.'))
+ * throw ...`, or `if (name !== '.' && name !== '..') { sink }`. A
+ * `path.basename` result passes this to be a path segment that stays in its
+ * directory: `basename('..')` is `'..'`, and `'.' + name` is `..` when
+ * `name` is `.`.
+ */
+export function isDotSegmentRefused(
+  node: TSESTree.Identifier,
+  sink: TSESTree.Node,
+  sourceCode: SourceCode,
+): boolean {
+  const variable = variableOf(node, sourceCode);
+  if (variable === null || isImportBinding(variable)) {
+    return false;
+  }
+  return guardedBefore(
+    sink,
+    (test, negated) =>
+      coversDots(
+        negated
+          ? flattenLogical(test, '||').flatMap((term) => refusedDots(term, variable, sourceCode))
+          : flattenLogical(test, '&&').flatMap((term) =>
+              admittedOnlyWithoutDots(term, variable, sourceCode),
+            ),
+      ),
+    (position, scope) => writtenOnlyBefore(variable, Math.min(position, node.range[0]), scope),
+    sourceCode,
+  );
+}
+
+/**
+ * True when a test `isGuard` accepts runs before `sink` on every path to it:
+ * an `if` that exits when the test holds (`negated`), an `if` or `?:` around
+ * the sink whose test passed, read through `!` and `const` booleans. The
+ * caller checks that the tested values are not written after the test.
+ */
+export function isGuardedBefore(
+  sink: TSESTree.Node,
+  isGuard: (test: TSESTree.Expression, negated: boolean) => boolean,
+  sourceCode: SourceCode,
+): boolean {
+  return guardedBefore(sink, isGuard, () => true, sourceCode);
 }
