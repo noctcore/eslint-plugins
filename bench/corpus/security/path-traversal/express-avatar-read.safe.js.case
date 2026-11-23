@@ -1,4 +1,4 @@
-// @bench category=path-traversal cwe=CWE-22 framework=express pair=express-avatar-read title="basename of the query name refused as a dot segment before building the path"
+// @bench category=path-traversal cwe=CWE-22 framework=express pair=express-avatar-read title="basename of the query name taken before building the path"
 // ok
 const fs = require('node:fs');
 const path = require('node:path');
@@ -9,12 +9,7 @@ const app = express();
 
 app.get('/avatar', (req, res) => {
   const name = req.query.name;
-  const file = path.basename(String(name));
-  if (file === '.' || file === '..') {
-    res.status(400).send('bad name');
-    return;
-  }
-  const target = `${UPLOADS}/${file}`;
+  const target = `${UPLOADS}/${path.basename(String(name))}`;
   fs.readFile(target, (err, data) => {
     if (err) {
       res.status(404).send('not found');

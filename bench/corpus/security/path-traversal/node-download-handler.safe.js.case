@@ -1,4 +1,4 @@
-// @bench category=path-traversal cwe=CWE-22 framework=node pair=node-download-handler title="basename of the search param refused as a dot segment before joining"
+// @bench category=path-traversal cwe=CWE-22 framework=node pair=node-download-handler title="basename of the search param used when joining"
 // ok
 const http = require('node:http');
 const fs = require('node:fs/promises');
@@ -9,12 +9,7 @@ const DOWNLOADS = path.resolve('/srv/downloads');
 const server = http.createServer(async (req, res) => {
   const { searchParams } = new URL(req.url, 'http://localhost');
   const file = searchParams.get('file');
-  const name = path.basename(file ?? '');
-  if (name === '' || name === '.' || name === '..') {
-    res.writeHead(400).end();
-    return;
-  }
-  const target = path.join(DOWNLOADS, name);
+  const target = path.join(DOWNLOADS, path.basename(file ?? ''));
   try {
     const body = await fs.readFile(target);
     res.end(body);
