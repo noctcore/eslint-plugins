@@ -680,6 +680,12 @@ export const requirePathContainmentRule = createRule<RuleOptions, MessageIds>({
           ...(options.sanitizers ?? []).map((name) => name.replace(/\s+/gu, '').replace(/\(\)$/u, '')),
         ]),
         segmentSanitizers: new Set([...named('basename'), ...modules.map((name) => `${name}.basename`)]),
+        preservingCalls: new Set(
+          ['join', 'resolve', 'normalize'].flatMap((fn) => [
+            ...named(fn),
+            ...modules.map((name) => `${name}.${fn}`),
+          ]),
+        ),
       };
       return taintOptions;
     };

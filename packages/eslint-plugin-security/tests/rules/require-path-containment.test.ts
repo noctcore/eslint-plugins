@@ -198,6 +198,24 @@ ruleTester.run('require-path-containment', requirePathContainmentRule, {
       code: "import { join } from 'node:path'; import fs from 'node:fs'; function h(req, res) { if (!req.params || typeof req.params !== 'object') return; if (!['a.css'].includes(req.params.name)) return res.end(); return fs.readFileSync(join('/srv/themes', req.params.name)); }",
       filename: TS,
     },
+    // A deny regex written at the test is a new object each time: `g` keeps no state there.
+    {
+      code: "import { basename, join } from 'node:path'; import fs from 'node:fs'; function h(req) { const n = basename(String(req.query.f)); if (/^\\.{1,2}$/g.test(n)) return; fs.rmSync(join(BASE, n), { recursive: true }); }",
+      filename: TS,
+    },
+    // `@fastify/static` serves under its registered root, or a fixed root the call passes.
+    {
+      code: "function h(req, reply) { return reply.sendFile(req.params.file); }",
+      filename: TS,
+    },
+    {
+      code: "function h(req, reply) { return reply.sendFile(req.params.file, '/srv/static'); }",
+      filename: TS,
+    },
+    {
+      code: "function h(req, reply) { return reply.download(req.params.file, 'report.pdf', { root: '/srv/reports' }); }",
+      filename: TS,
+    },
   ],
   invalid: [
     // `req.*` straight into path.join with no guard.
@@ -691,6 +709,65 @@ ruleTester.run('require-path-containment', requirePathContainmentRule, {
       code: "import { join } from 'node:path'; function h(req, res) { const allowed = ['a.html']; if (!allowed.includes(req.params.name)) return res.end(); const { params } = req; params.name = '..'; return join('/srv', req.params.name); }",
       filename: TS,
       errors: ERR,
+    },
+    // A dot check on a file name does not carry over to its stem: `'...'` passes and its stem is `..`.
+    {
+      code: "import fs from 'node:fs'; import path from 'node:path'; function h(req, res) {\n  const file = path.basename(req.file.originalname);\n  if (file === '.' || file === '..') return res.status(400).end();\n  const { name } = path.parse(file);\n  fs.rmSync(path.join(B, name), { recursive: true });\n}",
+      filename: TS,
+      errors: FS,
+    },
+    {
+      code: "import fs from 'node:fs'; import { basename, extname, join } from 'node:path'; function h(req) {\n  const file = basename(String(req.query.f));\n  if (file === '.' || file === '..') return;\n  fs.readFileSync(join(B, basename(file, extname(file)), 'meta.json'));\n}",
+      filename: TS,
+      errors: FS,
+    },
+    {
+      code: "import fs from 'node:fs'; import { basename, join } from 'node:path'; function h(req) { const file = basename(String(req.query.f)); if (file === '.' || file === '..') return; fs.rmSync(join(B, basename(file, '.')), { recursive: true }); }",
+      filename: TS,
+      errors: FS,
+    },
+    // Any other call or a member read on the checked value: `_.trim`, `new URL`, `path.parse(...).name`.
+    {
+      code: "import fs from 'node:fs'; import { basename, join } from 'node:path'; import _ from 'lodash'; function h(req) { const n = basename(String(req.query.f)); if (n === '.' || n === '..') return; fs.rmSync(join(B, _.trim(n)), { recursive: true }); }",
+      filename: TS,
+      errors: FS,
+    },
+    {
+      code: "import fs from 'node:fs'; import { basename } from 'node:path'; function h(req) { const n = basename(String(req.query.f)); if (n === '.' || n === '..') return; fs.rmSync(new URL(n, 'file:///srv/files/'), { recursive: true }); }",
+      filename: TS,
+      errors: FS,
+    },
+    {
+      code: "import fs from 'node:fs'; import path from 'node:path'; function h(req) { const n = req.query.f; if (!/^[\\w-][\\w.-]*$/.test(n)) return; fs.rmSync(path.join(B, path.parse(n).name), { recursive: true }); }",
+      filename: TS,
+      errors: FS,
+    },
+    // A shared `g` or `y` deny regex keeps `lastIndex`: `DOTS.test('..')` alternates.
+    {
+      code: "import { basename, join } from 'node:path'; import fs from 'node:fs'; const DOTS = /^\\.{1,2}$/g; function h(req) { const n = basename(String(req.query.f)); if (DOTS.test(n)) return; fs.rmSync(join(BASE, n), { recursive: true }); }",
+      filename: TS,
+      errors: FS,
+    },
+    {
+      code: "import { basename, join } from 'node:path'; import fs from 'node:fs'; const DOTS = /^\\.{1,2}$/y; function h(req) { const n = basename(String(req.query.f)); if (DOTS.test(n)) return; fs.rmSync(join(BASE, n), { recursive: true }); }",
+      filename: TS,
+      errors: FS,
+    },
+    // A Fastify root the call takes from the request.
+    {
+      code: "function h(req, reply) { return reply.sendFile('index.html', req.query.dir); }",
+      filename: TS,
+      errors: FS,
+    },
+    {
+      code: "function h(req, reply) { return reply.sendFile('index.html', { root: req.query.dir }); }",
+      filename: TS,
+      errors: FS,
+    },
+    {
+      code: "function h(req, reply) { return reply.download('a.pdf', { root: req.query.dir }); }",
+      filename: TS,
+      errors: FS,
     },
   ],
 });

@@ -31,12 +31,13 @@ import {
  * checked against an allowlist or a safe anchored regex before the sink stops
  * the flow there.
  *
- * A proof holds only for the text that was checked. Below a call that can
- * turn checked text into new characters (a decoder such as
- * `decodeURIComponent` or `Buffer.from(x, 'base64')`, or a string method such
- * as `replace`, `slice` or `normalize('NFKC')`), regex and schema proofs,
- * sanitizers and dot checks no longer cut the flow: `%2e%2e` passes a check
- * for `..` and decodes to it.
+ * A proof holds only for the text that was checked. Below a call that is not
+ * known to keep its arguments' text (a decoder such as `decodeURIComponent`,
+ * a string method such as `replace` or `slice`, `path.parse(x).name`,
+ * `basename(x, ext)`, `new URL(x)`, a helper), and below a member read of a
+ * checked value, regex and schema proofs, sanitizers and dot checks no longer
+ * cut the flow: `%2e%2e` passes a check for `..` and decodes to it, and
+ * `'...'` passes a dot check while `path.parse('...').name` is `..`.
  */
 
 type SourceCode = Readonly<TSESLint.SourceCode>;
@@ -93,6 +94,12 @@ export interface TaintOptions {
    * binding that holds it is refused as `..` before the sink.
    */
   readonly segmentSanitizers?: ReadonlySet<string>;
+  /**
+   * Callee source texts whose result keeps each argument's text (`path.join`,
+   * `path.resolve`, `path.normalize`), so a proof on an argument carries over.
+   * Any other call reshapes the value and its arguments' proofs no longer hold.
+   */
+  readonly preservingCalls?: ReadonlySet<string>;
   /** Bindings that are themselves the input followed (a helper's parameter). */
   readonly sourceVariables?: ReadonlySet<Variable>;
 }
@@ -220,7 +227,8 @@ function carried(raw: TSESTree.Node, walk: Walk, depth: number): TSESTree.Node |
       ) {
         return null;
       }
-      return next(node.object);
+      // A part of a checked value is not the checked text (`n[0]`, `parse(n).name`).
+      return carried(node.object, walk.reshaped ? walk : { ...walk, reshaped: true }, depth + 1);
     case AST_NODE_TYPES.ArrayExpression:
       return firstOf(node.elements.map((element) => element ?? null));
     case AST_NODE_TYPES.SpreadElement:
@@ -314,6 +322,38 @@ function isDecoder(node: TSESTree.CallExpression | TSESTree.NewExpression): bool
   return false;
 }
 
+/** Global calls that keep their argument's text: a string conversion and URI encoding. */
+const TEXT_KEEPING_GLOBALS: ReadonlySet<string> = new Set(['String', 'encodeURIComponent', 'encodeURI']);
+
+/**
+ * True when a call's result keeps each argument's text, so a proof on an
+ * argument still holds for it: a call in `preservingCalls` (`path.join`),
+ * a segment sanitizer with one argument (`basename(x)`, not `basename(x, ext)`),
+ * `String(x)` and URI encoding, or a method that keeps its receiver checked
+ * (`parts.join(sep)`, `a.concat(b)`). Every other call, `path.parse`,
+ * `_.trim`, `new URL` and local helpers included, may change the text.
+ */
+function keepsArgumentText(
+  node: TSESTree.CallExpression | TSESTree.NewExpression,
+  callee: TSESTree.Node,
+  calleeText: string,
+  walk: Walk,
+): boolean {
+  if (node.type === AST_NODE_TYPES.NewExpression) {
+    return false;
+  }
+  if (walk.options.preservingCalls?.has(calleeText) === true) {
+    return true;
+  }
+  if (walk.options.segmentSanitizers?.has(calleeText) === true) {
+    return node.arguments.length === 1;
+  }
+  if (callee.type === AST_NODE_TYPES.Identifier) {
+    return TEXT_KEEPING_GLOBALS.has(callee.name);
+  }
+  return callee.type === AST_NODE_TYPES.MemberExpression && !reshapesReceiver(callee);
+}
+
 /**
  * True for a method call on a value that can reshape its text (`x.replace(...)`,
  * `x.slice(1)`, `x.normalize('NFKC')`), as opposed to one that keeps it checked.
@@ -339,7 +379,12 @@ function carriedByCall(
   if (callee.type === AST_NODE_TYPES.Identifier && NUMERIC_CALLS.has(callee.name)) {
     return null;
   }
-  const argumentWalk = isDecoder(node) && !walk.reshaped ? { ...walk, reshaped: true } : walk;
+  // Only a call known to keep its arguments' text keeps their proofs:
+  // `basename('...', extname('...'))` and `path.parse('...').name` are `..`.
+  const argumentWalk =
+    !walk.reshaped && (isDecoder(node) || !keepsArgumentText(node, callee, calleeText, walk))
+      ? { ...walk, reshaped: true }
+      : walk;
   for (const arg of node.arguments) {
     const found = carried(arg, argumentWalk, depth + 1);
     if (found !== null) {
