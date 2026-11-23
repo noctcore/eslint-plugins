@@ -20,6 +20,8 @@ describe('regexAdmitsOnlySafe', () => {
     ['^(asc|desc)$', 'shell'],
     ['^\\d{1,6}$', 'path'],
     ['^[\\w-][\\w.-]*$', 'path'],
+    ['^[\\w-][\\w.-]*$', 'shell-path'],
+    ['^[a-z.]+$', 'shell-word'],
     ['^[a-zA-Z0-9 _.#%-]+$', 'html'],
     ['^[a-z]*$', 'html'],
     ['^[\\]a]+$', 'html'],
@@ -66,6 +68,10 @@ describe('regexAdmitsOnlySafe', () => {
     ['^[\\w.-]+$', 'path'],
     ['^\\.\\.?$', 'path'],
     ['^[a-z.]+$', 'path'],
+    // A word glued after a `/` is a path segment: no `.`, `..` or empty value.
+    ['^[a-z.]+$', 'shell-path'],
+    ['^[\\w.-]+$', 'shell-path'],
+    ['^[a-z]*$', 'shell-path'],
     // A program name is proven by a literal allowlist only.
     ['^[a-z]+$', 'command'],
     ['^(git|ls)$', 'command'],

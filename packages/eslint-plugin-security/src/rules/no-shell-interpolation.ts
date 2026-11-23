@@ -8,7 +8,8 @@ import { ASTUtils } from '@typescript-eslint/utils';
 import type { JSONSchema4 } from '@typescript-eslint/utils/json-schema';
 
 import { createRule } from '../createRule';
-import { isProvenSafeValue } from '../guards';
+import { type GuardContext, isProvenSafeValue } from '../guards';
+import { classifyShellParts, type ShellPart } from '../shell-words';
 
 const RULE_NAME = 'no-shell-interpolation';
 
@@ -115,113 +116,89 @@ function isDynamicCommandString(node: TSESTree.Node): boolean {
   return false;
 }
 
-/** The runtime parts of a dynamic command string: template expressions and non-literal `+` operands. */
-interface DynamicPart {
-  readonly node: TSESTree.Node;
-  /** True when static text right before it puts it inside a word (`--author=${x}`). */
-  readonly midWord: boolean;
-  /**
-   * True when it is part of the word that names the program: first in the
-   * string, after a `;`, `&`, `|`, `(`, backtick or line break, or after a
-   * reserved word, a prefix command (`sudo`, `env`, `xargs`) or `NAME=value`.
-   */
-  readonly commandWord: boolean;
-}
-
-/** Characters after which the next word names a program. */
-const COMMAND_SEPARATORS = ';&|()`\n\r';
+/** How deep `const` string bindings are followed when the command is read. */
+const MAX_CONST_DEPTH = 8;
 
 /**
- * Words after which the next word still names a program: shell reserved
- * words and commands that run their arguments as a command.
+ * The static text and runtime values of a command string, in order. An
+ * in-file `const` bound to a string literal (or to a template or `+` of such
+ * parts) is read as the text it holds, so `const P = 'sudo'` or
+ * `const SEP = ';'` changes where the next value lands.
  */
-const COMMAND_PREFIXES: ReadonlySet<string> = new Set([
-  '!',
-  '{',
-  'if',
-  'then',
-  'else',
-  'elif',
-  'do',
-  'while',
-  'until',
-  'time',
-  'exec',
-  'command',
-  'builtin',
-  'sudo',
-  'doas',
-  'env',
-  'nohup',
-  'nice',
-  'timeout',
-  'stdbuf',
-  'xargs',
-]);
-
-/** `NAME=value` before a command sets a variable for it; the next word is still the program. */
-const ASSIGNMENT_WORD = /^[A-Za-z_]\w*=/u;
-
-/**
- * Static text before a value glues it into a word when it ends in a plain word
- * character. A trailing `-` or `+` does not: `tool -${x}` with `x = '-output=f'`
- * makes a long option.
- */
-const WORD_END = /[\w=:,./@%]$/u;
-
-function dynamicParts(node: TSESTree.Node): DynamicPart[] {
+function commandSegments(
+  node: TSESTree.Node,
+  sourceCode: Readonly<TSESLint.SourceCode>,
+): (string | TSESTree.Node)[] {
   const segments: (string | TSESTree.Node)[] = [];
-  const collect = (part: TSESTree.Node): void => {
+  const collect = (part: TSESTree.Node, depth: number): void => {
     if (part.type === AST_NODE_TYPES.TemplateLiteral) {
       part.quasis.forEach((quasi, index) => {
         segments.push(quasi.value.cooked ?? '');
         const expression = part.expressions[index];
         if (expression !== undefined) {
-          segments.push(expression);
+          collect(expression, depth + 1);
         }
       });
     } else if (part.type === AST_NODE_TYPES.BinaryExpression && part.operator === '+') {
-      collect(part.left);
-      collect(part.right);
+      collect(part.left, depth);
+      collect(part.right, depth);
     } else if (part.type === AST_NODE_TYPES.Literal) {
       segments.push(String(part.value));
     } else {
-      segments.push(part);
-    }
-  };
-  collect(node);
-  const parts: DynamicPart[] = [];
-  // Whether the word being read names the program, and the static text of it
-  // so far (a value inside it is marked so it never reads as a keyword).
-  let commandPosition = true;
-  let word = '';
-  segments.forEach((segment, index) => {
-    if (typeof segment !== 'string') {
-      const before = segments[index - 1];
-      parts.push({
-        node: segment,
-        midWord: typeof before === 'string' && WORD_END.test(before),
-        commandWord: commandPosition,
-      });
-      word += '\u0000';
-      return;
-    }
-    for (const char of segment) {
-      if (COMMAND_SEPARATORS.includes(char)) {
-        commandPosition = true;
-        word = '';
-      } else if (char === ' ' || char === '\t') {
-        if (word !== '') {
-          commandPosition =
-            commandPosition && (COMMAND_PREFIXES.has(word) || ASSIGNMENT_WORD.test(word));
-          word = '';
-        }
+      const init = depth < MAX_CONST_DEPTH ? constStringInit(part, sourceCode) : null;
+      if (init === null) {
+        segments.push(part);
       } else {
-        word += char;
+        collect(init, depth + 1);
       }
     }
-  });
-  return parts;
+  };
+  collect(node, 0);
+  return segments;
+}
+
+/**
+ * For an identifier bound once by an in-file `const` to a string literal, a
+ * template or a `+` (whose own parts are read the same way), that initializer;
+ * else null.
+ */
+function constStringInit(
+  node: TSESTree.Node,
+  sourceCode: Readonly<TSESLint.SourceCode>,
+): TSESTree.Node | null {
+  const inner = unwrapTypeWrappers(node);
+  if (inner.type !== AST_NODE_TYPES.Identifier) {
+    return null;
+  }
+  const variable = ASTUtils.findVariable(sourceCode.getScope(inner), inner);
+  const def = variable?.defs[0];
+  if (
+    variable?.defs.length !== 1 ||
+    def?.type !== 'Variable' ||
+    def.parent.kind !== 'const' ||
+    def.node.id.type !== AST_NODE_TYPES.Identifier ||
+    def.node.init === null
+  ) {
+    return null;
+  }
+  const init = unwrapTypeWrappers(def.node.init);
+  const textual =
+    (init.type === AST_NODE_TYPES.Literal && typeof init.value === 'string') ||
+    init.type === AST_NODE_TYPES.TemplateLiteral ||
+    (init.type === AST_NODE_TYPES.BinaryExpression && init.operator === '+') ||
+    init.type === AST_NODE_TYPES.Identifier;
+  return textual ? init : null;
+}
+
+/** The guard context a runtime part needs, from where it lands in the command. */
+function partContext(part: ShellPart): GuardContext {
+  if (part.commandWord) {
+    return 'command';
+  }
+  if (part.afterSlash) {
+    return 'shell-path';
+  }
+  return part.midWord ? 'shell-word' : 'shell';
 }
 
 /**
@@ -363,14 +340,11 @@ export const noShellInterpolationRule = createRule<RuleOptions, MessageIds>({
         // A value that starts a word must not start with `-` (an option) or
         // `#` (a comment); one glued to text before it may. A value in the
         // program name is proven only by a literal allowlist or a constant.
-        const provenSafe = dynamicParts(command).every((part) =>
-          isProvenSafeValue(
-            part.node,
-            node,
-            part.commandWord ? 'command' : part.midWord ? 'shell-word' : 'shell',
-            context.sourceCode,
-            { trustEnvironment },
-          ),
+        const parts = classifyShellParts(commandSegments(command, context.sourceCode));
+        const provenSafe = parts.every((part) =>
+          isProvenSafeValue(part.node, node, partContext(part), context.sourceCode, {
+            trustEnvironment,
+          }),
         );
         if (provenSafe) {
           return;

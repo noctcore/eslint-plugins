@@ -113,7 +113,7 @@ ruleTester.run('no-shell-interpolation', noShellInterpolationRule, {
       filename: TS,
     },
     {
-      code: "const RE = /^[\\w.-]+$/; function run(ref: string) { if (!RE.test(ref)) return; exec(`git show origin/${ref}`); }",
+      code: "const RE = /^[\\w-][\\w.-]*$/; function run(ref: string) { if (!RE.test(ref)) return; exec(`git show origin/${ref}`); }",
       filename: TS,
     },
     // Values the operator sets, with `trustEnvironment`, and in-file constants.
@@ -150,6 +150,19 @@ ruleTester.run('no-shell-interpolation', noShellInterpolationRule, {
       filename: TS,
     },
     { code: "const BIN = '/usr/bin/git'; exec(`${BIN} status`);", filename: TS },
+    // Redirects and words that only look like wrappers keep an argument an argument; a constant is read as its text.
+    {
+      code: 'function run(x: string) { if (!/^[a-z]+$/.test(x)) return; exec(`ls 2>&1 ${x}`); exec(`ls -la ${x} &> out`); exec(`find . -name ${x}`); exec(`echo sudo ${x}`); }',
+      filename: TS,
+    },
+    {
+      code: "const FLAGS = '--color'; function run(x: string) { if (!/^[a-z]+$/.test(x)) return; exec(`ls ${FLAGS} ${x}`); }",
+      filename: TS,
+    },
+    {
+      code: "const DBS = ['orders']; function run(db: string) { if (!DBS.includes(db)) return; const target = `/var/backups/${db}.sql`; exec(`pg_dump ${db} > ${target}`); }",
+      filename: TS,
+    },
     // A program name from a literal allowlist, an argument from a regex.
     {
       code: "const TOOLS = ['git', 'ls']; function h(t: string, f: string) { if (!TOOLS.includes(t) || !/^[a-z]+$/.test(f)) return; exec(`${t} ${f}`); exec(`cd /tmp && ${t} -x`); }",
@@ -662,6 +675,185 @@ ruleTester.run('no-shell-interpolation', noShellInterpolationRule, {
     },
     {
       code: "import { z } from 'zod'; const S = z.string().regex(/^[a-z]+$/); const T = S; T.parse = (v: string) => v; function run(x: string) { exec(`ls ${S.parse(x)}`); }",
+      filename: TS,
+      errors: [{ messageId: 'shellInterpolation' }],
+    },
+    // After a wrapper every later word runs as a program, options included; wrappers match by basename and without quotes.
+    {
+      code: 'function run(t: string) { if (!/^[a-z]+$/.test(t)) return; exec(`sudo -u x ${t}`); }',
+      filename: TS,
+      errors: [{ messageId: 'shellInterpolation' }],
+    },
+    {
+      code: 'function run(t: string) { if (!/^[a-z]+$/.test(t)) return; exec(`sudo -- ${t}`); }',
+      filename: TS,
+      errors: [{ messageId: 'shellInterpolation' }],
+    },
+    {
+      code: 'function run(t: string) { if (!/^[a-z]+$/.test(t)) return; exec(`doas -u x ${t}`); }',
+      filename: TS,
+      errors: [{ messageId: 'shellInterpolation' }],
+    },
+    {
+      code: 'function run(t: string) { if (!/^[a-z]+$/.test(t)) return; exec(`env -i ${t}`); }',
+      filename: TS,
+      errors: [{ messageId: 'shellInterpolation' }],
+    },
+    {
+      code: 'function run(t: string) { if (!/^[a-z]+$/.test(t)) return; exec(`env -- ${t}`); }',
+      filename: TS,
+      errors: [{ messageId: 'shellInterpolation' }],
+    },
+    {
+      code: 'function run(t: string) { if (!/^[a-z]+$/.test(t)) return; exec(`nice -n 5 ${t}`); }',
+      filename: TS,
+      errors: [{ messageId: 'shellInterpolation' }],
+    },
+    {
+      code: 'function run(t: string) { if (!/^[a-z]+$/.test(t)) return; exec(`timeout 30 ${t} /srv/app`); }',
+      filename: TS,
+      errors: [{ messageId: 'shellInterpolation' }],
+    },
+    {
+      code: 'function run(t: string) { if (!/^[a-z]+$/.test(t)) return; exec(`echo a | xargs -0 ${t}`); }',
+      filename: TS,
+      errors: [{ messageId: 'shellInterpolation' }],
+    },
+    {
+      code: 'function run(t: string) { if (!/^[a-z]+$/.test(t)) return; exec(`stdbuf -oL ${t}`); }',
+      filename: TS,
+      errors: [{ messageId: 'shellInterpolation' }],
+    },
+    {
+      code: 'function run(t: string) { if (!/^[a-z]+$/.test(t)) return; exec(`time -p ${t}`); }',
+      filename: TS,
+      errors: [{ messageId: 'shellInterpolation' }],
+    },
+    {
+      code: 'function run(t: string) { if (!/^[a-z]+$/.test(t)) return; exec(`/usr/bin/env ${t}`); }',
+      filename: TS,
+      errors: [{ messageId: 'shellInterpolation' }],
+    },
+    {
+      code: 'function run(t: string) { if (!/^[a-z]+$/.test(t)) return; exec(`/usr/bin/sudo ${t}`); }',
+      filename: TS,
+      errors: [{ messageId: 'shellInterpolation' }],
+    },
+    {
+      code: "function run(t: string) { if (!/^[a-z]+$/.test(t)) return; exec(`'sudo' ${t}`); }",
+      filename: TS,
+      errors: [{ messageId: 'shellInterpolation' }],
+    },
+    {
+      code: "function run(t: string) { if (!/^[a-z]+$/.test(t)) return; exec('sudo -u deploy ' + t + ' /srv/app'); }",
+      filename: TS,
+      errors: [{ messageId: 'shellInterpolation' }],
+    },
+    // More wrappers, `find -exec`, package runners, and a redirect before the program.
+    {
+      code: 'function run(t: string) { if (!/^[a-z]+$/.test(t)) return; exec(`eval ${t}`); }',
+      filename: TS,
+      errors: [{ messageId: 'shellInterpolation' }],
+    },
+    {
+      code: 'function run(t: string) { if (!/^[a-z]+$/.test(t)) return; exec(`sh -c ${t}`); }',
+      filename: TS,
+      errors: [{ messageId: 'shellInterpolation' }],
+    },
+    {
+      code: "function run(t: string) { if (!/^[a-z]+$/.test(t)) return; exec(`bash -c '${t}'`); }",
+      filename: TS,
+      errors: [{ messageId: 'shellInterpolation' }],
+    },
+    {
+      code: 'function run(t: string) { if (!/^[a-z]+$/.test(t)) return; exec(`source ${t}`); }',
+      filename: TS,
+      errors: [{ messageId: 'shellInterpolation' }],
+    },
+    {
+      code: 'function run(t: string) { if (!/^[a-z]+$/.test(t)) return; exec(`. ${t}`); }',
+      filename: TS,
+      errors: [{ messageId: 'shellInterpolation' }],
+    },
+    {
+      code: 'function run(t: string) { if (!/^[a-z]+$/.test(t)) return; exec(`coproc ${t}`); }',
+      filename: TS,
+      errors: [{ messageId: 'shellInterpolation' }],
+    },
+    {
+      code: 'function run(t: string) { if (!/^[a-z]+$/.test(t)) return; exec(`setsid ${t}`); }',
+      filename: TS,
+      errors: [{ messageId: 'shellInterpolation' }],
+    },
+    {
+      code: 'function run(t: string) { if (!/^[a-z]+$/.test(t)) return; exec(`chroot / ${t}`); }',
+      filename: TS,
+      errors: [{ messageId: 'shellInterpolation' }],
+    },
+    {
+      code: 'function run(t: string) { if (!/^[a-z]+$/.test(t)) return; exec(`ionice ${t}`); }',
+      filename: TS,
+      errors: [{ messageId: 'shellInterpolation' }],
+    },
+    {
+      code: 'function run(t: string) { if (!/^[a-z]+$/.test(t)) return; exec(`strace ${t}`); }',
+      filename: TS,
+      errors: [{ messageId: 'shellInterpolation' }],
+    },
+    {
+      code: 'function run(t: string) { if (!/^[a-z]+$/.test(t)) return; exec(`watch ${t}`); }',
+      filename: TS,
+      errors: [{ messageId: 'shellInterpolation' }],
+    },
+    {
+      code: 'function run(t: string) { if (!/^[a-z]+$/.test(t)) return; exec(`find . -exec ${t} {} +`); }',
+      filename: TS,
+      errors: [{ messageId: 'shellInterpolation' }],
+    },
+    {
+      code: 'function run(t: string) { if (!/^[a-z]+$/.test(t)) return; exec(`ssh host ${t}`); }',
+      filename: TS,
+      errors: [{ messageId: 'shellInterpolation' }],
+    },
+    {
+      code: 'function run(t: string) { if (!/^[a-z]+$/.test(t)) return; exec(`npx ${t}`); }',
+      filename: TS,
+      errors: [{ messageId: 'shellInterpolation' }],
+    },
+    {
+      code: 'function run(t: string) { if (!/^[a-z]+$/.test(t)) return; exec(`pnpm dlx ${t}`); }',
+      filename: TS,
+      errors: [{ messageId: 'shellInterpolation' }],
+    },
+    {
+      code: 'function run(t: string) { if (!/^[a-z]+$/.test(t)) return; exec(`>out ${t}`); }',
+      filename: TS,
+      errors: [{ messageId: 'shellInterpolation' }],
+    },
+    {
+      code: 'function run(t: string) { if (!/^[a-z]+$/.test(t)) return; exec(`2>/dev/null ${t}`); }',
+      filename: TS,
+      errors: [{ messageId: 'shellInterpolation' }],
+    },
+    // A separator or wrapper held in an in-file constant is read as its text.
+    {
+      code: "function run(t: string) { if (!/^[a-z]+$/.test(t)) return; const P = 'sudo'; exec(P + ' ' + t); }",
+      filename: TS,
+      errors: [{ messageId: 'shellInterpolation' }],
+    },
+    {
+      code: "function run(t: string) { if (!/^[a-z]+$/.test(t)) return; const P = 'sudo'; exec(`${P} ${t}`); }",
+      filename: TS,
+      errors: [{ messageId: 'shellInterpolation' }],
+    },
+    {
+      code: "function run(t: string) { if (!/^[a-z]+$/.test(t)) return; const SEP = ';'; exec(`ls ${SEP} ${t}`); }",
+      filename: TS,
+      errors: [{ messageId: 'shellInterpolation' }],
+    },
+    // A path segment glued after a `/` must not be `.` or `..`.
+    {
+      code: 'function h(x: string) { if (!/^[a-z.]+$/.test(x)) return; exec(`rm -rf /srv/${x}`); }',
       filename: TS,
       errors: [{ messageId: 'shellInterpolation' }],
     },
