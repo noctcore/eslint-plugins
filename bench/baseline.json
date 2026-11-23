@@ -47,7 +47,7 @@
       "j": 0.3752,
       "extra": 1,
       "crossFp": 0,
-      "crossSafe": 150,
+      "crossSafe": 153,
       "enabledBy": "recommended",
       "categories": [
         "security/command-injection"
@@ -65,7 +65,7 @@
       "j": 0.4667,
       "extra": 0,
       "crossFp": 0,
-      "crossSafe": 151,
+      "crossSafe": 154,
       "enabledBy": "recommended",
       "categories": [
         "security/ssrf"
@@ -83,7 +83,7 @@
       "j": 0.4667,
       "extra": 0,
       "crossFp": 0,
-      "crossSafe": 151,
+      "crossSafe": 154,
       "enabledBy": "recommended",
       "categories": [
         "security/open-redirect"
@@ -92,21 +92,21 @@
       "url": "https://noctcore.github.io/eslint-plugins/rules/security/no-user-controlled-redirect/"
     },
     "security/require-path-containment": {
-      "tp": 4,
-      "fn": 26,
-      "fp": 2,
-      "tn": 28,
-      "detection": 0.1333,
-      "falseAlarm": 0.0667,
-      "j": 0.0666,
-      "extra": 0,
+      "tp": 5,
+      "fn": 25,
+      "fp": 3,
+      "tn": 30,
+      "detection": 0.1667,
+      "falseAlarm": 0.0909,
+      "j": 0.0758,
+      "extra": 10,
       "crossFp": 0,
       "crossSafe": 0,
       "enabledBy": "override",
       "categories": [
         "security/path-traversal"
       ],
-      "description": "Request-shaped input (`req.*`) passed directly into `path.join` / `path.resolve` without a containment test on the result is a path-traversal sink.",
+      "description": "Request-shaped input (`req.*`) reaching `path.join` / `path.resolve` or the path of an `fs` call (or `res.sendFile`) without a containment test is a path-traversal sink.",
       "url": "https://noctcore.github.io/eslint-plugins/rules/security/require-path-containment/"
     },
     "security/require-sanitized-html": {
@@ -183,14 +183,14 @@
       "overrides": {}
     },
     "security/path-traversal": {
-      "tp": 4,
-      "fn": 26,
-      "fp": 2,
-      "tn": 28,
-      "detection": 0.1333,
-      "falseAlarm": 0.0667,
-      "j": 0.0666,
-      "extra": 0,
+      "tp": 5,
+      "fn": 25,
+      "fp": 3,
+      "tn": 30,
+      "detection": 0.1667,
+      "falseAlarm": 0.0909,
+      "j": 0.0758,
+      "extra": 10,
       "title": "Path traversal",
       "cwe": "CWE-22",
       "rules": [
@@ -4562,6 +4562,50 @@
       "cwe": "CWE-601",
       "title": "writeHead 302 with the next query value as Location"
     },
+    "security/path-traversal/express-avatar-read.safe-2.js.case#security/no-shell-interpolation": {
+      "outcome": "TN",
+      "category": "security/path-traversal",
+      "rule": "security/no-shell-interpolation",
+      "file": "security/path-traversal/express-avatar-read.safe-2.js.case",
+      "line": null,
+      "pair": "express-avatar-read",
+      "framework": "express",
+      "cwe": "CWE-22",
+      "title": "basename of the query name refused as a dot segment before building the path"
+    },
+    "security/path-traversal/express-avatar-read.safe-2.js.case#security/no-user-controlled-fetch-url": {
+      "outcome": "TN",
+      "category": "security/path-traversal",
+      "rule": "security/no-user-controlled-fetch-url",
+      "file": "security/path-traversal/express-avatar-read.safe-2.js.case",
+      "line": null,
+      "pair": "express-avatar-read",
+      "framework": "express",
+      "cwe": "CWE-22",
+      "title": "basename of the query name refused as a dot segment before building the path"
+    },
+    "security/path-traversal/express-avatar-read.safe-2.js.case#security/no-user-controlled-redirect": {
+      "outcome": "TN",
+      "category": "security/path-traversal",
+      "rule": "security/no-user-controlled-redirect",
+      "file": "security/path-traversal/express-avatar-read.safe-2.js.case",
+      "line": null,
+      "pair": "express-avatar-read",
+      "framework": "express",
+      "cwe": "CWE-22",
+      "title": "basename of the query name refused as a dot segment before building the path"
+    },
+    "security/path-traversal/express-avatar-read.safe-2.js.case#security/require-path-containment": {
+      "outcome": "TN",
+      "category": "security/path-traversal",
+      "rule": "security/require-path-containment",
+      "file": "security/path-traversal/express-avatar-read.safe-2.js.case",
+      "line": null,
+      "pair": "express-avatar-read",
+      "framework": "express",
+      "cwe": "CWE-22",
+      "title": "basename of the query name refused as a dot segment before building the path"
+    },
     "security/path-traversal/express-avatar-read.safe.js.case#security/no-shell-interpolation": {
       "outcome": "TN",
       "category": "security/path-traversal",
@@ -4596,11 +4640,11 @@
       "title": "basename of the query name taken before building the path"
     },
     "security/path-traversal/express-avatar-read.safe.js.case#security/require-path-containment": {
-      "outcome": "TN",
+      "outcome": "FP",
       "category": "security/path-traversal",
       "rule": "security/require-path-containment",
       "file": "security/path-traversal/express-avatar-read.safe.js.case",
-      "line": null,
+      "line": 13,
       "pair": "express-avatar-read",
       "framework": "express",
       "cwe": "CWE-22",
@@ -4706,11 +4750,11 @@
       "title": "realpath of the joined file must stay under the realpath of the docs dir"
     },
     "security/path-traversal/express-doc-realpath.safe.ts.case#security/require-path-containment": {
-      "outcome": "FP",
+      "outcome": "TN",
       "category": "security/path-traversal",
       "rule": "security/require-path-containment",
       "file": "security/path-traversal/express-doc-realpath.safe.ts.case",
-      "line": 12,
+      "line": null,
       "pair": "express-doc-realpath",
       "framework": "express",
       "cwe": "CWE-22",
@@ -4761,11 +4805,11 @@
       "title": "export name must be in a fixed Set of known files"
     },
     "security/path-traversal/express-export-download.safe.ts.case#security/require-path-containment": {
-      "outcome": "FP",
+      "outcome": "TN",
       "category": "security/path-traversal",
       "rule": "security/require-path-containment",
       "file": "security/path-traversal/express-export-download.safe.ts.case",
-      "line": 15,
+      "line": null,
       "pair": "express-export-download",
       "framework": "express",
       "cwe": "CWE-22",
@@ -4992,7 +5036,7 @@
       "title": "template name must be in a fixed allowlist array before joining"
     },
     "security/path-traversal/express-template-preview.vuln.js.case#security/require-path-containment": {
-      "outcome": "FN",
+      "outcome": "TP",
       "category": "security/path-traversal",
       "rule": "security/require-path-containment",
       "file": "security/path-traversal/express-template-preview.vuln.js.case",
@@ -5937,6 +5981,50 @@
       "cwe": "CWE-22",
       "title": "search param profile interpolated into the profiles dir path and read"
     },
+    "security/path-traversal/node-download-handler.safe-2.js.case#security/no-shell-interpolation": {
+      "outcome": "TN",
+      "category": "security/path-traversal",
+      "rule": "security/no-shell-interpolation",
+      "file": "security/path-traversal/node-download-handler.safe-2.js.case",
+      "line": null,
+      "pair": "node-download-handler",
+      "framework": "node",
+      "cwe": "CWE-22",
+      "title": "basename of the search param refused as a dot segment before joining"
+    },
+    "security/path-traversal/node-download-handler.safe-2.js.case#security/no-user-controlled-fetch-url": {
+      "outcome": "TN",
+      "category": "security/path-traversal",
+      "rule": "security/no-user-controlled-fetch-url",
+      "file": "security/path-traversal/node-download-handler.safe-2.js.case",
+      "line": null,
+      "pair": "node-download-handler",
+      "framework": "node",
+      "cwe": "CWE-22",
+      "title": "basename of the search param refused as a dot segment before joining"
+    },
+    "security/path-traversal/node-download-handler.safe-2.js.case#security/no-user-controlled-redirect": {
+      "outcome": "TN",
+      "category": "security/path-traversal",
+      "rule": "security/no-user-controlled-redirect",
+      "file": "security/path-traversal/node-download-handler.safe-2.js.case",
+      "line": null,
+      "pair": "node-download-handler",
+      "framework": "node",
+      "cwe": "CWE-22",
+      "title": "basename of the search param refused as a dot segment before joining"
+    },
+    "security/path-traversal/node-download-handler.safe-2.js.case#security/require-path-containment": {
+      "outcome": "TN",
+      "category": "security/path-traversal",
+      "rule": "security/require-path-containment",
+      "file": "security/path-traversal/node-download-handler.safe-2.js.case",
+      "line": null,
+      "pair": "node-download-handler",
+      "framework": "node",
+      "cwe": "CWE-22",
+      "title": "basename of the search param refused as a dot segment before joining"
+    },
     "security/path-traversal/node-download-handler.safe.js.case#security/no-shell-interpolation": {
       "outcome": "TN",
       "category": "security/path-traversal",
@@ -5971,11 +6059,11 @@
       "title": "basename of the search param used when joining"
     },
     "security/path-traversal/node-download-handler.safe.js.case#security/require-path-containment": {
-      "outcome": "TN",
+      "outcome": "FP",
       "category": "security/path-traversal",
       "rule": "security/require-path-containment",
       "file": "security/path-traversal/node-download-handler.safe.js.case",
-      "line": null,
+      "line": 14,
       "pair": "node-download-handler",
       "framework": "node",
       "cwe": "CWE-22",
@@ -6102,6 +6190,50 @@
       "cwe": "CWE-22",
       "title": "decoded url pathname joined onto the public dir and streamed"
     },
+    "security/path-traversal/node-uploads-list.safe-2.ts.case#security/no-shell-interpolation": {
+      "outcome": "TN",
+      "category": "security/path-traversal",
+      "rule": "security/no-shell-interpolation",
+      "file": "security/path-traversal/node-uploads-list.safe-2.ts.case",
+      "line": null,
+      "pair": "node-uploads-list",
+      "framework": "node",
+      "cwe": "CWE-22",
+      "title": "basename of the decoded url path refused as a dot segment before resolving"
+    },
+    "security/path-traversal/node-uploads-list.safe-2.ts.case#security/no-user-controlled-fetch-url": {
+      "outcome": "TN",
+      "category": "security/path-traversal",
+      "rule": "security/no-user-controlled-fetch-url",
+      "file": "security/path-traversal/node-uploads-list.safe-2.ts.case",
+      "line": null,
+      "pair": "node-uploads-list",
+      "framework": "node",
+      "cwe": "CWE-22",
+      "title": "basename of the decoded url path refused as a dot segment before resolving"
+    },
+    "security/path-traversal/node-uploads-list.safe-2.ts.case#security/no-user-controlled-redirect": {
+      "outcome": "TN",
+      "category": "security/path-traversal",
+      "rule": "security/no-user-controlled-redirect",
+      "file": "security/path-traversal/node-uploads-list.safe-2.ts.case",
+      "line": null,
+      "pair": "node-uploads-list",
+      "framework": "node",
+      "cwe": "CWE-22",
+      "title": "basename of the decoded url path refused as a dot segment before resolving"
+    },
+    "security/path-traversal/node-uploads-list.safe-2.ts.case#security/require-path-containment": {
+      "outcome": "TN",
+      "category": "security/path-traversal",
+      "rule": "security/require-path-containment",
+      "file": "security/path-traversal/node-uploads-list.safe-2.ts.case",
+      "line": null,
+      "pair": "node-uploads-list",
+      "framework": "node",
+      "cwe": "CWE-22",
+      "title": "basename of the decoded url path refused as a dot segment before resolving"
+    },
     "security/path-traversal/node-uploads-list.safe.ts.case#security/no-shell-interpolation": {
       "outcome": "TN",
       "category": "security/path-traversal",
@@ -6136,11 +6268,11 @@
       "title": "basename of the decoded url path used when resolving"
     },
     "security/path-traversal/node-uploads-list.safe.ts.case#security/require-path-containment": {
-      "outcome": "TN",
+      "outcome": "FP",
       "category": "security/path-traversal",
       "rule": "security/require-path-containment",
       "file": "security/path-traversal/node-uploads-list.safe.ts.case",
-      "line": null,
+      "line": 14,
       "pair": "node-uploads-list",
       "framework": "node",
       "cwe": "CWE-22",
