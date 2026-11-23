@@ -72,6 +72,9 @@ ruleTester.run('no-user-controlled-fetch-url', noUserControlledFetchUrlRule, {
     { code: 'fetch(`https://${host}/todos`);', filename: TS, errors: [error] },
     // Protocol-relative runtime host.
     { code: 'fetch(`//${host}/todos`);', filename: TS, errors: [error] },
+    // Extra slashes still open the authority, and the parser drops a tab.
+    { code: 'fetch(`https:///${host}/todos`);', filename: TS, errors: [error] },
+    { code: 'fetch(`/\\t${path}`);', filename: TS, errors: [error] },
     // Empty first quasi: the whole URL is runtime.
     { code: 'fetch(`${base}/api/todos`);', filename: TS, errors: [error] },
     // The userinfo trick: `path = "@evil.com/x"` moves the host.

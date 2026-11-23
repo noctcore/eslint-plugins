@@ -1,0 +1,16 @@
+---
+'@noctcore/eslint-plugin-security': minor
+---
+
+`no-user-controlled-redirect` now checks the other ways a server sends a redirect: `res.location(url)` and `Response.redirect(url)` (added to the default `redirectCallees`), and `Location` header writes on a receiver in the new `responseObjects` option (default `res`, `response`, `reply`): `set` / `header` / `setHeader` / `append` / `appendHeader` with the header name in any case (also held in a binding, `const L = 'Location'`, or behind a computed method), `set({ Location })`, `reply.headers({ Location })`, `setHeaders(new Map(...))` and `writeHead(status, [message,] headers)` with an object, a computed key or Node's array forms (`['Location', url]`, `[['Location', url]]`). A headers holder built earlier in the file is read too (`headers.Location = url`, `headers.set(...)`, `headers.push(...)`, `Object.assign(headers, ...)`), and so are the `headers` of `new Response(body, init)` and `new NextResponse(body, init)`. A sink after response-returning calls is read: `res.status(302).set('Location', url)`, `reply.code(302).header(...)`, `res.status(302).redirect(url)`.
+
+It also stops reporting targets proven to stay on a site, read where the value is used (`ok ? target : '/'`, a `const` boolean standing for its test, a `const` holding the target):
+
+- a URL whose `new URL(url).hostname` (or `.host` / `.origin`) was checked by an exiting `if`, or an `if` around the redirect, against `includes` / `has` / `===` on literals or an anchored regex whose every alternative ends in a literal domain of at least two labels, bounded by `^` or a dot (`^(app|docs)\.example\.com$`, `^(?:[a-z0-9-]+\.)*example\.com$`; not `^[a-z0-9.-]*example\.com$`, which accepts `evilexample.com`, or `^[a-z]+\.com$`), with no change to the URL after the read (`u.host = x`, `Object.assign(u, ...)`, `Reflect.set`, an alias write or a helper call cancel it). A `hostname` / `host` check counts only for a `Location` header a `responseObjects` receiver writes, which browsers never follow to a non-http(s) scheme; `redirect()`, `NextResponse.redirect`, `Response.redirect` and `new Response(...)` need an `origin` check, because `javascript://app.example.com/%0aalert(1)` has an allowlisted host;
+- a same-site path: `startsWith('/')` while refusing `//`, `/\`, a tab, a line feed and a carriage return, or a regex starting `^\/` whose next character cannot be `/`, `\`, a tab or a line break;
+- a value read from an in-file `const` table of literal destinations (`TABLE[key]`, `MAP.get(key)`), or checked against a literal allowlist (with a query or fragment suffix);
+- a literal origin with no path followed by a value that starts with `/`, and the path of a URL object compared to a literal origin with `//` paths refused.
+
+The fixed-origin check shared with `no-user-controlled-fetch-url` now reads literal text the way the URL parser does: a tab or line break is dropped (`'/\t' + x` is a lone `/`), leading spaces and control characters are dropped, and extra slashes after `https:` still open the authority (`'https:///' + host`). Both rules report these now.
+
+A project spreading `recommended` can see new errors where it sets a `Location` header to a runtime URL; each is an open redirect unless the target is checked as above.

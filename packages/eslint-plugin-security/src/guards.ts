@@ -488,9 +488,12 @@ function firstCharacters(body: readonly RegexToken[]): string | null {
 }
 
 /**
- * True when the regex can only accept host names under a literal domain:
- * anchored `^...$`, no `m` flag, no `.` wildcard, and every way it can end is
- * `\.` followed by literal letters (`^(app|docs)\.example\.com$`).
+ * True when the regex can only accept host names under a literal domain of at
+ * least two labels: anchored `^...$`, no `m` flag, no `.` wildcard, and every
+ * way it can end is that domain, right after `^`, a literal `\.`, a group whose
+ * every alternative ends in a literal `\.` (`^(?:[a-z0-9-]+\.)*example\.com$`)
+ * or, for an origin, a literal `://`. `^[a-z0-9.-]*example\.com$` (which
+ * accepts `evilexample.com`) and `^[a-z]+\.com$` (any `.com` host) do not count.
  */
 export function regexPinsHost(pattern: string, flags: string): boolean {
   const body = anchoredBody(pattern, flags);
@@ -500,47 +503,107 @@ export function regexPinsHost(pattern: string, flags: string): boolean {
   return endsWithLiteralDomain(body);
 }
 
+/** The index of the `open` token matching the `close` at `close`, else -1. */
+function matchingOpen(tokens: readonly RegexToken[], close: number): number {
+  let depth = 0;
+  for (let i = close; i >= 0; i -= 1) {
+    const token = tokens[i];
+    if (token?.kind === 'close') {
+      depth += 1;
+    } else if (token?.kind === 'open') {
+      depth -= 1;
+      if (depth === 0) {
+        return i;
+      }
+    }
+  }
+  return -1;
+}
+
+function isLiteral(token: RegexToken | undefined, char: string): boolean {
+  return token?.kind === 'chars' && token.literal === true && token.chars === char;
+}
+
+/** True when every alternative of the group `tokens[open..close]` ends in a literal `.`. */
+function groupEndsInDot(tokens: readonly RegexToken[], open: number, close: number): boolean {
+  return splitAlternatives(tokens.slice(open + 1, close)).every((alternative) =>
+    isLiteral(alternative.at(-1), '.'),
+  );
+}
+
+/**
+ * True when the text matched before `tokens[end]` always ends a label: the
+ * start of the body (`^`), a literal `.`, a group whose every alternative ends
+ * in a literal `.` (when the group or the `.` is optional, the same must hold
+ * before it), or a literal `://` (the host of an origin starts there).
+ */
+function labelBoundaryBefore(tokens: readonly RegexToken[], end: number): boolean {
+  if (end === 0) {
+    return true;
+  }
+  const previous = tokens[end - 1];
+  if (isLiteral(previous, '.')) {
+    return true;
+  }
+  if (previous?.kind === 'close') {
+    const open = matchingOpen(tokens, end - 1);
+    return open !== -1 && groupEndsInDot(tokens, open, end - 1);
+  }
+  if (previous?.kind === 'quantifier') {
+    const atom = tokens[end - 2];
+    let atomStart = end - 2;
+    if (atom?.kind === 'close') {
+      atomStart = matchingOpen(tokens, end - 2);
+      if (atomStart === -1 || !groupEndsInDot(tokens, atomStart, end - 2)) {
+        return false;
+      }
+    } else if (!isLiteral(atom, '.')) {
+      return false;
+    }
+    return previous.optional !== true || labelBoundaryBefore(tokens, atomStart);
+  }
+  return (
+    isLiteral(previous, '/') && isLiteral(tokens[end - 2], '/') && isLiteral(tokens[end - 3], ':')
+  );
+}
+
 function endsWithLiteralDomain(tokens: readonly RegexToken[]): boolean {
   const last = tokens.at(-1);
   if (last?.kind === 'close') {
-    // Find the matching open, then require every alternative inside to end in a literal domain.
-    let depth = 0;
-    let open = -1;
-    for (let i = tokens.length - 1; i >= 0; i -= 1) {
-      const token = tokens[i];
-      if (token?.kind === 'close') {
-        depth += 1;
-      } else if (token?.kind === 'open') {
-        depth -= 1;
-        if (depth === 0) {
-          open = i;
-          break;
-        }
-      }
-    }
+    // A group at the end: each alternative, read after what comes before the group.
+    const open = matchingOpen(tokens, tokens.length - 1);
     if (open === -1) {
       return false;
     }
-    return splitAlternatives(tokens.slice(open + 1, -1)).every(endsWithLiteralDomain);
+    const before = tokens.slice(0, open);
+    return splitAlternatives(tokens.slice(open + 1, -1)).every((alternative) =>
+      endsWithLiteralDomain([...before, ...alternative]),
+    );
   }
-  // Walk back over literal label characters to a literal `.`.
-  let i = tokens.length - 1;
-  let labelLength = 0;
-  while (i >= 0) {
-    const token = tokens[i];
-    if (token?.kind !== 'chars' || token.literal !== true) {
-      return false;
+  // Walk back over literal label characters and dots: the literal domain.
+  let start = tokens.length;
+  let domain = '';
+  while (start > 0) {
+    const token = tokens[start - 1];
+    if (
+      token?.kind !== 'chars' ||
+      token.literal !== true ||
+      !/^[a-z0-9.-]$/iu.test(token.chars ?? '')
+    ) {
+      break;
     }
-    if (token.chars === '.') {
-      return labelLength > 0;
-    }
-    if (!/^[a-z0-9-]$/iu.test(token.chars ?? '')) {
-      return false;
-    }
-    labelLength += 1;
-    i -= 1;
+    domain = (token.chars ?? '') + domain;
+    start -= 1;
   }
-  return false;
+  // A leading `.` after something else is itself the label boundary.
+  const bounded = (start > 0 && domain.startsWith('.')) || labelBoundaryBefore(tokens, start);
+  const labels = (domain.startsWith('.') ? domain.slice(1) : domain).split('.');
+  return (
+    bounded &&
+    !(start === 0 && domain.startsWith('.')) &&
+    labels.length >= 2 &&
+    labels.every((label) => label !== '')
+  );
 }
 
 function splitAlternatives(tokens: readonly RegexToken[]): RegexToken[][] {
@@ -2492,6 +2555,23 @@ function isPlainLiteral(node: TSESTree.Node): boolean {
 /** The URL fields whose value names a host and nothing the requester can extend. */
 const HOST_FIELDS: ReadonlySet<string> = new Set(['hostname', 'host', 'origin']);
 
+/**
+ * Only `origin`: a URL with a scheme that is not http(s) has the origin
+ * `null`, while `javascript://app.example.com/%0aalert(1)` still has the
+ * hostname `app.example.com`.
+ */
+const ORIGIN_FIELD: ReadonlySet<string> = new Set(['origin']);
+
+/** Options for {@link isHostPinned}. */
+export interface HostPinOptions {
+  /**
+   * Count a check on `origin` only, not on `hostname` or `host`. For a sink
+   * that may hand the URL to script (a client-side router), where a
+   * `javascript:` URL with an allowlisted host would run.
+   */
+  readonly originOnly?: boolean;
+}
+
 /** `new URL(x)` with one argument, else null. */
 function singleArgumentUrl(node: TSESTree.Node): TSESTree.Node | null {
   const inner = unwrap(node);
@@ -2505,13 +2585,16 @@ function singleArgumentUrl(node: TSESTree.Node): TSESTree.Node | null {
 }
 
 /** For `new URL(x).hostname` (or `.host` / `.origin`), the `x`; else null. */
-export function hostFieldSubject(node: TSESTree.Node): TSESTree.Node | null {
+export function hostFieldSubject(
+  node: TSESTree.Node,
+  fields: ReadonlySet<string> = HOST_FIELDS,
+): TSESTree.Node | null {
   const inner = unwrap(node);
   if (
     inner.type !== AST_NODE_TYPES.MemberExpression ||
     inner.computed ||
     inner.property.type !== AST_NODE_TYPES.Identifier ||
-    !HOST_FIELDS.has(inner.property.name)
+    !fields.has(inner.property.name)
   ) {
     return null;
   }
@@ -2526,6 +2609,7 @@ export function hostFieldSubject(node: TSESTree.Node): TSESTree.Node | null {
 function hostBindingsOf(
   variable: Variable,
   sourceCode: SourceCode,
+  fields: ReadonlySet<string>,
 ): { binding: Variable; readEnd: number }[] {
   const found: { binding: Variable; readEnd: number }[] = [];
   for (const reference of variable.references) {
@@ -2546,7 +2630,7 @@ function hostBindingsOf(
       continue;
     }
     const field = newUrl.parent;
-    if (field === undefined || hostFieldSubject(field) !== node) {
+    if (field === undefined || hostFieldSubject(field, fields) !== node) {
       continue;
     }
     const holder = field.parent;
@@ -2590,26 +2674,30 @@ function hostBindingsOf(
  * with `new URL(url).hostname` (or `.host` / `.origin`) into a binding that an
  * allowlist check guarded before the sink, and the URL was not written after
  * that read. `new URL(pinned).hostname` itself is pinned too. Followed through
- * `const` aliases and `String(x)`.
+ * `const` aliases and `String(x)`. With `originOnly`, only an `origin` check
+ * counts (see {@link HostPinOptions}).
  */
 export function isHostPinned(
   node: TSESTree.Node,
   sink: TSESTree.Node,
   sourceCode: SourceCode,
+  options: HostPinOptions = {},
 ): boolean {
-  return hostPinned(node, sink, sourceCode, 0);
+  const fields = options.originOnly === true ? ORIGIN_FIELD : HOST_FIELDS;
+  return hostPinned(node, sink, sourceCode, fields, 0);
 }
 
 function hostPinned(
   raw: TSESTree.Node,
   sink: TSESTree.Node,
   sourceCode: SourceCode,
+  fields: ReadonlySet<string>,
   depth: number,
 ): boolean {
   if (depth > MAX_DEPTH) {
     return false;
   }
-  const field = hostFieldSubject(peelStringWrappers(raw));
+  const field = hostFieldSubject(peelStringWrappers(raw), fields);
   const node = peelStringWrappers(field ?? urlObjectOf(raw));
   if (node.type !== AST_NODE_TYPES.Identifier) {
     return false;
@@ -2618,12 +2706,12 @@ function hostPinned(
   if (variable === null || isImportBinding(variable)) {
     return false;
   }
-  if (urlObjectPinned(variable, sink, sourceCode)) {
+  if (urlObjectPinned(variable, sink, sourceCode, fields)) {
     return true;
   }
   // `ALLOWED.includes(new URL(url).hostname)` checks the host without a binding.
   const inlineHost: Subject = (candidate) => {
-    const subject = hostFieldSubject(peelStringWrappers(candidate, sourceCode));
+    const subject = hostFieldSubject(peelStringWrappers(candidate, sourceCode), fields);
     return subject !== null && subjectVariable(subject, sourceCode) === variable;
   };
   const inlineGuarded = guardedBefore(
@@ -2638,7 +2726,7 @@ function hostPinned(
   if (inlineGuarded) {
     return true;
   }
-  for (const { binding, readEnd } of hostBindingsOf(variable, sourceCode)) {
+  for (const { binding, readEnd } of hostBindingsOf(variable, sourceCode, fields)) {
     const guarded = guardedBefore(
       sink,
       (test, negated) =>
@@ -2655,7 +2743,7 @@ function hostPinned(
     }
   }
   const init = constInit(variable);
-  return init !== null && hostPinned(init, sink, sourceCode, depth + 1);
+  return init !== null && hostPinned(init, sink, sourceCode, fields, depth + 1);
 }
 
 // ---------------------------------------------------------------------------
@@ -3179,7 +3267,12 @@ function holdsOnlyUrls(variable: Variable, sourceCode: SourceCode): boolean {
  * sink, with no change to the URL object after the check (`u.host = x` is a
  * change): `const u = new URL(x); if (!HOSTS.has(u.hostname)) return; get(u)`.
  */
-function urlObjectPinned(variable: Variable, sink: TSESTree.Node, sourceCode: SourceCode): boolean {
+function urlObjectPinned(
+  variable: Variable,
+  sink: TSESTree.Node,
+  sourceCode: SourceCode,
+  fields: ReadonlySet<string>,
+): boolean {
   if (!holdsOnlyUrls(variable, sourceCode)) {
     return false;
   }
@@ -3187,7 +3280,7 @@ function urlObjectPinned(variable: Variable, sink: TSESTree.Node, sourceCode: So
     candidate.type === AST_NODE_TYPES.MemberExpression &&
     !candidate.computed &&
     candidate.property.type === AST_NODE_TYPES.Identifier &&
-    HOST_FIELDS.has(candidate.property.name) &&
+    fields.has(candidate.property.name) &&
     subjectVariable(candidate.object, sourceCode) === variable;
   return guardedBefore(
     sink,

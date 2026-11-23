@@ -222,21 +222,31 @@ function authorityClosedBy(rest: readonly Part[], originHead: boolean): boolean 
 
 /** Whether author-written text before the first runtime part fully determines the origin. */
 function prefixPinsOrigin(rawPrefix: string): boolean {
-  // Browsers (WHATWG URL) read `\` as `/` in special schemes, so `/\evil.com`
-  // is protocol-relative. Analyse the prefix the way the browser will.
-  const prefix = rawPrefix.replace(/\\/gu, '/');
+  // Analyse the prefix the way the browser (WHATWG URL) will: leading spaces
+  // and control characters are dropped, a tab or line break is dropped from
+  // anywhere (`/<tab>` is a lone `/`), and `\` reads as `/` in special
+  // schemes, so `/\evil.com` is protocol-relative.
+  const prefix = rawPrefix
+    .replace(/^[\u0000- ]+/u, '')
+    .replace(/[\t\n\r]/gu, '')
+    .replace(/\\/gu, '/');
 
-  const scheme = /^[a-z][a-z0-9+.-]*:\/\//iu.exec(prefix);
+  const scheme = /^[a-z][a-z0-9+.-]*:\/\/+/iu.exec(prefix);
   if (scheme === null && /^[a-z][a-z0-9+.-]*:/iu.test(prefix)) {
     // `https:${x}`: a scheme with no `//` yet, so `x` can supply `//evil.com`.
     return false;
   }
-  const authorityStart = scheme === null ? (prefix.startsWith('//') ? 2 : -1) : scheme[0].length;
+  // Every `/` after `https:` or a leading `//` still opens the authority
+  // (`https:///` then `evil.com` goes to evil.com), so the host starts after them.
+  const leadingSlashes = /^\/\/+/u.exec(prefix);
+  const authorityStart =
+    scheme === null ? (leadingSlashes === null ? -1 : leadingSlashes[0].length) : scheme[0].length;
 
   if (authorityStart === -1) {
-    // Relative URL. Safe, except a lone `/`: the runtime part can begin with
-    // `/` and turn it into a protocol-relative `//evil.com`.
-    return prefix !== '/';
+    // Relative URL. Safe, except a lone `/` (the runtime part can begin with
+    // `/` and turn it into a protocol-relative `//evil.com`) or nothing left
+    // once the parser drops what it drops (`' '` then the whole URL).
+    return prefix !== '/' && prefix !== '';
   }
 
   // Absolute or protocol-relative: the authority must END inside the literal
