@@ -155,8 +155,8 @@ A value in a word that runs as a program is proven only by a literal allowlist, 
 `reboot` and `sh`. A word runs as a program when it is:
 
 - the first word of a command: first in the string, or after `;`, `&`, `|`, `(`, `)`, a backtick or
-  a line break, after `NAME=value`, after a redirect (`>out`, `2>/dev/null`, `< in`), or after a
-  reserved word (`!`, `{`, `if`, `then`, `else`, `elif`, `do`, `while`, `until`); a value glued to a
+  a line break, after `NAME=value` (whatever the value, `NODE_ENV=${mode}` included), after a
+  redirect (`>out`, `2>/dev/null`, `< in`), or after a reserved word (`!`, `{`, `if`, `then`, `else`, `elif`, `do`, `while`, `until`); a value glued to a
   path there (`/usr/bin/${tool}`, `./${tool}`) counts too;
 - any word after a wrapper, up to the next separator, options included (`sudo -u deploy ${tool}`,
   `timeout 30 ${tool}`, `sh -c '${cmd}'`). The wrappers are `sudo`, `doas`, `su`, `runuser`,
@@ -169,8 +169,10 @@ A value in a word that runs as a program is proven only by a literal allowlist, 
   quotes stripped (`/usr/bin/env`, `'sudo'`).
 
 An in-file `const` bound to a string (`const P = 'sudo'`, `const SEP = ';'`) is read as its text.
-This is a list: a command not on it that runs its arguments is not seen. Quotes do not hide
-separators here, so `` `echo "a; ${x}"` `` reads `x` as a program, which only reports more.
+This is a list: a command not on it that runs its arguments is not seen. Bash's `&>file` is read
+as `&` and then a redirect, the way `/bin/sh` reads it where it is dash (Debian, Ubuntu): there
+`` `ls &>/dev/null ${x}` `` runs `x` as a program. `2>&1` and `>&2` stay redirects. Quotes do not
+hide separators here, so `` `echo "a; ${x}"` `` reads `x` as a program, which only reports more.
 
 ```ts bad
 function run(tool: string, file: string) {
