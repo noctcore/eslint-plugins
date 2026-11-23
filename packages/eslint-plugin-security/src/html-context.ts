@@ -22,7 +22,11 @@
  *    (`href`, `src`, ...) before the author text fixes a scheme, where
  *    `javascript:` survives HTML escaping.
  *  - `tag`: a tag name, an attribute name or the space between attributes.
- *  - `script`, `style`: the content of those elements.
+ *  - `script`, `style`: the content of those elements; `script` is a code
+ *    position, where a whole JS expression may stand.
+ *  - `script-string`: inside a `'`, `"` or backtick string, or a comment, in
+ *    a script element, where serialized JSON is not enough: its own quotes
+ *    close a `"` string and it leaves `'` and backticks alone.
  *  - `code-attr`: an event handler (`on*`), `style` or `srcdoc` attribute,
  *    whose value is decoded and then run as script, CSS or HTML.
  */
@@ -37,6 +41,7 @@ export type HtmlContext =
   | 'url-unquoted'
   | 'tag'
   | 'script'
+  | 'script-string'
   | 'style'
   | 'code-attr';
 
@@ -51,6 +56,7 @@ export const ALL_CONTEXTS: readonly HtmlContext[] = [
   'url-unquoted',
   'tag',
   'script',
+  'script-string',
   'style',
   'code-attr',
 ];
@@ -67,6 +73,7 @@ export const CONTEXT_LABELS: Readonly<Record<HtmlContext, string>> = {
   'url-unquoted': 'the start of an unquoted URL attribute, where `javascript:` survives HTML escaping',
   tag: 'a tag or attribute name',
   script: 'a script element, where HTML escaping does not stop script',
+  'script-string': 'a string, template or comment in a script element, which serialized JSON can close',
   style: 'a style element, where HTML escaping does not stop CSS injection',
   'code-attr': 'an event handler, style or srcdoc attribute, whose decoded value runs as code',
 };
@@ -98,6 +105,8 @@ export interface HtmlState {
   readonly attr: string;
   /** The attribute value so far, runtime parts as `a`; the recent text in comments and raw content. */
   readonly value: string;
+  /** In script content, the open JS strings, templates and comments (see `jsStep`); empty in code position. */
+  readonly js?: string;
 }
 
 export const START_STATE: HtmlState = { mode: 'data', tag: '', attr: '', value: '' };
@@ -297,6 +306,9 @@ function step(state: HtmlState, char: string): HtmlState {
     }
     case 'raw': {
       // `value` keeps the recent text; a pending end tag waits for its delimiter.
+      // `</script>` ends the element even inside a JS string, so the lexer only
+      // runs alongside the end tag check.
+      const js = state.tag === 'script' || state.tag === '?' ? jsStep(state.js ?? '', char) : undefined;
       if (state.attr === 'end') {
         if (SPACE.test(char) || char === '/') {
           return { mode: 'end-tag', tag: '', attr: '', value: '' };
@@ -307,13 +319,13 @@ function step(state: HtmlState, char: string): HtmlState {
         if (state.tag === '?') {
           return { mode: 'end-tag', tag: '', attr: '', value: '' };
         }
-        return { ...state, attr: '', value: (state.value + char).slice(-16) };
+        return { ...state, attr: '', value: (state.value + char).slice(-16), js };
       }
       const recent = (state.value + char).slice(-16);
       if (endsWithEndTagOpen(recent, state.tag)) {
-        return { ...state, attr: 'end', value: recent };
+        return { ...state, attr: 'end', value: recent, js };
       }
-      return { ...state, value: recent };
+      return { ...state, value: recent, js };
     }
   }
 }
@@ -334,7 +346,7 @@ export function contextAt(state: HtmlState): HtmlContext {
       return 'text';
     case 'raw':
       if (state.tag === 'script' || state.tag === '?') {
-        return 'script';
+        return jsCodePosition(state.js ?? '') ? 'script' : 'script-string';
       }
       return state.tag === 'style' ? 'style' : 'rcdata';
     case 'comment':
@@ -396,5 +408,89 @@ export function feedValue(state: HtmlState): HtmlState {
 }
 
 export function stateKey(state: HtmlState): string {
-  return `${state.mode}\u0001${state.tag}\u0001${state.attr}\u0001${state.value}`;
+  return `${state.mode}\u0001${state.tag}\u0001${state.attr}\u0001${state.value}\u0001${state.js ?? ''}`;
+}
+
+/*
+ * The JS lexer for script content, kept as a stack of one-character frames,
+ * innermost last. Empty is top-level code. Frames:
+ *   `'` `"` `` ` ``  an open string or template
+ *   `\`            an escape inside one: the next character is taken as is
+ *   `$`            a `$` in a template, which `{` turns into an expression
+ *   `{`            code inside a template's `${`, ended by its `}`
+ *   `b`            a `{` block inside that code, so its `}` is not the end
+ *   `~`            a `/` in code, which `/` or `*` turns into a comment
+ *   `/` `*`        a line or block comment; `+` is a `*` inside a block comment
+ *   `?`            lost track (too deep): never a code position
+ * A regex literal is read as code, so a quote in one opens a string: that can
+ * only report more, never less.
+ */
+const MAX_JS_DEPTH = 24;
+const LINE_ENDS = /[\n\r\u2028\u2029]/u;
+
+function jsCode(js: string, char: string): string {
+  switch (char) {
+    case "'":
+    case '"':
+    case '`':
+      return js + char;
+    case '/':
+      return `${js}~`;
+    case '{':
+      return js.includes('{') ? `${js}b` : js;
+    case '}': {
+      const top = js.at(-1);
+      return top === 'b' || top === '{' ? js.slice(0, -1) : js;
+    }
+    default:
+      return js;
+  }
+}
+
+/** The lexer state after one more character of author text. */
+export function jsStep(js: string, char: string): string {
+  if (js.endsWith('?')) {
+    return js;
+  }
+  const top = js.at(-1);
+  const rest = js.slice(0, -1);
+  let next: string;
+  switch (top) {
+    case '\\':
+      next = rest;
+      break;
+    case "'":
+    case '"':
+      next = char === '\\' ? `${js}\\` : char === top || LINE_ENDS.test(char) ? rest : js;
+      break;
+    case '`':
+      next = char === '\\' ? `${js}\\` : char === '`' ? rest : char === '$' ? `${js}$` : js;
+      break;
+    case '$':
+      // `${` opens an expression; anything else is template text again.
+      next = char === '{' ? `${rest}{` : jsStep(rest, char);
+      break;
+    case '~':
+      next = char === '/' ? `${rest}/` : char === '*' ? `${rest}*` : jsCode(rest, char);
+      break;
+    case '/':
+      next = LINE_ENDS.test(char) ? rest : js;
+      break;
+    case '*':
+      next = char === '*' ? `${js}+` : js;
+      break;
+    case '+':
+      next = char === '/' ? rest.slice(0, -1) : char === '*' ? js : rest;
+      break;
+    default:
+      // Code: top-level, or inside a template's `${` (`{`, `b`).
+      next = jsCode(js, char);
+  }
+  return next.length > MAX_JS_DEPTH ? '?' : next;
+}
+
+/** True when a value written at this lexer state stands as a JS expression. */
+export function jsCodePosition(js: string): boolean {
+  const top = js.at(-1);
+  return top === undefined || top === '{' || top === 'b' || top === '~';
 }
