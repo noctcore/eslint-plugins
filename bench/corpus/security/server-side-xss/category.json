@@ -1,6 +1,12 @@
 {
   "title": "Server-side XSS",
   "cwe": "CWE-79",
-  "rules": ["security/require-sanitized-html"],
-  "overrides": { "security/require-sanitized-html": "error" }
+  "rules": [
+    "security/require-sanitized-html",
+    "security/no-unescaped-html-response"
+  ],
+  "overrides": {
+    "security/require-sanitized-html": "error",
+    "security/no-unescaped-html-response": "error"
+  }
 }

@@ -1,0 +1,13 @@
+---
+'@noctcore/eslint-plugin-security': minor
+---
+
+New opt-in rule `no-unescaped-html-response`, for server-side XSS. It reports a runtime value written into HTML that is not safe where it lands: `res.send` / `res.end` / `res.write` (receivers in `responseObjects`, default `res` and `response`, also after chained calls), Fastify `reply.send` once an HTML content type is set (`replyObjects`), Koa `ctx.body =` (`contextObjects`), `new Response` / `NextResponse` with a literal HTML content type, the return value of a Nest handler with `@Header('Content-Type', 'text/html')`, and raw or misplaced outputs in nunjucks `renderString` and `ejs.render` with a literal template and context. It judges the HTML, not the value's source, so a database value counts like a request value.
+
+The body is followed through templates, `+`, `String.raw`, conditionals, `const` bindings, `let` accumulators (`html += row`), `join` and `map(...).join`, and in-file helpers that return markup. The author text before each value is tokenized like a browser would, so an escaped value is still reported at the start of a URL attribute, after `javascript:`, in an unquoted attribute, in an event handler or `style` attribute, and in `<script>` or `<style>`. In a script, serialize-javascript and htmlescape output counts only as a JS expression, not inside a string, template, comment or regex literal (a quote inside a regex opens no string).
+
+A value is safe when it is a constant, a number, the output of an escaper or sanitizer recognized by its import (`he`, `entities`, `escape-html`, `html-escaper`, `lodash`, `validator`, `xss`, `sanitize-html`, `dompurify`, `isomorphic-dompurify`, `react-dom/server`, `serialize-javascript`, `htmlescape`, plus the global `encodeURIComponent` and `escape`) used where its encoding holds and with options that keep the protection on, a configured escaper in `sanitizers` (default `escapeHtml`, `escapeHTML`, `htmlEscape`, `encodeHTML`; bare entries match bare calls only; trusted by name only when imported or not declared in the file, while a function declared in the file is judged by its body), a `.replace` chain whose global steps encode every occurrence of `&`, `<`, `>` and `"`, or a value checked before the response against a literal allowlist or an anchored regex that admits no character the place needs refused. `res.json`, non-HTML bodies and writes after a literal non-HTML content type set on every path are left alone.
+
+The shared `guards` module gains an `html-text` context, for a value in element text, where only `<` and `&` start markup.
+
+The rule is not in `recommended`, so a project spreading `recommended` sees no new errors. Enable it with `'noctcore-security/no-unescaped-html-response': 'error'`.

@@ -2,6 +2,7 @@ import { authCookieFlagsRule } from './auth-cookie-flags';
 import { bcryptRoundsMinRule } from './bcrypt-rounds-min';
 import { noShellInterpolationRule } from './no-shell-interpolation';
 import { noTimingUnsafeCompareRule } from './no-timing-unsafe-compare';
+import { noUnescapedHtmlResponseRule } from './no-unescaped-html-response';
 import { noUserControlledFetchUrlRule } from './no-user-controlled-fetch-url';
 import { noUserControlledRedirectRule } from './no-user-controlled-redirect';
 import { presignedPostRequiresPolicyRule } from './presigned-post-requires-policy';
@@ -17,6 +18,8 @@ export const rules = {
   'bcrypt-rounds-min': bcryptRoundsMinRule,
   'no-shell-interpolation': noShellInterpolationRule,
   'no-timing-unsafe-compare': noTimingUnsafeCompareRule,
+  // Available but omitted from `recommended` (a rule entering it is a major in 1.x; opt-in).
+  'no-unescaped-html-response': noUnescapedHtmlResponseRule,
   'no-user-controlled-fetch-url': noUserControlledFetchUrlRule,
   'no-user-controlled-redirect': noUserControlledRedirectRule,
   'presigned-post-requires-policy': presignedPostRequiresPolicyRule,
