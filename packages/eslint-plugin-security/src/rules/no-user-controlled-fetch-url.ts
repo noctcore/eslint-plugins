@@ -5,9 +5,9 @@
  * Changed in the port: configurable `fetchCallees` (upstream hardcodes `fetch`
  * and `axios.get/post`), in-file `const` resolution, `+` concatenation,
  * `new URL(...)`, and the trusted-origin / sanitizer / trusted-path options.
- * Added here: Node's `http` / `https` clients, `axios.request(config)` and
- * `axios(config)` with the config followed through an in-file `const`, a
- * host check for `net` / `tls` sockets, and host-pinned URLs
+ * Added here: Node's `http` / `https` clients read the way Node picks the
+ * target, axios configs and instances (`url`, `baseURL`, `socketPath`,
+ * `proxy`), a target check for `net` / `tls` sockets, and host-pinned URLs
  * (`new URL(url).hostname` checked against an allowlist first, see `../guards`).
  */
 import { AST_NODE_TYPES, ASTUtils, type TSESLint, type TSESTree } from '@typescript-eslint/utils';
@@ -15,6 +15,14 @@ import type { JSONSchema4 } from '@typescript-eslint/utils/json-schema';
 
 import { createRule } from '../createRule';
 import { isHostPinned } from '../guards';
+import {
+  isAuthorWritten,
+  isChangedConstObject,
+  isFixedValue,
+  isFunctionValue,
+  readOptions,
+  type RequestOptions,
+} from '../request-options';
 import {
   calleeSpecSchema,
   hasFixedOrigin,
@@ -24,6 +32,7 @@ import {
   trustSchemaProperties,
   type UrlCalleeEntry,
   type UrlCalleeSpec,
+  type UrlTrust,
   type UrlTrustOptions,
   urlArgumentOf,
 } from '../url-origin';
@@ -38,16 +47,18 @@ export interface NoUserControlledFetchUrlOptions extends UrlTrustOptions {
    */
   readonly fetchCallees?: readonly UrlCalleeEntry[];
   /**
-   * Calls that open a socket to a host: `net.connect(port, host)`,
-   * `tls.connect({ host })`. The host must be fixed. Replaces the defaults.
+   * Calls that open a socket: `net.connect(port, host)`, `tls.connect({ host })`.
+   * The host, port and IPC path must be fixed. Replaces the defaults.
    */
   readonly socketCallees?: readonly string[];
 }
 
 type RuleOptions = [NoUserControlledFetchUrlOptions];
-type MessageIds = 'userControlledFetchUrl' | 'userControlledSocketHost';
+type MessageIds = 'userControlledFetchUrl' | 'userControlledSocketHost' | 'userControlledRequestOption';
 
 const AXIOS_METHODS = ['get', 'post', 'put', 'patch', 'delete', 'head', 'options'] as const;
+/** axios methods that take a body before the config: `axios.post(url, data, config)`. */
+const AXIOS_BODY_METHODS: ReadonlySet<string> = new Set(['post', 'put', 'patch']);
 
 export const DEFAULT_FETCH_CALLEES: readonly UrlCalleeSpec[] = [
   { name: 'fetch' },
@@ -55,7 +66,7 @@ export const DEFAULT_FETCH_CALLEES: readonly UrlCalleeSpec[] = [
   // `axios(config)`, `axios(url, config)` and `axios.request(config)`.
   { name: 'axios', urlProperty: 'url' },
   { object: 'axios', name: 'request', urlProperty: 'url' },
-  // Node's clients: `http.get(url | options, ...)`; an options object's host is read below.
+  // Node's clients: `http.get(url | options, [options], ...)`, read below.
   { object: 'http', name: 'get' },
   { object: 'http', name: 'request' },
   { object: 'https', name: 'get' },
@@ -68,96 +79,81 @@ export const DEFAULT_SOCKET_CALLEES: readonly string[] = [
   'tls.connect',
 ];
 
-/** Node client receivers whose options object names its target by `host` / `hostname`. */
+/** Node client receivers, whose options object picks the target key by key. */
 const NODE_CLIENTS: ReadonlySet<string> = new Set(['http', 'https']);
-const HOST_KEYS: ReadonlySet<string> = new Set(['host', 'hostname']);
 
-/** An object literal, inline or the initializer of an in-file `const`. */
-function objectLiteralOf(
-  node: TSESTree.Node,
-  sourceCode: Readonly<TSESLint.SourceCode>,
-): TSESTree.ObjectExpression | undefined {
-  if (node.type === AST_NODE_TYPES.ObjectExpression) {
-    return node;
-  }
-  if (node.type !== AST_NODE_TYPES.Identifier) {
-    return undefined;
-  }
-  const variable = ASTUtils.findVariable(sourceCode.getScope(node), node);
-  const def = variable?.defs[0];
-  return variable?.defs.length === 1 &&
-    def?.type === 'Variable' &&
-    def.parent.kind === 'const' &&
-    def.node.init?.type === AST_NODE_TYPES.ObjectExpression
-    ? def.node.init
-    : undefined;
-}
-
-/** The value of a named, non-computed property of an object literal. */
-function propertyValue(
-  object: TSESTree.ObjectExpression,
-  keys: ReadonlySet<string>,
-): TSESTree.Expression | undefined {
-  for (const property of object.properties) {
-    if (
-      property.type === AST_NODE_TYPES.Property &&
-      !property.computed &&
-      ((property.key.type === AST_NODE_TYPES.Identifier && keys.has(property.key.name)) ||
-        (property.key.type === AST_NODE_TYPES.Literal && keys.has(String(property.key.value))))
-    ) {
-      const value = property.value;
-      return value.type === AST_NODE_TYPES.AssignmentPattern ||
-        value.type === AST_NODE_TYPES.ArrayPattern ||
-        value.type === AST_NODE_TYPES.ObjectPattern ||
-        value.type === AST_NODE_TYPES.TSEmptyBodyFunctionExpression
-        ? undefined
-        : value;
-    }
-  }
-  return undefined;
-}
+/** How each key of an options object can move the target, and the check it must pass. */
+type KeyCheck = 'host' | 'url' | 'path' | 'fixed' | 'hook' | 'proxy';
 
 /**
- * The expression a call sends its request to: the URL argument, read through
- * an in-file `const` object literal the way an inline one is read. For Node's
- * clients an options object names a host instead (`{ host, path }`), and that
- * host is returned with `kind: 'host'`.
+ * Every key of a Node `http` / `https` options object that picks where the
+ * request goes. Node takes `hostname` over `host`, lets `socketPath` replace
+ * both, falls back to `defaultPort` without a `port`, and hands `agent`,
+ * `lookup` and `createConnection` the connection itself. `href` is not read on
+ * a plain options object. A `path` that starts with `//` or holds a full URL
+ * is sent as the request target, which a proxy follows.
  */
-function requestTarget(
-  node: TSESTree.CallExpression,
-  spec: UrlCalleeSpec,
-  sourceCode: Readonly<TSESLint.SourceCode>,
-): { kind: 'url' | 'host'; node: TSESTree.Expression } | undefined {
-  const index = spec.urlArgument ?? 0;
-  const argument = index === 'last' ? node.arguments.at(-1) : node.arguments[index];
-  if (argument === undefined || argument.type === AST_NODE_TYPES.SpreadElement) {
-    return undefined;
-  }
-  const object = objectLiteralOf(argument, sourceCode);
-  if (object === undefined) {
-    const url = urlArgumentOf(node, spec);
-    return url === undefined ? undefined : { kind: 'url', node: url };
-  }
-  if (spec.object !== undefined && NODE_CLIENTS.has(spec.object)) {
-    const href = propertyValue(object, new Set([spec.urlProperty ?? 'href']));
-    if (href !== undefined) {
-      return { kind: 'url', node: href };
-    }
-    const host = propertyValue(object, HOST_KEYS);
-    return host === undefined ? undefined : { kind: 'host', node: host };
-  }
-  const url = propertyValue(object, new Set([spec.urlProperty ?? 'href']));
-  return url === undefined ? undefined : { kind: 'url', node: url };
+const NODE_KEYS: ReadonlyMap<string, KeyCheck> = new Map([
+  ['hostname', 'host'],
+  ['host', 'host'],
+  ['port', 'fixed'],
+  ['defaultPort', 'fixed'],
+  ['protocol', 'fixed'],
+  ['socketPath', 'fixed'],
+  ['path', 'path'],
+  ['agent', 'hook'],
+  ['lookup', 'hook'],
+  ['createConnection', 'hook'],
+]);
+
+/**
+ * The keys of an axios config that pick the target: `url`, the `baseURL` a
+ * relative `url` is joined to, Node's `socketPath`, a `proxy` the request is
+ * sent through, and the agents and `lookup` that open the connection.
+ */
+const AXIOS_KEYS: ReadonlyMap<string, KeyCheck> = new Map([
+  ['url', 'url'],
+  ['baseURL', 'url'],
+  ['socketPath', 'fixed'],
+  ['proxy', 'proxy'],
+  ['httpAgent', 'hook'],
+  ['httpsAgent', 'hook'],
+  ['lookup', 'hook'],
+]);
+
+/** The keys of an axios `proxy` object. */
+const PROXY_KEYS: ReadonlyMap<string, KeyCheck> = new Map([
+  ['host', 'host'],
+  ['hostname', 'host'],
+  ['port', 'fixed'],
+  ['protocol', 'fixed'],
+]);
+
+/** The keys of `net.connect` / `tls.connect` options: the host, the port and an IPC `path`. */
+const SOCKET_KEYS: ReadonlyMap<string, KeyCheck> = new Map([
+  ['host', 'host'],
+  ['hostname', 'host'],
+  ['port', 'fixed'],
+  ['path', 'fixed'],
+  ['lookup', 'hook'],
+]);
+
+/** The axios call forms: where the URL and the config sit. */
+type AxiosForm = 'call' | 'request' | 'create' | 'method' | 'body-method';
+
+function isAxiosCreate(node: TSESTree.Node): boolean {
+  return (
+    node.type === AST_NODE_TYPES.MemberExpression &&
+    !node.computed &&
+    node.object.type === AST_NODE_TYPES.Identifier &&
+    node.object.name === 'axios' &&
+    node.property.type === AST_NODE_TYPES.Identifier &&
+    node.property.name === 'create'
+  );
 }
 
-/** True when a host expression is author-written: a literal, or a `const` bound to one. */
-function isFixedHost(node: TSESTree.Node, sourceCode: Readonly<TSESLint.SourceCode>): boolean {
-  if (node.type === AST_NODE_TYPES.Literal) {
-    return typeof node.value === 'string' || typeof node.value === 'number';
-  }
-  if (node.type === AST_NODE_TYPES.TemplateLiteral) {
-    return node.expressions.every((expression) => isFixedHost(expression, sourceCode));
-  }
+/** True for a `const api = axios.create(...)` binding read here. */
+function isAxiosInstance(node: TSESTree.Node, sourceCode: Readonly<TSESLint.SourceCode>): boolean {
   if (node.type !== AST_NODE_TYPES.Identifier) {
     return false;
   }
@@ -167,42 +163,44 @@ function isFixedHost(node: TSESTree.Node, sourceCode: Readonly<TSESLint.SourceCo
     variable?.defs.length === 1 &&
     def?.type === 'Variable' &&
     def.parent.kind === 'const' &&
-    def.node.id.type === AST_NODE_TYPES.Identifier &&
-    def.node.init !== null &&
-    isFixedHost(def.node.init, sourceCode)
+    def.node.init?.type === AST_NODE_TYPES.CallExpression &&
+    isAxiosCreate(def.node.init.callee)
   );
 }
 
-/**
- * The host a socket call connects to: `connect(port, host)`, `connect({ host })`.
- * `connect(path)` (a string first argument) is an IPC path, and no host
- * argument means localhost; both return undefined.
- */
-function socketHost(
-  node: TSESTree.CallExpression,
+/** `new Request(input, ...)` (the global), or a `const` bound to one: the `input`. */
+function requestInput(
+  node: TSESTree.Node,
   sourceCode: Readonly<TSESLint.SourceCode>,
-): TSESTree.Expression | undefined {
-  const [first, second] = node.arguments;
-  if (first === undefined || first.type === AST_NODE_TYPES.SpreadElement) {
-    return undefined;
-  }
-  const object = objectLiteralOf(first, sourceCode);
-  if (object !== undefined) {
-    return propertyValue(object, HOST_KEYS);
-  }
-  if (first.type === AST_NODE_TYPES.Literal && typeof first.value === 'string') {
-    return undefined;
+): TSESTree.Expression | null {
+  let current = node;
+  if (current.type === AST_NODE_TYPES.Identifier) {
+    const variable = ASTUtils.findVariable(sourceCode.getScope(current), current);
+    const def = variable?.defs[0];
+    if (
+      variable?.defs.length !== 1 ||
+      def?.type !== 'Variable' ||
+      def.parent.kind !== 'const' ||
+      def.node.init === null
+    ) {
+      return null;
+    }
+    current = def.node.init;
   }
   if (
-    second === undefined ||
-    second.type === AST_NODE_TYPES.SpreadElement ||
-    second.type === AST_NODE_TYPES.ArrowFunctionExpression ||
-    second.type === AST_NODE_TYPES.FunctionExpression ||
-    second.type === AST_NODE_TYPES.ObjectExpression
+    current.type !== AST_NODE_TYPES.NewExpression ||
+    current.callee.type !== AST_NODE_TYPES.Identifier ||
+    current.callee.name !== 'Request'
   ) {
-    return undefined;
+    return null;
   }
-  return second;
+  const global = ASTUtils.findVariable(sourceCode.getScope(current), current.callee);
+  const [input] = current.arguments;
+  return (global === null || global.defs.length === 0) &&
+    input !== undefined &&
+    input.type !== AST_NODE_TYPES.SpreadElement
+    ? input
+    : null;
 }
 
 const optionSchema: JSONSchema4 = {
@@ -220,7 +218,7 @@ const optionSchema: JSONSchema4 = {
       items: { type: 'string' },
       uniqueItems: true,
       description:
-        'Calls that open a socket to a host, as written (`net.connect`). The host argument must be fixed. Replaces the defaults (`net.connect`, `net.createConnection`, `tls.connect`).',
+        'Calls that open a socket, as written (`net.connect`). The host, port and IPC path must be fixed. Replaces the defaults (`net.connect`, `net.createConnection`, `tls.connect`).',
     },
     ...trustSchemaProperties,
   },
@@ -242,7 +240,9 @@ export const noUserControlledFetchUrlRule = createRule<RuleOptions, MessageIds>(
       userControlledFetchUrl:
         'HTTP request URL `{{url}}` must have a fixed origin. Use a literal, or a template whose host is author-written and closed by `/`, `?` or `#` before the first `${...}`: `fetch(`/api/todos/${id}`)` is fine; `fetch(url)`, `fetch(`https://${host}/x`)` and `fetch(`https://api.example.com${path}`)` are not. A configured base URL goes in `trustedOrigins`.',
       userControlledSocketHost:
-        'Socket host `{{host}}` must be fixed at authoring time: a runtime host lets the caller reach any machine the server can. Use a literal host, or check `new URL(url).hostname` against an allowlist before connecting.',
+        'Request host `{{host}}` must be fixed at authoring time: a runtime host lets the caller reach any machine the server can. Use a literal host, or check `new URL(url).hostname` against an allowlist first.',
+      userControlledRequestOption:
+        'Request option `{{option}}` (`{{value}}`) must be fixed at authoring time: it can move the request to another host, port or socket. Use a literal or an in-file `const`, and spread only objects written in this file.',
     },
   },
   defaultOptions: [
@@ -257,42 +257,318 @@ export const noUserControlledFetchUrlRule = createRule<RuleOptions, MessageIds>(
   create(context, [options]) {
     const callees = normalizeCallees(options.fetchCallees ?? DEFAULT_FETCH_CALLEES);
     const sockets = normalizeCallees(options.socketCallees ?? DEFAULT_SOCKET_CALLEES);
-    const trust = normalizeTrust(options);
+    const trust: UrlTrust = normalizeTrust(options);
     const sourceCode = context.sourceCode;
+    const axiosSpecs = callees.filter(
+      (spec) => spec.object === 'axios' || (spec.object === undefined && spec.name === 'axios'),
+    );
+
+    /** The axios form of a call to `axios`, one of its methods, `axios.create` or an instance. */
+    function axiosForm(node: TSESTree.CallExpression): AxiosForm | undefined {
+      if (axiosSpecs.length === 0) {
+        return undefined;
+      }
+      const callee = node.callee;
+      if (isAxiosCreate(callee)) {
+        return 'create';
+      }
+      let receiverIsAxios = false;
+      let method: string | undefined;
+      if (callee.type === AST_NODE_TYPES.Identifier) {
+        receiverIsAxios = callee.name === 'axios' || isAxiosInstance(callee, sourceCode);
+      } else if (
+        callee.type === AST_NODE_TYPES.MemberExpression &&
+        !callee.computed &&
+        callee.property.type === AST_NODE_TYPES.Identifier
+      ) {
+        method = callee.property.name;
+        receiverIsAxios =
+          (callee.object.type === AST_NODE_TYPES.Identifier && callee.object.name === 'axios') ||
+          isAxiosInstance(callee.object, sourceCode);
+      }
+      if (!receiverIsAxios) {
+        return undefined;
+      }
+      const spec = axiosSpecs.find((candidate) =>
+        method === undefined
+          ? candidate.object === undefined
+          : candidate.object !== undefined && candidate.name === method,
+      );
+      if (spec === undefined) {
+        return undefined;
+      }
+      if (method === undefined) {
+        return 'call';
+      }
+      if (method === 'request') {
+        return 'request';
+      }
+      return AXIOS_BODY_METHODS.has(method) ? 'body-method' : 'method';
+    }
+
+    /** True for a call this rule reads an options object of: it does not change the object. */
+    function readsOptions(call: TSESTree.CallExpression): boolean {
+      return (
+        matchCallee(call, sockets, sourceCode) !== undefined ||
+        matchCallee(call, callees, sourceCode) !== undefined ||
+        axiosForm(call) !== undefined
+      );
+    }
+
+    const read = (node: TSESTree.Node | undefined): RequestOptions | undefined =>
+      node === undefined || node.type === AST_NODE_TYPES.SpreadElement
+        ? undefined
+        : readOptions(node, sourceCode, readsOptions);
+
+    /**
+     * Checks an options object that follows the URL. One the rule cannot see
+     * (a parameter) is left alone; an in-file object changed before the call
+     * is reported, since the change may set any key.
+     */
+    function checkTrailing(
+      node: TSESTree.Node | undefined,
+      keys: ReadonlyMap<string, KeyCheck>,
+      sink: TSESTree.Node,
+    ): void {
+      const found = read(node);
+      if (found !== undefined) {
+        checkOptions(found, keys, sink);
+      } else if (node !== undefined && isChangedConstObject(node, sourceCode, readsOptions)) {
+        reportOption(node, 'options', node);
+      }
+    }
+
+    function checkUrl(node: TSESTree.Expression, sink: TSESTree.Node): void {
+      const target = requestInput(node, sourceCode) ?? node;
+      if (hasFixedOrigin(target, trust, sourceCode) || isHostPinned(target, sink, sourceCode)) {
+        return;
+      }
+      context.report({
+        node: target,
+        messageId: 'userControlledFetchUrl',
+        data: { url: sourceCode.getText(target) },
+      });
+    }
+
+    function checkHost(node: TSESTree.Node, sink: TSESTree.Node): void {
+      if (isFixedValue(node, sourceCode) || isHostPinned(node, sink, sourceCode)) {
+        return;
+      }
+      context.report({
+        node,
+        messageId: 'userControlledSocketHost',
+        data: { host: sourceCode.getText(node) },
+      });
+    }
+
+    function reportOption(node: TSESTree.Node, option: string, value: TSESTree.Node): void {
+      context.report({
+        node,
+        messageId: 'userControlledRequestOption',
+        data: { option, value: sourceCode.getText(value) },
+      });
+    }
+
+    function checkOption(
+      name: string,
+      check: KeyCheck,
+      entry: { node: TSESTree.Node; value: TSESTree.Expression | null },
+      sink: TSESTree.Node,
+    ): void {
+      const value = entry.value;
+      if (value === null) {
+        // A getter or method: the rule cannot tell what it returns.
+        reportOption(entry.node, name, entry.node);
+        return;
+      }
+      switch (check) {
+        case 'host':
+          checkHost(value, sink);
+          return;
+        case 'url':
+          checkUrl(value, sink);
+          return;
+        case 'path':
+          if (!hasFixedOrigin(value, trust, sourceCode)) {
+            reportOption(value, name, value);
+          }
+          return;
+        case 'fixed':
+          if (!isFixedValue(value, sourceCode)) {
+            reportOption(value, name, value);
+          }
+          return;
+        case 'hook':
+          if (!isAuthorWritten(value, sourceCode)) {
+            reportOption(value, name, value);
+          }
+          return;
+        case 'proxy': {
+          if (value.type === AST_NODE_TYPES.Literal && value.value === false) {
+            return;
+          }
+          const proxy = read(value);
+          if (proxy === undefined) {
+            reportOption(value, name, value);
+            return;
+          }
+          checkOptions(proxy, PROXY_KEYS, sink);
+          return;
+        }
+      }
+    }
+
+    /** Checks every target key of an options object; an opaque spread stands for the keys it may set. */
+    function checkOptions(
+      found: RequestOptions,
+      keys: ReadonlyMap<string, KeyCheck>,
+      sink: TSESTree.Node,
+    ): void {
+      let opaqueOpen = false;
+      for (const [name, check] of keys) {
+        const entry = found.entries.get(name);
+        if (entry !== undefined) {
+          checkOption(name, check, entry, sink);
+        } else if (found.opaque !== null) {
+          opaqueOpen = true;
+        }
+      }
+      if (opaqueOpen && found.opaque !== null) {
+        reportOption(found.opaque, '...', found.opaque);
+      }
+    }
+
+    function checkSocket(node: TSESTree.CallExpression): void {
+      const [first, second, ...rest] = node.arguments;
+      if (first === undefined || first.type === AST_NODE_TYPES.SpreadElement) {
+        return;
+      }
+      const leading = read(first);
+      if (leading !== undefined) {
+        checkOptions(leading, SOCKET_KEYS, node);
+      } else {
+        // `connect(port, host)` or `connect(path)`: a string literal is a fixed IPC path,
+        // while a runtime value may be a port, a path or an options object.
+        if (!isFixedValue(first, sourceCode) && !isFunctionValue(first, sourceCode)) {
+          reportOption(first, 'port, path or options', first);
+        }
+        if (
+          second !== undefined &&
+          second.type !== AST_NODE_TYPES.SpreadElement &&
+          second.type !== AST_NODE_TYPES.ObjectExpression &&
+          !isFunctionValue(second, sourceCode) &&
+          read(second) === undefined
+        ) {
+          checkHost(second, node);
+        }
+      }
+      // `tls.connect(port, host, options)`: an options object overrides the positional host.
+      for (const argument of [second, ...rest]) {
+        checkTrailing(argument, SOCKET_KEYS, node);
+      }
+    }
+
+    function checkNodeClient(node: TSESTree.CallExpression): void {
+      const [first, second] = node.arguments;
+      if (first === undefined || first.type === AST_NODE_TYPES.SpreadElement) {
+        return;
+      }
+      const leading = read(first);
+      if (leading !== undefined) {
+        // `http.get(options, callback)`: the options alone pick the target.
+        checkOptions(leading, NODE_KEYS, node);
+        return;
+      }
+      checkUrl(first, node);
+      // `http.get(url, options)`: each options key overrides the same part of the URL.
+      checkTrailing(second, NODE_KEYS, node);
+    }
+
+    function checkAxios(node: TSESTree.CallExpression, form: AxiosForm): void {
+      const [first, second, third] = node.arguments;
+      const urlArgument = first?.type === AST_NODE_TYPES.SpreadElement ? undefined : first;
+      if (form === 'create') {
+        checkTrailing(first, AXIOS_KEYS, node);
+        return;
+      }
+      if (form === 'call' || form === 'request') {
+        const config = read(first);
+        if (config !== undefined) {
+          checkOptions(config, AXIOS_KEYS, node);
+          return;
+        }
+        if (urlArgument !== undefined) {
+          checkUrl(urlArgument, node);
+        }
+        if (form === 'call') {
+          checkTrailing(second, AXIOS_KEYS, node);
+        }
+        return;
+      }
+      if (urlArgument !== undefined) {
+        checkUrl(urlArgument, node);
+      }
+      checkTrailing(form === 'body-method' ? third : second, AXIOS_KEYS, node);
+    }
+
+    function checkOther(node: TSESTree.CallExpression, spec: UrlCalleeSpec): void {
+      const index = spec.urlArgument ?? 0;
+      const argument = index === 'last' ? node.arguments.at(-1) : node.arguments[index];
+      const object = read(argument);
+      if (object === undefined) {
+        const url = urlArgumentOf(node, spec);
+        if (url !== undefined) {
+          checkUrl(url, node);
+        }
+        return;
+      }
+      checkOptions(object, new Map([[spec.urlProperty ?? 'href', 'url']]), node);
+    }
 
     return {
       CallExpression(node: TSESTree.CallExpression): void {
         if (matchCallee(node, sockets, sourceCode) !== undefined) {
-          const host = socketHost(node, sourceCode);
-          if (host !== undefined && !isFixedHost(host, sourceCode) && !isHostPinned(host, node, sourceCode)) {
-            context.report({
-              node: host,
-              messageId: 'userControlledSocketHost',
-              data: { host: sourceCode.getText(host) },
-            });
-          }
+          checkSocket(node);
+          return;
+        }
+        const form = axiosForm(node);
+        if (form !== undefined) {
+          checkAxios(node, form);
           return;
         }
         const spec = matchCallee(node, callees, sourceCode);
         if (spec === undefined) {
           return;
         }
-        const target = requestTarget(node, spec, sourceCode);
-        if (target === undefined) {
+        if (spec.object !== undefined && NODE_CLIENTS.has(spec.object)) {
+          checkNodeClient(node);
           return;
         }
-        const fixed =
-          target.kind === 'host'
-            ? isFixedHost(target.node, sourceCode)
-            : hasFixedOrigin(target.node, trust, sourceCode);
-        if (fixed || isHostPinned(target.node, node, sourceCode)) {
+        checkOther(node, spec);
+      },
+      // `axios.defaults.baseURL = x` / `api.defaults.baseURL = x` moves every relative request.
+      AssignmentExpression(node: TSESTree.AssignmentExpression): void {
+        const left = node.left;
+        if (
+          axiosSpecs.length === 0 ||
+          left.type !== AST_NODE_TYPES.MemberExpression ||
+          left.computed ||
+          left.property.type !== AST_NODE_TYPES.Identifier ||
+          left.property.name !== 'baseURL' ||
+          left.object.type !== AST_NODE_TYPES.MemberExpression ||
+          left.object.computed ||
+          left.object.property.type !== AST_NODE_TYPES.Identifier ||
+          left.object.property.name !== 'defaults'
+        ) {
           return;
         }
-        context.report({
-          node: target.node,
-          messageId: target.kind === 'host' ? 'userControlledSocketHost' : 'userControlledFetchUrl',
-          data: { url: sourceCode.getText(target.node), host: sourceCode.getText(target.node) },
-        });
+        const receiver = left.object.object;
+        if (
+          (receiver.type === AST_NODE_TYPES.Identifier && receiver.name === 'axios') ||
+          isAxiosInstance(receiver, sourceCode)
+        ) {
+          checkUrl(node.right, node);
+        }
       },
     };
   },
