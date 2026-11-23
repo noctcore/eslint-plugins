@@ -169,11 +169,12 @@ export function classifyShellParts(segments: readonly (string | TSESTree.Node)[]
       return;
     }
     if (mode === 'command') {
-      if (text.includes(VALUE_MARK)) {
+      if (ASSIGNMENT_WORD.test(text) || RESERVED_WORDS.has(text)) {
+        // Still before the program name, whatever the assigned value is
+        // (`NODE_ENV=${v} ${tool}`).
+      } else if (text.includes(VALUE_MARK)) {
         mode = 'args';
         program = null;
-      } else if (ASSIGNMENT_WORD.test(text) || RESERVED_WORDS.has(text)) {
-        // still before the program name
       } else if (WRAPPER_COMMANDS.has(commandName(text))) {
         mode = 'wrapped';
       } else {

@@ -101,6 +101,13 @@ describe('classifyShellParts', () => {
     expect(commandWords(command)).toEqual([false]);
   });
 
+  it('keeps the program position after `NAME=value` that holds a value', () => {
+    expect(commandWords('NODE_ENV=$ $ --version')).toEqual([true, true]);
+    expect(commandWords('A=$ sudo $')).toEqual([true, true]);
+    expect(commandWords('A=$ B=$x $')).toEqual([true, true, true]);
+    expect(commandWords('A=$ ls $')).toEqual([true, false]);
+  });
+
   it('starts over after a separator', () => {
     expect(commandWords('sudo $; ls $')).toEqual([true, false]);
     expect(commandWords('$ $')).toEqual([true, false]);

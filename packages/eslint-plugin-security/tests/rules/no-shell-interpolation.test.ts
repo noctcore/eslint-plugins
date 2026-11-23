@@ -910,6 +910,27 @@ ruleTester.run('no-shell-interpolation', noShellInterpolationRule, {
       filename: TS,
       errors: [{ messageId: 'shellInterpolation' }],
     },
+    // `NAME=value` holding a value is still before the program, so the next word runs.
+    {
+      code: "function run(v: string, t: string) { if (!['production', 'test'].includes(v)) return; if (!/^[a-z]+$/.test(t)) return; exec(`NODE_ENV=${v} ${t} --version`); }",
+      filename: TS,
+      errors: [{ messageId: 'shellInterpolation' }],
+    },
+    {
+      code: "function run(v: string, t: string) { if (!['production', 'test'].includes(v)) return; if (!/^[a-z]+$/.test(t)) return; exec('NODE_ENV=' + v + ' ' + t + ' --version'); }",
+      filename: TS,
+      errors: [{ messageId: 'shellInterpolation' }],
+    },
+    {
+      code: "function run(v: string, t: string) { if (!['production', 'test'].includes(v)) return; if (!/^[a-z]+$/.test(t)) return; exec(`A=${v} sudo ${t}`); }",
+      filename: TS,
+      errors: [{ messageId: 'shellInterpolation' }],
+    },
+    {
+      code: "const N = 3; function run(t: string) { if (!/^[a-z]+$/.test(t)) return; exec(`N=${N} ${t}`); }",
+      filename: TS,
+      errors: [{ messageId: 'shellInterpolation' }],
+    },
     // `safeParse` without the exit, an unconfined field, a list that is not frozen and leaks.
     {
       code: "import { z } from 'zod'; const S = z.string().regex(/^[a-z]+$/); function run(x: string) { const r = S.safeParse(x); exec(`tool ${r.data}`); }",
