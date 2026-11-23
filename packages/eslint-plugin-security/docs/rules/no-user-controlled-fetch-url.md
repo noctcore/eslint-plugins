@@ -61,29 +61,81 @@ protocol-relative.
 
 The default `fetchCallees` cover `fetch`, `axios` with its methods, `axios(config)`,
 `axios(url, config)`, `axios.request(config)`, and Node's `http.get`, `http.request`, `https.get`
-and `https.request`. When the URL argument is an object literal, or an in-file `const` bound to one,
-the URL is its `urlProperty` (`url` for the axios config forms). An `http` / `https` options object
-without `href` names its target by `host` / `hostname`, which must then be fixed.
+and `https.request`. An options or config object is read when it is an object literal, or an
+in-file `const` bound to one that nothing changes before the call (`opts.host = x`,
+`Object.assign(opts, ...)` or handing it to a helper makes it unreadable, and then it is reported as
+a runtime URL). Later keys win, a spread of such an object copies its keys, and a spread or computed
+key the rule cannot read (`...req.body`, `[key]: value`) is reported, since it may set any key.
 
-```ts bad
+**Node `http` / `https`.** The rule reads the options the way Node picks the target. With
+`http.get(url, options)`, each key of `options` overrides the same part of the URL, so both are
+checked. Node takes `hostname` over `host` and does not read `href` on a plain options object, so
+every one of these keys must be fixed (a literal, or an in-file `const` built from literals):
+
+| Key | Why it moves the request |
+| --- | --- |
+| `hostname`, `host` | the machine; `hostname` wins when both are set. A host-pinned value passes. |
+| `port`, `defaultPort` | the port on that machine (`defaultPort` applies when `port` is missing) |
+| `socketPath` | a Unix socket that replaces the host and port |
+| `protocol` | the scheme the agent must speak |
+| `path` | sent as the request target: a `//host` path or a full URL is followed by a proxy. Checked like a URL, so a relative path with a fixed prefix passes. |
+| `agent`, `lookup`, `createConnection` | open the connection themselves. Author-written code passes: a function, `new Agent(...)`, `this.agent`, or a `const`, function, class or import binding. |
+
+An options object with none of these keys goes to `localhost:80` and passes.
+
+```ts bad reports=4
+// the second argument overrides the URL's host
+https.get('https://api.example.com/x', { hostname: req.query.h });
+// Node prefers `hostname` over `host`
+http.get({ host: 'api.example.com', hostname: req.query.h });
+// `href` is not read on a plain options object, so `host` decides
+http.get({ href: '/safe', host: req.query.h });
+// a spread can override the fixed host
+http.get({ hostname: 'api.example.com', ...req.body });
+```
+
+```ts good
+const keepAlive = new https.Agent({ keepAlive: true });
+https.get({ hostname: 'api.example.com', port: 443, agent: keepAlive, path: `/v1/users/${id}` });
+```
+
+**axios.** The config keys `url` and `baseURL` must have a fixed origin (axios joins a relative `url`
+to `baseURL`), `socketPath` must be fixed, `proxy` must be `false` or an object with a fixed host and
+port, and `httpAgent`, `httpsAgent` and `lookup` must be author-written. The config is read in every
+call form: `axios(config)`, `axios(url, config)`, `axios.request(config)`, `axios.get(url, config)`,
+`axios.post(url, data, config)` and `axios.create(config)`. A `const api = axios.create(...)` in the
+same file is an axios instance: `api(config)`, `api.get(url, config)` and the other methods are read
+the same way. `axios.defaults.baseURL = x` and `api.defaults.baseURL = x` must have a fixed origin
+too.
+
+```ts bad reports=3
 export async function probe(target: string) {
   const outbound = { method: 'get', url: String(target), timeout: 5000 };
   await axios.request(outbound);
+  await axios.get('/users', { baseURL: req.query.base });
+  const api = axios.create({ baseURL: req.query.base });
 }
 ```
 
-`socketCallees` (`net.connect`, `net.createConnection`, `tls.connect`) open a raw socket, so only
-their host is checked: `connect(port, host)` or `connect({ host })`. A literal host, a `const` bound
-to one, a string first argument (an IPC path) and no host at all (localhost) pass.
+**Sockets.** `socketCallees` (`net.connect`, `net.createConnection`, `tls.connect`) open a raw
+socket. The host (`connect(port, host)` or `{ host }`), the port and an IPC `path` must be fixed,
+and `lookup` author-written. A string literal first argument is a fixed IPC path, and no host means
+localhost. Every options object among the arguments is read, since `tls.connect(port, host, options)`
+lets `options.host` override the positional host.
 
-```ts bad
+```ts bad reports=2
 // `new URL(...).hostname` of a runtime URL is still a runtime host
 net.connect(80, new URL(String(target)).hostname);
+// the options object overrides the positional host
+tls.connect(443, 'api.example.com', { host: req.query.h });
 ```
 
 ```ts good
 net.connect(6379, 'cache.internal');
+net.connect({ path: '/var/run/app.sock' });
 ```
+
+`fetch(new Request(input))` and a `const` bound to `new Request(input)` are judged by `input`.
 
 ## What it does not flag
 
@@ -103,7 +155,10 @@ net.connect(6379, 'cache.internal');
   passed as a socket host is pinned too. The host can also be checked inline
   (`HOSTS.includes(new URL(url).hostname)`), or on a parsed `const u = new URL(...)` that the call
   then receives as `u`, `u.href` or `u.toString()`, as long as nothing changes `u` after the check
-  (`u.host = other` cancels it). The list can be a `const` string (`u.origin === APP_ORIGIN`).
+  (`u.host = other`, `Object.assign(u, ...)`, `Reflect.set(u, ...)`, a write through an alias, or
+  handing `u` to a helper cancels it; handing it to the request call itself does not). The list can
+  be a `const` string (`u.origin === APP_ORIGIN`). See Limits below: a `hostname` check leaves
+  the port open, and redirects are followed.
 
 ```ts good
 // only two hosts get past the check
@@ -119,12 +174,37 @@ export function probe(input: string) {
 }
 ```
 
+### Limits
+
+- **A host pin does not pin the port.** `new URL(input).hostname` is the host without its port, so
+  `https://api.example.com:6379/` passes a `hostname` allowlist and the request goes to port 6379
+  of the allowed host. Check `host` (host and port) or `origin` (scheme, host and port) instead
+  when the port matters: `ALLOWED_ORIGINS.has(new URL(input).origin)`.
+- **Redirects are followed.** The rule checks where the request starts. `fetch` and axios follow
+  redirects by default, so an allowed host that answers with a `3xx` to an internal address takes
+  the request there. Node's `http` / `https` do not follow redirects, but a wrapper that does
+  (`follow-redirects`) has the same effect. When the allowed host can be made to redirect, send the
+  request with `redirect: 'manual'` (`fetch`) or `maxRedirects: 0` (axios) and check each hop.
+- An options object the rule cannot see is not read: a parameter or a call result passed as the
+  second argument of `https.get(url, options)` or as an axios config after the URL. An in-file
+  `const` object changed before the call is reported in those places, and a first argument the rule
+  cannot see is reported as a runtime URL.
+- An axios instance is seen only as a `const` bound to `axios.create(...)` in the same file.
+- A reverse proxy that forwards `req.url` as the `path` of a fixed host is reported: `req.url` can
+  be a full URL. Name your path sanitizer in `sanitizers`.
+- Other clients (`undici`'s `request`, `Client` and `Pool`, `got`, `ky`) are not in the defaults.
+  A call such as `request(url)` or `got(url)` can be added to `fetchCallees`; a constructor such as
+  `new Client(origin)` cannot, and `got`'s `prefixUrl` is not read.
+- The rule does not judge the host itself: a fixed `http://127.0.0.1/` or a pin that lists
+  `localhost` is the author's choice. A pin compares the host as the URL parser normalizes it, so
+  decimal, octal, hex and IPv6 spellings of an internal address never equal a listed domain name.
+
 ## Options
 
 | Option | Type | Default | Meaning |
 | --- | --- | --- | --- |
 | `fetchCallees` | `(string \| CalleeSpec)[]` | `fetch`, `axios`, `axios.{get,post,put,patch,delete,head,options,request}`, `http.{get,request}`, `https.{get,request}` | Call shapes that issue a request. Setting this replaces the defaults. |
-| `socketCallees` | `string[]` | `net.connect`, `net.createConnection`, `tls.connect` | Calls that open a socket; their host must be fixed. Setting this replaces the defaults. |
+| `socketCallees` | `string[]` | `net.connect`, `net.createConnection`, `tls.connect` | Calls that open a socket; their host, port and IPC path must be fixed. Setting this replaces the defaults. |
 | `trustedOrigins` | `string[]` | `[]` | Expressions (source text) that are a fixed-origin URL. `name()` matches any call to `name`. |
 | `sanitizers` | `string[]` | `[]` | Functions whose result is a safe same-origin path. |
 | `trustedPaths` | `string[]` | `[]` | Expressions (source text) that hold a safe same-origin path, e.g. an imported constant. |
