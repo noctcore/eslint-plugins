@@ -93,8 +93,12 @@ const RUNNER_SUBCOMMANDS: Readonly<Record<string, ReadonlySet<string>>> = {
 /** Characters that end a simple command (`&` is read apart, see `isSeparator`). */
 const SEPARATORS = ';|()`\n\r';
 
-/** `NAME=value` before a command sets a variable for it. */
-const ASSIGNMENT_WORD = /^[A-Za-z_]\w*=/u;
+/**
+ * `NAME=value` before a command sets a variable for it, and so do bash's
+ * `NAME+=value` and `NAME[i]=value` (`/bin/sh` is bash on macOS, RHEL and
+ * Arch). A value in the name is read as a word character, see `isAssignment`.
+ */
+const ASSIGNMENT_WORD = /^[A-Za-z_]\w*(?:\[[^\]]*\])?\+?=/u;
 
 /**
  * A redirect operator, alone (`>`, `2>`) or with its target (`>out`, `2>&1`).
@@ -124,6 +128,15 @@ export interface ShellPart {
 
 /** A dynamic piece inside the word being read is marked with this character. */
 const VALUE_MARK = '\u0000';
+
+/**
+ * Whether a word may assign a variable. A value in it stands for a word
+ * character, so a value that forms the name (`${name}=x`, `A${p}=x`) keeps
+ * the word an assignment: that only reports more.
+ */
+function isAssignment(text: string): boolean {
+  return ASSIGNMENT_WORD.test(text.replaceAll(VALUE_MARK, 'v'));
+}
 
 /** The basename of a word with its quotes and backslashes taken out. */
 function commandName(word: string): string {
@@ -173,9 +186,10 @@ export function classifyShellParts(segments: readonly (string | TSESTree.Node)[]
       return;
     }
     if (mode === 'command') {
-      if (ASSIGNMENT_WORD.test(text) || RESERVED_WORDS.has(text)) {
+      if (isAssignment(text) || RESERVED_WORDS.has(text)) {
         // Still before the program name, whatever the assigned value is
-        // (`NODE_ENV=${v} ${tool}`).
+        // (`NODE_ENV=${v} ${tool}`) and even when a value forms the name
+        // (`${name}=x ${tool}`).
       } else if (text.includes(VALUE_MARK)) {
         mode = 'args';
         program = null;

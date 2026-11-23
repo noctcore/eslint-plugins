@@ -110,6 +110,20 @@ describe('classifyShellParts', () => {
     expect(commandWords('A=$ ls $')).toEqual([true, false]);
   });
 
+  it.each([
+    ['$=x $', [true, true]],
+    ['$=$ $', [true, true, true]],
+    ['A$=x $', [true, true]],
+    ['$B=x $', [true, true]],
+    ['A+=x $', [true]],
+    ['A+=$ $', [true, true]],
+    ['A[0]=x $', [true]],
+    ['A[$]=x $', [true, true]],
+    ['PATH+=:/opt/bin $', [true]],
+  ])('keeps the program position after the assignment `%s`', (command, expected) => {
+    expect(commandWords(command)).toEqual(expected);
+  });
+
   it('keeps `2>&1` and `>&2` as redirects', () => {
     expect(commandWords('ls 2>&1 $')).toEqual([false]);
     expect(commandWords('ls >&2 $')).toEqual([false]);

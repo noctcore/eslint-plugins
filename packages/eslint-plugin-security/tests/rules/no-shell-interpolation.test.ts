@@ -935,6 +935,42 @@ ruleTester.run('no-shell-interpolation', noShellInterpolationRule, {
       filename: TS,
       errors: [{ messageId: 'shellInterpolation' }],
     },
+    // A value that forms the name, and bash's `+=` and `[i]=` forms, are still assignments.
+    {
+      code: "function run(name: string, value: string, t: string) { if (!['A', 'B'].includes(name) || !['x', 'y'].includes(value)) return; if (!/^[a-z]+$/.test(t)) return; exec(`${name}=${value} ${t}`); }",
+      filename: TS,
+      errors: [{ messageId: 'shellInterpolation' }],
+    },
+    {
+      code: "function run(p: string, t: string) { if (!['A', 'B'].includes(p)) return; if (!/^[a-z]+$/.test(t)) return; exec(`A${p}=x ${t}`); }",
+      filename: TS,
+      errors: [{ messageId: 'shellInterpolation' }],
+    },
+    {
+      code: "function run(p: string, t: string) { if (!['A', 'B'].includes(p)) return; if (!/^[a-z]+$/.test(t)) return; exec(`${p}B=x ${t}`); }",
+      filename: TS,
+      errors: [{ messageId: 'shellInterpolation' }],
+    },
+    {
+      code: "function run(t: string) { if (!/^[a-z]+$/.test(t)) return; exec(`A+=x ${t}`); }",
+      filename: TS,
+      errors: [{ messageId: 'shellInterpolation' }],
+    },
+    {
+      code: "function run(v: string, t: string) { if (!['x', 'y'].includes(v)) return; if (!/^[a-z]+$/.test(t)) return; exec(`A+=${v} ${t}`); }",
+      filename: TS,
+      errors: [{ messageId: 'shellInterpolation' }],
+    },
+    {
+      code: "function run(t: string) { if (!/^[a-z]+$/.test(t)) return; exec(`A[0]=x ${t}`); }",
+      filename: TS,
+      errors: [{ messageId: 'shellInterpolation' }],
+    },
+    {
+      code: "function run(tool: string) { if (!/^[a-z]+$/.test(tool)) return; exec(`PATH+=:/opt/bin ${tool}`); }",
+      filename: TS,
+      errors: [{ messageId: 'shellInterpolation' }],
+    },
     // dash (Node's `/bin/sh` on Debian and Ubuntu) reads `&>` as `&`, then a redirect before the next program.
     {
       code: "function run(t: string) { if (!/^[a-z]+$/.test(t)) return; exec(`ls &>/dev/null ${t}`); }",
