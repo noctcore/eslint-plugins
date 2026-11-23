@@ -47,8 +47,17 @@ const SHELL_LEADING = '-#';
  * segment that must not be `.` or `..` either.
  * `command` is a shell value in the program-name position, which no regex or
  * schema pattern proves, only a literal allowlist or a constant.
+ * `html` is a value inside an HTML attribute or element; `html-text` is a value
+ * in element text only, where nothing but `<` and `&` starts markup.
  */
-export type GuardContext = 'shell' | 'shell-word' | 'shell-path' | 'command' | 'html' | 'path';
+export type GuardContext =
+  | 'shell'
+  | 'shell-word'
+  | 'shell-path'
+  | 'command'
+  | 'html'
+  | 'html-text'
+  | 'path';
 
 const SHELL_UNSAFE = ';&|$`()<>{}[]*?!~\'"\\^\n\r \t\v\f';
 /** Characters each context must never receive from a value it cannot see. */
@@ -61,6 +70,7 @@ const UNSAFE_CHARACTERS: Readonly<Record<GuardContext, string>> = {
   'shell-path': SHELL_UNSAFE,
   command: SHELL_UNSAFE,
   html: '<>&"\'`',
+  'html-text': '<&',
   // Separators (and a drive letter's `:`) are what move a path elsewhere.
   path: '/\\:\0',
 };
@@ -402,6 +412,7 @@ const FORBIDDEN_VALUES: Readonly<Record<GuardContext, readonly string[]>> = {
   'shell-path': ['', '.', '..'],
   command: [''],
   html: [],
+  'html-text': [],
   path: ['', '.', '..'],
 };
 
