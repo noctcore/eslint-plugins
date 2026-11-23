@@ -15,9 +15,9 @@ ruleTester.run('require-path-containment', requirePathContainmentRule, {
       code: `function h(req) { const safe = clean(req.params.file); return path.join(base, safe); }`,
       filename: TS,
     },
-    // A `.startsWith` test of the joined value suppresses.
+    // A `.startsWith` test of the joined value against the base and a separator suppresses.
     {
-      code: `function h(req) { const p = path.join(base, req.params.file); if (!p.startsWith(base)) throw new Error('bad'); return p; }`,
+      code: `function h(req) { const p = path.join(base, req.params.file); if (!p.startsWith(base + path.sep)) throw new Error('bad'); return p; }`,
       filename: TS,
     },
     // A test of a variable derived from the joined value through a path call.
@@ -27,12 +27,12 @@ ruleTester.run('require-path-containment', requirePathContainmentRule, {
     },
     // Stored through a wrapping path call.
     {
-      code: `import { join, normalize } from 'node:path'; function h(req) { const p = normalize(join(base, req.params.file)); if (!p.startsWith(base)) throw new Error('bad'); return p; }`,
+      code: "import { join, normalize, sep } from 'node:path'; function h(req) { const p = normalize(join(base, req.params.file)); if (!p.startsWith(`${base}${sep}`)) throw new Error('bad'); return p; }",
       filename: TS,
     },
-    // `path.relative(base, joined)` is a containment test.
+    // `path.relative(base, joined)` refused when it climbs and when it is absolute.
     {
-      code: `function h(req) { const p = path.resolve(base, req.params.file); const rel = path.relative(base, p); if (rel.startsWith('..')) throw new Error('bad'); return p; }`,
+      code: `function h(req) { const p = path.resolve(base, req.params.file); const rel = path.relative(base, p); if (rel.startsWith('..') || path.isAbsolute(rel)) throw new Error('bad'); return p; }`,
       filename: TS,
     },
     // A configured guard helper that takes the joined value.
@@ -65,23 +65,11 @@ ruleTester.run('require-path-containment', requirePathContainmentRule, {
       filename: TS,
     },
     {
-      code: "const fs = require('fs'); const path = require('path'); function h(req) { const name = String(req.query.file); return fs.readFileSync('/srv/files/' + path.basename(name)); }",
-      filename: TS,
-    },
-    {
-      code: "import { basename } from 'node:path'; import { readFile } from 'node:fs/promises'; async function h(req) { return readFile(`/srv/files/${basename(req.query.file)}`); }",
-      filename: TS,
-    },
-    {
       code: "const fs = require('fs'); const FILES = new Set(['a.json', 'b.json']); function h(req) { const name = String(req.query.file).trim(); if (!FILES.has(name)) { res.status(403).end(); return; } const target = '/srv/files/' + name; fs.unlinkSync(target); }",
       filename: TS,
     },
     {
       code: "const fs = require('fs'); function h(req) { const name = decodeURIComponent(req.query.sort); if (!/^(asc|desc)$/.test(String(name))) return; fs.readFileSync('/srv/files/' + name); }",
-      filename: TS,
-    },
-    {
-      code: "const fs = require('fs'); function h(req) { const name = req.query.file; if (!/^[a-z0-9_.-]+$/i.test(name)) return; fs.readFileSync('/srv/files/' + name); }",
       filename: TS,
     },
     {
@@ -124,6 +112,90 @@ ruleTester.run('require-path-containment', requirePathContainmentRule, {
     },
     {
       code: "import fs from 'node:fs'; import { join } from 'node:path'; const NAMES = new Set(['a.css']); function h(req) { if (!NAMES.has(req.query.name)) { throw new Error('unknown'); } return fs.readFileSync(join('/srv/themes', req.query.name)); }",
+      filename: TS,
+    },
+    // A basename refused as `.` and `..` (or anything starting with `.`) stays in its directory.
+    {
+      code: "const fs = require('fs'); const path = require('path'); function h(req) { const name = path.basename(String(req.query.file)); if (name === '.' || name === '..') return; return fs.readFileSync('/srv/files/' + name); }",
+      filename: TS,
+    },
+    {
+      code: "import { basename, join } from 'node:path'; import { readFileSync } from 'node:fs'; function h(req) { const name = basename(req.query.u as string); if (name.startsWith('.')) throw new Error('hidden'); return readFileSync(join(BASE, name, 'profile.json')); }",
+      filename: TS,
+    },
+    {
+      code: "import { basename, join } from 'node:path'; import { rmSync } from 'node:fs'; function h(req) { const name = basename(req.query.u); if (['.', '..'].includes(name)) return; rmSync(join(BASE, name), { recursive: true }); }",
+      filename: TS,
+    },
+    {
+      code: "import { basename, join } from 'node:path'; import { rmSync } from 'node:fs'; function h(req) { const name = basename(req.query.u); if (name !== '..' && name !== '.') { rmSync(join(BASE, name), { recursive: true }); } }",
+      filename: TS,
+    },
+    // A regex that cannot match `.` or `..`.
+    {
+      code: "const fs = require('fs'); function h(req) { const name = req.query.file; if (!/^[a-z0-9_-][a-z0-9_.-]*$/i.test(name)) return; fs.readFileSync('/srv/files/' + name); }",
+      filename: TS,
+    },
+    // A literal base that ends in a separator, a template with `${sep}`, a `const` base with a separator.
+    {
+      code: "import { resolve, sep } from 'node:path'; import fs from 'node:fs'; const ROOT = '/srv/app'; function h(req) { const full = resolve(ROOT, req.query.f); if (!full.startsWith(`${ROOT}${sep}`)) return; fs.readFileSync(full); }",
+      filename: TS,
+    },
+    {
+      code: "import { resolve } from 'node:path'; import fs from 'node:fs'; const ROOT = '/srv/app/'; function h(req) { const full = resolve(ROOT, req.query.f); if (full.startsWith(ROOT)) { fs.readFileSync(full); } }",
+      filename: TS,
+    },
+    // The relative check inline, and through a `const` boolean.
+    {
+      code: "import { resolve, relative, isAbsolute } from 'node:path'; import fs from 'node:fs'; function h(req) { const full = resolve(BASE, req.query.f); const rel = relative(BASE, full); const ok = !rel.startsWith('..') && !isAbsolute(rel); if (!ok) return; fs.readFileSync(full); }",
+      filename: TS,
+    },
+    // realpath of the joined path checked against the realpath of the base.
+    {
+      code: "import fs from 'node:fs'; import path from 'node:path'; async function h(req) { const real = await fs.promises.realpath(DOCS); const file = await fs.promises.realpath(path.join(DOCS, req.params.page)); if (!file.startsWith(real + path.sep)) return; return fs.promises.readFile(file, 'utf8'); }",
+      filename: TS,
+    },
+    // Express's `root` option refuses `..` segments after decoding; a fixed root is safe.
+    {
+      code: "function h(req, res) { res.sendFile(req.params.file, { root: PUBLIC_DIR }); }",
+      filename: TS,
+    },
+    {
+      code: "function h(req, res) { res.download(req.params.file, 'report.pdf', { root: '/srv/reports' }); }",
+      filename: TS,
+    },
+    // A TS wrapper on the path keeps the containment test.
+    {
+      code: "import { join, sep } from 'node:path'; import { readFileSync } from 'node:fs'; function h(req) { const full = join(BASE, req.query.f as string); if (!full.startsWith(BASE + sep)) return; return readFileSync(full!); }",
+      filename: TS,
+    },
+    // A decoder before the basename and the dot check is fine: the check sees the decoded text.
+    {
+      code: "import { basename, join } from 'node:path'; import fs from 'node:fs'; function h(req) { const name = basename(decodeURIComponent(req.query.f)); if (name.startsWith('.')) return; fs.readFileSync(join(BASE, name)); }",
+      filename: TS,
+    },
+    // A helper whose path is checked inside it, or called with a checked value.
+    {
+      code: "import fs from 'node:fs'; import { resolve, sep } from 'node:path'; function load(p) { const full = resolve(BASE, p); if (!full.startsWith(BASE + sep)) throw new Error('outside'); return fs.readFileSync(full); } function h(req) { return load(req.query.f); }",
+      filename: TS,
+    },
+    {
+      code: "import fs from 'node:fs'; function load(p) { return fs.readFileSync('/srv/files/' + p); } function h(req) { if (!['a.json', 'b.json'].includes(req.query.f)) return; return load(req.query.f); }",
+      filename: TS,
+    },
+    // A helper called with server values only.
+    {
+      code: "import fs from 'node:fs'; function load(p) { return fs.readFileSync('/srv/files/' + p); } function h(req) { return load('fixed.json'); }",
+      filename: TS,
+    },
+    // An object parameter whose fields are not request fields.
+    {
+      code: "import fs from 'node:fs'; function h({ name }) { return fs.readFileSync('/srv/files/' + name); }",
+      filename: TS,
+    },
+    // A member allowlisted and only inspected elsewhere stays allowlisted.
+    {
+      code: "import { join } from 'node:path'; import fs from 'node:fs'; function h(req, res) { if (!req.params || typeof req.params !== 'object') return; if (!['a.css'].includes(req.params.name)) return res.end(); return fs.readFileSync(join('/srv/themes', req.params.name)); }",
       filename: TS,
     },
   ],
@@ -334,6 +406,289 @@ ruleTester.run('require-path-containment', requirePathContainmentRule, {
     },
     {
       code: "import { join } from 'node:path'; function h(req, res) { if (!/^[a-z.]+$/.test(req.params.name)) return res.end(); return join('/srv', req.params.name); }",
+      filename: TS,
+      errors: ERR,
+    },
+    // `startsWith(base)` without a separator admits `/srv/app-evil` for `/srv/app`.
+    {
+      code: `function h(req) { const p = path.join(base, req.params.file); if (!p.startsWith(base)) throw new Error('bad'); return p; }`,
+      filename: TS,
+      errors: ERR,
+    },
+    {
+      code: `import { join, normalize } from 'node:path'; function h(req) { const p = normalize(join(base, req.params.file)); if (!p.startsWith(base)) throw new Error('bad'); return p; }`,
+      filename: TS,
+      errors: ERR,
+    },
+    // A relative check without `isAbsolute` misses an absolute result on Windows (another drive).
+    {
+      code: `function h(req) { const p = path.resolve(base, req.params.file); const rel = path.relative(base, p); if (rel.startsWith('..')) throw new Error('bad'); return p; }`,
+      filename: TS,
+      errors: ERR,
+    },
+    // A bare `basename` is not containment: `basename('..')` is `'..'`.
+    {
+      code: "const fs = require('fs'); const path = require('path'); function h(req) { const name = String(req.query.file); return fs.readFileSync('/srv/files/' + path.basename(name)); }",
+      filename: TS,
+      errors: FS,
+    },
+    {
+      code: "import { basename } from 'node:path'; import { readFile } from 'node:fs/promises'; async function h(req) { return readFile(`/srv/files/${basename(req.query.file)}`); }",
+      filename: TS,
+      errors: FS,
+    },
+    // A regex that admits `..` is not a path segment proof.
+    {
+      code: "const fs = require('fs'); function h(req) { const name = req.query.file; if (!/^[a-z0-9_.-]+$/i.test(name)) return; fs.readFileSync('/srv/files/' + name); }",
+      filename: TS,
+      errors: FS,
+    },
+    // The probes from the review: a bare basename lets `..` through.
+    {
+      code: "import { basename, join } from 'node:path'; import { readFileSync } from 'node:fs'; function h(req) { return readFileSync(join(BASE, basename(req.query.u), 'profile.json')); }",
+      filename: TS,
+      errors: FS,
+    },
+    {
+      code: "import { basename, join } from 'node:path'; import { rmSync } from 'node:fs'; function h(req) { rmSync(join(BASE, basename(req.query.u)), { recursive: true }); }",
+      filename: TS,
+      errors: FS,
+    },
+    // A check that refuses only `.`, or runs after the sink, or on another value.
+    {
+      code: "import { basename, join } from 'node:path'; import { rmSync } from 'node:fs'; function h(req) { const name = basename(req.query.u); if (name === '.') return; rmSync(join(BASE, name), { recursive: true }); }",
+      filename: TS,
+      errors: FS,
+    },
+    {
+      code: "import { basename, join } from 'node:path'; import { rmSync } from 'node:fs'; function h(req) { const name = basename(req.query.u); rmSync(join(BASE, name), { recursive: true }); if (name === '..') return; }",
+      filename: TS,
+      errors: FS,
+    },
+    {
+      code: "import { basename, join } from 'node:path'; import { rmSync } from 'node:fs'; function h(req) { let name = basename(req.query.u); if (name === '..') return; name = req.query.v; rmSync(join(BASE, name)); }",
+      filename: TS,
+      errors: FS,
+    },
+    // A dot check on a basename, then a decode: `%2e%2e` passes and decodes to `..`.
+    {
+      code: "import { basename, join } from 'node:path'; import fs from 'node:fs'; function h(req) { const name = basename(req.query.f); if (name === '..' || name === '.') return; fs.readFileSync(join(BASE, decodeURIComponent(name))); }",
+      filename: TS,
+      errors: FS,
+    },
+    {
+      code: "import fs from 'node:fs'; function h(req) { const name = req.query.f; if (!/^[\\w%-][\\w.%-]*$/.test(name)) return; fs.readFileSync('/srv/files/' + decodeURIComponent(name)); }",
+      filename: TS,
+      errors: FS,
+    },
+    {
+      code: "import fs from 'node:fs'; function h(req) { const name = req.query.f; if (!/^[\\w-][\\w.-]*$/.test(name)) return; fs.readFileSync('/srv/files/' + Buffer.from(name, 'base64').toString()); }",
+      filename: TS,
+      errors: FS,
+    },
+    // A string method can turn checked text into `..`.
+    {
+      code: "import fs from 'node:fs'; function h(req) { const name = req.query.f; if (!/^[\\w-][\\w.-]*$/.test(name)) return; fs.rmSync('/srv/files/' + name.slice(1), { recursive: true }); }",
+      filename: TS,
+      errors: FS,
+    },
+    {
+      code: "import fs from 'node:fs'; function h(req) { const name = req.query.f; if (!/^[\\w-][\\w-]*$/.test(name)) return; fs.rmSync('/srv/files/' + name.replace(/_/g, '.'), { recursive: true }); }",
+      filename: TS,
+      errors: FS,
+    },
+    // `resolve` with an absolute segment ignores the base; a test that does not dominate the sink.
+    {
+      code: "import { resolve, sep } from 'node:path'; import fs from 'node:fs'; function h(req) { const full = resolve(BASE, req.query.f); fs.readFileSync(full); if (!full.startsWith(BASE + sep)) return; }",
+      filename: TS,
+      errors: FS,
+    },
+    {
+      code: "import { resolve, sep } from 'node:path'; import fs from 'node:fs'; function h(req) { const full = resolve(BASE, req.query.f); if (full.startsWith(BASE + sep)) log('inside'); fs.readFileSync(full); }",
+      filename: TS,
+      errors: FS,
+    },
+    {
+      code: "import { resolve, sep } from 'node:path'; import fs from 'node:fs'; function h(req) { const full = resolve(BASE, req.query.f); full.startsWith(BASE + sep); fs.readFileSync(full); }",
+      filename: TS,
+      errors: FS,
+    },
+    // `startsWith(base)` without a separator before an fs sink.
+    {
+      code: "import { resolve } from 'node:path'; import fs from 'node:fs'; function h(req) { const name = req.query.f; const full = resolve('/srv/app', name); if (!full.startsWith('/srv/app')) return; fs.readFileSync(full); }",
+      filename: TS,
+      errors: FS,
+    },
+    // A test on the first segment does not cover a second request segment joined after it.
+    {
+      code: "import { resolve, join, sep } from 'node:path'; import fs from 'node:fs'; function h(req) { const dir = resolve(BASE, String(req.params.d)); if (!dir.startsWith(BASE + sep)) return; const file = join(dir, String(req.query.f)); fs.readFileSync(file); }",
+      filename: TS,
+      errors: FS,
+    },
+    // A reassigned resolved path is not the tested one.
+    {
+      code: "import { resolve, sep } from 'node:path'; import fs from 'node:fs'; function h(req) { let full = resolve(BASE, String(req.query.f)); if (!full.startsWith(BASE + sep)) return; full = String(req.query.g); fs.readFileSync(full); }",
+      filename: TS,
+      errors: FS,
+    },
+    // `relative` refused only for `..`, or only for absolute.
+    {
+      code: "import { resolve, relative, isAbsolute } from 'node:path'; import fs from 'node:fs'; function h(req) { const full = resolve(BASE, String(req.query.f)); const rel = relative(BASE, full); if (isAbsolute(rel)) return; fs.readFileSync(full); }",
+      filename: TS,
+      errors: FS,
+    },
+    {
+      code: "import { resolve, relative } from 'node:path'; import fs from 'node:fs'; function h(req) { const full = resolve(BASE, String(req.query.f)); if (relative(BASE, full).startsWith('..')) return; fs.readFileSync(full); }",
+      filename: TS,
+      errors: FS,
+    },
+    // `normalize` keeps a leading `..`.
+    {
+      code: "import { normalize } from 'node:path'; import fs from 'node:fs'; function h(req) { fs.readFileSync('/srv/files/' + normalize(req.query.f)); }",
+      filename: TS,
+      errors: FS,
+    },
+    // `path.posix.basename` does not strip `\\` and is not a sanitizer.
+    {
+      code: "import path from 'node:path'; import fs from 'node:fs'; function h(req) { const name = path.posix.basename(req.query.f); if (name.startsWith('.')) return; fs.readFileSync(path.join(BASE, name)); }",
+      filename: TS,
+      errors: FS,
+    },
+    // New sinks: existsSync, watch, statfs, glob.
+    {
+      code: "import { existsSync } from 'node:fs'; function h(req) { return existsSync('/srv/files/' + req.query.f); }",
+      filename: TS,
+      errors: FS,
+    },
+    {
+      code: "import fs from 'node:fs'; function h(req) { fs.watch('/srv/files/' + req.query.f, () => {}); }",
+      filename: TS,
+      errors: FS,
+    },
+    // Dynamic import, awaited and destructured, inside the handler; `require` inline; aliases.
+    {
+      code: "async function h(req) { const fs = await import('node:fs'); fs.readFileSync('/srv/files/' + req.query.f); }",
+      filename: TS,
+      errors: FS,
+    },
+    {
+      code: "async function h(req) { const { readFile } = await import('fs'); await readFile('/srv/files/' + req.query.f); }",
+      filename: TS,
+      errors: FS,
+    },
+    {
+      code: "async function h(req) { const { promises } = await import('node:fs'); await promises.rm('/srv/files/' + req.query.f); }",
+      filename: TS,
+      errors: FS,
+    },
+    {
+      code: "function h(req) { require('fs').readFileSync('/srv/files/' + req.query.f); }",
+      filename: TS,
+      errors: FS,
+    },
+    {
+      code: "const { readFile } = require('fs').promises; async function h(req) { await readFile('/srv/files/' + req.query.f); }",
+      filename: TS,
+      errors: FS,
+    },
+    {
+      code: "import * as nodeFs from 'node:fs'; const p = nodeFs.promises; const { unlink } = p; async function h(req) { await unlink('/srv/files/' + req.query.f); }",
+      filename: TS,
+      errors: FS,
+    },
+    {
+      code: "import fs = require('fs'); function h(req) { fs.readFileSync('/srv/files/' + req.query.f); }",
+      filename: TS,
+      errors: FS,
+    },
+    // TS wrappers and a computed key on the callee.
+    {
+      code: "import fs from 'node:fs'; function h(req) { (fs as any).readFileSync('/srv/files/' + req.query.f); }",
+      filename: TS,
+      errors: FS,
+    },
+    {
+      code: "import fs from 'node:fs'; function h(req) { fs['readFileSync']('/srv/files/' + (req.query.f satisfies unknown)); }",
+      filename: TS,
+      errors: FS,
+    },
+    {
+      code: "import { join } from 'node:path'; function h(req) { return join(BASE, req.query.f as string); }",
+      filename: TS,
+      errors: ERR,
+    },
+    {
+      code: "import { join } from 'node:path'; function h(req) { return join(BASE, req.query?.f!); }",
+      filename: TS,
+      errors: ERR,
+    },
+    // Express without `root`, and a root taken from the request.
+    {
+      code: "function h(req, res) { res.sendFile(req.params.file, { maxAge: 0 }); }",
+      filename: TS,
+      errors: FS,
+    },
+    {
+      code: "function h(req, res) { res.sendFile('index.html', { root: req.query.dir }); }",
+      filename: TS,
+      errors: FS,
+    },
+    // A local helper that forwards its parameter to an fs sink.
+    {
+      code: "import fs from 'node:fs'; function load(p) { return fs.readFileSync('/srv/files/' + p); } function h(req) { return load(req.query.f); }",
+      filename: TS,
+      errors: [{ messageId: 'unguardedFsHelper' as const }],
+    },
+    {
+      code: "import { rm } from 'node:fs/promises'; import { join } from 'node:path'; const remove = async (dir, name) => { await rm(join(dir, name), { recursive: true }); }; async function h(req) { const { name } = req.body; await remove('/srv/files', name); }",
+      filename: TS,
+      errors: [{ messageId: 'unguardedFsHelper' as const }],
+    },
+    // Destructured handler parameters.
+    {
+      code: "import { readFile } from 'node:fs/promises'; const h = async ({ query }) => readFile('/srv/files/' + query.f);",
+      filename: TS,
+      errors: FS,
+    },
+    {
+      code: "import { readFile } from 'node:fs/promises'; const h = async ({ params: { f } }, res) => res.send(await readFile('/srv/files/' + f));",
+      filename: TS,
+      errors: FS,
+    },
+    {
+      code: "import { readFile } from 'node:fs/promises'; async function h({ body: { name: n } = {} }) { return readFile('/srv/files/' + n); }",
+      filename: TS,
+      errors: FS,
+    },
+    // A request object destructured in the body.
+    {
+      code: "import fs from 'node:fs'; function h(req) { const { query } = req; fs.readFileSync('/srv/files/' + query.f); }",
+      filename: TS,
+      errors: FS,
+    },
+    // An allowlisted member changed through an alias, a computed key, a type wrapper, or a call.
+    {
+      code: "import { join } from 'node:path'; function h(req, res) { const allowed = ['a.html']; if (!allowed.includes(req.params.name)) return res.end(); const p = req.params; p.name = req.query.other; return join('/srv', req.params.name); }",
+      filename: TS,
+      errors: ERR,
+    },
+    {
+      code: "import { join } from 'node:path'; function h(req, res, key) { const allowed = ['a.html']; if (!allowed.includes(req.params.name)) return res.end(); req.params[key] = req.query.other; return join('/srv', req.params.name); }",
+      filename: TS,
+      errors: ERR,
+    },
+    {
+      code: "import { join } from 'node:path'; function h(req, res) { const allowed = ['a.html']; if (!allowed.includes(req.params.name)) return res.end(); (req.params as any).name = req.query.other; return join('/srv', req.params.name); }",
+      filename: TS,
+      errors: ERR,
+    },
+    {
+      code: "import { join } from 'node:path'; function h(req, res) { const allowed = ['a.html']; if (!allowed.includes(req.params.name)) return res.end(); mutate(req); return join('/srv', req.params.name); }",
+      filename: TS,
+      errors: ERR,
+    },
+    {
+      code: "import { join } from 'node:path'; function h(req, res) { const allowed = ['a.html']; if (!allowed.includes(req.params.name)) return res.end(); const { params } = req; params.name = '..'; return join('/srv', req.params.name); }",
       filename: TS,
       errors: ERR,
     },

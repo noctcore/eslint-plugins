@@ -1,126 +1,98 @@
 import {
   AST_NODE_TYPES,
-  calleeName,
   enclosingFunction,
   walkSome,
   type TSESLint,
   type TSESTree,
 } from '@noctcore/eslint-utils';
+import { ASTUtils } from '@typescript-eslint/utils';
 import type { JSONSchema4 } from '@typescript-eslint/utils/json-schema';
 
 import { createRule } from '../createRule';
-import { isAllowlistedMember } from '../guards';
-import { requestSourceOf } from '../request-taint';
+import {
+  collectPathBindings,
+  fsFunction,
+  fsPathArguments,
+  isPathSep,
+  pathFunction,
+  peel,
+  propertyName,
+  type PathBindings,
+} from '../fs-sinks';
+import { isAllowlistedMember, isGuardedBefore } from '../guards';
+import { requestSourceOf, type TaintOptions } from '../request-taint';
 
 const RULE_NAME = 'require-path-containment';
 
 export interface RequirePathContainmentOptions {
   readonly requestObjects?: readonly string[];
   readonly containmentGuards?: readonly string[];
-  /** Callees (source text) whose result is a safe file name: `path.basename` is always one. */
+  /** Callees (source text) whose result is a safe file name. */
   readonly sanitizers?: readonly string[];
 }
 
 type RuleOptions = [RequirePathContainmentOptions];
-type MessageIds = 'unguardedPathJoin' | 'unguardedFsPath';
+type MessageIds = 'unguardedPathJoin' | 'unguardedFsPath' | 'unguardedFsHelper';
+type SourceCode = Readonly<TSESLint.SourceCode>;
+type Variable = TSESLint.Scope.Variable;
+type FunctionNode =
+  | TSESTree.FunctionDeclaration
+  | TSESTree.FunctionExpression
+  | TSESTree.ArrowFunctionExpression;
 
 /*
  * Path-traversal precision, OPT-IN. `path.join(baseDir, req.params.file)` lets a
  * crafted `../../etc/passwd` escape the intended directory. The safe pattern is
- * to resolve, then verify the result still starts with the base dir before
- * touching the filesystem.
+ * to resolve, then verify the result still starts with the base dir and a
+ * separator before touching the filesystem.
  *
- * DELIBERATELY NARROW to stay high-precision without type information: it fires
- * only when a member expression rooted at a request-shaped object (`req.*` /
- * `request.*` by default, configurable) is passed DIRECTLY into `join` /
- * `resolve` from `path` / `node:path` (as `path.join`, through a default or
- * namespace import under any name, or as an imported `join` / `resolve`), and
- * the joined value is never tested. A test is a call that takes the joined
- * value: `full.startsWith(...)`, `path.relative(base, full)`, or a configured
- * guard function `isInside(base, full)`. The joined value is the variable the
- * join is stored in, plus any variable initialised from it, so
- * `const full = normalize(join(base, f)); if (!full.startsWith(base)) ...` is
- * guarded. A test of some other string (`name.startsWith('.')`) is not. An
- * escape-hatch comment containing `path-containment` anywhere in the function
- * silences it.
+ * JOIN CHECK. It fires when a member expression rooted at a request-shaped
+ * object (`req.*` / `request.*` by default, configurable) is passed directly
+ * into `join` / `resolve` from `path` / `node:path`, and the joined value is
+ * never tested. A test takes the joined value (the variable it is stored in,
+ * and any variable initialised from that one through `normalize`, a one
+ * argument `resolve` or `join`, or `realpath`): `full.startsWith(base + sep)`
+ * (the base must end in a separator, or `/srv/app-evil` passes a test for
+ * `/srv/app`), a `path.relative(base, full)` result refused when it starts
+ * with `..` and when it is absolute (on Windows `relative` returns an absolute
+ * path across drives), or a configured guard function `isInside(base, full)`.
+ * A test of some other string (`name.startsWith('.')`) is not. An escape-hatch
+ * comment containing `path-containment` anywhere in the function silences it.
  *
- * Because a sanitized value is bound to a local first (`const safe = clean(req.x)`
- * then `path.join(base, safe)`), that shape is not a direct request argument and
- * is never flagged by the join check.
+ * FILESYSTEM SINKS. The path argument of an `fs` call (`readFileSync`,
+ * `writeFile`, `rm`, `existsSync`, `watch`, `createReadStream`, ...) through
+ * `fs`, `fs.promises`, `fs/promises`, named imports, `require` and dynamic
+ * `import()` (see `../fs-sinks`), or of Express's `res.sendFile` /
+ * `res.download`, is followed back through in-function data flow
+ * (`../request-taint`). It is reported when request-shaped input reaches it,
+ * unless:
+ *  - the flow is cut by an allowlist, an anchored regex or a schema that
+ *    admits no `/`, `\`, `:` and cannot match `.`, `..` or an empty value
+ *    (`../guards`), a number conversion, `path.extname`, or a configured
+ *    sanitizer;
+ *  - it passes through `path.basename` into a binding that is refused as `..`
+ *    before the sink (`basename('..')` is `'..'`, so a bare `basename` is not
+ *    containment);
+ *  - the path is resolved and one of the tests above runs before the sink on
+ *    every path to it (an `if` that exits, or an `if` around the sink). A test
+ *    that only runs somewhere in the function does not count here.
+ * `res.sendFile(p, { root })` is checked on the root: Express refuses a `..`
+ * segment of `p` (after decoding it) and serves it under the root.
  *
- * FILESYSTEM SINKS. The path argument of an `fs` call that reads, writes or
- * deletes (`readFileSync`, `writeFile`, `unlink`, `createReadStream`, ...,
- * through `fs`, `fs.promises`, `fs/promises` and named imports), or of
- * `res.sendFile` / `res.download`, is followed back through in-function data
- * flow (`../request-taint`). It is reported when request-shaped input reaches
- * it, unless the flow is cut by `path.basename`, a number conversion, an
- * allowlist or anchored regex check that admits no `/`, `\` or `:` (`../guards`),
- * or the containment test above on the resolved path that reaches the sink.
+ * HELPERS. A call to a local function that forwards one of its parameters to
+ * an fs sink path with no containment check is reported at the call when
+ * request input reaches that argument. One level only: a helper that passes
+ * the path on to another helper is not followed.
+ *
+ * NOT MODELLED. Symbolic links (a contained path can still point outside;
+ * compare `fs.realpath` results for that), `path.posix` / `path.win32` (never
+ * read as containment), and helpers more than one call deep.
  */
 const DEFAULT_REQUEST_OBJECTS: readonly string[] = ['req', 'request'];
 const HATCH_TOKEN = 'path-containment';
-const PATH_MODULES: ReadonlySet<string> = new Set(['path', 'node:path']);
 const BUILDERS: ReadonlySet<string> = new Set(['join', 'resolve']);
-const FS_MODULES: ReadonlySet<string> = new Set(['fs', 'node:fs', 'fs/promises', 'node:fs/promises']);
-/** Receivers that are the fs module by convention, when no import says so. */
-const CONVENTIONAL_FS: ReadonlySet<string> = new Set(['fs', 'fsp', 'fsPromises', 'fs.promises']);
-/** fs functions whose first argument is a path; the async, sync and promise forms share a name. */
-const FS_PATH_FUNCTIONS: ReadonlySet<string> = new Set([
-  'readFile',
-  'readFileSync',
-  'writeFile',
-  'writeFileSync',
-  'appendFile',
-  'appendFileSync',
-  'unlink',
-  'unlinkSync',
-  'rm',
-  'rmSync',
-  'rmdir',
-  'rmdirSync',
-  'mkdir',
-  'mkdirSync',
-  'readdir',
-  'readdirSync',
-  'stat',
-  'statSync',
-  'lstat',
-  'lstatSync',
-  'open',
-  'openSync',
-  'opendir',
-  'opendirSync',
-  'access',
-  'accessSync',
-  'truncate',
-  'truncateSync',
-  'chmod',
-  'chmodSync',
-  'chown',
-  'chownSync',
-  'createReadStream',
-  'createWriteStream',
-  'readlink',
-  'readlinkSync',
-  'realpath',
-  'realpathSync',
-]);
-/** fs functions with a second path argument (source and destination). */
-const FS_TWO_PATH_FUNCTIONS: ReadonlySet<string> = new Set([
-  'copyFile',
-  'copyFileSync',
-  'cp',
-  'cpSync',
-  'rename',
-  'renameSync',
-  'link',
-  'linkSync',
-  'symlink',
-  'symlinkSync',
-]);
-/** Response methods that serve a file from disk. */
-const RESPONSE_FILE_METHODS: ReadonlySet<string> = new Set(['sendFile', 'download']);
-const RESPONSE_OBJECTS: ReadonlySet<string> = new Set(['res', 'response', 'reply']);
+const REALPATH: ReadonlySet<string> = new Set(['realpath', 'realpathSync']);
+const MAX_DEPTH = 8;
 
 const optionSchema: JSONSchema4 = {
   type: 'object',
@@ -136,181 +108,42 @@ const optionSchema: JSONSchema4 = {
       type: 'array',
       items: { type: 'string' },
       description:
-        'Names of project helpers that verify containment; a call to one that takes the joined value counts as a guard.',
+        'Names of project helpers that verify containment; a call to one that takes the resolved path counts as a guard.',
     },
     sanitizers: {
       type: 'array',
       items: { type: 'string' },
       description:
-        'Callees (source text, such as `toSafeName`) whose result is a safe file name, so request input passed through one does not reach an fs path. `path.basename` always counts.',
+        'Callees (source text, such as `toSafeName`) whose result is a safe file name (never `.` or `..`, no separator), so request input passed through one does not reach an fs path.',
     },
   },
 };
 
-interface PathBindings {
-  /** Local names of default or namespace imports of `path` / `node:path`. */
-  readonly modules: Set<string>;
-  /** Local name of an imported `join` / `resolve` to the imported name. */
-  readonly builders: Map<string, string>;
-  /** Local names of the fs module (`fs`, `fsp`, `const fs = require('node:fs')`). */
-  readonly fsModules: Set<string>;
-  /** Local name of an imported fs function to its imported name. */
-  readonly fsFunctions: Map<string, string>;
-  /** Local names bound to `path.basename` (`import { basename } from 'node:path'`). */
-  readonly basenames: Set<string>;
-  /** Local names bound to `path.extname`. */
-  readonly extnames: Set<string>;
-}
-
-/** The module a `require('<name>')` call loads, else null. */
-function requiredModule(node: TSESTree.Node | null): string | null {
-  if (
-    node?.type === AST_NODE_TYPES.CallExpression &&
-    node.callee.type === AST_NODE_TYPES.Identifier &&
-    node.callee.name === 'require' &&
-    node.arguments[0]?.type === AST_NODE_TYPES.Literal &&
-    typeof node.arguments[0].value === 'string'
-  ) {
-    return node.arguments[0].value;
-  }
-  return null;
-}
-
-/** Records `const x = require('fs')` and `const { readFile } = require('fs')`. */
-function collectRequire(declarator: TSESTree.VariableDeclarator, bindings: PathBindings): void {
-  const source = requiredModule(declarator.init);
-  if (source === null) {
-    return;
-  }
-  const isFs = FS_MODULES.has(source);
-  const isPath = PATH_MODULES.has(source);
-  if (declarator.id.type === AST_NODE_TYPES.Identifier) {
-    if (isFs) bindings.fsModules.add(declarator.id.name);
-    if (isPath) bindings.modules.add(declarator.id.name);
-    return;
-  }
-  if (declarator.id.type !== AST_NODE_TYPES.ObjectPattern) {
-    return;
-  }
-  for (const property of declarator.id.properties) {
-    if (
-      property.type !== AST_NODE_TYPES.Property ||
-      property.computed ||
-      property.key.type !== AST_NODE_TYPES.Identifier ||
-      property.value.type !== AST_NODE_TYPES.Identifier
-    ) {
-      continue;
-    }
-    const imported = property.key.name;
-    const local = property.value.name;
-    if (isFs && imported === 'promises') bindings.fsModules.add(local);
-    if (isFs && (FS_PATH_FUNCTIONS.has(imported) || FS_TWO_PATH_FUNCTIONS.has(imported))) {
-      bindings.fsFunctions.set(local, imported);
-    }
-    if (isPath && BUILDERS.has(imported)) bindings.builders.set(local, imported);
-    if (isPath && imported === 'basename') bindings.basenames.add(local);
-    if (isPath && imported === 'extname') bindings.extnames.add(local);
-  }
-}
-
-/** Collects how this file names the `path` module and its builders. */
-function collectPathBindings(program: TSESTree.Program): PathBindings {
-  const bindings: PathBindings = {
-    modules: new Set(['path']),
-    builders: new Map(),
-    fsModules: new Set(CONVENTIONAL_FS),
-    fsFunctions: new Map(),
-    basenames: new Set(),
-    extnames: new Set(),
-  };
-  for (const statement of program.body) {
-    if (statement.type === AST_NODE_TYPES.VariableDeclaration) {
-      for (const declarator of statement.declarations) {
-        collectRequire(declarator, bindings);
-      }
-      continue;
-    }
-    if (statement.type !== AST_NODE_TYPES.ImportDeclaration) {
-      continue;
-    }
-    const source = statement.source.value;
-    const isPath = PATH_MODULES.has(source);
-    const isFs = FS_MODULES.has(source);
-    if (!isPath && !isFs) {
-      continue;
-    }
-    for (const specifier of statement.specifiers) {
-      if (specifier.type === AST_NODE_TYPES.ImportSpecifier) {
-        const imported =
-          specifier.imported.type === AST_NODE_TYPES.Identifier
-            ? specifier.imported.name
-            : specifier.imported.value;
-        const local = specifier.local.name;
-        if (isPath && BUILDERS.has(imported)) {
-          bindings.builders.set(local, imported);
-        }
-        if (isPath && imported === 'basename') {
-          bindings.basenames.add(local);
-        }
-        if (isPath && imported === 'extname') {
-          bindings.extnames.add(local);
-        }
-        if (isFs && imported === 'promises') {
-          bindings.fsModules.add(local);
-        }
-        if (isFs && (FS_PATH_FUNCTIONS.has(imported) || FS_TWO_PATH_FUNCTIONS.has(imported))) {
-          bindings.fsFunctions.set(local, imported);
-        }
-      } else if (isPath) {
-        bindings.modules.add(specifier.local.name);
-      } else {
-        bindings.fsModules.add(specifier.local.name);
-      }
-    }
-  }
-  return bindings;
-}
-
-/** The `join` / `resolve` builder a callee names, or null for any other callee. */
-function pathBuilderMethod(callee: TSESTree.Node, bindings: PathBindings): string | null {
-  if (callee.type === AST_NODE_TYPES.Identifier) {
-    return bindings.builders.get(callee.name) ?? null;
-  }
-  if (
-    callee.type !== AST_NODE_TYPES.MemberExpression ||
-    callee.computed ||
-    callee.object.type !== AST_NODE_TYPES.Identifier ||
-    !bindings.modules.has(callee.object.name) ||
-    callee.property.type !== AST_NODE_TYPES.Identifier
-  ) {
-    return null;
-  }
-  return BUILDERS.has(callee.property.name) ? callee.property.name : null;
-}
-
-/** The root identifier of a member chain (`req.params.file` gives `req`), else null. */
+/** The root identifier of a member chain (`req.params.file` gives `req`), through type wrappers. */
 function rootIdentifier(node: TSESTree.Node): TSESTree.Identifier | null {
-  let current: TSESTree.Node = node;
+  let current = peel(node);
   while (current.type === AST_NODE_TYPES.MemberExpression) {
-    current = current.object;
+    current = peel(current.object);
   }
   return current.type === AST_NODE_TYPES.Identifier ? current : null;
 }
 
 /**
- * The first argument that is a member chain rooted at a request object, other
- * than one checked against a literal allowlist before the call.
+ * The first argument that is a member chain rooted at a request object (read
+ * through type wrappers and optional chains), other than one checked against
+ * a literal allowlist before the call.
  */
 function requestSource(
   call: TSESTree.CallExpression,
   requestObjects: ReadonlySet<string>,
-  sourceCode: Readonly<TSESLint.SourceCode>,
-): TSESTree.MemberExpression | null {
+  sourceCode: SourceCode,
+): TSESTree.Node | null {
   for (const arg of call.arguments) {
-    if (arg.type !== AST_NODE_TYPES.MemberExpression) {
+    const inner = peel(arg);
+    if (inner.type !== AST_NODE_TYPES.MemberExpression) {
       continue;
     }
-    const root = rootIdentifier(arg);
+    const root = rootIdentifier(inner);
     if (root !== null && requestObjects.has(root.name) && !isAllowlistedMember(arg, call, sourceCode)) {
       return arg;
     }
@@ -318,164 +151,37 @@ function requestSource(
   return null;
 }
 
-const PATH_PRESERVING: ReadonlySet<string> = new Set(['join', 'resolve', 'normalize']);
-
-/**
- * True when `parent` passes `child`'s path value on: a type wrapper, or a
- * `join` / `resolve` / `normalize` call taking it. A call to anything else
- * (`readFileSync(full)`) produces a different value.
- */
-function passesPathOn(parent: TSESTree.Node, child: TSESTree.Node): boolean {
-  switch (parent.type) {
-    case AST_NODE_TYPES.TSAsExpression:
-    case AST_NODE_TYPES.TSNonNullExpression:
-    case AST_NODE_TYPES.TSSatisfiesExpression:
-      return true;
-    case AST_NODE_TYPES.CallExpression: {
-      const name = calleeName(parent.callee);
-      return name !== null && PATH_PRESERVING.has(name) && parent.arguments.some((arg) => arg === child);
-    }
-    default:
-      return false;
+function flatten(node: TSESTree.Node, operator: '&&' | '||'): TSESTree.Node[] {
+  const inner = peel(node);
+  if (inner.type === AST_NODE_TYPES.LogicalExpression && inner.operator === operator) {
+    return [...flatten(inner.left, operator), ...flatten(inner.right, operator)];
   }
+  return [inner];
 }
 
-/** The declarator a path value is stored in (`const full = normalize(<node>)`), else null. */
-function storingDeclarator(node: TSESTree.Node): TSESTree.VariableDeclarator | null {
-  let child: TSESTree.Node = node;
-  let parent = node.parent;
-  while (parent != null && passesPathOn(parent, child)) {
-    child = parent;
-    parent = parent.parent;
-  }
-  return parent?.type === AST_NODE_TYPES.VariableDeclarator &&
-    parent.init === child &&
-    parent.id.type === AST_NODE_TYPES.Identifier
-    ? parent
+/** `!x` as `x`, else null. */
+function negation(node: TSESTree.Node): TSESTree.Node | null {
+  const inner = peel(node);
+  return inner.type === AST_NODE_TYPES.UnaryExpression && inner.operator === '!'
+    ? peel(inner.argument)
     : null;
 }
 
-/**
- * Every node holding the joined value: the join itself, the variable it is
- * stored in, and any variable initialised from that one through path calls,
- * transitively (`const full = join(...)`, `const normal = normalize(full)`).
- */
-function joinedValueNodes(
-  join: TSESTree.CallExpression,
-  sourceCode: Readonly<TSESLint.SourceCode>,
-): Set<TSESTree.Node> {
-  const nodes = new Set<TSESTree.Node>([join]);
-  const queue: TSESTree.Node[] = [join];
-  const seen = new Set<TSESLint.Scope.Variable>();
-  for (let current = queue.pop(); current !== undefined; current = queue.pop()) {
-    const declarator = storingDeclarator(current);
-    const variable = declarator === null ? undefined : sourceCode.getDeclaredVariables(declarator)[0];
-    if (variable === undefined || seen.has(variable)) {
-      continue;
-    }
-    seen.add(variable);
-    for (const reference of variable.references) {
-      if (reference.isRead()) {
-        nodes.add(reference.identifier);
-        queue.push(reference.identifier);
-      }
-    }
-  }
-  return nodes;
-}
-
-/** True when `call` tests one of the joined identifiers. */
-function testsJoinedValue(
-  call: TSESTree.CallExpression,
-  joined: ReadonlySet<TSESTree.Node>,
-  guards: ReadonlySet<string>,
-): boolean {
-  const name = calleeName(call.callee);
-  if (name === null) {
-    return false;
-  }
-  if (name === 'startsWith') {
-    return (
-      call.callee.type === AST_NODE_TYPES.MemberExpression && joined.has(call.callee.object)
-    );
-  }
-  if (name === 'relative' || guards.has(name)) {
-    return call.arguments.some((arg) => joined.has(arg));
-  }
-  return false;
-}
-
-/**
- * The path arguments of a filesystem call, with the name to report: an fs
- * function on an fs module or imported by name, or `res.sendFile` /
- * `res.download`. Empty for any other call.
- */
-function fsPathArguments(
-  node: TSESTree.CallExpression,
-  bindings: PathBindings,
-  sourceCode: Readonly<TSESLint.SourceCode>,
-): { method: string; paths: TSESTree.Node[] } {
-  let method: string | null = null;
-  const callee = node.callee;
-  if (callee.type === AST_NODE_TYPES.Identifier) {
-    method = bindings.fsFunctions.get(callee.name) ?? null;
-  } else if (
-    callee.type === AST_NODE_TYPES.MemberExpression &&
-    !callee.computed &&
-    callee.property.type === AST_NODE_TYPES.Identifier
+/** The single written binding of a `const` or never reassigned `let`, with its initializer. */
+function singleInit(node: TSESTree.Identifier, sourceCode: SourceCode): TSESTree.Expression | null {
+  const variable = ASTUtils.findVariable(sourceCode.getScope(node), node);
+  const def = variable?.defs[0];
+  if (
+    variable == null ||
+    variable.defs.length !== 1 ||
+    def?.type !== 'Variable' ||
+    def.node.id.type !== AST_NODE_TYPES.Identifier ||
+    def.node.init == null ||
+    variable.references.some((reference) => reference.isWrite() && reference.init !== true)
   ) {
-    const receiver = sourceCode.getText(callee.object).replace(/\s+/gu, '');
-    const name = callee.property.name;
-    const onFs =
-      bindings.fsModules.has(receiver) ||
-      (receiver.endsWith('.promises') && bindings.fsModules.has(receiver.slice(0, -'.promises'.length)));
-    if (onFs && (FS_PATH_FUNCTIONS.has(name) || FS_TWO_PATH_FUNCTIONS.has(name))) {
-      method = name;
-    } else if (RESPONSE_OBJECTS.has(receiver) && RESPONSE_FILE_METHODS.has(name)) {
-      method = `${receiver}.${name}`;
-    }
+    return null;
   }
-  if (method === null) {
-    return { method: '', paths: [] };
-  }
-  const bare = method.slice(method.lastIndexOf('.') + 1);
-  const count = FS_TWO_PATH_FUNCTIONS.has(bare) ? 2 : 1;
-  const paths = node.arguments
-    .slice(0, count)
-    .filter((arg): arg is TSESTree.Expression => arg.type !== AST_NODE_TYPES.SpreadElement);
-  return { method, paths };
-}
-
-/** Follows `const` aliases to the expression a path was built from. */
-function pathOrigin(node: TSESTree.Node, sourceCode: Readonly<TSESLint.SourceCode>): TSESTree.Node {
-  let current = node;
-  for (let depth = 0; depth < 8 && current.type === AST_NODE_TYPES.Identifier; depth += 1) {
-    const variable = sourceCode.getScope(current).set.get(current.name) ?? findInScopes(current, sourceCode);
-    const def = variable?.defs[0];
-    if (
-      variable?.defs.length !== 1 ||
-      def?.type !== 'Variable' ||
-      def.parent.kind !== 'const' ||
-      def.node.init === null
-    ) {
-      return current;
-    }
-    current = def.node.init;
-  }
-  return current;
-}
-
-function findInScopes(
-  node: TSESTree.Identifier,
-  sourceCode: Readonly<TSESLint.SourceCode>,
-): TSESLint.Scope.Variable | undefined {
-  for (let scope: TSESLint.Scope.Scope | null = sourceCode.getScope(node); scope !== null; scope = scope.upper) {
-    const variable = scope.set.get(node.name);
-    if (variable !== undefined) {
-      return variable;
-    }
-  }
-  return undefined;
+  return def.node.init;
 }
 
 export const requirePathContainmentRule = createRule<RuleOptions, MessageIds>({
@@ -492,7 +198,9 @@ export const requirePathContainmentRule = createRule<RuleOptions, MessageIds>({
     schema: [optionSchema],
     messages: {
       unguardedFsPath:
-        '`{{source}}` (request-shaped input) reaches the path of `{{method}}(...)` with no containment check, a path-traversal sink. Take `path.basename(...)`, check the value against an allowlist, or resolve the path and verify it stays under the base dir (`resolved.startsWith(baseDir + sep)`). If this path is already safe, add a `// path-containment: <reason>` comment.',
+        '`{{source}}` (request-shaped input) reaches the path of `{{method}}(...)` with no containment check, a path-traversal sink. Check the value against an allowlist or an anchored regex that cannot match `.` or `..` (`/^[\\w-][\\w.-]*$/`), refuse `.` and `..` after `path.basename(...)`, or resolve the path and verify it stays under the base dir (`resolved.startsWith(baseDir + sep)`) before the call. If this path is already safe, add a `// path-containment: <reason>` comment.',
+      unguardedFsHelper:
+        '`{{source}}` (request-shaped input) is passed to `{{helper}}(...)`, which uses it as the path of `{{method}}(...)` with no containment check, a path-traversal sink. Check the value before the call (an allowlist, or an anchored regex that cannot match `.` or `..`), or resolve the path in the helper and verify it stays under the base dir. If this path is already safe, add a `// path-containment: <reason>` comment.',
       unguardedPathJoin:
         '`{{source}}` (request-shaped input) flows into `{{method}}(...)` and the result is never tested for containment, a path-traversal sink. Store the result and verify it stays under the base dir (`resolved.startsWith(baseDir + sep)`). If this path is already safe, add a `// path-containment: <reason>` comment.',
     },
@@ -503,20 +211,10 @@ export const requirePathContainmentRule = createRule<RuleOptions, MessageIds>({
     const guards = new Set(options.containmentGuards ?? []);
     const { sourceCode } = context;
     let bindings: PathBindings | null = null;
+    let taintOptions: TaintOptions | null = null;
+    const helperCache = new Map<FunctionNode, Map<number, string>>();
 
     const scopeOf = (node: TSESTree.Node): TSESTree.Node => enclosingFunction(node) ?? sourceCode.ast;
-
-    /** True when a containment test in the function takes the value `builder` produced. */
-    const builderTested = (builder: TSESTree.CallExpression): boolean => {
-      const joined = joinedValueNodes(builder, sourceCode);
-      return walkSome(
-        scopeOf(builder),
-        sourceCode.visitorKeys,
-        (candidate) =>
-          candidate.type === AST_NODE_TYPES.CallExpression &&
-          testsJoinedValue(candidate, joined, guards),
-      );
-    };
 
     const hatched = (node: TSESTree.Node): boolean => {
       const scope = scopeOf(node);
@@ -530,33 +228,506 @@ export const requirePathContainmentRule = createRule<RuleOptions, MessageIds>({
         );
     };
 
-    const checkFsCall = (node: TSESTree.CallExpression, current: PathBindings): void => {
-      const { method, paths } = fsPathArguments(node, current, sourceCode);
-      if (paths.length === 0) {
-        return;
+    // -----------------------------------------------------------------------
+    // The resolved path and the values that hold it
+    // -----------------------------------------------------------------------
+
+    /**
+     * For a call that keeps one path value (`normalize(p)`, `resolve(p)`,
+     * `join(p)`, `realpath(p)`), that value; for a `join` / `resolve` of
+     * several segments, the call itself as a root; else null.
+     */
+    const pathStep = (
+      node: TSESTree.Node,
+      current: PathBindings,
+    ): { kind: 'wrap'; arg: TSESTree.Node } | { kind: 'builder' } | null => {
+      if (node.type !== AST_NODE_TYPES.CallExpression) {
+        return null;
       }
-      const sanitizers = new Set([
-        ...current.basenames,
-        ...[...current.modules].map((name) => `${name}.basename`),
-        // `extname` keeps only the last `.ext` of the base name: no separator survives.
-        ...current.extnames,
-        ...[...current.modules].map((name) => `${name}.extname`),
-        ...(options.sanitizers ?? []).map((name) => name.replace(/\s+/gu, '').replace(/\(\)$/u, '')),
-      ]);
-      for (const pathArgument of paths) {
-        const origin = pathOrigin(pathArgument, sourceCode);
-        if (origin.type === AST_NODE_TYPES.CallExpression && pathBuilderMethod(origin.callee, current) !== null) {
-          // A resolved path: the containment test on it decides, and a direct
-          // request argument is already reported at the join.
-          if (builderTested(origin) || requestSource(origin, requestObjects, sourceCode) !== null) {
-            continue;
+      const first = node.arguments[0];
+      if (first === undefined || first.type === AST_NODE_TYPES.SpreadElement) {
+        return null;
+      }
+      const name = pathFunction(node.callee, current);
+      if (name !== null && BUILDERS.has(name)) {
+        return node.arguments.length === 1 ? { kind: 'wrap', arg: first } : { kind: 'builder' };
+      }
+      if (name === 'normalize' || REALPATH.has(fsFunction(node.callee, current) ?? '')) {
+        return { kind: 'wrap', arg: first };
+      }
+      return null;
+    };
+
+    /**
+     * The call a sink's path was resolved by: walking back through bindings
+     * and value-keeping calls, the nearest `join` / `resolve` of several
+     * segments, or else the earliest value-keeping call. Null when the path
+     * was not resolved.
+     */
+    const resolvedRoot = (node: TSESTree.Node, current: PathBindings): TSESTree.Node | null => {
+      let value: TSESTree.Node = node;
+      let root: TSESTree.Node | null = null;
+      for (let depth = 0; depth < MAX_DEPTH * 2; depth += 1) {
+        const inner = peel(value);
+        if (inner.type === AST_NODE_TYPES.Identifier) {
+          const init = singleInit(inner, sourceCode);
+          if (init === null) {
+            return root;
+          }
+          value = init;
+          continue;
+        }
+        const step = pathStep(inner, current);
+        if (step === null) {
+          return root;
+        }
+        if (step.kind === 'builder') {
+          return inner;
+        }
+        root = inner;
+        value = step.arg;
+      }
+      return root;
+    };
+
+    /** True when `parent` hands `child`'s path value on unchanged. */
+    const keepsValue = (parent: TSESTree.Node, child: TSESTree.Node, current: PathBindings): boolean => {
+      switch (parent.type) {
+        case AST_NODE_TYPES.TSAsExpression:
+        case AST_NODE_TYPES.TSNonNullExpression:
+        case AST_NODE_TYPES.TSSatisfiesExpression:
+        case AST_NODE_TYPES.TSTypeAssertion:
+        case AST_NODE_TYPES.AwaitExpression:
+        case AST_NODE_TYPES.ChainExpression:
+          return true;
+        default: {
+          const step = pathStep(parent, current);
+          return step?.kind === 'wrap' && step.arg === child;
+        }
+      }
+    };
+
+    /**
+     * Every node holding the resolved value: the root call, and the reads of
+     * each binding it is stored in through value-keeping calls, transitively.
+     * Null when one of those bindings is reassigned.
+     */
+    const resolvedValues = (root: TSESTree.Node, current: PathBindings): Set<TSESTree.Node> | null => {
+      const nodes = new Set<TSESTree.Node>([root]);
+      const queue: TSESTree.Node[] = [root];
+      const seen = new Set<Variable>();
+      for (let node = queue.pop(); node !== undefined; node = queue.pop()) {
+        let child: TSESTree.Node = node;
+        let parent = node.parent;
+        while (parent != null && keepsValue(parent, child, current)) {
+          child = parent;
+          parent = parent.parent;
+        }
+        if (
+          parent?.type !== AST_NODE_TYPES.VariableDeclarator ||
+          parent.init !== child ||
+          parent.id.type !== AST_NODE_TYPES.Identifier
+        ) {
+          continue;
+        }
+        const variable = sourceCode.getDeclaredVariables(parent)[0];
+        if (variable === undefined || seen.has(variable)) {
+          continue;
+        }
+        if (variable.references.some((reference) => reference.isWrite() && reference.init !== true)) {
+          return null;
+        }
+        seen.add(variable);
+        for (const reference of variable.references) {
+          if (reference.isRead()) {
+            nodes.add(reference.identifier);
+            queue.push(reference.identifier);
           }
         }
-        const source = requestSourceOf(pathArgument, node, {
-          requestObjects,
-          context: 'path',
-          sanitizers,
-        }, sourceCode);
+      }
+      return nodes;
+    };
+
+    // -----------------------------------------------------------------------
+    // Containment tests
+    // -----------------------------------------------------------------------
+
+    /**
+     * True for a string that is a base followed by a separator: `base + sep`,
+     * `` `${base}/` ``, `'/srv/app/'`. A separator alone (`sep`, `'/'`) is not:
+     * every absolute path starts with it.
+     */
+    const endsInSeparator = (
+      raw: TSESTree.Node,
+      current: PathBindings,
+      whole = true,
+      depth = 0,
+    ): boolean => {
+      if (depth > MAX_DEPTH) {
+        return false;
+      }
+      const node = peel(raw);
+      if (isPathSep(node, current)) {
+        return !whole;
+      }
+      if (node.type === AST_NODE_TYPES.Literal && typeof node.value === 'string') {
+        return node.value.length > (whole ? 1 : 0) && /[\\/]$/u.test(node.value);
+      }
+      if (node.type === AST_NODE_TYPES.TemplateLiteral) {
+        const tail = node.quasis.at(-1)?.value.cooked ?? '';
+        const last = node.expressions.at(-1);
+        const sepAtEnd =
+          tail !== '' ? /[\\/]$/u.test(tail) : last !== undefined && isPathSep(last, current);
+        // Text before the separator: an earlier expression, or literal text.
+        const head = node.quasis
+          .map((quasi) => quasi.value.cooked ?? '')
+          .join('')
+          .replace(/[\\/]$/u, '');
+        const before = node.expressions.length - (tail === '' ? 1 : 0) > 0 || head !== '';
+        return sepAtEnd && (before || !whole);
+      }
+      if (node.type === AST_NODE_TYPES.BinaryExpression && node.operator === '+') {
+        const left = peel(node.left);
+        const emptyLeft =
+          (left.type === AST_NODE_TYPES.Literal && left.value === '') ||
+          (left.type === AST_NODE_TYPES.TemplateLiteral &&
+            left.expressions.length === 0 &&
+            left.quasis[0]?.value.cooked === '');
+        return !emptyLeft && endsInSeparator(node.right, current, false, depth + 1);
+      }
+      if (node.type === AST_NODE_TYPES.Identifier) {
+        const init = singleInit(node, sourceCode);
+        return init !== null && endsInSeparator(init, current, whole, depth + 1);
+      }
+      return false;
+    };
+
+    /** True when `node` holds the resolved value, directly or through a value-keeping call. */
+    const holdsResolved = (
+      raw: TSESTree.Node,
+      values: ReadonlySet<TSESTree.Node>,
+      current: PathBindings,
+    ): boolean => {
+      let node = peel(raw);
+      for (let depth = 0; depth < MAX_DEPTH; depth += 1) {
+        if (values.has(node)) {
+          return true;
+        }
+        const step = pathStep(node, current);
+        if (step?.kind !== 'wrap') {
+          return false;
+        }
+        node = peel(step.arg);
+      }
+      return false;
+    };
+
+    /** `x.<method>(arg)` as its receiver and argument, else null. */
+    const methodCall = (
+      raw: TSESTree.Node,
+      method: string,
+    ): { receiver: TSESTree.Node; arg: TSESTree.Node } | null => {
+      const node = peel(raw);
+      if (node.type !== AST_NODE_TYPES.CallExpression || node.arguments.length !== 1) {
+        return null;
+      }
+      const callee = peel(node.callee);
+      const arg = node.arguments[0];
+      return callee.type === AST_NODE_TYPES.MemberExpression &&
+        propertyName(callee) === method &&
+        arg !== undefined &&
+        arg.type !== AST_NODE_TYPES.SpreadElement
+        ? { receiver: callee.object, arg }
+        : null;
+    };
+
+    /** True when no request input reaches `node` (a base the requester picks proves nothing). */
+    const fixedBase = (node: TSESTree.Node, current: PathBindings): boolean =>
+      requestSourceOf(node, node, taintFor(current), sourceCode) === null;
+
+    /** `resolved.startsWith(base + sep)`, with a base the requester does not pick. */
+    const startsWithBase = (
+      term: TSESTree.Node,
+      values: ReadonlySet<TSESTree.Node>,
+      current: PathBindings,
+    ): boolean => {
+      const call = methodCall(term, 'startsWith');
+      return (
+        call !== null &&
+        holdsResolved(call.receiver, values, current) &&
+        endsInSeparator(call.arg, current) &&
+        fixedBase(call.arg, current)
+      );
+    };
+
+    /** A configured guard call that takes the resolved value (`isInside(base, resolved)`). */
+    const guardCall = (
+      term: TSESTree.Node,
+      values: ReadonlySet<TSESTree.Node>,
+      current: PathBindings,
+    ): boolean => {
+      const node = peel(term);
+      if (node.type !== AST_NODE_TYPES.CallExpression) {
+        return false;
+      }
+      const callee = peel(node.callee);
+      const name =
+        callee.type === AST_NODE_TYPES.Identifier
+          ? callee.name
+          : callee.type === AST_NODE_TYPES.MemberExpression
+            ? propertyName(callee)
+            : null;
+      return (
+        name !== null && guards.has(name) && node.arguments.some((arg) => holdsResolved(arg, values, current))
+      );
+    };
+
+    /**
+     * What a `relative(base, resolved)` result is read through: the call itself
+     * (`'inline'`) or the binding it is stored in. Null for anything else.
+     */
+    const relativeOf = (
+      raw: TSESTree.Node,
+      values: ReadonlySet<TSESTree.Node>,
+      current: PathBindings,
+    ): Variable | 'inline' | null => {
+      const node = peel(raw);
+      const isRelative = (candidate: TSESTree.Node): boolean => {
+        const inner = peel(candidate);
+        return (
+          inner.type === AST_NODE_TYPES.CallExpression &&
+          pathFunction(inner.callee, current) === 'relative' &&
+          inner.arguments[0] !== undefined &&
+          inner.arguments[1] !== undefined &&
+          holdsResolved(inner.arguments[1], values, current) &&
+          fixedBase(inner.arguments[0], current)
+        );
+      };
+      if (isRelative(node)) {
+        return 'inline';
+      }
+      if (node.type !== AST_NODE_TYPES.Identifier) {
+        return null;
+      }
+      const init = singleInit(node, sourceCode);
+      return init !== null && isRelative(init)
+        ? (ASTUtils.findVariable(sourceCode.getScope(node), node) ?? null)
+        : null;
+    };
+
+    /** `rel.startsWith('..')` or `rel.includes('..')`: the relative result it reads, else null. */
+    const refusesParent = (
+      term: TSESTree.Node,
+      values: ReadonlySet<TSESTree.Node>,
+      current: PathBindings,
+    ): Variable | 'inline' | null => {
+      for (const method of ['startsWith', 'includes']) {
+        const call = methodCall(term, method);
+        const arg = call === null ? null : peel(call.arg);
+        if (call !== null && arg?.type === AST_NODE_TYPES.Literal && arg.value === '..') {
+          return relativeOf(call.receiver, values, current);
+        }
+      }
+      return null;
+    };
+
+    /** `isAbsolute(rel)`: the relative result it reads, else null. */
+    const refusesAbsolute = (
+      term: TSESTree.Node,
+      values: ReadonlySet<TSESTree.Node>,
+      current: PathBindings,
+    ): Variable | 'inline' | null => {
+      const node = peel(term);
+      if (
+        node.type !== AST_NODE_TYPES.CallExpression ||
+        pathFunction(node.callee, current) !== 'isAbsolute' ||
+        node.arguments[0] === undefined
+      ) {
+        return null;
+      }
+      return relativeOf(node.arguments[0], values, current);
+    };
+
+    /** True when the same relative result is refused both when it climbs and when it is absolute. */
+    const refusesBoth = (
+      terms: readonly TSESTree.Node[],
+      values: ReadonlySet<TSESTree.Node>,
+      current: PathBindings,
+    ): boolean => {
+      const parents = terms.map((term) => refusesParent(term, values, current)).filter((key) => key !== null);
+      return terms.some((term) => {
+        const key = refusesAbsolute(term, values, current);
+        return key !== null && parents.includes(key);
+      });
+    };
+
+    /**
+     * A test that is true whenever the resolved value is outside the base:
+     * `!full.startsWith(base + sep)`, `!isInside(base, full)`, or
+     * `rel.startsWith('..') || isAbsolute(rel)`.
+     */
+    const failsOutside = (
+      test: TSESTree.Node,
+      values: ReadonlySet<TSESTree.Node>,
+      current: PathBindings,
+    ): boolean => {
+      const terms = flatten(test, '||');
+      return (
+        terms.some((term) => {
+          const inner = negation(term);
+          return inner !== null && (startsWithBase(inner, values, current) || guardCall(inner, values, current));
+        }) || refusesBoth(terms, values, current)
+      );
+    };
+
+    /** A test that is true only when the resolved value is inside the base. */
+    const holdsInside = (
+      test: TSESTree.Node,
+      values: ReadonlySet<TSESTree.Node>,
+      current: PathBindings,
+    ): boolean => {
+      const terms = flatten(test, '&&');
+      if (terms.some((term) => startsWithBase(term, values, current) || guardCall(term, values, current))) {
+        return true;
+      }
+      const negated = terms.map(negation).filter((term): term is TSESTree.Node => term !== null);
+      return refusesBoth(negated, values, current);
+    };
+
+    /** A configured guard called as a statement before `sink` (`assertInside(base, full)`). */
+    const assertedBefore = (
+      sink: TSESTree.Node,
+      values: ReadonlySet<TSESTree.Node>,
+      current: PathBindings,
+    ): boolean => {
+      let child: TSESTree.Node = sink;
+      for (let parent = sink.parent; parent != null; child = parent, parent = parent.parent) {
+        if (
+          parent.type === AST_NODE_TYPES.FunctionDeclaration ||
+          parent.type === AST_NODE_TYPES.FunctionExpression ||
+          parent.type === AST_NODE_TYPES.ArrowFunctionExpression
+        ) {
+          return false;
+        }
+        if (parent.type !== AST_NODE_TYPES.BlockStatement && parent.type !== AST_NODE_TYPES.Program) {
+          continue;
+        }
+        const body: readonly TSESTree.Node[] = parent.body;
+        const index = body.indexOf(child);
+        for (const statement of body.slice(0, Math.max(index, 0))) {
+          if (
+            statement.type === AST_NODE_TYPES.ExpressionStatement &&
+            guardCall(statement.expression, values, current)
+          ) {
+            return true;
+          }
+        }
+      }
+      return false;
+    };
+
+    /** True when a containment test on the value `root` resolved runs before `sink` on every path. */
+    const containedAt = (root: TSESTree.Node, sink: TSESTree.Node, current: PathBindings): boolean => {
+      const values = resolvedValues(root, current);
+      if (values === null) {
+        return false;
+      }
+      return (
+        isGuardedBefore(
+          sink,
+          (test, negated) =>
+            negated ? failsOutside(test, values, current) : holdsInside(test, values, current),
+          sourceCode,
+        ) || assertedBefore(sink, values, current)
+      );
+    };
+
+    /** True when the function holding `root` tests its value anywhere (the join check). */
+    const testedAnywhere = (root: TSESTree.Node, current: PathBindings): boolean => {
+      const values = resolvedValues(root, current);
+      if (values === null) {
+        return false;
+      }
+      const terms: TSESTree.Node[] = [];
+      const found = walkSome(scopeOf(root), sourceCode.visitorKeys, (candidate) => {
+        if (candidate.type !== AST_NODE_TYPES.CallExpression) {
+          return false;
+        }
+        terms.push(candidate);
+        return startsWithBase(candidate, values, current) || guardCall(candidate, values, current);
+      });
+      return found || refusesBoth(terms, values, current);
+    };
+
+    // -----------------------------------------------------------------------
+    // Sinks
+    // -----------------------------------------------------------------------
+
+    const taintFor = (current: PathBindings): TaintOptions => {
+      if (taintOptions !== null) {
+        return taintOptions;
+      }
+      const modules = [...current.modules];
+      const named = (fn: string): string[] =>
+        [...current.pathFunctions].filter(([, imported]) => imported === fn).map(([local]) => local);
+      taintOptions = {
+        requestObjects,
+        context: 'path',
+        // `extname` keeps only the last `.ext` of the base name: never `..`, no separator.
+        sanitizers: new Set([
+          ...named('extname'),
+          ...modules.map((name) => `${name}.extname`),
+          ...(options.sanitizers ?? []).map((name) => name.replace(/\s+/gu, '').replace(/\(\)$/u, '')),
+        ]),
+        segmentSanitizers: new Set([...named('basename'), ...modules.map((name) => `${name}.basename`)]),
+      };
+      return taintOptions;
+    };
+
+    /**
+     * The input that reaches the path argument `pathArgument` of `sink`
+     * unchecked, or null. With `helperParameters`, those bindings are the
+     * input followed instead of request objects.
+     */
+    const uncheckedSource = (
+      pathArgument: TSESTree.Node,
+      sink: TSESTree.CallExpression,
+      current: PathBindings,
+      helperParameters?: ReadonlySet<Variable>,
+    ): TSESTree.Node | null => {
+      const root = resolvedRoot(pathArgument, current);
+      if (root !== null) {
+        if (containedAt(root, sink, current)) {
+          return null;
+        }
+        // A direct request argument of a join is already reported at the join.
+        if (
+          helperParameters === undefined &&
+          root.type === AST_NODE_TYPES.CallExpression &&
+          pathStep(root, current)?.kind === 'builder' &&
+          requestSource(root, requestObjects, sourceCode) !== null &&
+          !testedAnywhere(root, current)
+        ) {
+          return null;
+        }
+      }
+      const base = taintFor(current);
+      const taint: TaintOptions =
+        helperParameters === undefined
+          ? base
+          : { ...base, requestObjects: new Set(), sourceVariables: helperParameters };
+      return requestSourceOf(pathArgument, sink, taint, sourceCode);
+    };
+
+    const checkFsCall = (node: TSESTree.CallExpression, current: PathBindings): void => {
+      const { method, paths } = fsPathArguments(node, current);
+      // `realpath` whose result is then tested is how containment is checked
+      // against symbolic links, not a use of the path.
+      if (REALPATH.has(method) && testedAnywhere(node, current)) {
+        return;
+      }
+      for (const pathArgument of paths) {
+        const source = uncheckedSource(pathArgument, node, current);
         if (source === null || hatched(node)) {
           continue;
         }
@@ -568,24 +739,117 @@ export const requirePathContainmentRule = createRule<RuleOptions, MessageIds>({
       }
     };
 
+    /**
+     * For a local function, the parameters it passes unchecked to an fs sink
+     * path, by position, with the fs function they reach.
+     */
+    const helperSinks = (fn: FunctionNode, current: PathBindings): Map<number, string> => {
+      const cached = helperCache.get(fn);
+      if (cached !== undefined) {
+        return cached;
+      }
+      const result = new Map<number, string>();
+      helperCache.set(fn, result);
+      const parameters = new Map<Variable, number>();
+      fn.params.forEach((param, index) => {
+        const id = param.type === AST_NODE_TYPES.AssignmentPattern ? param.left : param;
+        // A request object parameter is reported inside the function already.
+        if (id.type === AST_NODE_TYPES.Identifier && !requestObjects.has(id.name)) {
+          const variable = sourceCode.getDeclaredVariables(fn).find((candidate) => candidate.name === id.name);
+          if (variable !== undefined) {
+            parameters.set(variable, index);
+          }
+        }
+      });
+      if (parameters.size === 0) {
+        return result;
+      }
+      walkSome(fn.body, sourceCode.visitorKeys, (candidate) => {
+        if (candidate.type !== AST_NODE_TYPES.CallExpression || hatched(candidate)) {
+          return false;
+        }
+        const { method, paths } = fsPathArguments(candidate, current);
+        for (const pathArgument of paths) {
+          // One parameter at a time: a path built from two of them names both.
+          for (const [variable, index] of parameters) {
+            const source = result.has(index)
+              ? null
+              : uncheckedSource(pathArgument, candidate, current, new Set([variable]));
+            if (
+              source?.type === AST_NODE_TYPES.Identifier &&
+              ASTUtils.findVariable(sourceCode.getScope(source), source) === variable
+            ) {
+              result.set(index, method);
+            }
+          }
+        }
+        return false;
+      });
+      return result;
+    };
+
+    /** The local function a callee names (a declaration, or a `const` holding a function). */
+    const localFunction = (callee: TSESTree.Node): FunctionNode | null => {
+      const inner = peel(callee);
+      if (inner.type !== AST_NODE_TYPES.Identifier) {
+        return null;
+      }
+      const variable = ASTUtils.findVariable(sourceCode.getScope(inner), inner);
+      const def = variable?.defs[0];
+      if (variable == null || variable.defs.length !== 1 || def === undefined) {
+        return null;
+      }
+      if (def.type === 'FunctionName' && def.node.type === AST_NODE_TYPES.FunctionDeclaration) {
+        return def.node;
+      }
+      if (def.type !== 'Variable' || def.parent.kind !== 'const' || def.node.init == null) {
+        return null;
+      }
+      const init = peel(def.node.init);
+      return init.type === AST_NODE_TYPES.FunctionExpression ||
+        init.type === AST_NODE_TYPES.ArrowFunctionExpression
+        ? init
+        : null;
+    };
+
+    const checkHelperCall = (node: TSESTree.CallExpression, current: PathBindings): void => {
+      const fn = localFunction(node.callee);
+      if (fn === null || fn === enclosingFunction(node)) {
+        return;
+      }
+      for (const [index, method] of helperSinks(fn, current)) {
+        const arg = node.arguments[index];
+        if (arg === undefined || arg.type === AST_NODE_TYPES.SpreadElement) {
+          continue;
+        }
+        const source = requestSourceOf(arg, node, taintFor(current), sourceCode);
+        if (source === null || hatched(node)) {
+          continue;
+        }
+        context.report({
+          node: arg,
+          messageId: 'unguardedFsHelper',
+          data: { source: sourceCode.getText(source), helper: sourceCode.getText(node.callee), method },
+        });
+      }
+    };
+
     return {
       Program(program): void {
-        bindings = collectPathBindings(program);
+        bindings = collectPathBindings(program, sourceCode.visitorKeys);
       },
       CallExpression(node): void {
         if (bindings === null) {
           return;
         }
         checkFsCall(node, bindings);
-        const method = pathBuilderMethod(node.callee, bindings);
-        if (method === null) {
+        checkHelperCall(node, bindings);
+        const method = pathFunction(node.callee, bindings);
+        if (method === null || !BUILDERS.has(method)) {
           return;
         }
         const source = requestSource(node, requestObjects, sourceCode);
-        if (source === null) {
-          return;
-        }
-        if (builderTested(node) || hatched(node)) {
+        if (source === null || testedAnywhere(node, bindings) || hatched(node)) {
           return;
         }
         context.report({
