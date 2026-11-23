@@ -2469,12 +2469,37 @@ function stringCall(
   );
 }
 
-/** What a positive term proves: `x.startsWith('/')`, or a local-path regex test. */
+/**
+ * True when `node` reads the subject binding itself, not through `String(x)`
+ * or a template. A bare `x` may be an array (`?next[]=` in Express), where
+ * `includes` compares whole elements, while `String(x)` is always a string.
+ */
+function readsBare(node: TSESTree.Node, subject: Subject, sourceCode: SourceCode): boolean {
+  const inner = unwrap(node);
+  return (
+    typeof subject !== 'function' &&
+    inner.type === AST_NODE_TYPES.Identifier &&
+    variableOf(inner, sourceCode) === subject
+  );
+}
+
+/** The receiver of `<receiver>.<method>(...)`, or null. */
+function methodReceiver(node: TSESTree.Node, method: string): TSESTree.Node | null {
+  const call = memberCall(node, method);
+  return call !== null && call.callee.type === AST_NODE_TYPES.MemberExpression
+    ? call.callee.object
+    : null;
+}
+
+/**
+ * What a positive term proves: `x.startsWith('/')` (`slashBare` when it reads
+ * the bare `x`, which throws unless `x` is a string), or a local-path regex test.
+ */
 function localPathParts(
   term: TSESTree.Node,
   subject: Subject,
   sourceCode: SourceCode,
-): { slash: boolean; regex: boolean } {
+): { slash: boolean; slashBare: boolean; regex: boolean } {
   const inner = unwrap(term);
   const test = memberCall(inner, 'test');
   let regex = false;
@@ -2486,8 +2511,11 @@ function localPathParts(
     const literal = regexOf(test.callee.object, sourceCode);
     regex = literal !== null && regexPinsLocalPath(literal.pattern, literal.flags);
   }
+  const slash = stringCall(inner, subject, 'startsWith', '/', sourceCode);
+  const receiver = methodReceiver(inner, 'startsWith');
   return {
-    slash: stringCall(inner, subject, 'startsWith', '/', sourceCode),
+    slash,
+    slashBare: slash && receiver !== null && readsBare(receiver, subject, sourceCode),
     regex,
   };
 }
@@ -2497,17 +2525,30 @@ function localPathParts(
  * `x.startsWith('/<c>')`, `x.includes('<c>')`, or a test with an unanchored
  * one-class regex (`/[\s\\]/.test(x)`, no `g` or `y` flag, which would make the
  * test start past index 0), which matches any string holding one of its
- * characters.
+ * characters. `bareIncludes` holds the characters refused only by `includes`
+ * on the bare `x`, which counts only once `x` is known to be a string: on an
+ * array, `['/\t/evil.com'].includes('\t')` is false. `startsWith` throws on an
+ * array and a regex test reads `String(x)`, so those always count.
  */
-function refusedOpeners(term: TSESTree.Node, subject: Subject, sourceCode: SourceCode): string {
+function refusedOpeners(
+  term: TSESTree.Node,
+  subject: Subject,
+  sourceCode: SourceCode,
+): { chars: string; bareIncludes: string } {
   const inner = unwrap(term);
   let out = '';
+  let bareIncludes = '';
+  const includesReceiver = methodReceiver(inner, 'includes');
+  const bare = includesReceiver !== null && readsBare(includesReceiver, subject, sourceCode);
   for (const char of AUTHORITY_OPENERS) {
-    if (
-      stringCall(inner, subject, 'startsWith', `/${char}`, sourceCode) ||
-      stringCall(inner, subject, 'includes', char, sourceCode)
-    ) {
+    if (stringCall(inner, subject, 'startsWith', `/${char}`, sourceCode)) {
       out += char;
+    } else if (stringCall(inner, subject, 'includes', char, sourceCode)) {
+      if (bare) {
+        bareIncludes += char;
+      } else {
+        out += char;
+      }
     }
   }
   const test = memberCall(inner, 'test');
@@ -2524,7 +2565,7 @@ function refusedOpeners(term: TSESTree.Node, subject: Subject, sourceCode: Sourc
       out += only.chars ?? '';
     }
   }
-  return out;
+  return { chars: out, bareIncludes };
 }
 
 /**
@@ -2547,7 +2588,9 @@ function isLocalPathGuard(
 ): boolean {
   const terms = flattenLogical(test, negated ? '||' : '&&');
   let slash = false;
+  let slashBare = false;
   let refused = '';
+  let bareIncludes = '';
   for (const term of terms) {
     const inner = unwrap(term);
     const positive = negated
@@ -2570,12 +2613,18 @@ function isLocalPathGuard(
         return true;
       }
       slash ||= parts.slash;
+      slashBare ||= parts.slashBare;
     }
     if (refusedTerm !== null) {
-      refused += refusedOpeners(refusedTerm, subject, sourceCode);
+      const openers = refusedOpeners(refusedTerm, subject, sourceCode);
+      refused += openers.chars;
+      bareIncludes += openers.bareIncludes;
     }
   }
-  return slash && [...AUTHORITY_OPENERS].every((char) => refused.includes(char));
+  // A bare `x.startsWith('/')` throws unless `x` is a string, which makes a
+  // bare `x.includes(c)` a string search too.
+  const all = slashBare ? refused + bareIncludes : refused;
+  return slash && [...AUTHORITY_OPENERS].every((char) => all.includes(char));
 }
 
 /**

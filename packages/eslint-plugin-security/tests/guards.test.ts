@@ -210,6 +210,11 @@ ruleTester.run('isSameSitePath', sameSiteProbe, {
       code: String.raw`function h(x: string) { if (${SLASHES} || x.startsWith('/\t') || x.startsWith('/\n') || x.startsWith('/\r')) return; redirect(x); }`,
       filename: TS,
     },
+    // `includes` through `String(x)` or a template searches the text.
+    {
+      code: String.raw`function h(x) { if (!String(x).startsWith('/') || String(x).startsWith('//') || String(x).includes('\\') || ${'`${x}`'}.includes('\t') || String(x).includes('\n') || String(x).includes('\r')) return; redirect(x); }`,
+      filename: TS,
+    },
     // A one-class regex that matches any string holding one of them.
     {
       code: String.raw`function h(x: string) { if (!x.startsWith('/') || x.startsWith('//') || /[\s\\]/.test(x)) return; redirect(x); }`,
@@ -262,6 +267,18 @@ ruleTester.run('isSameSitePath', sameSiteProbe, {
     // An anchored regex only looks at one place.
     {
       code: String.raw`function h(x: string) { if (!x.startsWith('/') || x.startsWith('//') || /^[\s\\]/.test(x)) return; redirect(x); }`,
+      filename: TS,
+      errors: notSameSite,
+    },
+    // `String(x)` proves the slash, but a bare `x` may be an array, whose
+    // `includes` compares whole elements: `['/\t/evil.com'].includes('\t')` is false.
+    {
+      code: String.raw`function h(x) { if (!String(x).startsWith('/') || String(x).startsWith('//') || String(x).startsWith('/\\') || x.includes('\t') || x.includes('\n') || x.includes('\r')) return; redirect(x); }`,
+      filename: TS,
+      errors: notSameSite,
+    },
+    {
+      code: String.raw`function h(x) { if (!String(x).startsWith('/') || String(x).startsWith('//') || x.includes('\\') || /\s/.test(x)) return; redirect(x); }`,
       filename: TS,
       errors: notSameSite,
     },
