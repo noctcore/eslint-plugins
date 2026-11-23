@@ -2197,7 +2197,12 @@ function hostPinned(
 // Same-site paths and literal tables (redirect targets)
 // ---------------------------------------------------------------------------
 
-/** Characters that, right after the leading `/`, would make a path protocol-relative. */
+/**
+ * Characters that, right after the leading `/`, would make a path
+ * protocol-relative: `/` and `\` (read as `/`), and the tab and line breaks,
+ * which the WHATWG URL parser drops from anywhere in the input, so a browser
+ * sends `/<tab>/evil.com` to `evil.com`.
+ */
 const AUTHORITY_OPENERS = '/\\\t\n\r';
 
 function admitsAuthorityOpener(chars: string): boolean {
@@ -2229,35 +2234,30 @@ export function regexPinsLocalPath(pattern: string, flags: string): boolean {
   if (rest.includes('|')) {
     return false;
   }
-  let after: string;
   if (rest.startsWith('[^')) {
     const end = classEnd(rest, 0);
     if (end === -1) {
       return false;
     }
     const excluded = classCharacters(rest.slice(2, end));
-    if (excluded === null || ![...AUTHORITY_OPENERS].every((char) => excluded.includes(char))) {
-      return false;
-    }
-    after = rest.slice(end + 1);
-  } else {
-    const tokens = tokenize(rest);
-    const first = tokens?.[0];
-    if (first?.kind !== 'chars' || admitsAuthorityOpener(first.chars ?? '')) {
-      return false;
-    }
-    const firstLength = rest.startsWith('[')
-      ? classEnd(rest, 0) + 1
-      : rest.startsWith('\\')
-        ? 2
-        : 1;
-    if (firstLength <= 0) {
-      return false;
-    }
-    after = rest.slice(firstLength);
+    // `?`, `*`, `{0}`, `{00}` or `{0,n}` after the class would make it optional.
+    return (
+      excluded !== null &&
+      [...AUTHORITY_OPENERS].every((char) => excluded.includes(char)) &&
+      !/^(?:[?*]|\{0+(?:,\d*)?\})/u.test(rest.slice(end + 1))
+    );
   }
-  // `?`, `*` or `{0` would make the checked character optional.
-  return !/^(\?|\*|\{0[,}])/u.test(after);
+  // The tokens say where the first character ends, whatever escape spells it
+  // (`\x61` is one character written in four), and whether a quantifier makes
+  // it optional.
+  const tokens = tokenize(rest);
+  const first = tokens?.[0];
+  const next = tokens?.[1];
+  return (
+    first?.kind === 'chars' &&
+    !admitsAuthorityOpener(first.chars ?? '') &&
+    !(next?.kind === 'quantifier' && next.optional === true)
+  );
 }
 
 /**
@@ -2334,11 +2334,51 @@ function localPathParts(
 }
 
 /**
+ * The characters a refused term rules out right after the leading `/`:
+ * `x.startsWith('/<c>')`, `x.includes('<c>')`, or a test with an unanchored
+ * one-class regex (`/[\s\\]/.test(x)`, no `g` or `y` flag, which would make the
+ * test start past index 0), which matches any string holding one of its
+ * characters.
+ */
+function refusedOpeners(term: TSESTree.Node, subject: Subject, sourceCode: SourceCode): string {
+  const inner = unwrap(term);
+  let out = '';
+  for (const char of AUTHORITY_OPENERS) {
+    if (
+      stringCall(inner, subject, 'startsWith', `/${char}`, sourceCode) ||
+      stringCall(inner, subject, 'includes', char, sourceCode)
+    ) {
+      out += char;
+    }
+  }
+  const test = memberCall(inner, 'test');
+  if (
+    test !== null &&
+    test.callee.type === AST_NODE_TYPES.MemberExpression &&
+    readsVariable(test.arguments[0] as TSESTree.Node, subject, sourceCode)
+  ) {
+    const literal = regexOf(test.callee.object, sourceCode);
+    const tokens =
+      literal === null || /[gyv]/u.test(literal.flags) ? null : tokenize(literal.pattern);
+    const only = tokens?.length === 1 ? tokens[0] : undefined;
+    if (only?.kind === 'chars') {
+      out += only.chars ?? '';
+    }
+  }
+  return out;
+}
+
+/**
  * True when `test` is false whenever the subject is not a same-site path
  * (`negated`: the `if` exits when it is true), read as:
  *   !re.test(x)                                     with a local-path regex, or
- *   !x.startsWith('/') || x.startsWith('//') || x.startsWith('/\\')  (or `x.includes('\\')`)
- * and, for an `if` around the sink, the positive forms joined with `&&`.
+ *   !x.startsWith('/') || x.startsWith('//') || x.startsWith('/\\')
+ *     || x.includes('\t') || x.includes('\n') || x.includes('\r')
+ * where each refused character after the `/` may be ruled out with
+ * `startsWith('/<c>')`, `includes('<c>')` or a one-class regex
+ * (`/[\s\\]/.test(x)`). The tab and line breaks count because browsers drop
+ * them, so `/<tab>/evil.com` goes to `evil.com`. For an `if` around the sink,
+ * the positive forms are joined with `&&`.
  */
 function isLocalPathGuard(
   test: TSESTree.Node,
@@ -2348,8 +2388,7 @@ function isLocalPathGuard(
 ): boolean {
   const terms = flattenLogical(test, negated ? '||' : '&&');
   let slash = false;
-  let double = false;
-  let backslash = false;
+  let refused = '';
   for (const term of terms) {
     const inner = unwrap(term);
     const positive = negated
@@ -2359,7 +2398,7 @@ function isLocalPathGuard(
       : inner.type === AST_NODE_TYPES.UnaryExpression && inner.operator === '!'
         ? null
         : inner;
-    const refused = negated
+    const refusedTerm = negated
       ? inner.type === AST_NODE_TYPES.UnaryExpression && inner.operator === '!'
         ? null
         : inner
@@ -2373,21 +2412,19 @@ function isLocalPathGuard(
       }
       slash ||= parts.slash;
     }
-    if (refused !== null) {
-      double ||= stringCall(refused, subject, 'startsWith', '//', sourceCode);
-      backslash ||=
-        stringCall(refused, subject, 'startsWith', '/\\', sourceCode) ||
-        stringCall(refused, subject, 'includes', '\\', sourceCode);
+    if (refusedTerm !== null) {
+      refused += refusedOpeners(refusedTerm, subject, sourceCode);
     }
   }
-  return slash && double && backslash;
+  return slash && [...AUTHORITY_OPENERS].every((char) => refused.includes(char));
 }
 
 /**
  * True when the URL `node`, used at `sink`, is a same-site path: a binding the
  * function checked before the sink with a local-path regex
- * ({@link regexPinsLocalPath}) or with `startsWith('/')` while refusing `//`
- * and `/\`, and not written after the check.
+ * ({@link regexPinsLocalPath}) or with `startsWith('/')` while refusing `//`,
+ * `/\` and a tab or line break after the `/` (see {@link isLocalPathGuard}),
+ * and not written after the check.
  */
 export function isSameSitePath(
   node: TSESTree.Node,

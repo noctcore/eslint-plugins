@@ -1,7 +1,10 @@
+import { ruleTester } from '@noctcore/eslint-test-utils';
+import { AST_NODE_TYPES, type TSESLint } from '@typescript-eslint/utils';
 import { describe, expect, it } from 'vitest';
 
 import {
   type GuardContext,
+  isSameSitePath,
   regexAdmitsOnlySafe,
   regexPinsHost,
   regexPinsLocalPath,
@@ -114,7 +117,15 @@ describe('regexPinsHost', () => {
 });
 
 describe('regexPinsLocalPath', () => {
-  it.each(['^\\/[a-z0-9]', '^/[a-z][\\w/-]*$', '^\\/[^\\/\\\\\\s]', '^\\/\\d+$'])(
+  it.each([
+    '^\\/[a-z0-9]',
+    '^/[a-z][\\w/-]*$',
+    '^\\/[^\\/\\\\\\s]',
+    '^\\/[^\\/\\\\\\t\\n\\r]',
+    '^\\/\\d+$',
+    '^\\/\\x61{01}',
+    '^\\/(?![\\/\\\\\\s])[\\w\\t]+$',
+  ])(
     'keeps %s on the site',
     (pattern) => {
       expect(regexPinsLocalPath(pattern, '')).toBe(true);
@@ -127,10 +138,25 @@ describe('regexPinsLocalPath', () => {
     '^\\/[^\\/\\\\]',
     '^\\/.',
     '^\\/\\S',
-    // optional second character
+    // optional second character, however the count or the character is spelled
     '^\\/[a-z]?',
     '^\\/[a-z]*',
     '^\\/[a-z]{0,3}',
+    '^\\/[a-z]{00}',
+    '^\\/[a-z]{00,2}',
+    '^\\/\\x61?',
+    '^\\/\\u0061*',
+    '^\\/\\x61{0}',
+    '^\\/[^\\/\\\\\\s]?',
+    '^\\/[^\\/\\\\\\s]{00}',
+    // a tab or line break right after the `/` is dropped by browsers
+    '^\\/[^\\/\\\\\\n\\r]',
+    '^\\/[\\w\\t]',
+    '^\\/\\t',
+    '^\\/[\\x00-\\x7f]',
+    '^\\/(?!\\/|\\\\)[\\w\\t]+$',
+    '^\\/(?![\\/\\\\])\\s+$',
+    '^\\/(?!\\/)a{00}\\\\x$',
     // not anchored, or an alternative
     '\\/[a-z]',
     '^\\/[a-z]|^https:',
@@ -141,4 +167,114 @@ describe('regexPinsLocalPath', () => {
   it('rejects the m flag', () => {
     expect(regexPinsLocalPath('^\\/[a-z]', 'm')).toBe(false);
   });
+});
+
+/** Reports `redirect(x)` unless `isSameSitePath` proves `x` stays on the site. */
+const sameSiteProbe: TSESLint.RuleModule<'notSameSite'> = {
+  defaultOptions: [],
+  meta: {
+    type: 'problem',
+    schema: [],
+    messages: { notSameSite: 'not proven same-site' },
+  },
+  create(context) {
+    return {
+      CallExpression(node): void {
+        const target = node.arguments[0];
+        if (
+          node.callee.type === AST_NODE_TYPES.Identifier &&
+          node.callee.name === 'redirect' &&
+          target !== undefined &&
+          !isSameSitePath(target, node, context.sourceCode)
+        ) {
+          context.report({ node, messageId: 'notSameSite' });
+        }
+      },
+    };
+  },
+};
+
+const TS = 'guard.ts';
+const notSameSite = [{ messageId: 'notSameSite' as const }];
+/** The checks that refuse `//` and `/\` after a leading `/`. */
+const SLASHES = String.raw`!x.startsWith('/') || x.startsWith('//') || x.startsWith('/\\')`;
+
+ruleTester.run('isSameSitePath', sameSiteProbe, {
+  valid: [
+    // Each tab or line break refused with `includes` or `startsWith('/<c>')`.
+    {
+      code: String.raw`function h(x: string) { if (${SLASHES} || x.includes('\t') || x.includes('\n') || x.includes('\r')) return; redirect(x); }`,
+      filename: TS,
+    },
+    {
+      code: String.raw`function h(x: string) { if (${SLASHES} || x.startsWith('/\t') || x.startsWith('/\n') || x.startsWith('/\r')) return; redirect(x); }`,
+      filename: TS,
+    },
+    // A one-class regex that matches any string holding one of them.
+    {
+      code: String.raw`function h(x: string) { if (!x.startsWith('/') || x.startsWith('//') || /[\s\\]/.test(x)) return; redirect(x); }`,
+      filename: TS,
+    },
+    {
+      code: String.raw`const BAD = /[\\\t\n\r]/; function h(x: string) { if (!x.startsWith('/') || x.startsWith('//') || BAD.test(x)) return; redirect(x); }`,
+      filename: TS,
+    },
+    // The positive form around the sink.
+    {
+      code: String.raw`function h(x: string) { if (x.startsWith('/') && !x.startsWith('//') && !x.includes('\\') && !/\s/.test(x)) { redirect(x); } }`,
+      filename: TS,
+    },
+    // A local-path regex that refuses all five characters.
+    {
+      code: String.raw`function h(x: string) { if (!/^\/[^\/\\\s]/.test(x)) return; redirect(x); }`,
+      filename: TS,
+    },
+  ],
+  invalid: [
+    // `/<tab>/evil.com` passes these checks and a browser goes to evil.com.
+    {
+      code: String.raw`function h(x: string) { if (${SLASHES}) return; redirect(x); }`,
+      filename: TS,
+      errors: notSameSite,
+    },
+    {
+      code: String.raw`function h(x: string) { if (!x.startsWith('/') || x.startsWith('//') || x.includes('\\')) return; redirect(x); }`,
+      filename: TS,
+      errors: notSameSite,
+    },
+    // `\r` left open.
+    {
+      code: String.raw`function h(x: string) { if (${SLASHES} || x.includes('\t') || x.includes('\n')) return; redirect(x); }`,
+      filename: TS,
+      errors: notSameSite,
+    },
+    {
+      code: String.raw`function h(x: string) { if (x.startsWith('/') && !x.startsWith('//') && !x.startsWith('/\\')) { redirect(x); } }`,
+      filename: TS,
+      errors: notSameSite,
+    },
+    // A `g` or `y` regex starts at `lastIndex`, so it can miss the character.
+    {
+      code: String.raw`const BAD = /[\s\\]/g; function h(x: string) { if (!x.startsWith('/') || x.startsWith('//') || BAD.test(x)) return; redirect(x); }`,
+      filename: TS,
+      errors: notSameSite,
+    },
+    // An anchored regex only looks at one place.
+    {
+      code: String.raw`function h(x: string) { if (!x.startsWith('/') || x.startsWith('//') || /^[\s\\]/.test(x)) return; redirect(x); }`,
+      filename: TS,
+      errors: notSameSite,
+    },
+    // Local-path regexes that let a tab, or nothing, follow the `/`.
+    {
+      code: String.raw`function h(x: string) { if (!/^\/[^\/\\]/.test(x)) return; redirect(x); }`,
+      filename: TS,
+      errors: notSameSite,
+    },
+    {
+      code: String.raw`function h(x: string) { if (!/^\/\x61?/.test(x)) return; redirect(x); }`,
+      filename: TS,
+      errors: notSameSite,
+    },
+  ],
 });
