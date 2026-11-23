@@ -1578,7 +1578,7 @@ function schemaConfines(node: TSESTree.Node, judge: RegexJudge, sourceCode: Sour
     if (current.type === AST_NODE_TYPES.Identifier) {
       const variable = variableOf(current, sourceCode);
       if (isSchemaModule(current, sourceCode)) {
-        return confined && variable !== null && isUnchangedSchema(variable, sourceCode);
+        return confined && variable !== null && isUnchangedSchemaRoot(variable);
       }
       // A `const` holding a chain is read on, under the same allowlist, as
       // long as nothing changes it (`S.parse = (v) => v`).
@@ -1658,42 +1658,87 @@ function rootsAtSchemaModule(node: TSESTree.Node, sourceCode: SourceCode): boole
   return false;
 }
 
+/** Methods that run a schema on a value without changing it. */
+const SCHEMA_RUN_METHODS: ReadonlySet<string> = new Set([
+  'parse',
+  'safeParse',
+  'parseAsync',
+  'safeParseAsync',
+  'spa',
+  'validate',
+  'validateAsync',
+  'attempt',
+  'assert',
+]);
+
+/** Type-only wrappers and `await` around a schema value. */
+function outerValue(node: TSESTree.Node): TSESTree.Node {
+  let current = node;
+  while (
+    current.parent !== undefined &&
+    (current.parent.type === AST_NODE_TYPES.TSNonNullExpression ||
+      current.parent.type === AST_NODE_TYPES.TSAsExpression ||
+      current.parent.type === AST_NODE_TYPES.TSSatisfiesExpression ||
+      current.parent.type === AST_NODE_TYPES.TSTypeAssertion) &&
+    current.parent.expression === current
+  ) {
+    current = current.parent;
+  }
+  return current;
+}
+
 /**
- * True when a use of a schema binding only reads it: a method call or a
- * property read on it (`S.parse(x)`, `S.shape.mode`) that does not write
- * through it, an alias that is itself unchanged, or an argument (possibly
- * inside an object or array literal) of another schema call
- * (`z.object({ mode: S })`).
+ * True when the schema value at `node` (a binding's use, or the result of a
+ * schema builder call) is only run or built on, so nothing can change what it
+ * accepts:
+ *   - `node.parse(x)` (or `safeParse`, `validate` and the like), called at once;
+ *   - `node.method(...)` whose result is itself used only this way (a chain
+ *     step such as `S.min(1)`, which returns a new schema);
+ *   - an argument of a schema builder call (`z.object({ m: S })`,
+ *     `z.array(S)`), possibly inside an object or array literal, whose result
+ *     is itself used only this way;
+ *   - the initializer of a binding that follows these rules
+ *     ({@link isUnchangedSchema});
+ *   - a discarded expression statement.
+ * Anything else cancels it: a property read below the schema (`S._def`,
+ * `B.shape.m`), a write, a call that hands it to a helper, an export.
  */
-function schemaUseIsRead(id: TSESTree.Node, sourceCode: SourceCode, depth: number): boolean {
-  const parent = id.parent;
-  if (parent?.type === AST_NODE_TYPES.MemberExpression && parent.object === id) {
-    let outer: TSESTree.Node = parent;
-    while (
-      outer.parent?.type === AST_NODE_TYPES.MemberExpression &&
-      outer.parent.object === outer
-    ) {
-      outer = outer.parent;
-    }
-    const use = outer.parent;
-    return !(
-      (use?.type === AST_NODE_TYPES.AssignmentExpression && use.left === outer) ||
-      (use?.type === AST_NODE_TYPES.UpdateExpression && use.argument === outer) ||
-      (use?.type === AST_NODE_TYPES.UnaryExpression &&
-        use.operator === 'delete' &&
-        use.argument === outer) ||
-      isObjectWriterTarget(outer, use)
-    );
+function schemaValueIsRead(node: TSESTree.Node, sourceCode: SourceCode, depth: number): boolean {
+  if (depth > MAX_DEPTH) {
+    return false;
+  }
+  const value = outerValue(node);
+  const parent = value.parent;
+  if (parent === undefined) {
+    return false;
   }
   if (
-    parent?.type === AST_NODE_TYPES.VariableDeclarator &&
-    parent.init === id &&
+    parent.type === AST_NODE_TYPES.MemberExpression &&
+    parent.object === value &&
+    !parent.computed &&
+    parent.property.type === AST_NODE_TYPES.Identifier
+  ) {
+    const call = parent.parent;
+    if (call?.type !== AST_NODE_TYPES.CallExpression || call.callee !== parent) {
+      return false;
+    }
+    return (
+      SCHEMA_RUN_METHODS.has(parent.property.name) ||
+      schemaValueIsRead(call, sourceCode, depth + 1)
+    );
+  }
+  if (parent.type === AST_NODE_TYPES.ExpressionStatement) {
+    return true;
+  }
+  if (
+    parent.type === AST_NODE_TYPES.VariableDeclarator &&
+    parent.init === value &&
     parent.id.type === AST_NODE_TYPES.Identifier
   ) {
-    const alias = variableOf(parent.id, sourceCode);
-    return alias !== null && isUnchangedSchema(alias, sourceCode, depth + 1);
+    const holder = variableOf(parent.id, sourceCode);
+    return holder !== null && isUnchangedSchema(holder, sourceCode, depth + 1);
   }
-  let current: TSESTree.Node = id;
+  let current: TSESTree.Node = value;
   while (
     (current.parent?.type === AST_NODE_TYPES.Property && current.parent.value === current) ||
     current.parent?.type === AST_NODE_TYPES.ObjectExpression ||
@@ -1705,23 +1750,33 @@ function schemaUseIsRead(id: TSESTree.Node, sourceCode: SourceCode, depth: numbe
   return (
     call?.type === AST_NODE_TYPES.CallExpression &&
     call.arguments.includes(current as TSESTree.CallExpressionArgument) &&
-    rootsAtSchemaModule(call.callee, sourceCode)
+    rootsAtSchemaModule(call.callee, sourceCode) &&
+    schemaValueIsRead(call, sourceCode, depth + 1)
+  );
+}
+
+/** True for a use in a type position (`z.infer<typeof S>`), which never runs. */
+function isTypeUse(reference: Reference): boolean {
+  const parent = reference.identifier.parent;
+  return (
+    parent?.type === AST_NODE_TYPES.TSTypeQuery ||
+    parent?.type === AST_NODE_TYPES.TSQualifiedName ||
+    (reference.isTypeReference && !reference.isValueReference)
   );
 }
 
 /**
- * True when nothing changes a schema binding (a `const` in a chain, or the zod
- * or joi root): it is never reassigned and every use only reads it (see
- * {@link schemaUseIsRead}). `S.parse = (v) => v`, `Object.assign(S, x)`,
- * `delete S.shape.mode` or `helper(S)` could change what the schema accepts,
- * as `re.test = ...` changes a regex.
+ * True when nothing changes a schema binding: it is not exported, never
+ * reassigned, and every use is a type position or follows
+ * {@link schemaValueIsRead}. `S.parse = (v) => v`, `S._def.checks.pop()`,
+ * `const d = S._def`, `helper(S)`, or a holder changed through its shape
+ * (`const B = z.object({ m: S }); B.shape.m.parse = ...`) all cancel it, as
+ * `re.test = ...` cancels a regex.
  */
 function isUnchangedSchema(variable: Variable, sourceCode: SourceCode, depth = 0): boolean {
   if (depth > MAX_DEPTH) {
     return false;
   }
-  // An exported schema can be changed by any module that imports it, as an
-  // exported regex can.
   if (
     variable.defs.some(
       (def) =>
@@ -1731,27 +1786,41 @@ function isUnchangedSchema(variable: Variable, sourceCode: SourceCode, depth = 0
   ) {
     return false;
   }
+  return variable.references.every(
+    (reference) =>
+      reference.init === true ||
+      (!reference.isWrite() &&
+        (isTypeUse(reference) ||
+          schemaValueIsRead(reference.identifier, sourceCode, depth))),
+  );
+}
+
+/**
+ * True when nothing changes the zod or joi root binding: every use is a type
+ * position or a chain of property reads that ends in a call (`z.string()`,
+ * `z.coerce.number()`), never a write (`z.ZodString.prototype.parse = ...`),
+ * a bare read or an argument (`extendZod(z)`).
+ */
+function isUnchangedSchemaRoot(variable: Variable): boolean {
   return variable.references.every((reference) => {
-    if (reference.init === true) {
+    if (reference.init === true || isTypeUse(reference)) {
       return true;
     }
     if (reference.isWrite()) {
       return false;
     }
-    // Type positions (`z.infer<typeof S>`) never run.
-    const parent = reference.identifier.parent;
-    if (
-      parent?.type === AST_NODE_TYPES.TSTypeQuery ||
-      parent?.type === AST_NODE_TYPES.TSQualifiedName ||
-      (reference.isTypeReference && !reference.isValueReference)
+    let current: TSESTree.Node = outerValue(reference.identifier);
+    while (
+      current.parent?.type === AST_NODE_TYPES.MemberExpression &&
+      current.parent.object === current &&
+      !current.parent.computed
     ) {
-      return true;
+      current = current.parent;
     }
-    const changes = contentChanges(reference);
     return (
-      changes !== null &&
-      changes.length === 0 &&
-      schemaUseIsRead(reference.identifier, sourceCode, depth)
+      current !== reference.identifier &&
+      current.parent?.type === AST_NODE_TYPES.CallExpression &&
+      current.parent.callee === current
     );
   });
 }
@@ -1933,7 +2002,7 @@ function objectFieldSchema(
       isSchemaModule(callee.object, sourceCode)
     ) {
       const root = variableOf(callee.object, sourceCode);
-      if (root === null || !isUnchangedSchema(root, sourceCode)) {
+      if (root === null || !isUnchangedSchemaRoot(root)) {
         return null;
       }
       const shape = current.arguments[0] === undefined ? null : unwrap(current.arguments[0]);

@@ -163,6 +163,11 @@ ruleTester.run('no-shell-interpolation', noShellInterpolationRule, {
       code: "const DBS = ['orders']; function run(db: string) { if (!DBS.includes(db)) return; const target = `/var/backups/${db}.sql`; exec(`pg_dump ${db} > ${target}`); }",
       filename: TS,
     },
+    // A schema used only by running it, building on it, or inside another schema that is only run.
+    {
+      code: "import { z } from 'zod'; const S = z.string().regex(/^[a-z]+$/); const B = z.object({ m: S }); function f(i: unknown) { exec(`ls ${S.parse(i)} ${B.parse(i).m}`); exec(`ls ${S.min(1).parse(i)}`); }",
+      filename: TS,
+    },
     // A program name from a literal allowlist, an argument from a regex.
     {
       code: "const TOOLS = ['git', 'ls']; function h(t: string, f: string) { if (!TOOLS.includes(t) || !/^[a-z]+$/.test(f)) return; exec(`${t} ${f}`); exec(`cd /tmp && ${t} -x`); }",
@@ -876,6 +881,32 @@ ruleTester.run('no-shell-interpolation', noShellInterpolationRule, {
     // A path segment glued after a `/` must not be `.` or `..`.
     {
       code: 'function h(x: string) { if (!/^[a-z.]+$/.test(x)) return; exec(`rm -rf /srv/${x}`); }',
+      filename: TS,
+      errors: [{ messageId: 'shellInterpolation' }],
+    },
+    // A schema changed through a schema that holds it, below its first property, or at the zod root.
+    {
+      code: "import { z } from 'zod'; const S = z.string().regex(/^[a-z]+$/); const B = z.object({ m: S }); B.shape.m.parse = (v: any) => v; function f(i: unknown) { exec(`ls ${S.parse(i)}`); }",
+      filename: TS,
+      errors: [{ messageId: 'shellInterpolation' }],
+    },
+    {
+      code: "import { z } from 'zod'; const S = z.string().regex(/^[a-z]+$/); S._def.checks.pop(); function f(i: unknown) { exec(`ls ${S.parse(i)}`); }",
+      filename: TS,
+      errors: [{ messageId: 'shellInterpolation' }],
+    },
+    {
+      code: "import { z } from 'zod'; declare function clear(v: unknown): void; const S = z.string().regex(/^[a-z]+$/); clear(S._def); function f(i: unknown) { exec(`ls ${S.parse(i)}`); }",
+      filename: TS,
+      errors: [{ messageId: 'shellInterpolation' }],
+    },
+    {
+      code: "import { z } from 'zod'; const S = z.string().regex(/^[a-z]+$/); const d = S._def; d.checks = []; function f(i: unknown) { exec(`ls ${S.parse(i)}`); }",
+      filename: TS,
+      errors: [{ messageId: 'shellInterpolation' }],
+    },
+    {
+      code: "import { z } from 'zod'; (z.ZodString.prototype as any).parse = (v: any) => v; const S = z.string().regex(/^[a-z]+$/); function f(i: unknown) { exec(`ls ${S.parse(i)}`); }",
       filename: TS,
       errors: [{ messageId: 'shellInterpolation' }],
     },
