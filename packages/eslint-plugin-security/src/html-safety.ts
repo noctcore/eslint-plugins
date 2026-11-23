@@ -647,6 +647,13 @@ export class HtmlSafety {
       if (global !== undefined && this.isGlobal(callee, callee.name)) {
         return { encoding: global };
       }
+      // A configured name is trusted only for a binding this file cannot see
+      // into (imported above, or not declared here). A function declared in
+      // this file is judged by its body alone, so a broken `escapeHtml` with
+      // a trusted name still fails; any other local binding proves nothing.
+      if ((this.variableOf(callee)?.defs.length ?? 0) > 0) {
+        return null;
+      }
       return this.options.sanitizerNames.has(callee.name) ? { encoding: 'escape-quot' } : null;
     }
     if (callee.type !== AST_NODE_TYPES.MemberExpression) {
