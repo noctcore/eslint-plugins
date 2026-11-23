@@ -130,7 +130,8 @@ The flow stops at:
 - `path.basename(x)` stored in a binding that is refused as both `.` and `..` before the call
   (`if (name === '.' || name === '..') return`, `if (name.startsWith('.')) return`,
   `if (['.', '..'].includes(name)) return`, or a regex test that matches both; a `g` or `y` regex
-  counts only when it is written at the test, since a shared one keeps `lastIndex` between calls).
+  counts only when it is written at the test, since a shared one keeps `lastIndex` between calls,
+  and a `y` regex is read as anchored at the start: `/\.$/y.test('..')` is false).
   The check holds only for that binding read as it is: a part of it or a call on it is new text
   (`'...'` passes the check, and `path.parse('...').name` and `basename('...', extname('...'))`
   are `..`). A bare `basename`
@@ -154,7 +155,7 @@ A proof holds only for the text it checked. Below a call that is not known to ke
 text, and below a member read of a checked value, the checks above no longer cut the flow. Calls
 that keep the text are `path.join`, `path.resolve`, `path.normalize`, a one argument
 `path.basename`, `String`, `encodeURIComponent`, `encodeURI`, and the methods `toLowerCase`,
-`toUpperCase`, `toString`, `valueOf`, `join` and `concat`. Everything else is new text: a decoder
+`toUpperCase`, `toLocaleLowerCase`, `toLocaleUpperCase`, `toString`, `valueOf`, `join` and `concat`. Everything else is new text: a decoder
 (`decodeURIComponent`, `atob`, `Buffer.from(x, 'base64')`), another string method (`replace`,
 `slice`, `trim`, `normalize('NFKC')`), `path.parse(x).name`, `basename(x, ext)`, `new URL(x)`,
 `fileURLToPath`, a library or local helper. `%2e%2e` passes a dot check and decodes to `..`, and
