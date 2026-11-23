@@ -640,20 +640,31 @@ function subjectVariable(node: TSESTree.Node, sourceCode: SourceCode): Variable 
  */
 function writtenOnlyBefore(variable: Variable, position: number, scope: Scope | null): boolean {
   const home = variable.scope.variableScope;
-  if (argumentsAliased(variable)) {
+  // A global the config declares writable has no declaration in the file:
+  // any other script can reassign it, across an `await` for instance.
+  if (variable.defs.length === 0 || argumentsAliased(variable)) {
     return false;
   }
+  // A direct `eval(s)` can assign any binding in reach, so it counts as a
+  // write of this one at the place it runs.
+  const evals = directEvalCalls(variable);
   if (scope !== home) {
     const def = variable.defs[0];
     const declaredOnce = def?.type !== 'Variable' || def.parent.kind !== 'var';
-    return variable.references.every(
-      (reference) =>
-        (!reference.isWrite() || (reference.init === true && declaredOnce)) &&
-        contentChanges(reference)?.length === 0,
+    return (
+      evals.length === 0 &&
+      variable.references.every(
+        (reference) =>
+          (!reference.isWrite() || (reference.init === true && declaredOnce)) &&
+          contentChanges(reference)?.length === 0,
+      )
     );
   }
   const before = (reference: Reference): boolean =>
     reference.from.variableScope === home && reference.identifier.range[1] <= position;
+  if (!evals.every(before)) {
+    return false;
+  }
   return variable.references.every((reference) => {
     if (reference.isWrite() && !before(reference)) {
       return false;
@@ -661,6 +672,33 @@ function writtenOnlyBefore(variable: Variable, position: number, scope: Scope | 
     const changes = contentChanges(reference);
     return changes !== null && changes.every(before);
   });
+}
+
+/**
+ * The direct `eval(...)` calls inside the function (or program) that declares
+ * `variable`, nested functions included: the global `eval` called by name,
+ * which runs in the caller's scope and can assign its bindings, even in
+ * strict code.
+ */
+function directEvalCalls(variable: Variable): Reference[] {
+  let global: Scope = variable.scope;
+  while (global.upper !== null) {
+    global = global.upper;
+  }
+  const [start, end] = variable.scope.variableScope.block.range;
+  return [...global.through, ...(global.set.get('eval')?.references ?? [])].filter(
+    (reference) => {
+      const id = reference.identifier;
+      return (
+        id.type === AST_NODE_TYPES.Identifier &&
+        id.name === 'eval' &&
+        id.parent?.type === AST_NODE_TYPES.CallExpression &&
+        id.parent.callee === id &&
+        id.range[0] >= start &&
+        id.range[1] <= end
+      );
+    },
+  );
 }
 
 /**

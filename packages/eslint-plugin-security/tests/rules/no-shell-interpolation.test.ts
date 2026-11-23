@@ -150,6 +150,11 @@ ruleTester.run('no-shell-interpolation', noShellInterpolationRule, {
       filename: TS,
     },
     { code: "const BIN = '/usr/bin/git'; exec(`${BIN} status`);", filename: TS },
+    // A direct `eval` before the check.
+    {
+      code: 'function h(x: string) { eval("1"); if (!/^[a-z]+$/.test(x)) return; exec(`ls ${x}`); }',
+      filename: TS,
+    },
     // A program name from a literal allowlist, an argument from a regex.
     {
       code: "const TOOLS = ['git', 'ls']; function h(t: string, f: string) { if (!TOOLS.includes(t) || !/^[a-z]+$/.test(f)) return; exec(`${t} ${f}`); exec(`cd /tmp && ${t} -x`); }",
@@ -589,6 +594,24 @@ ruleTester.run('no-shell-interpolation', noShellInterpolationRule, {
     },
     {
       code: 'function h(x: string) { if (!/^([a-z]+)?$/.test(x)) return; exec(`tool --in ${x} --out f`); }',
+      filename: TS,
+      errors: [{ messageId: 'shellInterpolation' }],
+    },
+    // A global the config declares writable can be reassigned across the `await`.
+    {
+      code: 'async function h() { if (!/^[a-z]+$/.test(x)) return; await null; exec(`ls ${x}`); }',
+      filename: TS,
+      languageOptions: { globals: { x: 'writable' } },
+      errors: [{ messageId: 'shellInterpolation' }],
+    },
+    // A direct `eval` after the check can assign the checked binding.
+    {
+      code: 'function h(x: string, s: string) { if (!/^[a-z]+$/.test(x)) return; eval(s); exec(`ls ${x}`); }',
+      filename: TS,
+      errors: [{ messageId: 'shellInterpolation' }],
+    },
+    {
+      code: 'let x = input(); function h(s: string) { if (!/^[a-z]+$/.test(x)) return; exec(`ls ${x}`); } function g(s: string) { eval(s); }',
       filename: TS,
       errors: [{ messageId: 'shellInterpolation' }],
     },
