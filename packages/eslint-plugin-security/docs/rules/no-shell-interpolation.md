@@ -120,9 +120,11 @@ the rule can read:
   CWE-88) and a leading `#` comments out the rest. A value glued to text before it in the same
   word (`` `git log --author=${author}` ``) cannot start an option, so there `-` and `#` may lead.
   Text ending in `-` or `+` does not count as inside a word: `` `tool -${x}` `` with
-  `x = '-output=f'` is a long option. A regex in a `const` counts only if it is not
-  exported and every use of it is a `test` / `exec` call or an argument of `pattern`, `regex`,
-  `match` and the like, so no `RE.test = ...` or `RE.compile(...)`;
+  `x = '-output=f'` is a long option. The regex must not accept the empty string (`^[a-z]*$`,
+  `^([a-z]+)?$`): an empty value drops out of the command, so `` `rm -rf /srv/${x}` `` removes
+  `/srv/` and an empty argument shifts the ones after it. A regex in a `const` counts only if it
+  is not exported and every use of it is a `test` / `exec` call or an argument of `pattern`,
+  `regex`, `match` and the like, so no `RE.test = ...` or `RE.compile(...)`;
 - a schema with such a pattern or a literal set: `const { error, value } = schema.validate(x)`
   followed by an exiting `if (error)`, `schema.parse(x)` (which throws), or `result.data` of
   `const result = schema.safeParse(x)` after an exiting `if (!result.success)`; a field of a parsed
@@ -137,7 +139,31 @@ the rule can read:
   (no options argument; a string name or message is fine) or `.valid(...)` / `.enum([...])` /
   `.literal(...)`, and every other method in the chain only narrows (`min`, `max`, `length`,
   `required`, `optional`, `trim`, `lowercase` and the like). A chain with `default`, `catch`, `failover`, `pipe`, `transform`, `allow` or any other method
-  can let another value through and is not read.
+  can let another value through and is not read. Every `const` in the chain, and the zod or joi
+  root, must stay unchanged: not exported, and every use a method call or property read that
+  writes nothing, an unchanged alias, an argument of another schema call (`z.object({ mode: S })`)
+  or a type position (`z.infer<typeof S>`). `S.parse = (v) => v`, `Object.assign(S, x)`,
+  `delete Body.shape.mode` or a helper call such as `patch(S)` (or `extendZod(z)`) cancels it.
+
+A value in the program-name position (first in the command, after `;`, `&`, `|`, `(`, a backtick
+or a line break, after `sudo`, `env`, `xargs`, a shell reserved word or `NAME=value`, or glued to a
+path such as `/usr/bin/${tool}`) is proven only by a literal allowlist, a literal `enum` / `valid`
+schema or a constant. No regex or schema pattern proves it: `^[a-z]+$` admits `reboot` and `sh`.
+
+```ts bad
+function run(tool: string, file: string) {
+  if (!/^[a-z]+$/.test(tool) || !/^[a-z]+$/.test(file)) return;
+  exec(`${tool} ${file}`);
+}
+```
+
+```ts good
+const TOOLS = ['git', 'ls'];
+function run(tool: string, file: string) {
+  if (!TOOLS.includes(tool) || !/^[a-z]+$/.test(file)) return;
+  exec(`${tool} ${file}`);
+}
+```
 
 Every write to the checked binding must come before the check, in the function that declares it:
 a write from a nested function (`const reset = () => { x = other; }`) cancels the check, since it
@@ -146,7 +172,10 @@ can run at any time. A binding declared outside the checking function (a closure
 can run between the outer writes (hoisted above them, or resumed after an `await`). A change made
 through an alias (`const p = parts; p.push(y)`), `Object.assign` or `Reflect.set` counts as a
 write, and so does a list or `Set` changed through another `const` name for it. A count written as
-`{00}` allows zero repetitions like `{0}`. The rule follows `const` aliases (`const picked = sort`)
+`{00}` allows zero repetitions like `{0}`. A direct `eval(s)` in the function after the check, or
+in any function nested in the one that declares the binding, counts as a write. A global with no
+declaration in the file (one the config declares writable) is never treated as checked: another
+script can reassign it, across an `await` for instance. The rule follows `const` aliases (`const picked = sort`)
 and the global `String(x)`:
 
 ```ts bad
