@@ -3,6 +3,7 @@ import { AST_NODE_TYPES, ASTUtils, type TSESLint, type TSESTree } from '@typescr
 import {
   type GuardContext,
   isAllowlistedMember,
+  isDotSegmentRefused,
   isLiteralTableRead,
   isProvenSafeValue,
 } from './guards';
@@ -22,9 +23,20 @@ import {
  *    from it), unless the callee is a known sanitizer for the sink;
  *  - through `arr.push(x)` into `arr`.
  *
+ * A bare request object (`const { query } = req`) carries it too, and so does
+ * a field destructured from the first parameter of a function under a request
+ * field name (`({ query }) => ...`, `({ params: { file } }) => ...`).
+ *
  * At each binding the sink's guard is asked first (`../guards`): a value
  * checked against an allowlist or a safe anchored regex before the sink stops
  * the flow there.
+ *
+ * A proof holds only for the text that was checked. Below a call that can
+ * turn checked text into new characters (a decoder such as
+ * `decodeURIComponent` or `Buffer.from(x, 'base64')`, or a string method such
+ * as `replace`, `slice` or `normalize('NFKC')`), regex and schema proofs,
+ * sanitizers and dot checks no longer cut the flow: `%2e%2e` passes a check
+ * for `..` and decodes to it.
  */
 
 type SourceCode = Readonly<TSESLint.SourceCode>;
@@ -38,14 +50,51 @@ const NUMERIC_CALLS: ReadonlySet<string> = new Set(['Number', 'parseInt', 'parse
 const NON_TEXT_PROPERTIES: ReadonlySet<string> = new Set(['length', 'size']);
 /** Methods that put a value into the array they are called on. */
 const ARRAY_WRITERS: ReadonlySet<string> = new Set(['push', 'unshift', 'splice', 'fill']);
+/** Global functions that decode text into characters a check on the input never saw. */
+const DECODERS: ReadonlySet<string> = new Set(['decodeURIComponent', 'decodeURI', 'unescape', 'atob']);
+/**
+ * Methods whose result keeps a checked value checked: case changes, a string
+ * conversion and joining checked parts. Any other method on a checked value
+ * (`replace`, `slice`, `trim`, `normalize`, `split`) can make `..` or a
+ * separator out of text that had none.
+ */
+const PRESERVING_METHODS: ReadonlySet<string> = new Set([
+  'toLowerCase',
+  'toUpperCase',
+  'toLocaleLowerCase',
+  'toLocaleUpperCase',
+  'toString',
+  'valueOf',
+  'join',
+  'concat',
+]);
+/** Fields of a request object that hold the requester's input. */
+const REQUEST_FIELDS: ReadonlySet<string> = new Set([
+  'query',
+  'params',
+  'body',
+  'headers',
+  'cookies',
+  'files',
+  'file',
+  'request',
+]);
 
 export interface TaintOptions {
   /** Root identifiers of request-shaped input (`req`, `request`, `ctx`). */
   readonly requestObjects: ReadonlySet<string>;
   /** Where the value is used: decides which guards and sanitizers count. */
   readonly context: GuardContext;
-  /** Callee source texts whose result is safe for the sink (`path.basename`). */
+  /** Callee source texts whose result is safe for the sink (`path.extname`). */
   readonly sanitizers: ReadonlySet<string>;
+  /**
+   * Callee source texts whose result is one path segment with no separator,
+   * which may still be `.` or `..` (`path.basename`): it is safe only when the
+   * binding that holds it is refused as `..` before the sink.
+   */
+  readonly segmentSanitizers?: ReadonlySet<string>;
+  /** Bindings that are themselves the input followed (a helper's parameter). */
+  readonly sourceVariables?: ReadonlySet<Variable>;
 }
 
 interface Walk {
@@ -53,6 +102,8 @@ interface Walk {
   readonly sink: TSESTree.Node;
   readonly sourceCode: SourceCode;
   readonly seen: Set<Variable>;
+  /** True below a decoder or a reshaping method: proofs on the text no longer hold. */
+  readonly reshaped: boolean;
 }
 
 /**
@@ -65,7 +116,7 @@ export function requestSourceOf(
   options: TaintOptions,
   sourceCode: SourceCode,
 ): TSESTree.Node | null {
-  return carried(node, { options, sink, sourceCode, seen: new Set() }, 0);
+  return carried(node, { options, sink, sourceCode, seen: new Set(), reshaped: false }, 0);
 }
 
 function squash(text: string): string {
@@ -81,7 +132,9 @@ function rootIdentifier(node: TSESTree.Node): TSESTree.Identifier | null {
       current = current.expression;
     } else if (
       current.type === AST_NODE_TYPES.TSNonNullExpression ||
-      current.type === AST_NODE_TYPES.TSAsExpression
+      current.type === AST_NODE_TYPES.TSAsExpression ||
+      current.type === AST_NODE_TYPES.TSSatisfiesExpression ||
+      current.type === AST_NODE_TYPES.TSTypeAssertion
     ) {
       current = current.expression;
     } else {
@@ -121,11 +174,13 @@ function carried(raw: TSESTree.Node, walk: Walk, depth: number): TSESTree.Node |
     return isAllowlistedMember(raw, walk.sink, walk.sourceCode) ? null : raw;
   }
   // A value proven harmless (a confined schema's output, a literal table read)
-  // cuts the flow wherever it sits, not only behind a binding.
+  // cuts the flow wherever it sits, not only behind a binding. A literal
+  // table read stays an author's literal even when decoded.
   if (
     raw.type !== AST_NODE_TYPES.Identifier &&
     (isLiteralTableRead(raw, walk.sourceCode) ||
-      isProvenSafeValue(raw, walk.sink, walk.options.context, walk.sourceCode))
+      (!walk.reshaped &&
+        isProvenSafeValue(raw, walk.sink, walk.options.context, walk.sourceCode)))
   ) {
     return null;
   }
@@ -211,27 +266,90 @@ function carriedByReturn(
   return null;
 }
 
+/** Peels type wrappers, which do not change the value. */
+function peelTypes(node: TSESTree.Node): TSESTree.Node {
+  let current = node;
+  while (
+    current.type === AST_NODE_TYPES.TSAsExpression ||
+    current.type === AST_NODE_TYPES.TSSatisfiesExpression ||
+    current.type === AST_NODE_TYPES.TSNonNullExpression ||
+    current.type === AST_NODE_TYPES.TSTypeAssertion
+  ) {
+    current = current.expression;
+  }
+  return current;
+}
+
+/**
+ * True for a call that decodes its argument into new characters:
+ * `decodeURIComponent(x)`, `querystring.unescape(x)`, `String.fromCharCode(...)`,
+ * or `Buffer.from(x, enc)` with an encoding other than utf8 (base64, hex).
+ */
+function isDecoder(node: TSESTree.CallExpression | TSESTree.NewExpression): boolean {
+  const callee = peelTypes(node.callee);
+  if (callee.type === AST_NODE_TYPES.Identifier) {
+    return DECODERS.has(callee.name);
+  }
+  if (
+    callee.type !== AST_NODE_TYPES.MemberExpression ||
+    callee.computed ||
+    callee.property.type !== AST_NODE_TYPES.Identifier
+  ) {
+    return false;
+  }
+  const method = callee.property.name;
+  const owner = callee.object.type === AST_NODE_TYPES.Identifier ? callee.object.name : null;
+  if (method === 'unescape' || method === 'fromCharCode' || method === 'fromCodePoint') {
+    return true;
+  }
+  if (owner === 'Buffer' && method === 'from') {
+    const encoding = node.arguments[1];
+    return !(
+      encoding === undefined ||
+      (encoding.type === AST_NODE_TYPES.Literal &&
+        typeof encoding.value === 'string' &&
+        /^utf-?8$/iu.test(encoding.value))
+    );
+  }
+  return false;
+}
+
+/**
+ * True for a method call on a value that can reshape its text (`x.replace(...)`,
+ * `x.slice(1)`, `x.normalize('NFKC')`), as opposed to one that keeps it checked.
+ */
+function reshapesReceiver(callee: TSESTree.MemberExpression): boolean {
+  return (
+    callee.computed ||
+    callee.property.type !== AST_NODE_TYPES.Identifier ||
+    !PRESERVING_METHODS.has(callee.property.name)
+  );
+}
+
 function carriedByCall(
   node: TSESTree.CallExpression | TSESTree.NewExpression,
   walk: Walk,
   depth: number,
 ): TSESTree.Node | null {
-  const callee = node.callee;
+  const callee = peelTypes(node.callee);
   const calleeText = squash(walk.sourceCode.getText(callee));
-  if (walk.options.sanitizers.has(calleeText)) {
+  if (!walk.reshaped && walk.options.sanitizers.has(calleeText)) {
     return null;
   }
   if (callee.type === AST_NODE_TYPES.Identifier && NUMERIC_CALLS.has(callee.name)) {
     return null;
   }
+  const argumentWalk = isDecoder(node) && !walk.reshaped ? { ...walk, reshaped: true } : walk;
   for (const arg of node.arguments) {
-    const found = carried(arg, walk, depth + 1);
+    const found = carried(arg, argumentWalk, depth + 1);
     if (found !== null) {
       return found;
     }
   }
   if (callee.type === AST_NODE_TYPES.MemberExpression) {
-    return carried(callee.object, walk, depth + 1);
+    const receiverWalk =
+      !walk.reshaped && reshapesReceiver(callee) ? { ...walk, reshaped: true } : walk;
+    return carried(callee.object, receiverWalk, depth + 1);
   }
   if (callee.type === AST_NODE_TYPES.Identifier) {
     const variable = ASTUtils.findVariable(walk.sourceCode.getScope(callee), callee);
@@ -249,17 +367,36 @@ function carriedByVariable(
   walk: Walk,
   depth: number,
 ): TSESTree.Node | null {
+  if (walk.options.requestObjects.has(node.name)) {
+    // The request object itself, reached through `const { query } = req`.
+    return node;
+  }
   const variable = ASTUtils.findVariable(walk.sourceCode.getScope(node), node);
   if (variable === null || walk.seen.has(variable)) {
     return null;
   }
-  if (isProvenSafeValue(node, walk.sink, walk.options.context, walk.sourceCode)) {
+  if (
+    !walk.reshaped &&
+    isProvenSafeValue(node, walk.sink, walk.options.context, walk.sourceCode)
+  ) {
     return null;
   }
+  if (walk.options.sourceVariables?.has(variable) === true || isRequestFieldParameter(variable)) {
+    return node;
+  }
+  // `const name = basename(x)` refused as `..` before the sink is one segment
+  // that stays in its directory.
+  const segmentChecked =
+    !walk.reshaped &&
+    (walk.options.segmentSanitizers?.size ?? 0) > 0 &&
+    isDotSegmentRefused(node, walk.sink, walk.sourceCode);
   walk.seen.add(variable);
   try {
     for (const reference of variable.references) {
       if (reference.isWrite() && reference.writeExpr != null) {
+        if (segmentChecked && isSegmentSanitizerCall(reference.writeExpr, walk)) {
+          continue;
+        }
         const found = carried(reference.writeExpr, walk, depth + 1);
         if (found !== null) {
           return found;
@@ -299,4 +436,88 @@ function carriedByVariable(
   } finally {
     walk.seen.delete(variable);
   }
+}
+
+/**
+ * True for a call to a segment sanitizer (`basename(x)`), read through type
+ * wrappers, `await` and case changes (`basename(x).toLowerCase()`).
+ */
+function isSegmentSanitizerCall(node: TSESTree.Node, walk: Walk): boolean {
+  let current = peelTypes(node);
+  for (let depth = 0; depth < MAX_DEPTH; depth += 1) {
+    if (current.type === AST_NODE_TYPES.AwaitExpression) {
+      current = peelTypes(current.argument);
+      continue;
+    }
+    if (current.type !== AST_NODE_TYPES.CallExpression) {
+      return false;
+    }
+    const callee = peelTypes(current.callee);
+    if (walk.options.segmentSanitizers?.has(squash(walk.sourceCode.getText(callee))) === true) {
+      return true;
+    }
+    if (
+      callee.type !== AST_NODE_TYPES.MemberExpression ||
+      callee.computed ||
+      callee.property.type !== AST_NODE_TYPES.Identifier ||
+      !CASE_METHODS.has(callee.property.name)
+    ) {
+      return false;
+    }
+    current = peelTypes(callee.object);
+  }
+  return false;
+}
+
+const CASE_METHODS: ReadonlySet<string> = new Set([
+  'toLowerCase',
+  'toUpperCase',
+  'toLocaleLowerCase',
+  'toLocaleUpperCase',
+]);
+
+/**
+ * True for a binding destructured from the first parameter of a function under
+ * a request field name: `query` in `({ query }) => ...`, `file` in
+ * `({ params: { file } }) => ...`, `q` in `({ query: q }) => ...`.
+ */
+function isRequestFieldParameter(variable: Variable): boolean {
+  const def = variable.defs[0];
+  if (def?.type !== 'Parameter') {
+    return false;
+  }
+  const fn = def.node;
+  if (
+    fn.type !== AST_NODE_TYPES.FunctionDeclaration &&
+    fn.type !== AST_NODE_TYPES.FunctionExpression &&
+    fn.type !== AST_NODE_TYPES.ArrowFunctionExpression
+  ) {
+    return false;
+  }
+  const first = fn.params[0];
+  // Climb from the bound name to the first parameter, noting the outermost key.
+  let current: TSESTree.Node = def.name;
+  let field: string | null = null;
+  for (let depth = 0; depth < MAX_DEPTH && current !== first; depth += 1) {
+    const parent: TSESTree.Node | undefined = current.parent;
+    if (parent === undefined) {
+      return false;
+    }
+    if (parent.type === AST_NODE_TYPES.Property && parent.value === current) {
+      field =
+        !parent.computed && parent.key.type === AST_NODE_TYPES.Identifier
+          ? parent.key.name
+          : parent.key.type === AST_NODE_TYPES.Literal && typeof parent.key.value === 'string'
+            ? parent.key.value
+            : null;
+    } else if (
+      parent.type !== AST_NODE_TYPES.ObjectPattern &&
+      parent.type !== AST_NODE_TYPES.AssignmentPattern &&
+      parent.type !== AST_NODE_TYPES.ArrayPattern
+    ) {
+      return false;
+    }
+    current = parent;
+  }
+  return current === first && first.type !== AST_NODE_TYPES.Identifier && field !== null && REQUEST_FIELDS.has(field);
 }
