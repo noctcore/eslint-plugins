@@ -150,14 +150,23 @@ ruleTester.run('no-shell-interpolation', noShellInterpolationRule, {
       filename: TS,
     },
     { code: "const BIN = '/usr/bin/git'; exec(`${BIN} status`);", filename: TS },
+    // A program name from a literal allowlist, an argument from a regex.
+    {
+      code: "const TOOLS = ['git', 'ls']; function h(t: string, f: string) { if (!TOOLS.includes(t) || !/^[a-z]+$/.test(f)) return; exec(`${t} ${f}`); exec(`cd /tmp && ${t} -x`); }",
+      filename: TS,
+    },
     // A direct `eval` before the check.
     {
       code: 'function h(x: string) { eval("1"); if (!/^[a-z]+$/.test(x)) return; exec(`ls ${x}`); }',
       filename: TS,
     },
-    // A program name from a literal allowlist, an argument from a regex.
+    // A schema read in a type or in another schema.
     {
-      code: "const TOOLS = ['git', 'ls']; function h(t: string, f: string) { if (!TOOLS.includes(t) || !/^[a-z]+$/.test(f)) return; exec(`${t} ${f}`); exec(`cd /tmp && ${t} -x`); }",
+      code: "import { z } from 'zod'; const S = z.string().regex(/^[a-z]+$/); type T = z.infer<typeof S>; function run(x: T) { exec(`ls ${S.parse(x)}`); }",
+      filename: TS,
+    },
+    {
+      code: "import { z } from 'zod'; const Mode = z.enum(['a', 'b']); const Body = z.object({ mode: Mode }); function run(b: unknown) { exec(`tool ${Body.parse(b).mode}`); exec(`${Mode.parse(b)} --x`); }",
       filename: TS,
     },
     // A checked string handed to a function, or read through an alias, is still the checked text.
@@ -612,6 +621,47 @@ ruleTester.run('no-shell-interpolation', noShellInterpolationRule, {
     },
     {
       code: 'let x = input(); function h(s: string) { if (!/^[a-z]+$/.test(x)) return; exec(`ls ${x}`); } function g(s: string) { eval(s); }',
+      filename: TS,
+      errors: [{ messageId: 'shellInterpolation' }],
+    },
+    // A schema changed after its declaration, through a property, `Object.assign`, `delete`, a helper, or at the zod root.
+    {
+      code: "import { z } from 'zod'; const S = z.string().regex(/^[a-z]+$/); S.parse = (v: string) => v; function run(x: string) { exec(`ls ${S.parse(x)}`); }",
+      filename: TS,
+      errors: [{ messageId: 'shellInterpolation' }],
+    },
+    {
+      code: "import { z } from 'zod'; const S = z.string().regex(/^[a-z]+$/); Object.assign(S, { parse: (v: string) => v }); function run(x: string) { exec(`ls ${S.parse(x)}`); }",
+      filename: TS,
+      errors: [{ messageId: 'shellInterpolation' }],
+    },
+    {
+      code: "import { z } from 'zod'; declare function patch(s: unknown): void; const S = z.string().regex(/^[a-z]+$/); patch(S); function run(x: string) { exec(`ls ${S.parse(x)}`); }",
+      filename: TS,
+      errors: [{ messageId: 'shellInterpolation' }],
+    },
+    {
+      code: "import { z } from 'zod'; const Body = z.object({ mode: z.enum(['a']) }); Body.shape.mode = z.string(); function run(b: unknown) { exec(`tool ${Body.parse(b).mode}`); }",
+      filename: TS,
+      errors: [{ messageId: 'shellInterpolation' }],
+    },
+    {
+      code: "import { z } from 'zod'; const Body = z.object({ mode: z.enum(['a']) }); delete Body.shape.mode; function run(b: unknown) { exec(`tool ${Body.parse(b).mode}`); }",
+      filename: TS,
+      errors: [{ messageId: 'shellInterpolation' }],
+    },
+    {
+      code: "import { z } from 'zod'; (z as any).string = () => ({ regex: () => ({ parse: (v: string) => v }) }); const S = z.string().regex(/^[a-z]+$/); function run(x: string) { exec(`ls ${S.parse(x)}`); }",
+      filename: TS,
+      errors: [{ messageId: 'shellInterpolation' }],
+    },
+    {
+      code: "import { z } from 'zod'; export const S = z.string().regex(/^[a-z]+$/); function run(x: string) { exec(`ls ${S.parse(x)}`); }",
+      filename: TS,
+      errors: [{ messageId: 'shellInterpolation' }],
+    },
+    {
+      code: "import { z } from 'zod'; const S = z.string().regex(/^[a-z]+$/); const T = S; T.parse = (v: string) => v; function run(x: string) { exec(`ls ${S.parse(x)}`); }",
       filename: TS,
       errors: [{ messageId: 'shellInterpolation' }],
     },

@@ -789,6 +789,9 @@ function contentChanges(reference: Reference, depth = 0): Reference[] | null {
     const changes =
       (use.type === AST_NODE_TYPES.AssignmentExpression && use.left === parent) ||
       (use.type === AST_NODE_TYPES.UpdateExpression && use.argument === parent) ||
+      (use.type === AST_NODE_TYPES.UnaryExpression &&
+        use.operator === 'delete' &&
+        use.argument === parent) ||
       (use.type === AST_NODE_TYPES.CallExpression &&
         use.callee === parent &&
         !parent.computed &&
@@ -1555,13 +1558,14 @@ function schemaConfines(node: TSESTree.Node, judge: RegexJudge, sourceCode: Sour
   let confined = false;
   for (let depth = 0; depth < 32; depth += 1) {
     if (current.type === AST_NODE_TYPES.Identifier) {
-      if (isSchemaModule(current, sourceCode)) {
-        return confined;
-      }
-      // A `const` holding a chain is read on, under the same allowlist.
       const variable = variableOf(current, sourceCode);
+      if (isSchemaModule(current, sourceCode)) {
+        return confined && variable !== null && isUnchangedSchema(variable, sourceCode);
+      }
+      // A `const` holding a chain is read on, under the same allowlist, as
+      // long as nothing changes it (`S.parse = (v) => v`).
       const init = variable === null ? null : constInit(variable);
-      if (init === null) {
+      if (init === null || !isUnchangedSchema(variable as Variable, sourceCode)) {
         return false;
       }
       current = unwrap(init);
@@ -1609,6 +1613,129 @@ function schemaConfines(node: TSESTree.Node, judge: RegexJudge, sourceCode: Sour
     current = unwrap(callee.object);
   }
   return false;
+}
+
+/** True when `node` is a chain that starts at the zod or joi root (`z.object`, `S.extend`). */
+function rootsAtSchemaModule(node: TSESTree.Node, sourceCode: SourceCode): boolean {
+  let current = unwrap(node);
+  for (let depth = 0; depth < 32; depth += 1) {
+    if (current.type === AST_NODE_TYPES.MemberExpression) {
+      current = unwrap(current.object);
+    } else if (current.type === AST_NODE_TYPES.CallExpression) {
+      current = unwrap(current.callee);
+    } else if (current.type === AST_NODE_TYPES.Identifier) {
+      if (isSchemaModule(current, sourceCode)) {
+        return true;
+      }
+      const variable = variableOf(current, sourceCode);
+      const init = variable === null ? null : constInit(variable);
+      if (init === null) {
+        return false;
+      }
+      current = unwrap(init);
+    } else {
+      return false;
+    }
+  }
+  return false;
+}
+
+/**
+ * True when a use of a schema binding only reads it: a method call or a
+ * property read on it (`S.parse(x)`, `S.shape.mode`) that does not write
+ * through it, an alias that is itself unchanged, or an argument (possibly
+ * inside an object or array literal) of another schema call
+ * (`z.object({ mode: S })`).
+ */
+function schemaUseIsRead(id: TSESTree.Node, sourceCode: SourceCode, depth: number): boolean {
+  const parent = id.parent;
+  if (parent?.type === AST_NODE_TYPES.MemberExpression && parent.object === id) {
+    let outer: TSESTree.Node = parent;
+    while (
+      outer.parent?.type === AST_NODE_TYPES.MemberExpression &&
+      outer.parent.object === outer
+    ) {
+      outer = outer.parent;
+    }
+    const use = outer.parent;
+    return !(
+      (use?.type === AST_NODE_TYPES.AssignmentExpression && use.left === outer) ||
+      (use?.type === AST_NODE_TYPES.UpdateExpression && use.argument === outer) ||
+      (use?.type === AST_NODE_TYPES.UnaryExpression &&
+        use.operator === 'delete' &&
+        use.argument === outer) ||
+      isObjectWriterTarget(outer, use)
+    );
+  }
+  if (
+    parent?.type === AST_NODE_TYPES.VariableDeclarator &&
+    parent.init === id &&
+    parent.id.type === AST_NODE_TYPES.Identifier
+  ) {
+    const alias = variableOf(parent.id, sourceCode);
+    return alias !== null && isUnchangedSchema(alias, sourceCode, depth + 1);
+  }
+  let current: TSESTree.Node = id;
+  while (
+    (current.parent?.type === AST_NODE_TYPES.Property && current.parent.value === current) ||
+    current.parent?.type === AST_NODE_TYPES.ObjectExpression ||
+    current.parent?.type === AST_NODE_TYPES.ArrayExpression
+  ) {
+    current = current.parent;
+  }
+  const call = current.parent;
+  return (
+    call?.type === AST_NODE_TYPES.CallExpression &&
+    call.arguments.includes(current as TSESTree.CallExpressionArgument) &&
+    rootsAtSchemaModule(call.callee, sourceCode)
+  );
+}
+
+/**
+ * True when nothing changes a schema binding (a `const` in a chain, or the zod
+ * or joi root): it is never reassigned and every use only reads it (see
+ * {@link schemaUseIsRead}). `S.parse = (v) => v`, `Object.assign(S, x)`,
+ * `delete S.shape.mode` or `helper(S)` could change what the schema accepts,
+ * as `re.test = ...` changes a regex.
+ */
+function isUnchangedSchema(variable: Variable, sourceCode: SourceCode, depth = 0): boolean {
+  if (depth > MAX_DEPTH) {
+    return false;
+  }
+  // An exported schema can be changed by any module that imports it, as an
+  // exported regex can.
+  if (
+    variable.defs.some(
+      (def) =>
+        def.type === 'Variable' &&
+        def.parent.parent?.type === AST_NODE_TYPES.ExportNamedDeclaration,
+    )
+  ) {
+    return false;
+  }
+  return variable.references.every((reference) => {
+    if (reference.init === true) {
+      return true;
+    }
+    if (reference.isWrite()) {
+      return false;
+    }
+    // Type positions (`z.infer<typeof S>`) never run.
+    const parent = reference.identifier.parent;
+    if (
+      parent?.type === AST_NODE_TYPES.TSTypeQuery ||
+      parent?.type === AST_NODE_TYPES.TSQualifiedName ||
+      (reference.isTypeReference && !reference.isValueReference)
+    ) {
+      return true;
+    }
+    const changes = contentChanges(reference);
+    return (
+      changes !== null &&
+      changes.length === 0 &&
+      schemaUseIsRead(reference.identifier, sourceCode, depth)
+    );
+  });
 }
 
 const SCHEMA_MODULES: ReadonlySet<string> = new Set([
@@ -1764,6 +1891,14 @@ function objectFieldSchema(
   field: string,
   sourceCode: SourceCode,
 ): TSESTree.Node | null {
+  // Every `const` on the way must be unchanged (`Body.shape.mode = other`).
+  const unchanged = constChain(node, sourceCode).every((identifier) => {
+    const variable = variableOf(identifier, sourceCode);
+    return variable !== null && isUnchangedSchema(variable, sourceCode);
+  });
+  if (!unchanged) {
+    return null;
+  }
   let current = resolveConst(node, sourceCode);
   for (let depth = 0; depth < 16 && current.type === AST_NODE_TYPES.CallExpression; depth += 1) {
     const callee = current.callee;
@@ -1779,6 +1914,10 @@ function objectFieldSchema(
       callee.object.type === AST_NODE_TYPES.Identifier &&
       isSchemaModule(callee.object, sourceCode)
     ) {
+      const root = variableOf(callee.object, sourceCode);
+      if (root === null || !isUnchangedSchema(root, sourceCode)) {
+        return null;
+      }
       const shape = current.arguments[0] === undefined ? null : unwrap(current.arguments[0]);
       return shape?.type === AST_NODE_TYPES.ObjectExpression ? shapeField(shape, field) : null;
     }
