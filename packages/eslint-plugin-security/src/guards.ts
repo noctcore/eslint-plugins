@@ -1504,8 +1504,9 @@ function isConfinedSafeParseData(
   return guardedBefore(
     sink,
     (test, negated) => isSuccessTest(test, result, negated, sourceCode),
-    // `result.data = other` after the check is a change to the binding.
-    (position) => writtenOnlyBefore(result, position),
+    // Any change to `result` or `result.data`, before or after the check,
+    // cancels it: `result.data = other` replaces the checked text.
+    (position) => writtenOnlyBefore(result, position) && isUnchangedResultData(result, true),
     sourceCode,
   );
 }
@@ -1638,9 +1639,12 @@ function isUnchangedObject(variable: Variable): boolean {
  * True when nothing changes the `data` object of a `safeParse` result: every
  * use of the binding reads another property (`result.success`,
  * `result.error`), or reads a field of `result.data` without changing it
- * (`result.data.mode = x` is a change).
+ * (`result.data.mode = x` is a change). With `scalar`, `result.data` is a
+ * string and may be read on its own; it still must not be written.
+ * `Object.assign(result, x)`, `mutate(result)`, an alias and a destructuring
+ * target (`({ v: result.data } = x)`) are all changes.
  */
-function isUnchangedResultData(result: Variable): boolean {
+function isUnchangedResultData(result: Variable, scalar = false): boolean {
   return result.references.every((reference) => {
     if (reference.init === true) {
       return true;
@@ -1657,7 +1661,7 @@ function isUnchangedResultData(result: Variable): boolean {
       return false;
     }
     // `result.error` and `result.success` are other objects; only `data` must stay unchanged.
-    return member.property.name !== 'data' || isReadOnlyMember(member);
+    return member.property.name !== 'data' || scalar || isReadOnlyMember(member);
   });
 }
 
