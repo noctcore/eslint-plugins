@@ -150,6 +150,21 @@ ruleTester.run('no-shell-interpolation', noShellInterpolationRule, {
       filename: TS,
     },
     { code: "const BIN = '/usr/bin/git'; exec(`${BIN} status`);", filename: TS },
+    // A checked string handed to a function, or read through an alias, is still the checked text.
+    {
+      code: 'declare function log(v: unknown): void; function h(x: string) { if (!/^[a-z]+$/.test(x)) return; log(x); const safe = x; exec(`ls ${safe}`); }',
+      filename: TS,
+    },
+    // An outer binding checked in a nested function, never written after its declaration.
+    {
+      code: 'let x = input(); async function h() { if (!/^[a-z]+$/.test(x)) return; await null; exec(`ls ${x}`); }',
+      filename: TS,
+    },
+    // In strict code `arguments` does not alias the parameters.
+    {
+      code: 'function h(x: string, y: string) { if (!/^[a-z]+$/.test(x)) return; arguments[0] = y; exec(`ls ${x}`); }',
+      filename: TS,
+    },
     // A frozen list, `indexOf`, and a comparison with a `const` string.
     {
       code: "const MODES = Object.freeze(['fast', 'slow']); export const ALL = MODES; function run(x: string) { if (!MODES.includes(x)) return; exec(`tool ${x}`); }",
@@ -454,10 +469,70 @@ ruleTester.run('no-shell-interpolation', noShellInterpolationRule, {
       filename: TS,
       errors: [{ messageId: 'shellInterpolation' }],
     },
+    // The same array changed after the check by a helper, through an alias (made before or after the check) or `Object.assign` / `Reflect.set`.
+    {
+      code: 'declare function mutate(a: unknown, b: string): void; function h(x: string, y: string) { const parts = [x]; if (!/^[a-z,]+$/.test(String(parts))) return; mutate(parts, y); exec(`echo ${parts}`); }',
+      filename: TS,
+      errors: [{ messageId: 'shellInterpolation' }],
+    },
+    {
+      code: 'function h(x: string, y: string) { const parts = [x]; if (!/^[a-z,]+$/.test(String(parts))) return; const p = parts; p.push(y); exec(`echo ${parts}`); }',
+      filename: TS,
+      errors: [{ messageId: 'shellInterpolation' }],
+    },
+    {
+      code: 'function h(x: string, y: string) { const parts = [x]; const p = parts; if (!/^[a-z,]+$/.test(String(parts))) return; p.push(y); exec(`echo ${parts}`); }',
+      filename: TS,
+      errors: [{ messageId: 'shellInterpolation' }],
+    },
+    {
+      code: 'function h(x: string, y: string) { const parts = [x]; if (!/^[a-z,]+$/.test(String(parts))) return; Object.assign(parts, [y]); exec(`echo ${parts}`); }',
+      filename: TS,
+      errors: [{ messageId: 'shellInterpolation' }],
+    },
+    {
+      code: 'function h(x: string, y: string) { const parts = [x]; if (!/^[a-z,]+$/.test(String(parts))) return; Reflect.set(parts, 0, y); exec(`echo ${parts}`); }',
+      filename: TS,
+      errors: [{ messageId: 'shellInterpolation' }],
+    },
+    {
+      code: 'declare function keep(o: object): void; function h(x: string) { const parts = [x]; if (!/^[a-z,]+$/.test(String(parts))) return; keep({ parts }); exec(`echo ${parts}`); }',
+      filename: TS,
+      errors: [{ messageId: 'shellInterpolation' }],
+    },
+    // A list or `Set` changed through another `const` name for it.
+    {
+      code: "const A = ['a']; const B = A; function h(x: string) { A.push(x); if (!B.includes(x)) return; exec(`echo ${x}`); }",
+      filename: TS,
+      errors: [{ messageId: 'shellInterpolation' }],
+    },
+    {
+      code: "const A = new Set(['a']); const B = A; function h(x: string) { A.add(x); if (!B.has(x)) return; exec(`echo ${x}`); }",
+      filename: TS,
+      errors: [{ messageId: 'shellInterpolation' }],
+    },
+    // An outer binding checked in a nested function: the function runs between writes the outer code makes (hoisted, or resumed after an `await`).
+    {
+      code: "let x = 'a'; for (const i of inputs) { x = i; void h(); } async function h() { if (!/^[a-z]+$/.test(x)) return; await null; exec(`ls ${x}`); }",
+      filename: TS,
+      errors: [{ messageId: 'shellInterpolation' }],
+    },
+    {
+      code: 'void h(); var x = evil; async function h() { if (!/^[a-z]+$/.test(x)) return; await null; exec(`ls ${x}`); }',
+      filename: TS,
+      errors: [{ messageId: 'shellInterpolation' }],
+    },
     // `{00}` allows zero repetitions, so the value can start with `-` (an option).
     {
       code: 'function h(x: string) { if (!/^a{00}[-a-z]+$/.test(x)) return; exec(`ls ${x}`); }',
       filename: TS,
+      errors: [{ messageId: 'shellInterpolation' }],
+    },
+    // In sloppy mode `arguments[0] = y` writes the parameter `x`.
+    {
+      code: 'function h(x, y) { if (!/^[a-z]+$/.test(x)) return; arguments[0] = y; exec(`ls ${x}`); }',
+      filename: 'runner.js',
+      languageOptions: { parserOptions: { sourceType: 'script' } },
       errors: [{ messageId: 'shellInterpolation' }],
     },
     // `safeParse` without the exit, an unconfined field, a list that is not frozen and leaks.

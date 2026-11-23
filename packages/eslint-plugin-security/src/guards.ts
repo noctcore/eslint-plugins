@@ -19,7 +19,9 @@ import { AST_NODE_TYPES, ASTUtils, type TSESLint, type TSESTree } from '@typescr
  * around it. The search stops at the first enclosing function, so a check
  * outside a callback or a hoisted function does not count inside it. Every
  * write to the checked binding must come before the check, and no nested
- * function may write it at all, so it cannot change after the check. An
+ * function may write it at all, so it cannot change after the check; a binding
+ * declared outside the checking function must never be written after its
+ * declaration. Changes through an alias or `Object.assign` count as writes. An
  * allowlist counts only when it never changes: a `const` array or `Set` of
  * literals, not exported, whose every use is an `includes` / `has` call (or,
  * for an array, `new Set(list)`). `const` aliases (`const safe = checked`) and
@@ -61,6 +63,8 @@ const MAX_DEPTH = 8;
 
 type SourceCode = Readonly<TSESLint.SourceCode>;
 type Variable = TSESLint.Scope.Variable;
+type Scope = TSESLint.Scope.Scope;
+type Reference = TSESLint.Scope.Reference;
 
 // ---------------------------------------------------------------------------
 // Regex analysis
@@ -582,14 +586,52 @@ function subjectVariable(node: TSESTree.Node, sourceCode: SourceCode): Variable 
  * True when every write to `variable` ends at or before `position`, and no
  * function nested in the one that declares it writes it: such a write runs
  * whenever the function is called, which source order does not tell.
+ *
+ * `scope` is the function scope the check and the sink run in. When it is not
+ * the one that declares the binding (a closure reads an outer `let`), the
+ * check's function can run at any point of its parent's run: hoisted above the
+ * writes, or resumed after an `await` while the parent writes again. Source
+ * order then says nothing, so the binding must never change after its `let` or
+ * `const` declaration (a `var` can be read before its initializer runs). In a
+ * sloppy-mode function, `arguments[0] = y` writes the first parameter, so a
+ * parameter of a function that uses `arguments` is never taken as unchanged.
  */
-function writtenOnlyBefore(variable: Variable, position: number): boolean {
+function writtenOnlyBefore(variable: Variable, position: number, scope: Scope | null): boolean {
   const home = variable.scope.variableScope;
-  return variable.references.every(
-    (reference) =>
-      (!reference.isWrite() && !mutatesContents(reference.identifier)) ||
-      (reference.from.variableScope === home && reference.identifier.range[1] <= position),
-  );
+  if (argumentsAliased(variable)) {
+    return false;
+  }
+  if (scope !== home) {
+    const def = variable.defs[0];
+    const declaredOnce = def?.type !== 'Variable' || def.parent.kind !== 'var';
+    return variable.references.every(
+      (reference) =>
+        (!reference.isWrite() || (reference.init === true && declaredOnce)) &&
+        contentChanges(reference)?.length === 0,
+    );
+  }
+  const before = (reference: Reference): boolean =>
+    reference.from.variableScope === home && reference.identifier.range[1] <= position;
+  return variable.references.every((reference) => {
+    if (reference.isWrite() && !before(reference)) {
+      return false;
+    }
+    const changes = contentChanges(reference);
+    return changes !== null && changes.every(before);
+  });
+}
+
+/**
+ * True for a parameter of a sloppy-mode function that reads `arguments`,
+ * where the two alias each other: `arguments[0] = y` changes the parameter.
+ */
+function argumentsAliased(variable: Variable): boolean {
+  const home = variable.scope;
+  if (home.isStrict || !variable.defs.some((def) => def.type === 'Parameter')) {
+    return false;
+  }
+  const args = home.set.get('arguments');
+  return args !== undefined && args.references.length > 0;
 }
 
 /** Methods that change an array, `Set` or `Map` in place. */
@@ -609,30 +651,107 @@ const MUTATING_METHODS: ReadonlySet<string> = new Set([
   'clear',
 ]);
 
-/**
- * True when a reference changes what the binding holds without assigning it:
- * `x.push(y)`, `x[0] = y`, `x.length = 0`, `x.n++`. A checked array that is
- * changed after the check no longer holds the checked text.
- */
-function mutatesContents(identifier: TSESTree.Node): boolean {
-  const member = identifier.parent;
-  if (member?.type !== AST_NODE_TYPES.MemberExpression || member.object !== identifier) {
+/** `Object.<name>` / `Reflect.<name>` functions that change their first argument. */
+const OBJECT_WRITERS: Readonly<Record<string, ReadonlySet<string>>> = {
+  Object: new Set(['assign', 'defineProperty', 'defineProperties', 'setPrototypeOf']),
+  Reflect: new Set(['set', 'defineProperty', 'deleteProperty', 'setPrototypeOf']),
+};
+
+/** True for a call such as `Object.assign(x, ...)` whose first argument is `node`. */
+function isObjectWriterTarget(node: TSESTree.Node, call: TSESTree.Node | undefined): boolean {
+  if (
+    call?.type !== AST_NODE_TYPES.CallExpression ||
+    call.arguments[0] !== node ||
+    call.callee.type !== AST_NODE_TYPES.MemberExpression ||
+    call.callee.computed ||
+    call.callee.object.type !== AST_NODE_TYPES.Identifier ||
+    call.callee.property.type !== AST_NODE_TYPES.Identifier
+  ) {
     return false;
   }
-  const use = member.parent;
-  if (
-    (use.type === AST_NODE_TYPES.AssignmentExpression && use.left === member) ||
-    (use.type === AST_NODE_TYPES.UpdateExpression && use.argument === member)
-  ) {
-    return true;
+  return OBJECT_WRITERS[call.callee.object.name]?.has(call.callee.property.name) === true;
+}
+
+/**
+ * True when the binding was given an array, object or `new` value somewhere
+ * (`const parts = [x]`): a container whose contents a helper can change.
+ */
+function holdsContainer(variable: Variable): boolean {
+  return variable.references.some((reference) => {
+    const value = reference.writeExpr;
+    return (
+      value?.type === AST_NODE_TYPES.ArrayExpression ||
+      value?.type === AST_NODE_TYPES.ObjectExpression ||
+      value?.type === AST_NODE_TYPES.NewExpression
+    );
+  });
+}
+
+/**
+ * The references that change what the binding holds without assigning it,
+ * reached from `reference`: `x.push(y)`, `x[0] = y`, `x.length = 0`, `x.n++`,
+ * `Object.assign(x, y)`, or the same through an alias (`const p = x;
+ * p.push(y)` yields the `p` of `p.push`). For a binding known to hold a
+ * container, handing it to a function (`mutate(x)`), storing it in an array,
+ * an object or a member, destructuring it, or yielding it also counts: the
+ * other side can change it. Empty when the reference changes nothing, null
+ * when it cannot be told. A checked array changed after the check no longer
+ * holds the checked text.
+ */
+function contentChanges(reference: Reference, depth = 0): Reference[] | null {
+  if (depth > MAX_DEPTH) {
+    return null;
   }
-  return (
-    use.type === AST_NODE_TYPES.CallExpression &&
-    use.callee === member &&
-    !member.computed &&
-    member.property.type === AST_NODE_TYPES.Identifier &&
-    MUTATING_METHODS.has(member.property.name)
-  );
+  const identifier = reference.identifier;
+  const parent = identifier.parent;
+  if (parent?.type === AST_NODE_TYPES.MemberExpression && parent.object === identifier) {
+    const use = parent.parent;
+    const changes =
+      (use.type === AST_NODE_TYPES.AssignmentExpression && use.left === parent) ||
+      (use.type === AST_NODE_TYPES.UpdateExpression && use.argument === parent) ||
+      (use.type === AST_NODE_TYPES.CallExpression &&
+        use.callee === parent &&
+        !parent.computed &&
+        parent.property.type === AST_NODE_TYPES.Identifier &&
+        MUTATING_METHODS.has(parent.property.name));
+    return changes ? [reference] : [];
+  }
+  if (isObjectWriterTarget(identifier, parent)) {
+    return [reference];
+  }
+  const container = reference.resolved !== null && holdsContainer(reference.resolved);
+  // `const p = x` or `p = x`: what `p` does to the value, `x` does too.
+  const aliasId =
+    parent?.type === AST_NODE_TYPES.VariableDeclarator && parent.init === identifier
+      ? parent.id
+      : parent?.type === AST_NODE_TYPES.AssignmentExpression &&
+          parent.operator === '=' &&
+          parent.right === identifier
+        ? parent.left
+        : null;
+  if (aliasId !== null && aliasId.type === AST_NODE_TYPES.Identifier) {
+    const alias = ASTUtils.findVariable(reference.from, aliasId);
+    if (alias === null) {
+      return null;
+    }
+    const out: Reference[] = [];
+    for (const aliasReference of alias.references) {
+      const changes = contentChanges(aliasReference, depth + 1);
+      if (changes === null) {
+        return null;
+      }
+      out.push(...changes);
+    }
+    return out;
+  }
+  const escapes =
+    aliasId !== null ||
+    (parent?.type === AST_NODE_TYPES.CallExpression && parent.callee !== identifier) ||
+    (parent?.type === AST_NODE_TYPES.NewExpression && parent.callee !== identifier) ||
+    parent?.type === AST_NODE_TYPES.ArrayExpression ||
+    (parent?.type === AST_NODE_TYPES.Property && parent.value === identifier) ||
+    parent?.type === AST_NODE_TYPES.YieldExpression;
+  return container && escapes ? [reference] : [];
 }
 
 /** The initializer of a `const` declared once with a plain identifier, else null. */
@@ -662,6 +781,26 @@ function resolveConst(node: TSESTree.Node, sourceCode: SourceCode): TSESTree.Nod
     current = unwrap(init);
   }
   return current;
+}
+
+/**
+ * The identifiers {@link resolveConst} walks through from `node`, in order
+ * (`B` then `A` for `const A = [...]; const B = A`). Each one is a name the
+ * same array or `Set` can be changed through.
+ */
+function constChain(node: TSESTree.Node, sourceCode: SourceCode): TSESTree.Identifier[] {
+  const chain: TSESTree.Identifier[] = [];
+  let current = unwrap(node);
+  for (let depth = 0; depth < MAX_DEPTH && current.type === AST_NODE_TYPES.Identifier; depth += 1) {
+    chain.push(current);
+    const variable = variableOf(current, sourceCode);
+    const init = variable === null ? null : constInit(variable);
+    if (init === null) {
+      break;
+    }
+    current = unwrap(init);
+  }
+  return chain;
 }
 
 function isStaticLiteral(node: TSESTree.Node): boolean {
@@ -736,6 +875,23 @@ function isUnchangedConst(
   });
 }
 
+/**
+ * True when every `const` on the way from `node` to the literal is unchanged
+ * ({@link isUnchangedConst}): with `const B = A`, a `A.push(x)` changes the
+ * list `B.includes` reads. An alias is itself a use of `A` that is not a read,
+ * so a list reached through one is refused, as a regex is.
+ */
+function isUnchangedChain(
+  node: TSESTree.Node,
+  reads: ReadonlySet<string>,
+  sourceCode: SourceCode,
+): boolean {
+  const chain = constChain(node, sourceCode);
+  return chain.length === 0
+    ? isUnchangedConst(node, reads, sourceCode)
+    : chain.every((identifier) => isUnchangedConst(identifier, reads, sourceCode));
+}
+
 /** True for an array literal (possibly behind a `const` that never changes) of string or number literals only. */
 function isLiteralList(node: TSESTree.Node, sourceCode: SourceCode): boolean {
   const resolved = resolveConst(node, sourceCode);
@@ -752,7 +908,7 @@ function isLiteralList(node: TSESTree.Node, sourceCode: SourceCode): boolean {
     resolved.type === AST_NODE_TYPES.ArrayExpression &&
     resolved.elements.length > 0 &&
     resolved.elements.every((element) => element !== null && isStaticLiteral(element)) &&
-    isUnchangedConst(node, LIST_READS, sourceCode)
+    isUnchangedChain(node, LIST_READS, sourceCode)
   );
 }
 
@@ -775,7 +931,7 @@ function frozenArgument(node: TSESTree.Node, sourceCode: SourceCode): TSESTree.N
 function isLiteralSet(node: TSESTree.Node, sourceCode: SourceCode): boolean {
   const resolved = resolveConst(node, sourceCode);
   return (
-    isUnchangedConst(node, SET_READS, sourceCode) &&
+    isUnchangedChain(node, SET_READS, sourceCode) &&
     resolved.type === AST_NODE_TYPES.NewExpression &&
     isGlobal(resolved.callee, 'Set', sourceCode) &&
     resolved.arguments.length === 1 &&
@@ -1139,23 +1295,26 @@ function expandTest(
  * `test ? sink : other` (or `test ? other : sink`) around it. Only blocks of
  * the function that holds the sink are searched. With `sourceCode`, a test is
  * also read through `!` and a `const` boolean (`const ok = re.test(x)`).
- * `writesEndBefore(position)` says whether the checked bindings are no longer
- * written after a guard at `position`.
+ * `writesEndBefore(position, scope)` says whether the checked bindings are no
+ * longer written after a guard at `position`, for a guard and sink that run
+ * in the function scope `scope`.
  */
 function guardedBefore(
   sink: TSESTree.Node,
   isGuard: GuardTest,
-  writesEndBefore: (position: number) => boolean,
+  writesEndBefore: (position: number, scope: Scope | null) => boolean,
   sourceCode?: SourceCode,
 ): boolean {
+  // The function scope the guard and the sink share (see `writtenOnlyBefore`).
+  const scope = sourceCode === undefined ? null : sourceCode.getScope(sink).variableScope;
   const passes = (test: TSESTree.Expression, negated: boolean, at: TSESTree.Node): boolean => {
-    if (writesEndBefore(at.range[0]) && isGuard(test, negated)) {
+    if (writesEndBefore(at.range[0], scope) && isGuard(test, negated)) {
       return true;
     }
     const expanded = sourceCode === undefined ? null : expandTest(test, negated, at, sourceCode);
     return (
       expanded !== null &&
-      writesEndBefore(expanded.position) &&
+      writesEndBefore(expanded.position, scope) &&
       isGuard(expanded.test, expanded.negated)
     );
   };
@@ -1234,7 +1393,7 @@ function variableGuarded(
         : holdsOnlyIfChecked(test, variable, judge, sourceCode),
     // The value read at `readAt` is the checked one only if nothing wrote it
     // after the check or after the read (`const copy = x; x = y; check(x)`).
-    (position) => writtenOnlyBefore(variable, Math.min(position, readAt)),
+    (position, scope) => writtenOnlyBefore(variable, Math.min(position, readAt), scope),
     sourceCode,
   );
 }
@@ -1510,7 +1669,7 @@ function isConfinedSafeParseData(
     (test, negated) => isSuccessTest(test, result, negated, sourceCode),
     // Any change to `result` or `result.data`, before or after the check,
     // cancels it: `result.data = other` replaces the checked text.
-    (position) => writtenOnlyBefore(result, position) && isUnchangedResultData(result, true),
+    (position, scope) => writtenOnlyBefore(result, position, scope) && isUnchangedResultData(result, true),
     sourceCode,
   );
 }
@@ -1740,7 +1899,7 @@ function isConfinedSafeParseResult(
   return guardedBefore(
     sink,
     (test, negated) => isSuccessTest(test, result, negated, sourceCode),
-    (position) => writtenOnlyBefore(result, position),
+    (position, scope) => writtenOnlyBefore(result, position, scope),
     sourceCode,
   );
 }
@@ -2167,7 +2326,7 @@ function hostPinned(
       negated
         ? failsUnlessChecked(test, inlineHost, regexPinsHost, sourceCode)
         : holdsOnlyIfChecked(test, inlineHost, regexPinsHost, sourceCode),
-    (position) => writtenOnlyBefore(variable, position),
+    (position, scope) => writtenOnlyBefore(variable, position, scope),
     sourceCode,
   );
   if (inlineGuarded) {
@@ -2180,9 +2339,9 @@ function hostPinned(
         negated
           ? failsUnlessChecked(test, binding, regexPinsHost, sourceCode)
           : holdsOnlyIfChecked(test, binding, regexPinsHost, sourceCode),
-      (position) =>
-        writtenOnlyBefore(binding, position) &&
-        writtenOnlyBefore(variable, Math.min(position, readEnd)),
+      (position, scope) =>
+        writtenOnlyBefore(binding, position, scope) &&
+        writtenOnlyBefore(variable, Math.min(position, readEnd), scope),
       sourceCode,
     );
     if (guarded) {
@@ -2443,7 +2602,7 @@ export function isSameSitePath(
     guardedBefore(
       sink,
       (test, negated) => isLocalPathGuard(test, negated, variable, sourceCode),
-      (position) => writtenOnlyBefore(variable, Math.min(position, inner.range[0])),
+      (position, scope) => writtenOnlyBefore(variable, Math.min(position, inner.range[0]), scope),
       sourceCode,
     )
   ) {
@@ -2681,7 +2840,7 @@ function urlObjectPinned(variable: Variable, sink: TSESTree.Node, sourceCode: So
       negated
         ? failsUnlessChecked(test, hostOfUrl, regexPinsHost, sourceCode)
         : holdsOnlyIfChecked(test, hostOfUrl, regexPinsHost, sourceCode),
-    (position) => writtenOnlyBefore(variable, position),
+    (position, scope) => writtenOnlyBefore(variable, position, scope),
     sourceCode,
   );
 }
@@ -2817,7 +2976,7 @@ function startsWithSlash(
               slashTerm(term.argument),
           )
         : flattenLogical(test, '&&').some(slashTerm),
-    (position) => writtenOnlyBefore(variable, Math.min(position, inner.range[0])),
+    (position, scope) => writtenOnlyBefore(variable, Math.min(position, inner.range[0]), scope),
     sourceCode,
   );
   if (guarded) {
@@ -2963,7 +3122,7 @@ export function isSameOriginUrlPath(
       });
       return origin && double;
     },
-    (position) => writtenOnlyBefore(url, position),
+    (position, scope) => writtenOnlyBefore(url, position, scope),
     sourceCode,
   );
 }
