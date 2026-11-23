@@ -94,11 +94,11 @@
     "security/require-path-containment": {
       "tp": 5,
       "fn": 25,
-      "fp": 1,
-      "tn": 29,
+      "fp": 0,
+      "tn": 30,
       "detection": 0.1667,
-      "falseAlarm": 0.0333,
-      "j": 0.1334,
+      "falseAlarm": 0,
+      "j": 0.1667,
       "extra": 10,
       "crossFp": 0,
       "crossSafe": 0,
@@ -185,11 +185,11 @@
     "security/path-traversal": {
       "tp": 5,
       "fn": 25,
-      "fp": 1,
-      "tn": 29,
+      "fp": 0,
+      "tn": 30,
       "detection": 0.1667,
-      "falseAlarm": 0.0333,
-      "j": 0.1334,
+      "falseAlarm": 0,
+      "j": 0.1667,
       "extra": 10,
       "title": "Path traversal",
       "cwe": "CWE-22",
@@ -4571,7 +4571,7 @@
       "pair": "express-avatar-read",
       "framework": "express",
       "cwe": "CWE-22",
-      "title": "basename of the query name taken before building the path"
+      "title": "basename of the query name refused as a dot segment before building the path"
     },
     "security/path-traversal/express-avatar-read.safe.js.case#security/no-user-controlled-fetch-url": {
       "outcome": "TN",
@@ -4582,7 +4582,7 @@
       "pair": "express-avatar-read",
       "framework": "express",
       "cwe": "CWE-22",
-      "title": "basename of the query name taken before building the path"
+      "title": "basename of the query name refused as a dot segment before building the path"
     },
     "security/path-traversal/express-avatar-read.safe.js.case#security/no-user-controlled-redirect": {
       "outcome": "TN",
@@ -4593,7 +4593,7 @@
       "pair": "express-avatar-read",
       "framework": "express",
       "cwe": "CWE-22",
-      "title": "basename of the query name taken before building the path"
+      "title": "basename of the query name refused as a dot segment before building the path"
     },
     "security/path-traversal/express-avatar-read.safe.js.case#security/require-path-containment": {
       "outcome": "TN",
@@ -4604,7 +4604,7 @@
       "pair": "express-avatar-read",
       "framework": "express",
       "cwe": "CWE-22",
-      "title": "basename of the query name taken before building the path"
+      "title": "basename of the query name refused as a dot segment before building the path"
     },
     "security/path-traversal/express-avatar-read.vuln.js.case#security/require-path-containment": {
       "outcome": "FN",
@@ -4706,11 +4706,11 @@
       "title": "realpath of the joined file must stay under the realpath of the docs dir"
     },
     "security/path-traversal/express-doc-realpath.safe.ts.case#security/require-path-containment": {
-      "outcome": "FP",
+      "outcome": "TN",
       "category": "security/path-traversal",
       "rule": "security/require-path-containment",
       "file": "security/path-traversal/express-doc-realpath.safe.ts.case",
-      "line": 12,
+      "line": null,
       "pair": "express-doc-realpath",
       "framework": "express",
       "cwe": "CWE-22",
@@ -5946,7 +5946,7 @@
       "pair": "node-download-handler",
       "framework": "node",
       "cwe": "CWE-22",
-      "title": "basename of the search param used when joining"
+      "title": "basename of the search param refused as a dot segment before joining"
     },
     "security/path-traversal/node-download-handler.safe.js.case#security/no-user-controlled-fetch-url": {
       "outcome": "TN",
@@ -5957,7 +5957,7 @@
       "pair": "node-download-handler",
       "framework": "node",
       "cwe": "CWE-22",
-      "title": "basename of the search param used when joining"
+      "title": "basename of the search param refused as a dot segment before joining"
     },
     "security/path-traversal/node-download-handler.safe.js.case#security/no-user-controlled-redirect": {
       "outcome": "TN",
@@ -5968,7 +5968,7 @@
       "pair": "node-download-handler",
       "framework": "node",
       "cwe": "CWE-22",
-      "title": "basename of the search param used when joining"
+      "title": "basename of the search param refused as a dot segment before joining"
     },
     "security/path-traversal/node-download-handler.safe.js.case#security/require-path-containment": {
       "outcome": "TN",
@@ -5979,7 +5979,7 @@
       "pair": "node-download-handler",
       "framework": "node",
       "cwe": "CWE-22",
-      "title": "basename of the search param used when joining"
+      "title": "basename of the search param refused as a dot segment before joining"
     },
     "security/path-traversal/node-download-handler.vuln.js.case#security/require-path-containment": {
       "outcome": "FN",
@@ -6111,7 +6111,7 @@
       "pair": "node-uploads-list",
       "framework": "node",
       "cwe": "CWE-22",
-      "title": "basename of the decoded url path used when resolving"
+      "title": "basename of the decoded url path refused as a dot segment before resolving"
     },
     "security/path-traversal/node-uploads-list.safe.ts.case#security/no-user-controlled-fetch-url": {
       "outcome": "TN",
@@ -6122,7 +6122,7 @@
       "pair": "node-uploads-list",
       "framework": "node",
       "cwe": "CWE-22",
-      "title": "basename of the decoded url path used when resolving"
+      "title": "basename of the decoded url path refused as a dot segment before resolving"
     },
     "security/path-traversal/node-uploads-list.safe.ts.case#security/no-user-controlled-redirect": {
       "outcome": "TN",
@@ -6133,7 +6133,7 @@
       "pair": "node-uploads-list",
       "framework": "node",
       "cwe": "CWE-22",
-      "title": "basename of the decoded url path used when resolving"
+      "title": "basename of the decoded url path refused as a dot segment before resolving"
     },
     "security/path-traversal/node-uploads-list.safe.ts.case#security/require-path-containment": {
       "outcome": "TN",
@@ -6144,7 +6144,7 @@
       "pair": "node-uploads-list",
       "framework": "node",
       "cwe": "CWE-22",
-      "title": "basename of the decoded url path used when resolving"
+      "title": "basename of the decoded url path refused as a dot segment before resolving"
     },
     "security/path-traversal/node-uploads-list.vuln.ts.case#security/require-path-containment": {
       "outcome": "FN",
