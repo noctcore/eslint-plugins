@@ -1,13 +1,22 @@
-import { AST_NODE_TYPES, unwrapTypeWrappers, type TSESLint, type TSESTree } from '@noctcore/eslint-utils';
+import {
+  AST_NODE_TYPES,
+  unwrapTypeWrappers,
+  type TSESLint,
+  type TSESTree,
+} from '@noctcore/eslint-utils';
 import { ASTUtils } from '@typescript-eslint/utils';
 import type { JSONSchema4 } from '@typescript-eslint/utils/json-schema';
 
 import { createRule } from '../createRule';
+import { type GuardContext, isProvenSafeValue } from '../guards';
+import { classifyShellParts, type ShellPart } from '../shell-words';
 
 const RULE_NAME = 'no-shell-interpolation';
 
 export interface NoShellInterpolationOptions {
   readonly extraCallees?: readonly string[];
+  /** Treat values read from `process.env` with a fixed key as the operator's, not the requester's. */
+  readonly trustEnvironment?: boolean;
 }
 
 type RuleOptions = [NoShellInterpolationOptions];
@@ -30,6 +39,10 @@ type MessageIds = 'shellInterpolation';
  *    array-args, no-shell forms are safe and left entirely alone.
  *  - A binding made with `promisify(exec)` (or `util.promisify(cp.exec)`) is
  *    followed through scope and checked like the runner it wraps.
+ *  - A runtime part the function already proved harmless is accepted (see
+ *    `../guards`): checked before the call against an allowlist of literals
+ *    or a shell-inert anchored regex, the output of a schema with such a
+ *    pattern, an in-file `const` literal, or a value read from `process.env`.
  * `exec` called as a member on a non-`child_process` object (notably
  * `regex.exec(...)`) is excluded so RegExp usage never false-positives. There is
  * no autofix — the safe rewrite changes the call shape.
@@ -51,7 +64,13 @@ const optionSchema: JSONSchema4 = {
     extraCallees: {
       type: 'array',
       items: { type: 'string' },
-      description: 'Extra callee names to treat as always-shell command runners, checked like `exec`.',
+      description:
+        'Extra callee names to treat as always-shell command runners, checked like `exec`.',
+    },
+    trustEnvironment: {
+      type: 'boolean',
+      description:
+        'Leave values read from `process.env` with a fixed key alone, as set by the operator. Off by default: in CI, variables such as `GITHUB_HEAD_REF` hold text an outsider chose.',
     },
   },
 };
@@ -72,9 +91,7 @@ function getCalleeInfo(callee: TSESTree.Node): CalleeInfo | null {
     callee.property.type === AST_NODE_TYPES.Identifier
   ) {
     const objectName =
-      callee.object.type === AST_NODE_TYPES.Identifier
-        ? callee.object.name
-        : undefined;
+      callee.object.type === AST_NODE_TYPES.Identifier ? callee.object.name : undefined;
     return { name: callee.property.name, isMember: true, objectName };
   }
   return null;
@@ -82,13 +99,8 @@ function getCalleeInfo(callee: TSESTree.Node): CalleeInfo | null {
 
 /** True when a `+` tree contains at least one non-literal (dynamic) operand. */
 function concatHasDynamicPart(node: TSESTree.Node): boolean {
-  if (
-    node.type === AST_NODE_TYPES.BinaryExpression &&
-    node.operator === '+'
-  ) {
-    return (
-      concatHasDynamicPart(node.left) || concatHasDynamicPart(node.right)
-    );
+  if (node.type === AST_NODE_TYPES.BinaryExpression && node.operator === '+') {
+    return concatHasDynamicPart(node.left) || concatHasDynamicPart(node.right);
   }
   return node.type !== AST_NODE_TYPES.Literal;
 }
@@ -98,13 +110,95 @@ function isDynamicCommandString(node: TSESTree.Node): boolean {
   if (node.type === AST_NODE_TYPES.TemplateLiteral) {
     return node.expressions.length > 0;
   }
-  if (
-    node.type === AST_NODE_TYPES.BinaryExpression &&
-    node.operator === '+'
-  ) {
+  if (node.type === AST_NODE_TYPES.BinaryExpression && node.operator === '+') {
     return concatHasDynamicPart(node);
   }
   return false;
+}
+
+/** How deep `const` string bindings are followed when the command is read. */
+const MAX_CONST_DEPTH = 8;
+
+/**
+ * The static text and runtime values of a command string, in order. An
+ * in-file `const` bound to a string literal (or to a template or `+` of such
+ * parts) is read as the text it holds, so `const P = 'sudo'` or
+ * `const SEP = ';'` changes where the next value lands.
+ */
+function commandSegments(
+  node: TSESTree.Node,
+  sourceCode: Readonly<TSESLint.SourceCode>,
+): (string | TSESTree.Node)[] {
+  const segments: (string | TSESTree.Node)[] = [];
+  const collect = (part: TSESTree.Node, depth: number): void => {
+    if (part.type === AST_NODE_TYPES.TemplateLiteral) {
+      part.quasis.forEach((quasi, index) => {
+        segments.push(quasi.value.cooked ?? '');
+        const expression = part.expressions[index];
+        if (expression !== undefined) {
+          collect(expression, depth + 1);
+        }
+      });
+    } else if (part.type === AST_NODE_TYPES.BinaryExpression && part.operator === '+') {
+      collect(part.left, depth);
+      collect(part.right, depth);
+    } else if (part.type === AST_NODE_TYPES.Literal) {
+      segments.push(String(part.value));
+    } else {
+      const init = depth < MAX_CONST_DEPTH ? constStringInit(part, sourceCode) : null;
+      if (init === null) {
+        segments.push(part);
+      } else {
+        collect(init, depth + 1);
+      }
+    }
+  };
+  collect(node, 0);
+  return segments;
+}
+
+/**
+ * For an identifier bound once by an in-file `const` to a string literal, a
+ * template or a `+` (whose own parts are read the same way), that initializer;
+ * else null.
+ */
+function constStringInit(
+  node: TSESTree.Node,
+  sourceCode: Readonly<TSESLint.SourceCode>,
+): TSESTree.Node | null {
+  const inner = unwrapTypeWrappers(node);
+  if (inner.type !== AST_NODE_TYPES.Identifier) {
+    return null;
+  }
+  const variable = ASTUtils.findVariable(sourceCode.getScope(inner), inner);
+  const def = variable?.defs[0];
+  if (
+    variable?.defs.length !== 1 ||
+    def?.type !== 'Variable' ||
+    def.parent.kind !== 'const' ||
+    def.node.id.type !== AST_NODE_TYPES.Identifier ||
+    def.node.init === null
+  ) {
+    return null;
+  }
+  const init = unwrapTypeWrappers(def.node.init);
+  const textual =
+    (init.type === AST_NODE_TYPES.Literal && typeof init.value === 'string') ||
+    init.type === AST_NODE_TYPES.TemplateLiteral ||
+    (init.type === AST_NODE_TYPES.BinaryExpression && init.operator === '+') ||
+    init.type === AST_NODE_TYPES.Identifier;
+  return textual ? init : null;
+}
+
+/** The guard context a runtime part needs, from where it lands in the command. */
+function partContext(part: ShellPart): GuardContext {
+  if (part.commandWord) {
+    return 'command';
+  }
+  if (part.afterSlash) {
+    return 'shell-path';
+  }
+  return part.midWord ? 'shell-word' : 'shell';
 }
 
 /**
@@ -132,10 +226,8 @@ function argsRequestShell(args: readonly TSESTree.Node[]): boolean {
         (prop) =>
           prop.type === AST_NODE_TYPES.Property &&
           !prop.computed &&
-          ((prop.key.type === AST_NODE_TYPES.Identifier &&
-            prop.key.name === 'shell') ||
-            (prop.key.type === AST_NODE_TYPES.Literal &&
-              prop.key.value === 'shell')) &&
+          ((prop.key.type === AST_NODE_TYPES.Identifier && prop.key.name === 'shell') ||
+            (prop.key.type === AST_NODE_TYPES.Literal && prop.key.value === 'shell')) &&
           isShellEnabled(prop.value),
       ),
   );
@@ -153,7 +245,10 @@ function childProcessRunner(node: TSESTree.Node): string | null {
   if (info === null) {
     return null;
   }
-  if (info.isMember && !(info.objectName !== undefined && CHILD_PROCESS_OBJECT.test(info.objectName))) {
+  if (
+    info.isMember &&
+    !(info.objectName !== undefined && CHILD_PROCESS_OBJECT.test(info.objectName))
+  ) {
     return null;
   }
   return ALWAYS_SHELL.has(info.name) || CONDITIONAL_SHELL.has(info.name) ? info.name : null;
@@ -197,7 +292,7 @@ export const noShellInterpolationRule = createRule<RuleOptions, MessageIds>({
         'A dynamically-built command string is passed to `{{callee}}`, which runs it through a shell (a command-injection sink). Pass the program and its arguments separately instead (e.g. `execFile(cmd, [arg1, arg2])`), where no shell re-parses the string.',
     },
   },
-  defaultOptions: [{ extraCallees: [] }],
+  defaultOptions: [{ extraCallees: [], trustEnvironment: false }],
   create(context, [options]) {
     const extra = options.extraCallees ?? [];
     const alwaysShell = new Set([...ALWAYS_SHELL, ...extra]);
@@ -235,6 +330,23 @@ export const noShellInterpolationRule = createRule<RuleOptions, MessageIds>({
           return;
         }
         if (!isDynamicCommandString(command)) {
+          return;
+        }
+        // Every runtime part already proven harmless: checked against an
+        // allowlist or a shell-inert anchored regex, a schema with such a
+        // pattern, an in-file constant, or (with `trustEnvironment`) a value
+        // from `process.env`.
+        const trustEnvironment = options.trustEnvironment === true;
+        // A value that starts a word must not start with `-` (an option) or
+        // `#` (a comment); one glued to text before it may. A value in the
+        // program name is proven only by a literal allowlist or a constant.
+        const parts = classifyShellParts(commandSegments(command, context.sourceCode));
+        const provenSafe = parts.every((part) =>
+          isProvenSafeValue(part.node, node, partContext(part), context.sourceCode, {
+            trustEnvironment,
+          }),
+        );
+        if (provenSafe) {
           return;
         }
         context.report({

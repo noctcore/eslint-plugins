@@ -24,8 +24,8 @@ const CAUGHT = {
 const MISSED = {
   // The command is built in a variable, which a single-call rule cannot see.
   'security/demo/missed.vuln.js.case': `${header('missed')}\nimport { exec } from 'node:child_process';\nconst cmd = 'ls ' + req.query.dir;\nexec(cmd); // expect: security/no-shell-interpolation\n`,
-  // Validated, then interpolated: safe, but the rule still reports it.
-  'security/demo/missed.safe.js.case': `${header('missed')}\n// ok\nimport { exec } from 'node:child_process';\nconst dir = req.query.dir;\nif (/^[a-z]+$/.test(dir)) exec(\`ls \${dir}\`);\n`,
+  // Validated by a helper the rule cannot read, then interpolated: safe, but the rule still reports it.
+  'security/demo/missed.safe.js.case': `${header('missed')}\n// ok\nimport { exec } from 'node:child_process';\nconst dir = req.query.dir;\nif (isPlainName(dir)) exec(\`ls \${dir}\`);\n`,
 };
 
 function outcomes(results: readonly CaseResult[]): Record<string, string> {
