@@ -83,6 +83,9 @@ describe('classifyShellParts', () => {
     '> out $',
     '<in $',
     '>>log $',
+    // dash (Node's `/bin/sh` on Debian and Ubuntu) reads `&>` as `&` then `>`
+    'ls &>/dev/null $',
+    'ls&>/dev/null $',
   ])('reads the value in `%s` as a program', (command) => {
     expect(commandWords(command)).toEqual([true]);
   });
@@ -91,7 +94,6 @@ describe('classifyShellParts', () => {
     'ls $',
     'git -C $ log',
     'ls 2>&1 $',
-    'ls &>out $',
     'ls >$',
     'cmd >out $',
     'find . -name $',
@@ -106,6 +108,11 @@ describe('classifyShellParts', () => {
     expect(commandWords('A=$ sudo $')).toEqual([true, true]);
     expect(commandWords('A=$ B=$x $')).toEqual([true, true, true]);
     expect(commandWords('A=$ ls $')).toEqual([true, false]);
+  });
+
+  it('keeps `2>&1` and `>&2` as redirects', () => {
+    expect(commandWords('ls 2>&1 $')).toEqual([false]);
+    expect(commandWords('ls >&2 $')).toEqual([false]);
   });
 
   it('starts over after a separator', () => {

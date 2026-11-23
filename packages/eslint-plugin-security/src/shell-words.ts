@@ -96,9 +96,13 @@ const SEPARATORS = ';|()`\n\r';
 /** `NAME=value` before a command sets a variable for it. */
 const ASSIGNMENT_WORD = /^[A-Za-z_]\w*=/u;
 
-/** A redirect operator, alone (`>`, `2>`) or with its target (`>out`, `2>&1`). */
-const REDIRECT_START = /^\d*(?:>>?|<<?|>&|<&|&>|>\|)/u;
-const REDIRECT_ONLY = /^\d*(?:>>?|<<?|>&|<&|&>|>\|)$/u;
+/**
+ * A redirect operator, alone (`>`, `2>`) or with its target (`>out`, `2>&1`).
+ * Bash's `&>file` is not one: Node runs `/bin/sh`, which is dash on Debian and
+ * Ubuntu, where `cmd &>file next` is `cmd &` and then `>file next`.
+ */
+const REDIRECT_START = /^\d*(?:>>?|<<?|>&|<&|>\|)/u;
+const REDIRECT_ONLY = /^\d*(?:>>?|<<?|>&|<&|>\|)$/u;
 
 /**
  * Static text before a value glues it into a word when it ends in a plain word
@@ -195,10 +199,11 @@ export function classifyShellParts(segments: readonly (string | TSESTree.Node)[]
       return false;
     }
     if (char === '&') {
-      // `2>&1`, `<&0` and `&>file` are redirects, not a background `&`.
+      // `2>&1` and `<&0` are redirects, not a background `&`. `&>file` is
+      // read as dash reads it: `&`, then a redirect before the next program
+      // (in bash this only reports more).
       const before = items[index - 1];
-      const after = items[index + 1];
-      return before !== '>' && before !== '<' && after !== '>';
+      return before !== '>' && before !== '<';
     }
     return SEPARATORS.includes(char);
   };

@@ -150,6 +150,10 @@ ruleTester.run('no-shell-interpolation', noShellInterpolationRule, {
       filename: TS,
     },
     { code: "const BIN = '/usr/bin/git'; exec(`${BIN} status`);", filename: TS },
+    {
+      code: "function run(t: string) { if (!/^[a-z]+$/.test(t)) return; exec(`ls 2>&1 ${t}`); exec(`ls >&2 ${t}`); }",
+      filename: TS,
+    },
     // Redirects and words that only look like wrappers keep an argument an argument; a constant is read as its text.
     {
       code: 'function run(x: string) { if (!/^[a-z]+$/.test(x)) return; exec(`ls 2>&1 ${x}`); exec(`ls -la ${x} &> out`); exec(`find . -name ${x}`); exec(`echo sudo ${x}`); }',
@@ -928,6 +932,17 @@ ruleTester.run('no-shell-interpolation', noShellInterpolationRule, {
     },
     {
       code: "const N = 3; function run(t: string) { if (!/^[a-z]+$/.test(t)) return; exec(`N=${N} ${t}`); }",
+      filename: TS,
+      errors: [{ messageId: 'shellInterpolation' }],
+    },
+    // dash (Node's `/bin/sh` on Debian and Ubuntu) reads `&>` as `&`, then a redirect before the next program.
+    {
+      code: "function run(t: string) { if (!/^[a-z]+$/.test(t)) return; exec(`ls &>/dev/null ${t}`); }",
+      filename: TS,
+      errors: [{ messageId: 'shellInterpolation' }],
+    },
+    {
+      code: "function run(t: string) { if (!/^[a-z]+$/.test(t)) return; exec(`ls&>/dev/null ${t}`); }",
       filename: TS,
       errors: [{ messageId: 'shellInterpolation' }],
     },
