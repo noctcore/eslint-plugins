@@ -145,11 +145,15 @@ the element. Use serialize-javascript or htmlescape there, as a JS expression, n
 backticks and their own `"` closes a double-quoted string. The rule reads the script text before
 the value to tell: a quote escaped with `\` does not open or close a string, and a quote inside a
 regex literal (`/'/g`, `/[a-z']/`) opens nothing. A `/` starts a regex at the start, after an
-operator or punctuation (`( , = : [ ! & | ? { } ; + - * % < > ~ ^`), after a keyword such as
-`return` or `typeof`, and after the `)` of an `if`, `while`, `for` or `with` head; after any other
-`)`, a `]`, a name, a number or a string it is division. Where the rule cannot tell (a `/` right after `++`,
-`--` or `.`), it stops treating anything later in that script as code and reports. A value inside a
-regex body (`/${q}/i`) is never code.
+operator or punctuation (`( , = : [ ! & | ? { ; + - * % < > ~ ^`), after a reserved word
+(`return`, `typeof`, `instanceof`, `in`, `new`, `delete`, `void`, `throw`, `case`, `do`, `else`),
+and after the `)` of an `if`, `while`, `for` or `with` head. After any other `)`, a `]`, a name, a
+number or a string it is division. Whitespace ends a word (`q` then a newline then `return` is two
+words), and a name right after `.` is never a keyword (`a.return / 2`, `a.if(x)`). Where the rule
+cannot tell, a `/` that does not start a comment makes it stop treating anything later in that
+script as code, so it reports: after `}` (a block, or an object or function expression), `++`,
+`--`, `.`, or a word that is a keyword only in some places (`of`, `await`, `yield`, `get`, `set`,
+`async`, `let`, `static`). A value inside a regex body (`/${q}/i`) is never code.
 
 ### What makes a value safe
 
