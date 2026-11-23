@@ -118,7 +118,9 @@ the rule can read:
   several arguments). A regex that admits `-` or `#` must pin the first character to something
   else (`^[a-z][a-z0-9-]*$`): a leading `-` turns the value into an option (argument injection,
   CWE-88) and a leading `#` comments out the rest. A value glued to text before it in the same
-  word (`` `git log --author=${author}` ``) cannot start an option, so there `-` and `#` may lead. A regex in a `const` counts only if it is not
+  word (`` `git log --author=${author}` ``) cannot start an option, so there `-` and `#` may lead.
+  Text ending in `-` or `+` does not count as inside a word: `` `tool -${x}` `` with
+  `x = '-output=f'` is a long option. A regex in a `const` counts only if it is not
   exported and every use of it is a `test` / `exec` call or an argument of `pattern`, `regex`,
   `match` and the like, so no `RE.test = ...` or `RE.compile(...)`;
 - a schema with such a pattern or a literal set: `const { error, value } = schema.validate(x)`
@@ -126,14 +128,15 @@ the rule can read:
   `const result = schema.safeParse(x)` after an exiting `if (!result.success)`; a field of a parsed
   object schema counts when that field's schema does (`Body.parse(body).mode`,
   `const { mode } = Body.parse(body)` with `z.object({ mode: z.enum([...]) })`), as long as nothing
-  changes the parsed object (every use of `parsed` or `result.data` reads a field, so no
-  `parsed.mode = other` or `Object.assign(parsed, other)`) and no spread, computed key or later key
-  of the same name follows the field in the shape. The schema is an in-file chain that starts at
+  changes the parsed object or the result (every use of `parsed` reads a field and every use of
+  `result` reads `success`, `error` or `data`, so no `parsed.mode = other`, `result.data = other`
+  or `Object.assign(parsed, other)`, before or after the check) and no spread, computed key or
+  later key of the same name follows the field in the shape. The schema is an in-file chain that starts at
   the zod or joi import (`import { z } from 'zod'`, `import Joi from 'joi'`, `require('joi')`),
   possibly through `const` chains read under the same rules, with `.pattern(re)` / `.regex(re)`
   (no options argument; a string name or message is fine) or `.valid(...)` / `.enum([...])` /
-  `.literal(...)`, and every other method in the chain only narrows (`min`, `max`, `length`, `required`, `optional`, `trim`, `lowercase` and the like).
-  A chain with `default`, `catch`, `failover`, `pipe`, `transform`, `allow` or any other method
+  `.literal(...)`, and every other method in the chain only narrows (`min`, `max`, `length`,
+  `required`, `optional`, `trim`, `lowercase` and the like). A chain with `default`, `catch`, `failover`, `pipe`, `transform`, `allow` or any other method
   can let another value through and is not read.
 
 Every write to the checked binding must come before the check, in the function that declares it:
