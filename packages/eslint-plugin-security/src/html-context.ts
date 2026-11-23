@@ -400,8 +400,14 @@ export function feedValue(state: HtmlState): HtmlState {
       // A runtime part may be scheme letters, so it keeps a scheme open.
       return appendValue(state, RUNTIME);
     case 'comment':
+      return { ...state, value: `${state.value}\u0000` };
     case 'raw':
-      return { ...state, attr: state.mode === 'raw' ? '' : state.attr, value: `${state.value}\u0000` };
+      return {
+        ...state,
+        attr: '',
+        value: `${state.value}\u0000`,
+        js: state.tag === 'script' || state.tag === '?' ? jsValue(state.js ?? '') : state.js,
+      };
     default:
       return state;
   }
@@ -412,85 +418,240 @@ export function stateKey(state: HtmlState): string {
 }
 
 /*
- * The JS lexer for script content, kept as a stack of one-character frames,
- * innermost last. Empty is top-level code. Frames:
+ * The JS lexer for script content. Its state is a stack of one-character
+ * frames, innermost last, then `|` and the previous significant token, which
+ * tells a regex `/` from a division `/`. Empty is top-level code at a start.
+ *
+ * Frames:
  *   `'` `"` `` ` ``  an open string or template
  *   `\`            an escape inside one: the next character is taken as is
  *   `$`            a `$` in a template, which `{` turns into an expression
  *   `{`            code inside a template's `${`, ended by its `}`
  *   `b`            a `{` block inside that code, so its `}` is not the end
- *   `~`            a `/` in code, which `/` or `*` turns into a comment
+ *   `P` `K`        an open `(`; `K` when it follows `if`, `while`, `for` or
+ *                  `with`, whose `)` ends a head a regex may follow
+ *   `T`            a `/` where a regex may start: `/` or `*` make a comment
+ *   `~`            a `/` after an operand: a comment, or division
+ *   `R` `C`        a regex body, and a `[...]` class inside it
  *   `/` `*`        a line or block comment; `+` is a `*` inside a block comment
- *   `?`            lost track (too deep): never a code position
- * A regex literal is read as code, so a quote in one opens a string: that can
- * only report more, never less.
+ *   `?`            lost track: never a code position again
+ *
+ * Previous token: `r` (a regex may follow: the start, an operator,
+ * punctuation, a keyword, or the `)` of an `if (...)` head), `d` (division
+ * follows: any other `)`, `]`, a literal, a string or regex end), `w<word>` (an identifier or number so far), `W` (a
+ * word too long to be a keyword), `p+` / `p-` (one `+` or `-`), `u` (unknown:
+ * `++`, `--`, `.` and the rest). A `/` after an unknown token loses track, so
+ * the rule reports rather than guess.
  */
 const MAX_JS_DEPTH = 24;
 const LINE_ENDS = /[\n\r\u2028\u2029]/u;
+const JS_SPACE = /\s/u;
+const WORD_CHAR = /[\p{L}\p{N}_$]/u;
+/** Punctuators after which a `/` starts a regex. */
+const REGEX_AFTER: ReadonlySet<string> = new Set([...'(,=:[!&|?{};*%<>~^']);
+/** Keywords after which a `/` starts a regex. */
+const REGEX_KEYWORDS: ReadonlySet<string> = new Set([
+  'return',
+  'typeof',
+  'instanceof',
+  'in',
+  'of',
+  'new',
+  'delete',
+  'void',
+  'throw',
+  'case',
+  'do',
+  'else',
+  'yield',
+  'await',
+]);
+const LONGEST_KEYWORD = 10;
+/** Keywords whose `(...)` head is followed by a statement, so a `/` after its `)` starts a regex. */
+const HEAD_KEYWORDS: ReadonlySet<string> = new Set(['if', 'while', 'for', 'with']);
 
-function jsCode(js: string, char: string): string {
+function splitJs(js: string): [stack: string, prev: string] {
+  const bar = js.lastIndexOf('|');
+  return bar === -1 ? [js, 'r'] : [js.slice(0, bar), js.slice(bar + 1)];
+}
+
+function joinJs(stack: string, prev: string): string {
+  if (stack.includes('?')) {
+    return '?';
+  }
+  if (stack.length > MAX_JS_DEPTH) {
+    return '?';
+  }
+  return stack === '' && prev === 'r' ? '' : `${stack}|${prev}`;
+}
+
+/** True when a `/` after `prev` starts a regex, false for division, null when unknown. */
+function slashStartsRegex(prev: string): boolean | null {
+  if (prev === 'r' || prev === 'p+' || prev === 'p-') {
+    return true;
+  }
+  if (prev === 'd' || prev === 'W') {
+    return false;
+  }
+  if (prev.startsWith('w')) {
+    return REGEX_KEYWORDS.has(prev.slice(1));
+  }
+  return null;
+}
+
+/** One character of code (top level, or inside a template's `${`). */
+function jsCode(stack: string, prev: string, char: string): string {
+  if (JS_SPACE.test(char)) {
+    return joinJs(stack, prev);
+  }
   switch (char) {
     case "'":
     case '"':
     case '`':
-      return js + char;
-    case '/':
-      return `${js}~`;
-    case '{':
-      return js.includes('{') ? `${js}b` : js;
-    case '}': {
-      const top = js.at(-1);
-      return top === 'b' || top === '{' ? js.slice(0, -1) : js;
+      return joinJs(stack + char, prev);
+    case '/': {
+      const regex = slashStartsRegex(prev);
+      return regex === null ? '?' : joinJs(stack + (regex ? 'T' : '~'), prev);
     }
+    case '{':
+      return joinJs(stack.includes('{') ? `${stack}b` : stack, 'r');
+    case '}': {
+      const top = stack.at(-1);
+      if (top === '{') {
+        // Back to the template's text.
+        return joinJs(stack.slice(0, -1), prev);
+      }
+      return joinJs(top === 'b' ? stack.slice(0, -1) : stack, 'r');
+    }
+    case '+':
+    case '-':
+      // `a++ / b` is division, `a + /b/` a regex: a doubled sign is unknown.
+      return joinJs(stack, prev === `p${char}` ? 'u' : `p${char}`);
+    case '(':
+      return joinJs(stack + (prev.startsWith('w') && HEAD_KEYWORDS.has(prev.slice(1)) ? 'K' : 'P'), 'r');
+    case ')': {
+      const top = stack.at(-1);
+      if (top !== 'P' && top !== 'K') {
+        // A `)` this lexer did not see open: unknown.
+        return joinJs(stack, 'u');
+      }
+      return joinJs(stack.slice(0, -1), top === 'K' ? 'r' : 'd');
+    }
+    case ']':
+      return joinJs(stack, 'd');
     default:
-      return js;
+      break;
   }
+  if (WORD_CHAR.test(char)) {
+    if (prev === 'W') {
+      return joinJs(stack, 'W');
+    }
+    const word = prev.startsWith('w') ? prev.slice(1) + char : char;
+    return joinJs(stack, word.length > LONGEST_KEYWORD ? 'W' : `w${word}`);
+  }
+  return joinJs(stack, REGEX_AFTER.has(char) ? 'r' : 'u');
 }
 
 /** The lexer state after one more character of author text. */
 export function jsStep(js: string, char: string): string {
-  if (js.endsWith('?')) {
-    return js;
+  const [stack, prev] = splitJs(js);
+  if (stack.includes('?')) {
+    return '?';
   }
-  const top = js.at(-1);
-  const rest = js.slice(0, -1);
-  let next: string;
+  const top = stack.at(-1);
+  const rest = stack.slice(0, -1);
   switch (top) {
     case '\\':
-      next = rest;
-      break;
+      return joinJs(rest, prev);
     case "'":
     case '"':
-      next = char === '\\' ? `${js}\\` : char === top || LINE_ENDS.test(char) ? rest : js;
-      break;
+      if (char === '\\') {
+        return joinJs(`${stack}\\`, prev);
+      }
+      return char === top || LINE_ENDS.test(char) ? joinJs(rest, 'd') : js;
     case '`':
-      next = char === '\\' ? `${js}\\` : char === '`' ? rest : char === '$' ? `${js}$` : js;
-      break;
+      if (char === '\\' || char === '$') {
+        return joinJs(stack + char, prev);
+      }
+      return char === '`' ? joinJs(rest, 'd') : js;
     case '$':
       // `${` opens an expression; anything else is template text again.
-      next = char === '{' ? `${rest}{` : jsStep(rest, char);
-      break;
+      return char === '{' ? joinJs(`${rest}{`, 'r') : jsStep(joinJs(rest, prev), char);
+    case 'T':
+      if (char === '/' || char === '*') {
+        return joinJs(rest + char, prev);
+      }
+      // A regex body starts with this character.
+      return jsStep(joinJs(`${rest}R`, prev), char);
     case '~':
-      next = char === '/' ? `${rest}/` : char === '*' ? `${rest}*` : jsCode(rest, char);
-      break;
+      if (char === '/' || char === '*') {
+        return joinJs(rest + char, prev);
+      }
+      // Division: the operator is behind, so a regex may follow.
+      return jsCode(rest, 'r', char);
+    case 'R':
+      if (char === '\\' || char === '[') {
+        return joinJs(stack + (char === '[' ? 'C' : '\\'), prev);
+      }
+      if (LINE_ENDS.test(char)) {
+        return '?';
+      }
+      return char === '/' ? joinJs(rest, 'd') : js;
+    case 'C':
+      if (char === '\\') {
+        return joinJs(`${stack}\\`, prev);
+      }
+      if (LINE_ENDS.test(char)) {
+        return '?';
+      }
+      return char === ']' ? joinJs(rest, prev) : js;
     case '/':
-      next = LINE_ENDS.test(char) ? rest : js;
-      break;
+      return LINE_ENDS.test(char) ? joinJs(rest, prev) : js;
     case '*':
-      next = char === '*' ? `${js}+` : js;
-      break;
+      return char === '*' ? joinJs(`${stack}+`, prev) : js;
     case '+':
-      next = char === '/' ? rest.slice(0, -1) : char === '*' ? js : rest;
-      break;
+      if (char === '/') {
+        return joinJs(rest.slice(0, -1), prev);
+      }
+      return char === '*' ? js : joinJs(rest, prev);
     default:
-      // Code: top-level, or inside a template's `${` (`{`, `b`).
-      next = jsCode(js, char);
+      return jsCode(stack, prev, char);
   }
-  return next.length > MAX_JS_DEPTH ? '?' : next;
+}
+
+/** The lexer state after a runtime value: an operand in code, a start of a regex body after a regex `/`. */
+export function jsValue(js: string): string {
+  const [stack, prev] = splitJs(js);
+  if (stack.includes('?')) {
+    return '?';
+  }
+  switch (stack.at(-1)) {
+    case undefined:
+    case '{':
+    case 'b':
+    case 'P':
+    case 'K':
+      return joinJs(stack, 'd');
+    case '~':
+      return joinJs(stack.slice(0, -1), 'd');
+    case 'T':
+      return joinJs(`${stack.slice(0, -1)}R`, prev);
+    case '$':
+      return joinJs(stack.slice(0, -1), prev);
+    case '\\':
+      return joinJs(stack.slice(0, -1), prev);
+    default:
+      // Inside a string, template, regex or comment: assumed to stay there.
+      return js;
+  }
 }
 
 /** True when a value written at this lexer state stands as a JS expression. */
 export function jsCodePosition(js: string): boolean {
-  const top = js.at(-1);
-  return top === undefined || top === '{' || top === 'b' || top === '~';
+  const [stack] = splitJs(js);
+  const top = stack.at(-1);
+  return (
+    !stack.includes('?') &&
+    (top === undefined || top === '{' || top === 'b' || top === 'P' || top === 'K' || top === '~')
+  );
 }
