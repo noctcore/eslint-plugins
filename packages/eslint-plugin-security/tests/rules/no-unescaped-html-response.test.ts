@@ -147,6 +147,12 @@ ruleTester.run('no-unescaped-html-response', noUnescapedHtmlResponseRule, {
       code: "import serialize from 'serialize-javascript'; res.send(`<script>window.__STATE__ = ${serialize(state)};</script>`);",
       filename: TS,
     },
+    // Division and closed regex literals leave the lexer in code position.
+    { code: 'import serialize from \'serialize-javascript\';\nexport function h(req, res) { res.send(`<script>var r = a / ${serialize(req.query.q)};</script>`); }', filename: TS, },
+    { code: 'import serialize from \'serialize-javascript\';\nexport function h(req, res) { res.send(`<script>var x = a / b / c; var s = ${serialize(req.query.q)};</script>`); }', filename: TS, },
+    { code: 'import serialize from \'serialize-javascript\';\nexport function h(req, res) { res.send(`<script>x = /\'/; var s = ${serialize(req.query.q)};</script>`); }', filename: TS, },
+    { code: 'import serialize from \'serialize-javascript\';\nexport function h(req, res) { res.send(`<script>var m = (a + b) / 2; f(g(1)) / 3; var s = ${serialize(req.query.q)};</script>`); }', filename: TS, },
+    { code: 'import serialize from \'serialize-javascript\';\nexport function h(req, res) { res.send(`<script>function f(s) { return /\'/.test(s) } var s = ${serialize(req.query.q)};</script>`); }', filename: TS, },
     // Serialized JSON in code position: after a closed string (escaped quotes included), a comment, or in `${}`.
     {
       code: "import serialize from 'serialize-javascript'; res.send(`<script>var a = 'it\\'s'; /* \"x */ // 'y\nvar s = ${serialize(state)};</script>`);",
@@ -248,6 +254,16 @@ ruleTester.run('no-unescaped-html-response', noUnescapedHtmlResponseRule, {
       filename: TS,
       errors: html,
     },
+    // A quote inside a regex literal opens no string; a value in a regex body is not code.
+    { code: 'import serialize from \'serialize-javascript\';\nexport function h(req, res) { res.send(`<script>var ok = /^[a-z\']+$/.test(n); var s = \'${serialize(req.query.q)}\';</script>`); }', filename: TS, errors: where, },
+    { code: 'import serialize from \'serialize-javascript\';\nexport function h(req, res) { res.send(`<script>var re = /\'/g; var s = \'${serialize(req.query.q)}\';</script>`); }', filename: TS, errors: where, },
+    { code: 'import serialize from \'serialize-javascript\';\nexport function h(req, res) { res.send(`<script>var re = /"/g; var s = "${serialize(req.query.q)}";</script>`); }', filename: TS, errors: where, },
+    { code: 'import serialize from \'serialize-javascript\';\nexport function h(req, res) { res.send(`<script>var re = /\\`/g; var s = \\`${serialize(req.query.q)}\\`;</script>`); }', filename: TS, errors: where, },
+    { code: 'import htmlescape from \'htmlescape\';\nexport function h(req, res) { res.send(`<script>var re = /${htmlescape(req.query.q)}/i;</script>`); }', filename: TS, errors: where, },
+    { code: 'import serialize from \'serialize-javascript\';\nexport function h(req, res) { res.send(`<script>var re = /${serialize(req.query.q)}/i;</script>`); }', filename: TS, errors: where, },
+    { code: 'import serialize from \'serialize-javascript\';\nexport function h(req, res) { res.send(`<script>if (a) /\'/.test(s); var s = \'${serialize(req.query.q)}\';</script>`); }', filename: TS, errors: where, },
+    { code: 'import serialize from \'serialize-javascript\';\nexport function h(req, res) { res.send(`<script>var x = i++ / 2 + \'/\' + \'${serialize(req.query.q)}\';</script>`); }', filename: TS, errors: where, },
+    { code: 'import serialize from \'serialize-javascript\';\nexport function h(req, res) { res.send(`<script>var re = /[/\']/; var s = \'${serialize(req.query.q)}\';</script>`); }', filename: TS, errors: where, },
     // Serialized JSON inside a JS string, template or comment can close it.
     {
       code: "import serialize from 'serialize-javascript';\nres.send(`<script>window.__STATE__ = JSON.parse('${serialize(req.query.q, { isJSON: true })}');</script>`);",
