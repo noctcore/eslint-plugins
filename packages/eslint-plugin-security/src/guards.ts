@@ -2492,6 +2492,23 @@ function isPlainLiteral(node: TSESTree.Node): boolean {
 /** The URL fields whose value names a host and nothing the requester can extend. */
 const HOST_FIELDS: ReadonlySet<string> = new Set(['hostname', 'host', 'origin']);
 
+/**
+ * Only `origin`: a URL with a scheme that is not http(s) has the origin
+ * `null`, while `javascript://app.example.com/%0aalert(1)` still has the
+ * hostname `app.example.com`.
+ */
+const ORIGIN_FIELD: ReadonlySet<string> = new Set(['origin']);
+
+/** Options for {@link isHostPinned}. */
+export interface HostPinOptions {
+  /**
+   * Count a check on `origin` only, not on `hostname` or `host`. For a sink
+   * that may hand the URL to script (a client-side router), where a
+   * `javascript:` URL with an allowlisted host would run.
+   */
+  readonly originOnly?: boolean;
+}
+
 /** `new URL(x)` with one argument, else null. */
 function singleArgumentUrl(node: TSESTree.Node): TSESTree.Node | null {
   const inner = unwrap(node);
@@ -2505,13 +2522,16 @@ function singleArgumentUrl(node: TSESTree.Node): TSESTree.Node | null {
 }
 
 /** For `new URL(x).hostname` (or `.host` / `.origin`), the `x`; else null. */
-export function hostFieldSubject(node: TSESTree.Node): TSESTree.Node | null {
+export function hostFieldSubject(
+  node: TSESTree.Node,
+  fields: ReadonlySet<string> = HOST_FIELDS,
+): TSESTree.Node | null {
   const inner = unwrap(node);
   if (
     inner.type !== AST_NODE_TYPES.MemberExpression ||
     inner.computed ||
     inner.property.type !== AST_NODE_TYPES.Identifier ||
-    !HOST_FIELDS.has(inner.property.name)
+    !fields.has(inner.property.name)
   ) {
     return null;
   }
@@ -2526,6 +2546,7 @@ export function hostFieldSubject(node: TSESTree.Node): TSESTree.Node | null {
 function hostBindingsOf(
   variable: Variable,
   sourceCode: SourceCode,
+  fields: ReadonlySet<string>,
 ): { binding: Variable; readEnd: number }[] {
   const found: { binding: Variable; readEnd: number }[] = [];
   for (const reference of variable.references) {
@@ -2546,7 +2567,7 @@ function hostBindingsOf(
       continue;
     }
     const field = newUrl.parent;
-    if (field === undefined || hostFieldSubject(field) !== node) {
+    if (field === undefined || hostFieldSubject(field, fields) !== node) {
       continue;
     }
     const holder = field.parent;
@@ -2590,26 +2611,30 @@ function hostBindingsOf(
  * with `new URL(url).hostname` (or `.host` / `.origin`) into a binding that an
  * allowlist check guarded before the sink, and the URL was not written after
  * that read. `new URL(pinned).hostname` itself is pinned too. Followed through
- * `const` aliases and `String(x)`.
+ * `const` aliases and `String(x)`. With `originOnly`, only an `origin` check
+ * counts (see {@link HostPinOptions}).
  */
 export function isHostPinned(
   node: TSESTree.Node,
   sink: TSESTree.Node,
   sourceCode: SourceCode,
+  options: HostPinOptions = {},
 ): boolean {
-  return hostPinned(node, sink, sourceCode, 0);
+  const fields = options.originOnly === true ? ORIGIN_FIELD : HOST_FIELDS;
+  return hostPinned(node, sink, sourceCode, fields, 0);
 }
 
 function hostPinned(
   raw: TSESTree.Node,
   sink: TSESTree.Node,
   sourceCode: SourceCode,
+  fields: ReadonlySet<string>,
   depth: number,
 ): boolean {
   if (depth > MAX_DEPTH) {
     return false;
   }
-  const field = hostFieldSubject(peelStringWrappers(raw));
+  const field = hostFieldSubject(peelStringWrappers(raw), fields);
   const node = peelStringWrappers(field ?? urlObjectOf(raw));
   if (node.type !== AST_NODE_TYPES.Identifier) {
     return false;
@@ -2618,12 +2643,12 @@ function hostPinned(
   if (variable === null || isImportBinding(variable)) {
     return false;
   }
-  if (urlObjectPinned(variable, sink, sourceCode)) {
+  if (urlObjectPinned(variable, sink, sourceCode, fields)) {
     return true;
   }
   // `ALLOWED.includes(new URL(url).hostname)` checks the host without a binding.
   const inlineHost: Subject = (candidate) => {
-    const subject = hostFieldSubject(peelStringWrappers(candidate, sourceCode));
+    const subject = hostFieldSubject(peelStringWrappers(candidate, sourceCode), fields);
     return subject !== null && subjectVariable(subject, sourceCode) === variable;
   };
   const inlineGuarded = guardedBefore(
@@ -2638,7 +2663,7 @@ function hostPinned(
   if (inlineGuarded) {
     return true;
   }
-  for (const { binding, readEnd } of hostBindingsOf(variable, sourceCode)) {
+  for (const { binding, readEnd } of hostBindingsOf(variable, sourceCode, fields)) {
     const guarded = guardedBefore(
       sink,
       (test, negated) =>
@@ -2655,7 +2680,7 @@ function hostPinned(
     }
   }
   const init = constInit(variable);
-  return init !== null && hostPinned(init, sink, sourceCode, depth + 1);
+  return init !== null && hostPinned(init, sink, sourceCode, fields, depth + 1);
 }
 
 // ---------------------------------------------------------------------------
@@ -3179,7 +3204,12 @@ function holdsOnlyUrls(variable: Variable, sourceCode: SourceCode): boolean {
  * sink, with no change to the URL object after the check (`u.host = x` is a
  * change): `const u = new URL(x); if (!HOSTS.has(u.hostname)) return; get(u)`.
  */
-function urlObjectPinned(variable: Variable, sink: TSESTree.Node, sourceCode: SourceCode): boolean {
+function urlObjectPinned(
+  variable: Variable,
+  sink: TSESTree.Node,
+  sourceCode: SourceCode,
+  fields: ReadonlySet<string>,
+): boolean {
   if (!holdsOnlyUrls(variable, sourceCode)) {
     return false;
   }
@@ -3187,7 +3217,7 @@ function urlObjectPinned(variable: Variable, sink: TSESTree.Node, sourceCode: So
     candidate.type === AST_NODE_TYPES.MemberExpression &&
     !candidate.computed &&
     candidate.property.type === AST_NODE_TYPES.Identifier &&
-    HOST_FIELDS.has(candidate.property.name) &&
+    fields.has(candidate.property.name) &&
     subjectVariable(candidate.object, sourceCode) === variable;
   return guardedBefore(
     sink,

@@ -12,6 +12,27 @@ const APP_URL_TRUST = {
   trustedPaths: ['TWO_FACTOR_CHALLENGE_PATH'],
 };
 
+const raw = String.raw;
+
+/** A handler that reads `next` from the query, exits unless `guard` fails, then runs `sink`. */
+const guarded = (guard: string, sink: string): string =>
+  `function h(req, res, reply) { const next = String(req.query.next); if (${guard}) return; ${sink} }`;
+
+/** `startsWith('/')` with `//` and `/\` refused, but no tab or line break. */
+const SLASH_ONLY = raw`!next.startsWith('/') || next.startsWith('//') || next.startsWith('/\\')`;
+
+/** A URL whose host (not origin) was checked, then `sink`. */
+const hostChecked = (sink: string): string =>
+  `function h(req, res) { const target = String(req.query.next); const host = new URL(target).hostname; if (host !== 'app.example.com') return; ${sink} }`;
+
+/** A URL object whose origin was checked and `//` paths refused, then `change`, then the redirect. */
+const originChecked = (change: string): string =>
+  `const ORIGIN = 'https://app.example.com'; function h(req, res) { const u = new URL(String(req.query.next), ORIGIN); const ok = u.origin === ORIGIN && !u.pathname.startsWith('//'); ${change} res.redirect(ok ? u.pathname + u.search : '/'); }`;
+
+/** A URL object whose host was checked against a list, then `change`, then the redirect. */
+const hostListChecked = (change: string): string =>
+  `const HOSTS = ['app.example.com']; function h(req, res) { const u = new URL(String(req.query.to)); if (!HOSTS.includes(u.hostname)) return; ${change} res.redirect(u.href); }`;
+
 ruleTester.run('no-user-controlled-redirect', noUserControlledRedirectRule, {
   valid: [
     { code: `redirect('/login');`, filename: TS },
@@ -91,9 +112,13 @@ ruleTester.run('no-user-controlled-redirect', noUserControlledRedirectRule, {
       code: "function go(req, res) { const target = req.query.next; const host = new URL(target).hostname; if (!/^([a-z]+\\.)?example\\.com$/.test(host)) throw new Error('host'); res.redirect(302, target); }",
       filename: TS,
     },
-    // Same-site paths: one leading `/`, with `//` and `/\\` refused.
+    // Same-site paths: one leading `/`, with `//`, `/\\`, a tab and line breaks refused.
     {
-      code: "function h(req, res) { const next = String(req.query.next); if (!next.startsWith('/') || next.startsWith('//') || next.startsWith('/\\\\')) return res.redirect('/'); res.redirect(next); }",
+      code: "function h(req, res) { const next = String(req.query.next); if (!next.startsWith('/') || next.startsWith('//') || next.startsWith('/\\\\') || next.includes('\\t') || next.includes('\\n') || next.includes('\\r')) return res.redirect('/'); res.redirect(next); }",
+      filename: TS,
+    },
+    {
+      code: "function h(req, res) { const next = String(req.query.next); if (!next.startsWith('/') || next.startsWith('//') || next.startsWith('/\\\\') || /[\\t\\n\\r]/.test(next)) return res.end(); res.set('Location', next).sendStatus(302); }",
       filename: TS,
     },
     {
@@ -156,6 +181,35 @@ ruleTester.run('no-user-controlled-redirect', noUserControlledRedirectRule, {
       code: "const HOSTS = ['app.example.com', 'docs.example.com']; function h(req, res) { let u; try { u = new URL(String(req.query.to), 'https://app.example.com'); } catch { u = new URL('https://app.example.com/'); } const ok = u.protocol === 'https:' && HOSTS.includes(u.hostname); res.redirect(ok ? u.href : '/'); }",
       filename: TS,
     },
+    // A host check is enough for a `Location` header a response object writes:
+    // browsers refuse to follow one to a scheme other than http(s).
+    {
+      code: "function h(req, res) { const target = String(req.query.next); const host = new URL(target).hostname; if (host !== 'app.example.com') return; res.set('Location', target).sendStatus(302); }",
+      filename: TS,
+    },
+    // An `origin` check pins the scheme too, so it counts at every sink.
+    {
+      code: "function h(req) { const target = String(req.query.next); const origin = new URL(target).origin; if (origin !== 'https://app.example.com') return; redirect(target); }",
+      filename: TS,
+    },
+    {
+      code: "function h(req) { const u = new URL(String(req.query.next)); if (u.origin !== 'https://app.example.com') return; return new Response(null, { status: 302, headers: { Location: u.href } }); }",
+      filename: TS,
+    },
+    // Fixed values in the other header forms.
+    { code: "res.writeHead(302, ['Location', '/home', 'Cache-Control', cache]);", filename: TS },
+    { code: "res.writeHead(302, [['Location', '/home'], ['Content-Type', type]]);", filename: TS },
+    { code: "res.setHeader('Location', ['/home']);", filename: TS },
+    { code: "res.append('Link', link);", filename: TS },
+    { code: "const L = 'Content-Type'; res.set(L, type);", filename: TS },
+    {
+      code: "function h(res) { const headers = { Location: '/home', 'Content-Type': type }; res.writeHead(302, headers); }",
+      filename: TS,
+    },
+    { code: "Response.redirect('https://app.example.com/', 302);", filename: TS },
+    { code: "new Response(null, { status: 302, headers: { Location: '/home' } });", filename: TS },
+    // Literal text the parser keeps as a path (a tab after `/a` is dropped, leaving `/a`).
+    { code: "res.redirect('/a\t' + req.query.next);", filename: TS },
   ],
   invalid: [
     // Plain user input.
@@ -431,5 +485,238 @@ ruleTester.run('no-user-controlled-redirect', noUserControlledRedirectRule, {
       filename: TS,
       errors: [error],
     },
+    // `startsWith('/')` without refusing a tab or line break: browsers drop
+    // them, so `/<tab>/evil.com` goes to evil.com through a raw header.
+    {
+      code: guarded(SLASH_ONLY, "res.set('Location', next).sendStatus(302);"),
+      filename: TS,
+      errors: [error],
+    },
+    {
+      code: guarded(SLASH_ONLY, "res.setHeader('Location', next);"),
+      filename: TS,
+      errors: [error],
+    },
+    {
+      code: guarded(SLASH_ONLY, 'res.writeHead(302, { Location: next });'),
+      filename: TS,
+      errors: [error],
+    },
+    {
+      code: guarded(SLASH_ONLY, "reply.header('Location', next).code(302).send();"),
+      filename: TS,
+      errors: [error],
+    },
+    { code: guarded(SLASH_ONLY, 'res.redirect(next);'), filename: TS, errors: [error] },
+    // Each of `\t`, `\n` and `\r` must be refused.
+    {
+      code: guarded(
+        raw`${SLASH_ONLY} || next.includes('\n') || next.includes('\r')`,
+        "res.set('Location', next);",
+      ),
+      filename: TS,
+      errors: [error],
+    },
+    {
+      code: guarded(
+        raw`${SLASH_ONLY} || next.includes('\t') || next.includes('\r')`,
+        "res.setHeader('Location', next);",
+      ),
+      filename: TS,
+      errors: [error],
+    },
+    {
+      code: guarded(
+        raw`${SLASH_ONLY} || next.includes('\t') || next.includes('\n')`,
+        'res.writeHead(302, { Location: next });',
+      ),
+      filename: TS,
+      errors: [error],
+    },
+    {
+      code: guarded(raw`${SLASH_ONLY} || /[\t\n]/.test(next)`, "reply.header('Location', next);"),
+      filename: TS,
+      errors: [error],
+    },
+    {
+      code: guarded(raw`!/^\/[^\/\\]/.test(next)`, "res.set('Location', next);"),
+      filename: TS,
+      errors: [error],
+    },
+    // The bare value searched while `String(next)` was checked: an array `next` passes `includes`.
+    {
+      code: raw`function h(req, res) { const next = req.query.next; if (!String(next).startsWith('/') || String(next).startsWith('//') || String(next).startsWith('/\\') || next.includes('\t') || next.includes('\n') || next.includes('\r')) return; res.set('Location', next); }`,
+      filename: TS,
+      errors: [error],
+    },
+    // The URL changed after its origin or host was checked.
+    {
+      code: originChecked('Object.assign(u, { pathname: String(req.query.p) });'),
+      filename: TS,
+      errors: [error],
+    },
+    { code: originChecked('rewrite(u);'), filename: TS, errors: [error] },
+    {
+      code: originChecked("Reflect.set(u, 'pathname', String(req.query.p));"),
+      filename: TS,
+      errors: [error],
+    },
+    {
+      code: originChecked('const v = u; v.pathname = String(req.query.p);'),
+      filename: TS,
+      errors: [error],
+    },
+    {
+      code: hostListChecked("Object.assign(u, { hostname: 'evil.com' });"),
+      filename: TS,
+      errors: [error],
+    },
+    { code: hostListChecked('rewrite(u);'), filename: TS, errors: [error] },
+    { code: hostListChecked('u.href = String(req.query.other);'), filename: TS, errors: [error] },
+    // A guard in another function, or in a callback, proves nothing here.
+    {
+      code: raw`function check(next) { if (!/^\/[\w-]*$/.test(next)) throw new Error('next'); } function h(req, res) { const next = String(req.query.next); check(next); res.set('Location', next); }`,
+      filename: TS,
+      errors: [error],
+    },
+    {
+      code: raw`function h(req, res) { const next = String(req.query.next); [next].forEach((n) => { if (!/^\/[\w-]*$/.test(n)) throw new Error('next'); }); res.set('Location', next); }`,
+      filename: TS,
+      errors: [error],
+    },
+    // More header writes: `append`, a header name held in a binding or written
+    // in another case, a computed method, Node's array forms, `setHeaders`.
+    { code: "res.append('Location', req.query.next);", filename: TS, errors: [error] },
+    { code: "res.status(302).append('location', target).end();", filename: TS, errors: [error] },
+    { code: "res.appendHeader('Location', target);", filename: TS, errors: [error] },
+    { code: "const L = 'Location'; res.set(L, target);", filename: TS, errors: [error] },
+    { code: "const L = 'location'; res.setHeader(L, target);", filename: TS, errors: [error] },
+    { code: "let L = 'LOCATION'; reply.header(L, target);", filename: TS, errors: [error] },
+    {
+      code: "const L = 'Location'; const NAME = L; res.set(NAME, target);",
+      filename: TS,
+      errors: [error],
+    },
+    { code: 'res.set(`Location`, target);', filename: TS, errors: [error] },
+    { code: "res['setHeader']('Location', target);", filename: TS, errors: [error] },
+    { code: "res['redirect'](target);", filename: TS, errors: [error] },
+    {
+      code: "const L = 'Location'; res.writeHead(302, { [L]: target });",
+      filename: TS,
+      errors: [error],
+    },
+    { code: "res.set({ ['location']: target });", filename: TS, errors: [error] },
+    { code: "res.writeHead(302, ['Location', target]);", filename: TS, errors: [error] },
+    {
+      code: "res.writeHead(302, ['Content-Type', type, 'location', target]);",
+      filename: TS,
+      errors: [error],
+    },
+    { code: "res.writeHead(302, [['Location', target]]);", filename: TS, errors: [error] },
+    {
+      code: "res.writeHead(302, 'Found', [['Content-Type', type], ['Location', target]]);",
+      filename: TS,
+      errors: [error],
+    },
+    { code: "res.setHeader('Location', [target]);", filename: TS, errors: [error] },
+    { code: "res.setHeaders(new Map([['Location', target]]));", filename: TS, errors: [error] },
+    { code: 'res.setHeaders(new Headers({ Location: target }));', filename: TS, errors: [error] },
+    // A headers holder built before the write.
+    {
+      code: 'function h(res) { const headers = { Location: target }; res.writeHead(302, headers); }',
+      filename: TS,
+      errors: [error],
+    },
+    {
+      code: 'function h(res) { const headers = {}; headers.Location = target; res.writeHead(302, headers); }',
+      filename: TS,
+      errors: [error],
+    },
+    {
+      code: "function h(res) { const headers = {}; headers['location'] = target; res.writeHead(302, headers); }",
+      filename: TS,
+      errors: [error],
+    },
+    {
+      code: "function h(res) { const headers = []; headers.push('Location', target); res.writeHead(302, headers); }",
+      filename: TS,
+      errors: [error],
+    },
+    {
+      code: "function h(res) { const headers = new Headers(); headers.set('Location', target); res.setHeaders(headers); }",
+      filename: TS,
+      errors: [error],
+    },
+    {
+      code: 'function h(res) { const headers = {}; Object.assign(headers, { Location: target }); res.writeHead(302, headers); }',
+      filename: TS,
+      errors: [error],
+    },
+    {
+      code: 'res.writeHead(302, Object.assign({}, base, { Location: target }));',
+      filename: TS,
+      errors: [error],
+    },
+    {
+      code: 'function h(res) { const extra = { Location: target }; res.writeHead(302, { ...extra }); }',
+      filename: TS,
+      errors: [error],
+    },
+    // A holder that refers to itself still ends.
+    {
+      code: 'function h(res) { const headers = {}; Object.assign(headers, headers, { Location: target }); res.writeHead(302, headers); }',
+      filename: TS,
+      errors: [error],
+    },
+    // Fetch API redirects.
+    {
+      code: 'const init = { status: 302, headers: { Location: target } }; new Response(null, init);',
+      filename: TS,
+      errors: [error],
+    },
+    { code: 'Response.redirect(req.query.next);', filename: TS, errors: [error] },
+    {
+      code: 'new Response(null, { status: 302, headers: { location: target } });',
+      filename: TS,
+      errors: [error],
+    },
+    {
+      code: "new NextResponse(null, { status: 307, headers: [['Location', target]] });",
+      filename: TS,
+      errors: [error],
+    },
+    {
+      code: 'new Response(null, { status: 302, headers: new Headers({ Location: target }) });',
+      filename: TS,
+      errors: [error],
+    },
+    // A host check (not an origin check) does not pin the scheme:
+    // `javascript://app.example.com/%0aalert(1)` has that host, and a sink
+    // that can hand the URL to a client-side router may run it.
+    { code: hostChecked('redirect(target);'), filename: TS, errors: [error] },
+    { code: hostChecked('return NextResponse.redirect(target);'), filename: TS, errors: [error] },
+    { code: hostChecked('return Response.redirect(target, 302);'), filename: TS, errors: [error] },
+    {
+      code: hostChecked(
+        'return new Response(null, { status: 302, headers: { Location: target } });',
+      ),
+      filename: TS,
+      errors: [error],
+    },
+    {
+      code: "const HOSTS = ['app.example.com']; function h(req) { const u = new URL(String(req.query.next)); if (!HOSTS.includes(u.hostname)) return; redirect(u.href); }",
+      filename: TS,
+      errors: [error],
+    },
+    // Literal text the URL parser shrinks to a lone `/` (or to nothing), or
+    // an authority opened by extra slashes.
+    { code: "res.redirect('/\t' + req.query.next);", filename: TS, errors: [error] },
+    { code: 'res.redirect(`/\\n${req.query.next}`);', filename: TS, errors: [error] },
+    { code: "res.redirect('\t/' + req.query.next);", filename: TS, errors: [error] },
+    { code: "res.redirect(' /' + req.query.next);", filename: TS, errors: [error] },
+    { code: "res.redirect(' ' + req.query.next);", filename: TS, errors: [error] },
+    { code: "res.redirect('https:///' + req.query.next);", filename: TS, errors: [error] },
+    { code: "res.redirect('///' + req.query.next);", filename: TS, errors: [error] },
+    { code: raw`res.redirect('/\t\\' + req.query.next);`, filename: TS, errors: [error] },
   ],
 });
