@@ -40,7 +40,7 @@ export function link(req, res) {
 
 ```ts good
 export function link(req, res) {
-  res.send(`<a href="/continue?next=${encodeURIComponent(req.query.next)}">Continue</a>`);
+  res.send(`<a href="https://example.com/continue?next=${encodeURIComponent(req.query.next)}">Continue</a>`);
 }
 ```
 
