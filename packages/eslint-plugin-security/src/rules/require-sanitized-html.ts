@@ -249,6 +249,14 @@ export const requireSanitizedHtmlRule = createRule<RuleOptions, MessageIds>({
         const value = node.value.expression;
         const object = markupObjectOf(value, sourceCode);
         if (object === undefined) {
+          // A markup object the proof walk cannot vouch for, but that a looser
+          // walk finds holding unsafe markup: report where that markup goes in.
+          const located = objectLiteralOf(value, sourceCode, 'taint');
+          const markup = located === null ? undefined : htmlPropertyOf(located);
+          if (markup !== undefined && markup !== null && !isSafeHtml(markup, trust, 0)) {
+            check(markup, 'dangerouslySetInnerHTML');
+            return;
+          }
           // A markup object built elsewhere: only a trusted source vouches for it.
           if (!isTrusted(unwrapExpression(value), trust)) {
             context.report({
