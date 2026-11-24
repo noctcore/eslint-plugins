@@ -1,0 +1,571 @@
+{
+  "plugin": "@noctcore/eslint-plugin-security",
+  "outcomes": {
+    "GHSA-2cmg-v53w-8xfp#security/require-path-containment": {
+      "before": "FN",
+      "after": "TN"
+    },
+    "GHSA-2vr4-cq9g-pvrc#security/no-user-controlled-fetch-url": {
+      "before": "FN",
+      "after": "TN"
+    },
+    "GHSA-322m-ff4g-9vx9#security/no-user-controlled-fetch-url": {
+      "before": "FN",
+      "after": "TN"
+    },
+    "GHSA-354h-gmhv-mr9c#security/no-user-controlled-fetch-url": {
+      "before": "FN",
+      "after": "TN"
+    },
+    "GHSA-3573-4c68-g8cc#security/no-user-controlled-redirect": {
+      "before": "TP",
+      "after": "FP"
+    },
+    "GHSA-35rr-xwfh-x789#security/no-unescaped-html-response": {
+      "before": "FN",
+      "after": "TN"
+    },
+    "GHSA-35rr-xwfh-x789#security/require-sanitized-html": {
+      "before": "FN",
+      "after": "TN"
+    },
+    "GHSA-3cgg-c5pp-57h6#security/no-unescaped-html-response": {
+      "before": "FN",
+      "after": "TN"
+    },
+    "GHSA-3cgg-c5pp-57h6#security/require-sanitized-html": {
+      "before": "FN",
+      "after": "TN"
+    },
+    "GHSA-3f7j-7jwc-fxfj#security/no-shell-interpolation": {
+      "before": "FN",
+      "after": "TN"
+    },
+    "GHSA-3gg2-335m-rxc6#security/no-unescaped-html-response": {
+      "before": "FN",
+      "after": "TN"
+    },
+    "GHSA-3gg2-335m-rxc6#security/require-sanitized-html": {
+      "before": "FN",
+      "after": "TN"
+    },
+    "GHSA-4233-jc72-56c5#security/no-user-controlled-fetch-url": {
+      "before": "FN",
+      "after": "TN"
+    },
+    "GHSA-4mfg-r38w-w8fg#security/no-user-controlled-fetch-url": {
+      "before": "FN",
+      "after": "TN"
+    },
+    "GHSA-4vjg-vx72-qq4g#security/require-path-containment": {
+      "before": "FN",
+      "after": "TN"
+    },
+    "GHSA-4x45-gxvp-6283#security/no-shell-interpolation": {
+      "before": "TP",
+      "after": "TN"
+    },
+    "GHSA-4xm8-rg9h-jhq2#security/require-path-containment": {
+      "before": "TP",
+      "after": "FP"
+    },
+    "GHSA-5793-x2q3-c3q7#security/no-unescaped-html-response": {
+      "before": "FN",
+      "after": "TN"
+    },
+    "GHSA-5793-x2q3-c3q7#security/require-sanitized-html": {
+      "before": "FN",
+      "after": "TN"
+    },
+    "GHSA-58g7-7f52-h92c#security/require-sanitized-html": {
+      "before": "TP",
+      "after": "TN"
+    },
+    "GHSA-5xpp-75jx-m839#security/no-shell-interpolation": {
+      "before": "FN",
+      "after": "TN"
+    },
+    "GHSA-65hg-cf3f-5m39#security/require-sanitized-html": {
+      "before": "TP",
+      "after": "FP"
+    },
+    "GHSA-698v-4r3x-3vcv#security/no-shell-interpolation": {
+      "before": "FN",
+      "after": "TN"
+    },
+    "GHSA-6hgp-fmhr-mrg4#security/no-unescaped-html-response": {
+      "before": "FN",
+      "after": "TN"
+    },
+    "GHSA-6hgp-fmhr-mrg4#security/require-sanitized-html": {
+      "before": "FN",
+      "after": "TN"
+    },
+    "GHSA-6mwv-4mrm-5p3m#security/no-user-controlled-fetch-url": {
+      "before": "TP",
+      "after": "FP"
+    },
+    "GHSA-6qvv-pj99-48qm#security/no-user-controlled-redirect": {
+      "before": "FN",
+      "after": "TN"
+    },
+    "GHSA-75qf-886x-5xf2#security/require-path-containment": {
+      "before": "FN",
+      "after": "TN"
+    },
+    "GHSA-7649-wm97-w3j3#security/require-path-containment": {
+      "before": "FN",
+      "after": "TN"
+    },
+    "GHSA-798p-78g2-v556#security/no-user-controlled-fetch-url": {
+      "before": "TP",
+      "after": "FP"
+    },
+    "GHSA-79wm-x847-7cvg#security/no-shell-interpolation": {
+      "before": "FN",
+      "after": "TN"
+    },
+    "GHSA-7mfx-xg57-53c9#security/require-path-containment": {
+      "before": "FN",
+      "after": "TN"
+    },
+    "GHSA-7w82-6f9j-v9jp#security/require-path-containment": {
+      "before": "FN",
+      "after": "TN"
+    },
+    "GHSA-83rm-6c8r-g728#security/no-unescaped-html-response": {
+      "before": "FN",
+      "after": "TN"
+    },
+    "GHSA-83rm-6c8r-g728#security/require-sanitized-html": {
+      "before": "FN",
+      "after": "TN"
+    },
+    "GHSA-83x6-42hr-jc76#security/no-user-controlled-fetch-url": {
+      "before": "TP",
+      "after": "FP"
+    },
+    "GHSA-8f24-v5vv-gm5j#security/no-user-controlled-redirect": {
+      "before": "FN",
+      "after": "TN"
+    },
+    "GHSA-8h25-q488-4hxw#security/no-shell-interpolation": {
+      "before": "FN",
+      "after": "TN"
+    },
+    "GHSA-8rc2-428q-7ww3#security/no-unescaped-html-response": {
+      "before": "FN",
+      "after": "TN"
+    },
+    "GHSA-8rc2-428q-7ww3#security/require-sanitized-html": {
+      "before": "FN",
+      "after": "TN"
+    },
+    "GHSA-9ghw-48h5-v2w5#security/require-path-containment": {
+      "before": "FN",
+      "after": "TN"
+    },
+    "GHSA-9phm-9p8f-hw5m#security/no-user-controlled-redirect": {
+      "before": "FN",
+      "after": "TN"
+    },
+    "GHSA-9wx9-5pv9-3349#security/no-unescaped-html-response": {
+      "before": "FN",
+      "after": "TN"
+    },
+    "GHSA-9wx9-5pv9-3349#security/require-sanitized-html": {
+      "before": "FN",
+      "after": "TN"
+    },
+    "GHSA-cjq9-62q9-8jv4#security/no-user-controlled-fetch-url": {
+      "before": "TP",
+      "after": "TN"
+    },
+    "GHSA-cmhj-wh2f-9cgx#security/no-user-controlled-fetch-url": {
+      "before": "TP",
+      "after": "FP"
+    },
+    "GHSA-cw2g-2vwq-88w6#security/require-path-containment": {
+      "before": "FN",
+      "after": "TN"
+    },
+    "GHSA-f4j9-crrj-867q#security/no-unescaped-html-response": {
+      "before": "FN",
+      "after": "TN"
+    },
+    "GHSA-f4j9-crrj-867q#security/require-sanitized-html": {
+      "before": "FN",
+      "after": "TN"
+    },
+    "GHSA-f86p-h4j2-7qgj#security/no-unescaped-html-response": {
+      "before": "FN",
+      "after": "TN"
+    },
+    "GHSA-f86p-h4j2-7qgj#security/require-sanitized-html": {
+      "before": "FN",
+      "after": "TN"
+    },
+    "GHSA-fp4x-ggrf-wmc6#security/no-user-controlled-redirect": {
+      "before": "TP",
+      "after": "FP"
+    },
+    "GHSA-g734-fhp4-7mfp#security/no-user-controlled-fetch-url": {
+      "before": "TP",
+      "after": "TN"
+    },
+    "GHSA-g8mr-fgfg-5qpc#security/no-user-controlled-redirect": {
+      "before": "FN",
+      "after": "TN"
+    },
+    "GHSA-g8rx-f7m5-7794#security/require-path-containment": {
+      "before": "FN",
+      "after": "TN"
+    },
+    "GHSA-j6c7-3h5x-99g9#security/no-shell-interpolation": {
+      "before": "FN",
+      "after": "TN"
+    },
+    "GHSA-jcxm-m3jx-f287#security/no-shell-interpolation": {
+      "before": "FN",
+      "after": "TN"
+    },
+    "GHSA-jjmj-jmhj-qwj2#security/no-user-controlled-redirect": {
+      "before": "FN",
+      "after": "TN"
+    },
+    "GHSA-jmv2-qgxf-f995#security/no-unescaped-html-response": {
+      "before": "FN",
+      "after": "TN"
+    },
+    "GHSA-jmv2-qgxf-f995#security/require-sanitized-html": {
+      "before": "FN",
+      "after": "TN"
+    },
+    "GHSA-jq3q-62jc-fqq9#security/no-shell-interpolation": {
+      "before": "TP",
+      "after": "TN"
+    },
+    "GHSA-jwgx-mp9m-jwcr#security/require-path-containment": {
+      "before": "FN",
+      "after": "TN"
+    },
+    "GHSA-m44r-7c5h-m6mj#security/no-user-controlled-redirect": {
+      "before": "TP",
+      "after": "FP"
+    },
+    "GHSA-m4w9-gch5-c2g4#security/no-user-controlled-redirect": {
+      "before": "TP",
+      "after": "TN"
+    },
+    "GHSA-mc8w-wjhw-45x5#security/require-path-containment": {
+      "before": "TP",
+      "after": "FP"
+    },
+    "GHSA-mh32-jxcr-mh9f#security/no-unescaped-html-response": {
+      "before": "FN",
+      "after": "TN"
+    },
+    "GHSA-mh32-jxcr-mh9f#security/require-sanitized-html": {
+      "before": "FN",
+      "after": "TN"
+    },
+    "GHSA-p223-2wr2-j562#security/require-path-containment": {
+      "before": "FN",
+      "after": "TN"
+    },
+    "GHSA-p853-83gj-wjj3#security/no-shell-interpolation": {
+      "before": "TP",
+      "after": "TN"
+    },
+    "GHSA-pfhg-q3qv-9q6r#security/no-user-controlled-redirect": {
+      "before": "FN",
+      "after": "TN"
+    },
+    "GHSA-ppf9-4ffw-hh4p#security/no-user-controlled-redirect": {
+      "before": "FN",
+      "after": "TN"
+    },
+    "GHSA-pqg4-j6r4-53mv#security/no-shell-interpolation": {
+      "before": "FN",
+      "after": "TN"
+    },
+    "GHSA-q4p8-8j9m-8hxj#security/no-shell-interpolation": {
+      "before": "FN",
+      "after": "TN"
+    },
+    "GHSA-q69g-4hcv-6jg4#security/no-shell-interpolation": {
+      "before": "FN",
+      "after": "TN"
+    },
+    "GHSA-q8hw-4fvp-9rwv#security/no-user-controlled-fetch-url": {
+      "before": "TP",
+      "after": "FP"
+    },
+    "GHSA-r2q3-7m4h-63qg#security/no-unescaped-html-response": {
+      "before": "FN",
+      "after": "TN"
+    },
+    "GHSA-r2q3-7m4h-63qg#security/require-sanitized-html": {
+      "before": "FN",
+      "after": "TN"
+    },
+    "GHSA-r3h5-4585-7x3w#security/require-path-containment": {
+      "before": "FN",
+      "after": "TN"
+    },
+    "GHSA-r557-wffq-wvrc#security/no-user-controlled-redirect": {
+      "before": "FN",
+      "after": "TN"
+    },
+    "GHSA-r5wg-q8fc-p6w2#security/require-sanitized-html": {
+      "before": "TP",
+      "after": "TN"
+    },
+    "GHSA-r7f2-6fj8-6fg2#security/no-user-controlled-fetch-url": {
+      "before": "FN",
+      "after": "TN"
+    },
+    "GHSA-rcqf-f6h2-ccg9#security/require-sanitized-html": {
+      "before": "TP",
+      "after": "TN"
+    },
+    "GHSA-rg9r-hr7g-5gc2#security/require-path-containment": {
+      "before": "FN",
+      "after": "TN"
+    },
+    "GHSA-rpw4-54j3-4h4q#security/no-user-controlled-fetch-url": {
+      "before": "FN",
+      "after": "TN"
+    },
+    "GHSA-v5ff-xmfp-p245#security/no-shell-interpolation": {
+      "before": "FN",
+      "after": "TN"
+    },
+    "GHSA-v5rq-49vh-5v5c#security/no-shell-interpolation": {
+      "before": "FN",
+      "after": "TN"
+    },
+    "GHSA-vcrf-j523-4mrf#security/no-shell-interpolation": {
+      "before": "FN",
+      "after": "TN"
+    },
+    "GHSA-vcx7-pfrh-mcfg#security/require-path-containment": {
+      "before": "FN",
+      "after": "TN"
+    },
+    "GHSA-vvvv-983w-r7pv#security/no-user-controlled-redirect": {
+      "before": "FN",
+      "after": "TN"
+    },
+    "GHSA-wqvh-63mv-9w92#security/no-user-controlled-redirect": {
+      "before": "FN",
+      "after": "TN"
+    },
+    "GHSA-x6jw-m9v5-85vh#security/no-shell-interpolation": {
+      "before": "FN",
+      "after": "TN"
+    },
+    "GHSA-xh43-g2fq-wjrj#security/no-user-controlled-redirect": {
+      "before": "FN",
+      "after": "TN"
+    },
+    "GHSA-xph5-278p-26qx#security/no-user-controlled-redirect": {
+      "before": "FN",
+      "after": "TN"
+    },
+    "GHSA-xvcc-vqjv-phqh#security/no-shell-interpolation": {
+      "before": "FN",
+      "after": "TN"
+    },
+    "GHSA-xvh9-35w9-42m4#security/require-path-containment": {
+      "before": "FN",
+      "after": "TN"
+    },
+    "GHSA-xvq9-wjp8-hwqf#security/no-user-controlled-fetch-url": {
+      "before": "FN",
+      "after": "TN"
+    }
+  },
+  "summary": {
+    "advisories": 83,
+    "inScope": 37,
+    "outOfScope": {
+      "cross-file": 12,
+      "sanitizer-logic": 23,
+      "dependency-sink": 5,
+      "template-engine": 6
+    },
+    "total": {
+      "tp": 17,
+      "fn": 20,
+      "fp": 9,
+      "tn": 28,
+      "detection": 0.4595,
+      "falseAlarm": 0.2432,
+      "j": 0.2163,
+      "advisories": 83,
+      "outOfScope": 46,
+      "outOfScopeDetected": 3,
+      "outOfScopeFalseAlarms": 2,
+      "unavailable": 0
+    },
+    "cwes": {
+      "CWE-22": {
+        "tp": 2,
+        "fn": 8,
+        "fp": 2,
+        "tn": 8,
+        "detection": 0.2,
+        "falseAlarm": 0.2,
+        "j": 0,
+        "advisories": 17,
+        "outOfScope": 7,
+        "outOfScopeDetected": 0,
+        "outOfScopeFalseAlarms": 0,
+        "unavailable": 0
+      },
+      "CWE-601": {
+        "tp": 4,
+        "fn": 3,
+        "fp": 3,
+        "tn": 4,
+        "detection": 0.5714,
+        "falseAlarm": 0.4286,
+        "j": 0.1428,
+        "advisories": 16,
+        "outOfScope": 9,
+        "outOfScopeDetected": 0,
+        "outOfScopeFalseAlarms": 0,
+        "unavailable": 0
+      },
+      "CWE-78": {
+        "tp": 3,
+        "fn": 6,
+        "fp": 0,
+        "tn": 9,
+        "detection": 0.3333,
+        "falseAlarm": 0,
+        "j": 0.3333,
+        "advisories": 18,
+        "outOfScope": 9,
+        "outOfScopeDetected": 0,
+        "outOfScopeFalseAlarms": 0,
+        "unavailable": 0
+      },
+      "CWE-79": {
+        "tp": 4,
+        "fn": 2,
+        "fp": 1,
+        "tn": 5,
+        "detection": 0.6667,
+        "falseAlarm": 0.1667,
+        "j": 0.5,
+        "advisories": 17,
+        "outOfScope": 11,
+        "outOfScopeDetected": 0,
+        "outOfScopeFalseAlarms": 0,
+        "unavailable": 0
+      },
+      "CWE-918": {
+        "tp": 4,
+        "fn": 1,
+        "fp": 3,
+        "tn": 2,
+        "detection": 0.8,
+        "falseAlarm": 0.6,
+        "j": 0.2,
+        "advisories": 15,
+        "outOfScope": 10,
+        "outOfScopeDetected": 3,
+        "outOfScopeFalseAlarms": 2,
+        "unavailable": 0
+      }
+    },
+    "rules": {
+      "security/no-shell-interpolation": {
+        "tp": 3,
+        "fn": 6,
+        "fp": 0,
+        "tn": 9,
+        "detection": 0.3333,
+        "falseAlarm": 0,
+        "j": 0.3333,
+        "advisories": 18,
+        "outOfScope": 9,
+        "outOfScopeDetected": 0,
+        "outOfScopeFalseAlarms": 0,
+        "unavailable": 0
+      },
+      "security/no-unescaped-html-response": {
+        "tp": 0,
+        "fn": 2,
+        "fp": 0,
+        "tn": 2,
+        "detection": 0,
+        "falseAlarm": 0,
+        "j": 0,
+        "advisories": 13,
+        "outOfScope": 11,
+        "outOfScopeDetected": 0,
+        "outOfScopeFalseAlarms": 0,
+        "unavailable": 0
+      },
+      "security/no-user-controlled-fetch-url": {
+        "tp": 4,
+        "fn": 1,
+        "fp": 3,
+        "tn": 2,
+        "detection": 0.8,
+        "falseAlarm": 0.6,
+        "j": 0.2,
+        "advisories": 15,
+        "outOfScope": 10,
+        "outOfScopeDetected": 3,
+        "outOfScopeFalseAlarms": 2,
+        "unavailable": 0
+      },
+      "security/no-user-controlled-redirect": {
+        "tp": 4,
+        "fn": 3,
+        "fp": 3,
+        "tn": 4,
+        "detection": 0.5714,
+        "falseAlarm": 0.4286,
+        "j": 0.1428,
+        "advisories": 16,
+        "outOfScope": 9,
+        "outOfScopeDetected": 0,
+        "outOfScopeFalseAlarms": 0,
+        "unavailable": 0
+      },
+      "security/require-path-containment": {
+        "tp": 2,
+        "fn": 8,
+        "fp": 2,
+        "tn": 8,
+        "detection": 0.2,
+        "falseAlarm": 0.2,
+        "j": 0,
+        "advisories": 17,
+        "outOfScope": 7,
+        "outOfScopeDetected": 0,
+        "outOfScopeFalseAlarms": 0,
+        "unavailable": 0
+      },
+      "security/require-sanitized-html": {
+        "tp": 4,
+        "fn": 2,
+        "fp": 1,
+        "tn": 5,
+        "detection": 0.6667,
+        "falseAlarm": 0.1667,
+        "j": 0.5,
+        "advisories": 17,
+        "outOfScope": 11,
+        "outOfScopeDetected": 0,
+        "outOfScopeFalseAlarms": 0,
+        "unavailable": 0
+      }
+    }
+  }
+}
