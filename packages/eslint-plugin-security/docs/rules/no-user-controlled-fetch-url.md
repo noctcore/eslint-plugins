@@ -64,9 +64,13 @@ The default `fetchCallees` cover `fetch`, `axios` with its methods, `axios(confi
 `axios(url, config)`, `axios.request(config)`, and Node's `http.get`, `http.request`, `https.get`
 and `https.request`. An options or config object is read when it is an object literal, or an
 in-file `const` bound to one that nothing changes before the call (`opts.host = x`,
-`Object.assign(opts, ...)` or handing it to a helper makes it unreadable). `as`, `satisfies`, `!`
-and `<T>` around the object or the `const` are seen through. Later keys win, a spread of such an object copies its keys, and a spread or computed
-key the rule cannot read (`...req.body`, `[key]: value`) is reported, since it may set any key.
+`Object.assign(opts, ...)` or handing it to a helper makes it unreadable, and so does exporting
+it, since an importing module can change it: `as const` freezes only the type). `as`, `satisfies`,
+`!` and `<T>` around the object or the `const` are seen through. Later keys win, a spread of such
+an object copies its keys, and a spread or computed key the rule cannot read (`...req.body`,
+`[key]: value`) is reported, since it may set any key. `__proto__: value` sets the prototype, which
+the client reads every key it does not find through: a prototype the rule cannot read is reported
+the same way, and `__proto__: null` adds nothing.
 
 **Node `http` / `https`.** The rule reads the options the way Node picks the target. With
 `http.get(url, options)`, each key of `options` overrides the same part of the URL, so both are
@@ -80,13 +84,22 @@ every one of these keys must be fixed (a literal, or an in-file `const` built fr
 | `socketPath` | a Unix socket that replaces the host and port |
 | `protocol` | the scheme the agent must speak |
 | `path` | sent as the request target: a `//host` path or a full URL is followed by a proxy. Checked like a URL, so a relative path with a fixed prefix passes. |
-| `agent`, `lookup`, `createConnection` | open the connection themselves. Author-written code passes: a function, `new Agent(...)`, `this.agent`, or a `const`, function, class or import binding. |
+| `agent`, `lookup`, `createConnection` | open the connection themselves. Author-written code passes: a function, `new Agent(...)`, `this.agent`, a function, class or import binding, or a `const` that holds one of these (not `const a = req.body.agent`, nor a call result). |
 
 An options object with none of these keys goes to `localhost:80` and passes.
 
-```ts bad reports=4
+Options after the URL that the requester supplies whole (`https.get(url, req.body)`, or a binding
+that holds it) are reported, and so is `Object.assign(...)` with a source the rule cannot read.
+Each branch of `?:`, `||`, `&&` and `??` is checked on its own, so
+`cond ? { hostname: x } : {}` is read as both objects.
+
+```ts bad reports=6
 // the second argument overrides the URL's host
 https.get('https://api.example.com/x', { hostname: req.query.h });
+// the requester picks every option, including `hostname` and `socketPath`
+https.get('https://api.example.com/x', req.body);
+// the prototype supplies `host`
+net.connect({ __proto__: req.body, port: 80 });
 // Node prefers `hostname` over `host`
 http.get({ host: 'api.example.com', hostname: req.query.h });
 // `href` is not read on a plain options object, so `host` decides
@@ -104,10 +117,14 @@ https.get({ hostname: 'api.example.com', port: 443, agent: keepAlive, path: `/v1
 to `baseURL`), `socketPath` must be fixed, `proxy` must be `false` or an object with a fixed host and
 port, and `httpAgent`, `httpsAgent` and `lookup` must be author-written. The config is read in every
 call form: `axios(config)`, `axios(url, config)`, `axios.request(config)`, `axios.get(url, config)`,
-`axios.post(url, data, config)` and `axios.create(config)`. A `const api = axios.create(...)` in the
-same file is an axios instance: `api(config)`, `api.get(url, config)` and the other methods are read
-the same way. `axios.defaults.baseURL = x` and `api.defaults.baseURL = x` must have a fixed origin
-too.
+`axios.post(url, data, config)` (also `postForm`, `putForm` and `patchForm`) and
+`axios.create(config)`. `axios` is also seen behind a type wrapper (`(axios as any).get(...)`) or
+a binding that holds it (`const ax = axios`). A `const api = axios.create(...)` in the same file is
+an axios instance: `api(config)`, `api.get(url, config)` and the other methods are read the same
+way. The defaults every later request starts from are checked like a config:
+`axios.defaults.baseURL = x`, `axios.defaults['proxy'] = x`, `axios.defaults = config` and
+`Object.assign(axios.defaults, config)`, on `axios` or an instance. A key computed at run time
+(`axios.defaults[key] = x`) is reported, since it may be `baseURL`.
 
 ```ts bad reports=3
 export async function probe(target: string) {
@@ -136,7 +153,8 @@ net.connect(6379, 'cache.internal');
 net.connect({ path: '/var/run/app.sock' });
 ```
 
-`fetch(new Request(input))` and a `const` bound to `new Request(input)` are judged by `input`.
+`fetch(new Request(input))` and a `const` bound to `new Request(input)` are judged by `input`, and
+undici's `new Client(origin)` and `new Pool(origin)` (imported from `undici`) by `origin`.
 
 ## What it does not flag
 
@@ -189,19 +207,28 @@ export function probe(input: string) {
   the request there. Node's `http` / `https` do not follow redirects, but a wrapper that does
   (`follow-redirects`) has the same effect. When the allowed host can be made to redirect, send the
   request with `redirect: 'manual'` (`fetch`) or `maxRedirects: 0` (axios) and check each hop.
-- An options object the rule cannot read after the URL is left alone: a parameter or a call result
-  passed as the second argument of `https.get(url, options)` or as an axios config after the URL.
-  An in-file `const` object changed before the call is reported in those places. A first argument
+- An options object the rule cannot read after the URL is left alone when it is a parameter or a
+  call result (`https.get(url, options)`, `https.get(url, withAuth(token))`), or an axios config
+  after the URL of that kind: the rule does not judge what a caller or a helper hands over. An
+  in-file `const` object changed before the call, an exported one, an `Object.assign` with a
+  source the rule cannot read and an object the requester supplies (`req.body`, or a binding that
+  holds it) are reported in those places. A first argument
   the rule cannot read (a parameter, `req.body`, a conditional, a call result, a changed `const`)
   is always reported: as a runtime URL for `fetch`, `http` / `https`, `axios(...)` and
   `axios.request(...)`, as a runtime port, path or options object for a socket, and as a runtime
   config for `axios.create(...)`.
-- An axios instance is seen only as a `const` bound to `axios.create(...)` in the same file.
+- An axios instance is seen only as a binding that holds `axios.create(...)` in the same file.
 - A reverse proxy that forwards `req.url` as the `path` of a fixed host is reported: `req.url` can
   be a full URL. Name your path sanitizer in `sanitizers`.
-- Other clients (`undici`'s `request`, `Client` and `Pool`, `got`, `ky`) are not in the defaults.
-  A call such as `request(url)` or `got(url)` can be added to `fetchCallees`; a constructor such as
-  `new Client(origin)` cannot, and `got`'s `prefixUrl` is not read.
+- undici's `request`, `stream` and `fetch`, `got` and `ky` are not in the defaults: the rule
+  cannot yet read some checks that guard them in practice (a zod `refine`, a literal table read
+  behind a conditional), so it would report safe code. Add the calls you use to `fetchCallees`
+  (`'got'`, `'got.post'`, `'ky'`, `'ky.get'`, `'request'`): a default import or a `require` under
+  another name is matched by its usual name, and `'request'` matches every bare `request(...)`
+  call, whatever it is. Their own options are not read:
+  `got`'s and `ky`'s `prefixUrl`, undici's `dispatcher`, and instances made with `got.extend`,
+  `ky.create` or `ky.extend`. undici's `Client` and `Pool` are checked (see above); `BalancedPool`
+  and an `Agent`'s `connect` option are not.
 - The rule does not judge the host itself: a fixed `http://127.0.0.1/` or a pin that lists
   `localhost` is the author's choice. A pin compares the host as the URL parser normalizes it, so
   decimal, octal, hex and IPv6 spellings of an internal address never equal a listed domain name.
@@ -210,7 +237,7 @@ export function probe(input: string) {
 
 | Option | Type | Default | Meaning |
 | --- | --- | --- | --- |
-| `fetchCallees` | `(string \| CalleeSpec)[]` | `fetch`, `axios`, `axios.{get,post,put,patch,delete,head,options,request}`, `http.{get,request}`, `https.{get,request}` | Call shapes that issue a request. Setting this replaces the defaults. |
+| `fetchCallees` | `(string \| CalleeSpec)[]` | `fetch`, `axios`, `axios.{get,post,put,patch,delete,head,options,postForm,putForm,patchForm,request}`, `http.{get,request}`, `https.{get,request}` | Call shapes that issue a request. Setting this replaces the defaults. |
 | `socketCallees` | `string[]` | `net.connect`, `net.createConnection`, `tls.connect` | Calls that open a socket; their host, port and IPC path must be fixed. Setting this replaces the defaults. |
 | `trustedOrigins` | `string[]` | `[]` | Expressions (source text) that are a fixed-origin URL. `name()` matches any call to `name`. |
 | `sanitizers` | `string[]` | `[]` | Functions whose result is a safe same-origin path. |
