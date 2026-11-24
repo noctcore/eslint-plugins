@@ -228,6 +228,18 @@ describe('node-version-parity, options', () => {
     assert.deepEqual(run({ '.github/workflows/ci.yml': workflow }), []);
   });
 
+  it('allowExpressionNodeVersion: false reports a node-version from a matrix', () => {
+    const rule = createNodeVersionParityRule({ allowExpressionNodeVersion: false });
+    const workflow = WORKFLOW.replace(
+      '    runs-on: ubuntu-latest',
+      '    runs-on: ubuntu-latest\n    strategy:\n      matrix:\n        node: [22, 24]',
+    ).replace('node-version-file: .nvmrc', 'node-version: ${{ matrix.node }}');
+    const found = messages(runSync(rule, createFixture({ ...TREE, '.github/workflows/ci.yml': workflow }).context()));
+    assert.equal(found.length, 1);
+    assert.match(found[0] ?? '', /takes node-version from \$\{\{ matrix\.node \}\}, which hides the Node major/u);
+    assert.deepEqual(run({ '.github/workflows/ci.yml': workflow }), []);
+  });
+
   it('compares with another version file, and can skip engines', () => {
     const rule = createNodeVersionParityRule({ versionFile: '.node-version', checkEngines: false });
     const fixture = createFixture({
