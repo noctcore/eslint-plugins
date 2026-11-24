@@ -852,6 +852,8 @@ ruleTester.run('no-user-controlled-redirect: headers holders', noUserControlledR
     { code: "res.writeHead(302, { Location: '/home' }, undefined);", filename: TS },
     { code: "Response.json({}, { status: 302, headers: { Location: '/home' } });", filename: TS },
     { code: "res.setHeader('X-' + 'Loc', target);", filename: TS },
+    // A setter is not a value the header is sent with.
+    { code: "res.writeHead(302, { set Location(v) { log(v); }, Location: '/home' });", filename: TS },
   ],
   invalid: [
     // Conditional or logical header holders.
