@@ -808,3 +808,130 @@ ruleTester.run('no-user-controlled-redirect: status-first redirect', noUserContr
     { code: 'redirect(target);', filename: TS, errors: [error] },
   ],
 });
+
+// Conditional holders, Fetch `Response` header writes and rarer holder forms.
+ruleTester.run('no-user-controlled-redirect: headers holders', noUserControlledRedirectRule, {
+  valid: [
+    // A fixed Location in either branch of a conditional holder.
+    { code: "res.writeHead(302, c ? { Location: '/home' } : {});", filename: TS },
+    { code: "const hd = c && { Location: '/home' }; res.writeHead(302, hd);", filename: TS },
+    // A Fetch response with a fixed Location, or a header that is not Location.
+    {
+      code: "function GET() { const r = new Response(null, { status: 302 }); r.headers.set('Location', '/home'); return r; }",
+      filename: TS,
+    },
+    {
+      code: "function GET() { const r = NextResponse.next(); r.headers.set('Content-Type', type); return r; }",
+      filename: TS,
+    },
+    // A Headers object that never reaches a response.
+    { code: "const h = new Headers(); h.set('Location', target);", filename: TS },
+    // Rarer holder forms with a fixed value.
+    { code: "const hd = {}; Reflect.set(hd, 'Location', '/home'); res.writeHead(302, hd);", filename: TS },
+    { code: "res.writeHead(302, Object.fromEntries([['Location', '/home']]));", filename: TS },
+    { code: "res.writeHead(302, { get Location() { return '/home'; } });", filename: TS },
+    { code: "res.writeHead(302, { Location: '/home' }, undefined);", filename: TS },
+    { code: "Response.json({}, { status: 302, headers: { Location: '/home' } });", filename: TS },
+    { code: "res.setHeader('X-' + 'Loc', target);", filename: TS },
+  ],
+  invalid: [
+    // Conditional or logical header holders.
+    {
+      code: 'function h(req, res) { const next = req.query.next; res.writeHead(302, req.query.a ? { Location: next } : {}); }',
+      filename: TS,
+      errors: [error],
+    },
+    {
+      code: 'function h(req, res) { const next = req.query.next; const hd = req.query.a && { Location: next }; res.writeHead(302, hd); }',
+      filename: TS,
+      errors: [error],
+    },
+    { code: 'res.set(c || { Location: target });', filename: TS, errors: [error] },
+    { code: 'res.writeHead(302, hd ?? { Location: target });', filename: TS, errors: [error] },
+    // `headers.set('Location', x)` on a Fetch response.
+    {
+      code: "function GET(req) { const next = new URL(req.url).searchParams.get('next'); const r = new Response(null, { status: 302 }); r.headers.set('Location', next); return r; }",
+      filename: TS,
+      errors: [error],
+    },
+    {
+      code: "function middleware(req) { const r = NextResponse.next(); r.headers.set('Location', next); return r; }",
+      filename: TS,
+      errors: [error],
+    },
+    {
+      code: "const response = NextResponse.next(); response.headers.set('location', target);",
+      filename: TS,
+      errors: [error],
+    },
+    {
+      code: "const r = Response.json({}); r.headers.append('Location', target);",
+      filename: TS,
+      errors: [error],
+    },
+    // Alias writes.
+    {
+      code: 'function h(res) { const hd = {}; const a = hd; a.Location = target; res.writeHead(302, hd); }',
+      filename: TS,
+      errors: [error],
+    },
+    {
+      code: "function h(res) { const hd = new Map(); const a = hd; a.set('Location', target); res.setHeaders(hd); }",
+      filename: TS,
+      errors: [error],
+    },
+    {
+      code: "function h() { const hd = new Headers(); const a = hd; a.set('Location', target); return new Response(null, { status: 302, headers: hd }); }",
+      filename: TS,
+      errors: [error],
+    },
+    // `Reflect.set`, `Object.defineProperty`, index writes, `Object.fromEntries`, a getter.
+    {
+      code: "function h(res) { const hd = {}; Reflect.set(hd, 'Location', target); res.writeHead(302, hd); }",
+      filename: TS,
+      errors: [error],
+    },
+    {
+      code: "function h(res) { const hd = {}; Object.defineProperty(hd, 'Location', { value: target }); res.writeHead(302, hd); }",
+      filename: TS,
+      errors: [error],
+    },
+    {
+      code: "function h(res) { const hd = {}; Object.defineProperty(hd, 'location', { get: () => target }); res.writeHead(302, hd); }",
+      filename: TS,
+      errors: [error],
+    },
+    {
+      code: "function h(res) { const hd = []; hd[0] = ['Location', target]; res.writeHead(302, hd); }",
+      filename: TS,
+      errors: [error],
+    },
+    { code: "res.writeHead(302, Object.fromEntries([['Location', target]]));", filename: TS, errors: [error] },
+    { code: 'res.writeHead(302, { get Location() { return target; } });', filename: TS, errors: [error] },
+    // A quoted or computed `headers` key, `Response.json` and `NextResponse.json`.
+    {
+      code: "new Response(null, { status: 302, 'headers': { Location: target } });",
+      filename: TS,
+      errors: [error],
+    },
+    {
+      code: "new Response(null, { status: 302, ['headers']: { Location: target } });",
+      filename: TS,
+      errors: [error],
+    },
+    {
+      code: 'Response.json({}, { status: 302, headers: { Location: target } });',
+      filename: TS,
+      errors: [error],
+    },
+    {
+      code: 'NextResponse.json({}, { status: 302, headers: { Location: target } });',
+      filename: TS,
+      errors: [error],
+    },
+    // Headers before a trailing argument, a header name built from pieces.
+    { code: 'res.writeHead(302, { Location: target }, undefined);', filename: TS, errors: [error] },
+    { code: "res.setHeader('Loc' + 'ation', target);", filename: TS, errors: [error] },
+    { code: "res.setHeader(`Loc${'ation'}`, target);", filename: TS, errors: [error] },
+  ],
+});
