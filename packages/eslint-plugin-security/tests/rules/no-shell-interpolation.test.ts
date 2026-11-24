@@ -1177,6 +1177,12 @@ ruleTester.run('no-shell-interpolation reading', noShellInterpolationRule, {
     // #314: a `+` admitted only after the first character, or glued to text before it.
     { code: 'function run(x: string) { if (!/^[a-z][\\w.+]*$/.test(x)) return; exec(`dig ${x} example.com`); }', filename: TS },
     { code: 'function run(x: string) { if (!/^[\\w+]+$/.test(x)) return; exec(`tool --tag=${x}`); }', filename: TS },
+    // #315: static args, a proven arg, or no shell.
+    { code: 'spawn(\'ls\', [\'-la\'], { shell: true });', filename: TS },
+    { code: 'spawn(\'ls\', [dir], { shell: false });', filename: TS },
+    { code: 'spawn(\'ls\', { shell: true });', filename: TS },
+    { code: 'function run(d: string) { if (!/^[a-z]+$/.test(d)) return; spawn(\'ls\', [d], { shell: true }); }', filename: TS },
+    { code: 'function run(d: string) { if (!/^[a-z]+$/.test(d)) return; execFile(\'git\', [\'log\', \'--\', d], { shell: true }, cb); }', filename: TS },
     // #316: a wrapped constant that is a plain word.
     { code: checked('exec(`ls ${String("-la")} ${t}`);'), filename: TS },
     { code: checked('const P = String("git"); exec(`${P} log ${t}`);'), filename: TS },
@@ -1206,6 +1212,14 @@ ruleTester.run('no-shell-interpolation reading', noShellInterpolationRule, {
     { code: 'function run(name: string) { if (!/^[\\w.+]+$/.test(name)) return; exec(`dig ${name} example.com`); }', filename: TS, errors: error },
     { code: 'function run(x: string) { if (!/^[+a-z0-9]+$/.test(x)) return; exec(`sort ${x} file`); }', filename: TS, errors: error },
     { code: 'function run(x: string) { if (!/^\\+?[a-z]+$/.test(x)) return; exec(`set ${x}`); }', filename: TS, errors: error },
+    // #315: with a shell, the args array is joined into the command string.
+    { code: 'spawn(\'ls\', [req.query.dir], { shell: true });', filename: TS, errors: error },
+    { code: 'execFile(\'git\', [\'log\', branch], { shell: true }, cb);', filename: TS, errors: error },
+    { code: 'spawnSync(\'ls\', [`${dir}/x`], { shell: process.platform === \'win32\' });', filename: TS, errors: error },
+    { code: 'spawn(\'ls\', args, { shell: true });', filename: TS, errors: error },
+    { code: 'spawn(\'ls\', [...extra], { shell: true });', filename: TS, errors: error },
+    { code: 'function run(t: string) { if (!/^[a-z]+$/.test(t)) return; spawn(\'sudo\', [t], { shell: true }); }', filename: TS, errors: error },
+    { code: 'function run(t: string) { if (!/^[a-z]+$/.test(t)) return; spawn(\'ls\', [\';\', t], { shell: true }); }', filename: TS, errors: error },
     // #316: a separator or wrapper written as a wrapped or deep constant.
     { code: checked('exec(`ls ${String(";")} ${t}`);'), filename: TS, errors: error },
     { code: checked('exec(`ls ${";" as string} ${t}`);'), filename: TS, errors: error },
