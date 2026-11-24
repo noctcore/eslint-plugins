@@ -129,6 +129,92 @@ describe('github-actions-expression-syntax', () => {
     expect(lines).toEqual([1, 3]);
   });
 
+  test('reports a string inside an expression that is never closed', () => {
+    const violations = checkWorkflowExpressionSyntax('w.yml', "A: ${{ 'abc }}\n");
+
+    expect(violations).toHaveLength(1);
+    expect(violations[0]?.message ?? '').toMatch(/^line 1: a string inside `\$\{\{` is never closed/u);
+  });
+
+  test.each([
+    ['A: ${{ }}', '`${{ }}` is empty'],
+    ["A: ${{ contains(github.ref, 'x' }}", 'has unbalanced brackets: `(` is never closed'],
+    ['A: ${{ (a && b)) }}', 'has unbalanced brackets: `)` closes nothing'],
+    ['A: ${{ fromJSON(a)[0) }}', 'has unbalanced brackets: `)` closes a `[`'],
+    ['A: ${{ a && }}', 'has `&&` with no right operand'],
+    ['A: ${{ && a }}', 'has `&&` with no left operand'],
+    ['A: ${{ a b }}', 'needs an operator between `a` and `b`'],
+    ['A: ${{ a = b }}', 'uses `=`, which is not an operator (did you mean `==`?)'],
+    ['A: ${{ a & b }}', 'uses `&`, which is not an operator (did you mean `&&`?)'],
+    ['A: ${{ a | b }}', 'uses `|`, which is not an operator (did you mean `||`?)'],
+    ['A: ${{ f(a,) }}', 'has an empty argument after `,`'],
+    ['A: ${{ a, b }}', 'uses `,` outside the arguments of a function call'],
+    ['A: ${{ a. }}', 'has `.` with no property name after it'],
+    ['A: ${{ !a ! }}', 'needs an operator between `a` and `!`'],
+    ['A: ${{ () }}', 'has an empty `()`'],
+  ])('reports the malformed expression %s', (line, problem) => {
+    const violations = checkWorkflowExpressionSyntax('w.yml', `${line}\n`);
+
+    expect(violations).toHaveLength(1);
+    expect(violations[0]?.line).toBe(1);
+    expect(violations[0]?.message ?? '').toContain(problem);
+    expect(violations[0]?.message ?? '').toContain('GitHub rejects the whole workflow');
+  });
+
+  test('reports a grammar problem in an expression that spans a block scalar, at the opener line', () => {
+    const body = ['    if: >-', '      ${{ github.event_name == &&', "      github.ref == 'x' }}", ''].join('\n');
+    const violations = violationsFor(body);
+
+    expect(violations).toHaveLength(1);
+    expect(violations[0]?.line).toBe(6);
+    expect(violations[0]?.message ?? '').toContain('has `==` with no right operand');
+  });
+
+  test.each([
+    "A: ${{ format('{{0}}', github.ref) }}",
+    'A: ${{ fromJSON(needs.a.outputs.list)[0].name }}',
+    "A: ${{ !cancelled() && (failure() || contains(github.ref, 'x')) }}",
+    "A: ${{ needs.build-job.result == 'success' }}",
+    'A: ${{ github.event.issue.labels.*.name }}',
+    'A: ${{ a[*].b }}',
+    'A: ${{ -1 < 0x1F && 1.5e3 > .5 }}',
+    "A: ${{ secrets['MY-KEY'] }}",
+    'A: ${{ !!a }}',
+    'A: ${{ a }}-${{ b }}',
+    'A: ${{ f() }}',
+    "A: ${{ hashFiles('**/package-lock.json', '**/yarn.lock') }}",
+    "A: ${{ 'it''s' == null }}",
+  ])('accepts the well-formed expression %s', (line) => {
+    expect(checkWorkflowExpressionSyntax('w.yml', `${line}\n`)).toEqual([]);
+  });
+
+  test('reports an if: that mixes an expression with other text, since it is always true', () => {
+    const violations = violationsFor("    if: ${{ github.ref == 'x' }} && github.actor == 'y'\n");
+
+    expect(violations).toHaveLength(1);
+    expect(violations[0]?.line).toBe(5);
+    expect(violations[0]?.message ?? '').toContain('a non-empty string is always true');
+    expect(violationsFor("      - if: github.actor == 'y' && ${{ a }}\n")).toHaveLength(1);
+  });
+
+  test('reports an unquoted if: that starts with !, which YAML reads as a tag', () => {
+    const violations = violationsFor('      - if: !cancelled()\n');
+
+    expect(violations).toHaveLength(1);
+    expect(violations[0]?.message ?? '').toContain('YAML reads as a tag');
+  });
+
+  test('accepts the if: shapes that are one expression, or none', () => {
+    expect(violationsFor("    if: github.event_name == 'push'\n")).toEqual([]);
+    expect(violationsFor("    if: '${{ !cancelled() }}'\n")).toEqual([]);
+    expect(violationsFor('    if: "${{ always() }}" # keep going\n')).toEqual([]);
+    expect(violationsFor('    if: ${{ always() }}\n')).toEqual([]);
+  });
+
+  test('does not read an if: line inside a block scalar as a key', () => {
+    expect(violationsFor('      - run: |\n          if: ${{ a }} && b\n')).toEqual([]);
+  });
+
   test('honors workflowGlobs', () => {
     const custom = createGithubActionsExpressionSyntaxRule({ workflowGlobs: ['ci/*.yml'] });
     const ctx = createFakeCtx({

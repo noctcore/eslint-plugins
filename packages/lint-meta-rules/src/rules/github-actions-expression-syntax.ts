@@ -1,6 +1,6 @@
 import type { IMetaRule, IViolation } from '@noctcore/harness';
 
-import { DEFAULT_WORKFLOW_GLOBS, globFiles } from './shared';
+import { DEFAULT_WORKFLOW_GLOBS, globFiles, stripYamlComment, unquote } from './shared';
 
 /** Options for {@link createGithubActionsExpressionSyntaxRule}. */
 export interface GithubActionsExpressionSyntaxOptions {
@@ -28,7 +28,142 @@ interface Segment {
 
 interface Malformed {
   readonly line: number;
-  readonly kind: 'brace' | 'unclosed';
+  readonly kind: 'brace' | 'unclosed' | 'string' | 'grammar' | 'if-mixed' | 'if-tag';
+  /** The expression and what is wrong with it, for `grammar`. */
+  readonly detail?: string;
+}
+
+interface Scan {
+  /** Offset of the closing `}}`, or -1. */
+  readonly close: number;
+  /** Offset of a `${{` met before any `}}`, or -1. */
+  readonly next: number;
+  /** The scan ran off the end inside a string. */
+  readonly inString: boolean;
+}
+
+/** Scan an expression body from `from` for its `}}`. Strings use single quotes only, with `''` as an escaped quote. */
+function scanExpression(text: string, from: number): Scan {
+  let inString = false;
+  for (let scan = from; scan < text.length; scan += 1) {
+    if (inString) {
+      if (text[scan] === "'") {
+        if (text[scan + 1] === "'") scan += 1;
+        else inString = false;
+      }
+    } else if (text[scan] === "'") {
+      inString = true;
+    } else if (text.startsWith(CLOSER, scan)) {
+      return { close: scan, next: -1, inString };
+    } else if (text.startsWith(OPENER, scan)) {
+      return { close: -1, next: scan, inString };
+    }
+  }
+  return { close: -1, next: -1, inString };
+}
+
+const TOKEN =
+  /\s+|'(?:[^']|'')*'|(?:0x[\dA-Fa-f]+|[-+]?(?:\d+\.?\d*|\.\d+)(?:[eE][-+]?\d+)?)(?![\w-])|[A-Za-z_][\w-]*|==|!=|<=|>=|&&|\|\||[\s\S]/gu;
+const BINARY = new Set(['==', '!=', '<', '<=', '>', '>=', '&&', '||']);
+const NOT_OPERATORS: Readonly<Record<string, string>> = { '=': '==', '&': '&&', '|': '||' };
+const IDENT = /^[A-Za-z_]/u;
+
+/** What is wrong when an operand was expected after `prev` and `next` came instead. */
+function missingOperand(prev: string, next = ''): string {
+  if (BINARY.has(prev)) return `has \`${prev}\` with no right operand`;
+  if (prev === '!') return 'has `!` with no operand';
+  if (prev === ',') return 'has an empty argument after `,`';
+  return `has an empty \`${prev}${next}\``;
+}
+
+/**
+ * The first grammar problem in a closed expression body, or null. A token walk
+ * that tracks whether an operand or an operator comes next, plus a bracket
+ * stack; it checks shape, not names (an unknown function or context passes).
+ * GitHub has no minus operator, so `-` belongs to names (`needs.build-job`).
+ */
+function grammarProblem(body: string): string | null {
+  if (body.trim() === '') return 'is empty';
+  const stack: ('(' | 'call' | '[')[] = [];
+  let wantOperand = true;
+  let afterDot = false;
+  let prev = '';
+  for (const [token] of body.matchAll(TOKEN)) {
+    if (/^\s/u.test(token)) continue;
+    if (afterDot) {
+      if (!IDENT.test(token) && token !== '*') return 'has `.` with no property name after it';
+      afterDot = false;
+    } else if (token === '.') {
+      if (wantOperand) return 'has `.` with nothing before it';
+      afterDot = true;
+    } else if (token.startsWith("'") || IDENT.test(token) || /^[-+]?\.?\d/u.test(token)) {
+      if (!wantOperand) return `needs an operator between \`${prev}\` and \`${token}\``;
+      wantOperand = false;
+    } else if (token === '!') {
+      if (!wantOperand) return `needs an operator between \`${prev}\` and \`!\``;
+    } else if (token === '(') {
+      if (wantOperand) stack.push('(');
+      else if (IDENT.test(prev)) stack.push('call');
+      else return `needs an operator between \`${prev}\` and \`(\``;
+      wantOperand = true;
+    } else if (token === '[') {
+      if (wantOperand) return 'has `[` with nothing before it to index';
+      stack.push('[');
+      wantOperand = true;
+    } else if (token === '*') {
+      if (prev !== '[') return 'uses `*`, which is not an operator';
+      wantOperand = false;
+    } else if (token === ')' || token === ']') {
+      const open = stack.pop();
+      const matches = token === ']' ? open === '[' : open === '(' || open === 'call';
+      if (!matches) {
+        return open === undefined
+          ? `has unbalanced brackets: \`${token}\` closes nothing`
+          : `has unbalanced brackets: \`${token}\` closes a \`${open === '[' ? '[' : '('}\``;
+      }
+      if (wantOperand && !(open === 'call' && prev === '(')) return missingOperand(prev, token);
+      wantOperand = false;
+    } else if (token === ',') {
+      if (stack.at(-1) !== 'call') return 'uses `,` outside the arguments of a function call';
+      if (wantOperand) return missingOperand(prev);
+      wantOperand = true;
+    } else if (BINARY.has(token)) {
+      if (wantOperand) {
+        return BINARY.has(prev) || prev === '!' ? missingOperand(prev) : `has \`${token}\` with no left operand`;
+      }
+      wantOperand = true;
+    } else {
+      const meant = NOT_OPERATORS[token];
+      return meant === undefined
+        ? `holds \`${token}\`, which is not valid in an expression`
+        : `uses \`${token}\`, which is not an operator (did you mean \`${meant}\`?)`;
+    }
+    prev = token;
+  }
+  if (afterDot) return 'has `.` with no property name after it';
+  const open = stack.at(-1);
+  if (open !== undefined) return `has unbalanced brackets: \`${open === '[' ? '[' : '('}\` is never closed`;
+  return wantOperand ? missingOperand(prev) : null;
+}
+
+const IF_KEY = /^\s*(?:-\s+)?if:[ \t]+(.+)$/u;
+
+/**
+ * A single-line `if:` value that starts with `!` (a YAML tag), or that mixes a
+ * `${{ }}` with other text (a string, so always true).
+ * ponytail: single-line values only; a block or wrapped `if:` is not checked for mixing.
+ */
+function ifProblem(line: string): Malformed['kind'] | null {
+  const raw = IF_KEY.exec(line)?.[1];
+  if (raw === undefined) return null;
+  const value = stripYamlComment(raw).trim();
+  if (value.startsWith('!')) return 'if-tag';
+  const unquoted = unquote(value);
+  const first = unquoted.indexOf(OPENER);
+  if (first === -1) return null;
+  if (first !== 0) return 'if-mixed';
+  const { close } = scanExpression(unquoted, OPENER_LENGTH);
+  return close !== -1 && close + CLOSER.length !== unquoted.length ? 'if-mixed' : null;
 }
 
 function indentOf(line: string): number {
@@ -89,12 +224,14 @@ function scalarSegments(lines: readonly string[]): Segment[] {
   return segments;
 }
 
-/** Every opener in a segment that is followed by another `{` or never closed. */
+/** Every malformed expression in a segment, and a malformed `if:` on its first line. */
 function malformedOpeners(segment: Segment): Malformed[] {
   const text = segment.lines.join('\n');
   const lineAt = (offset: number): number =>
     segment.startLine + (text.slice(0, offset).match(/\n/gu)?.length ?? 0);
   const found: Malformed[] = [];
+  const ifKind = ifProblem(segment.lines[0] ?? '');
+  if (ifKind !== null) found.push({ line: segment.startLine, kind: ifKind });
 
   let cursor = text.indexOf(OPENER);
   while (cursor !== -1) {
@@ -104,60 +241,53 @@ function malformedOpeners(segment: Segment): Malformed[] {
       cursor = text.indexOf(OPENER, opener + OPENER_LENGTH);
       continue;
     }
-
-    // Expression strings use single quotes only, with `''` as an escaped quote.
-    let inString = false;
-    let scan = opener + OPENER_LENGTH;
-    let next = -1;
-    let closed = false;
-    while (scan < text.length) {
-      if (inString) {
-        if (text[scan] === "'") {
-          if (text[scan + 1] === "'") scan += 1;
-          else inString = false;
-        }
-        scan += 1;
-        continue;
-      }
-      if (text[scan] === "'") {
-        inString = true;
-        scan += 1;
-      } else if (text.startsWith(CLOSER, scan)) {
-        closed = true;
-        next = scan + CLOSER.length;
-        break;
-      } else if (text.startsWith(OPENER, scan)) {
-        next = scan;
-        break;
-      } else {
-        scan += 1;
-      }
+    const { close, next, inString } = scanExpression(text, opener + OPENER_LENGTH);
+    if (close === -1) {
+      found.push({ line: lineAt(opener), kind: inString ? 'string' : 'unclosed' });
+      cursor = next;
+      continue;
     }
-    if (!closed) found.push({ line: lineAt(opener), kind: 'unclosed' });
-    cursor = next === -1 ? -1 : text.indexOf(OPENER, next);
+    const body = text.slice(opener + OPENER_LENGTH, close);
+    const problem = grammarProblem(body);
+    if (problem !== null) {
+      const shown = `\${{ ${body.trim().replace(/\s+/gu, ' ')} }}`.replace('{{  }}', '{{ }}');
+      found.push({ line: lineAt(opener), kind: 'grammar', detail: `\`${shown}\` ${problem}` });
+    }
+    cursor = text.indexOf(OPENER, close + CLOSER.length);
   }
   return found;
 }
 
+const REJECTS = 'GitHub rejects the whole workflow before any job runs, so its required checks never report.';
+
+function messageFor({ line, kind, detail }: Malformed): string {
+  const at = `line ${String(line)}:`;
+  switch (kind) {
+    case 'brace':
+      return `${at} \`\${{{\` opens an expression with another \`{\`. ${REJECTS} Put a space after \`\${{\` if the brace belongs to the expression, or keep a literal \`\${{\` out of scripts and f-strings, for example by building it from pieces.`;
+    case 'unclosed':
+      return `${at} \`\${{\` has no closing \`}}\` (on its line, or within its block scalar). ${REJECTS}`;
+    case 'string':
+      return `${at} a string inside \`\${{\` is never closed, so every \`}}\` after it is string text and the expression never ends. ${REJECTS}`;
+    case 'grammar':
+      return `${at} ${detail ?? ''}. ${REJECTS}`;
+    case 'if-mixed':
+      return `${at} \`if:\` mixes a \`\${{ }}\` with other text, so GitHub reads the value as a string, and a non-empty string is always true. Put the whole condition inside one \`\${{ }}\`, or drop the \`\${{ }}\`.`;
+    case 'if-tag':
+      return `${at} \`if:\` starts with \`!\`, which YAML reads as a tag, not a negation. Quote the value or wrap it in \`\${{ }}\`.`;
+  }
+}
+
 /** Check one workflow's text. */
 export function checkWorkflowExpressionSyntax(file: string, text: string): IViolation[] {
-  const consequence = 'GitHub rejects the whole workflow before any job runs, so its required checks never report.';
   return scalarSegments(text.split('\n')).flatMap((segment) =>
     malformedOpeners(segment).map(
-      ({ line, kind }): IViolation => ({
-        file,
-        rule: RULE_ID,
-        line,
-        message:
-          kind === 'brace'
-            ? `line ${String(line)}: \`\${{{\` opens an expression with another \`{\`. ${consequence} Put a space after \`\${{\` if the brace belongs to the expression, or keep a literal \`\${{\` out of scripts and f-strings, for example by building it from pieces.`
-            : `line ${String(line)}: \`\${{\` has no closing \`}}\` (on its line, or within its block scalar). ${consequence}`,
-      }),
+      (malformed): IViolation => ({ file, rule: RULE_ID, line: malformed.line, message: messageFor(malformed) }),
     ),
   );
 }
 
-/** A workflow must not hold a `${{` followed by another `{`, or one with no closing `}}`. */
+/** A workflow must not hold a malformed `${{ }}` expression, or an `if:` that is always true or read as a YAML tag. */
 export function createGithubActionsExpressionSyntaxRule(
   options: GithubActionsExpressionSyntaxOptions = {},
 ): IMetaRule {
@@ -168,7 +298,7 @@ export function createGithubActionsExpressionSyntaxRule(
     category: 'ci',
     ciCritical,
     description:
-      'GitHub Actions workflows never hold a malformed `${{` (an opener followed by another `{`, or one with no closing `}}`), which fails the whole workflow before any job runs.',
+      'GitHub Actions workflows never hold a malformed `${{` (an opener followed by another `{`, one with no closing `}}`, or an expression GitHub cannot parse), which fails the whole workflow before any job runs, nor an `if:` that is always true or read as a YAML tag.',
     run(ctx) {
       return globFiles((p) => ctx.glob(p), workflowGlobs).flatMap((file) =>
         checkWorkflowExpressionSyntax(file, ctx.read(file) ?? ''),
