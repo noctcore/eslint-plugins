@@ -177,6 +177,10 @@ function staticTexts(
   if (inner.type === AST_NODE_TYPES.Literal) {
     return typeof inner.value === 'string' ? [inner.value] : [];
   }
+  if (inner.type === AST_NODE_TYPES.TemplateLiteral && inner.expressions.length === 0) {
+    const cooked = inner.quasis[0]?.value.cooked;
+    return cooked == null ? [] : [cooked];
+  }
   if (inner.type === AST_NODE_TYPES.TemplateLiteral && depth < MAX_NAME_DEPTH) {
     const pieces: (string | TSESTree.Node)[] = [];
     inner.quasis.forEach((quasi, index) => {
@@ -418,7 +422,7 @@ function holderLocations(
         if (property.type === AST_NODE_TYPES.SpreadElement) {
           return holderLocations(property.argument, sourceCode, depth + 1);
         }
-        if (!isLocationKey(property, sourceCode)) {
+        if (property.kind === 'set' || !isLocationKey(property, sourceCode)) {
           return [];
         }
         return property.kind === 'get' ? returnedValues(property.value) : headerValues(property.value);
