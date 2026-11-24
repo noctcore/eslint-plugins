@@ -33,9 +33,10 @@ then says to quote the value to keep the `#`.
 The YAML is read as close to GitHub's reader as the parser gets: not strict, so a `|# note` header,
 `"x"#c` and long or multi-line implicit keys pass, and a flow collection or quoted value continued
 below its parent's indent (which GitHub accepts) is read as GitHub reads it. What GitHub fails to
-load is reported: a duplicate key (compared without case, so `On` repeats `on`), an alias to an
-anchor not defined before it, more than one document, an unclosed quote or bracket, a tab used as
-indentation. A parse error is reported once, at the parser's first error, and the file's expressions
+load is reported: a duplicate key (compared without case, so `On` repeats `on`; a key holding
+`${{` is an expression and is not compared), an alias to an anchor not defined before it, more than
+one document, a `---` or `...` line at column 0 inside a quoted value or flow collection, an unclosed
+quote or bracket, a tab used as indentation. A parse error is reported once, at the parser's first error, and the file's expressions
 are checked once it parses.
 
 Inside a closed `${{ }}`, the shape of the expression: a string that is never closed, an empty
@@ -48,8 +49,9 @@ an `if` key anywhere else, such as an action input under `with:`, is not a condi
 any text outside its `${{ }}`, which GitHub reads as a string, and a non-empty string is always true,
 so the condition never skips anything. GitHub keeps every character of the value, so this includes
 whitespace: spaces inside quotes (`if: " ${{ a }}"`) and the trailing newline a block keeps. Of the
-block styles, only `|-` and `>-` strip it; `|`, `>`, `|+` and `>+` make the condition always true. A
-block `if:` with no `${{ }}` at all is a plain expression and is fine in any style. Second, an
+block styles, only `|-` and `>-` strip it; `|`, `>`, `|+` and `>+` make the condition always true.
+Spaces after the `}}` stay even in `|-` or `>-`, and are reported as padding. A block `if:` with no
+`${{ }}` at all is a plain expression and is fine in any style. Second, an
 unquoted one that starts with `!`, which YAML reads as a tag, not a negation. A core tag YAML
 resolves itself (`if: !!str ${{ ... }}`) is not reported.
 
