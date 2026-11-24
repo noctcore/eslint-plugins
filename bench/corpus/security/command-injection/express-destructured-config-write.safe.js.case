@@ -1,0 +1,19 @@
+// @bench category=command-injection cwe=CWE-78 framework=express pair=express-destructured-config-write title="branch from the query passed as an argument array to execFile, the config only read"
+// ok
+const { execFile } = require('node:child_process');
+const express = require('express');
+
+const config = { branch: 'main', repoDir: '/srv/acme/app' };
+const router = express.Router();
+
+router.post('/deploy/checkout', (req, res) => {
+  const branch = String(req.query.branch ?? config.branch);
+  execFile('git', ['-C', config.repoDir, 'checkout', '--', branch], (error, stdout) => {
+    if (error) {
+      return res.status(500).json({ error: 'checkout failed' });
+    }
+    res.json({ output: stdout.trim() });
+  });
+});
+
+module.exports = router;

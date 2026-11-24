@@ -21,13 +21,13 @@
   },
   "rules": {
     "security/auth-cookie-flags": {
-      "tp": 7,
+      "tp": 8,
       "fn": 24,
       "fp": 0,
-      "tn": 31,
-      "detection": 0.2258,
+      "tn": 32,
+      "detection": 0.25,
       "falseAlarm": 0,
-      "j": 0.2258,
+      "j": 0.25,
       "extra": 0,
       "crossFp": 0,
       "crossSafe": 0,
@@ -39,16 +39,16 @@
       "url": "https://noctcore.github.io/eslint-plugins/rules/security/auth-cookie-flags/"
     },
     "security/no-shell-interpolation": {
-      "tp": 21,
+      "tp": 22,
       "fn": 11,
       "fp": 8,
-      "tn": 25,
-      "detection": 0.6563,
-      "falseAlarm": 0.2424,
-      "j": 0.4139,
+      "tn": 26,
+      "detection": 0.6667,
+      "falseAlarm": 0.2353,
+      "j": 0.4314,
       "extra": 1,
       "crossFp": 0,
-      "crossSafe": 161,
+      "crossSafe": 162,
       "enabledBy": "recommended",
       "categories": [
         "security/command-injection"
@@ -84,7 +84,7 @@
       "j": 0.5,
       "extra": 0,
       "crossFp": 0,
-      "crossSafe": 162,
+      "crossSafe": 164,
       "enabledBy": "recommended",
       "categories": [
         "security/ssrf"
@@ -102,7 +102,7 @@
       "j": 0.5,
       "extra": 0,
       "crossFp": 0,
-      "crossSafe": 162,
+      "crossSafe": 164,
       "enabledBy": "recommended",
       "categories": [
         "security/open-redirect"
@@ -149,37 +149,37 @@
   },
   "categories": {
     "security/command-injection": {
-      "tp": 21,
+      "tp": 22,
       "fn": 11,
       "fp": 8,
-      "tn": 25,
-      "detection": 0.6563,
-      "falseAlarm": 0.2424,
-      "j": 0.4139,
+      "tn": 26,
+      "detection": 0.6667,
+      "falseAlarm": 0.2353,
+      "j": 0.4314,
       "extra": 1,
       "title": "Command injection",
       "cwe": "CWE-78",
       "rules": [
         "security/no-shell-interpolation"
       ],
-      "pairs": 32,
+      "pairs": 33,
       "overrides": {}
     },
     "security/cookie-flags": {
-      "tp": 7,
+      "tp": 8,
       "fn": 24,
       "fp": 0,
-      "tn": 31,
-      "detection": 0.2258,
+      "tn": 32,
+      "detection": 0.25,
       "falseAlarm": 0,
-      "j": 0.2258,
+      "j": 0.25,
       "extra": 0,
       "title": "Cookie flags",
       "cwe": null,
       "rules": [
         "security/auth-cookie-flags"
       ],
-      "pairs": 31,
+      "pairs": 32,
       "overrides": {
         "security/auth-cookie-flags": "error"
       }
@@ -347,6 +347,50 @@
       "framework": "express",
       "cwe": "CWE-78",
       "title": "uploaded file name from the body interpolated into a promisified exec"
+    },
+    "security/command-injection/express-destructured-config-write.safe.js.case#security/no-shell-interpolation": {
+      "outcome": "TN",
+      "category": "security/command-injection",
+      "rule": "security/no-shell-interpolation",
+      "file": "security/command-injection/express-destructured-config-write.safe.js.case",
+      "line": null,
+      "pair": "express-destructured-config-write",
+      "framework": "express",
+      "cwe": "CWE-78",
+      "title": "branch from the query passed as an argument array to execFile, the config only read"
+    },
+    "security/command-injection/express-destructured-config-write.safe.js.case#security/no-user-controlled-fetch-url": {
+      "outcome": "TN",
+      "category": "security/command-injection",
+      "rule": "security/no-user-controlled-fetch-url",
+      "file": "security/command-injection/express-destructured-config-write.safe.js.case",
+      "line": null,
+      "pair": "express-destructured-config-write",
+      "framework": "express",
+      "cwe": "CWE-78",
+      "title": "branch from the query passed as an argument array to execFile, the config only read"
+    },
+    "security/command-injection/express-destructured-config-write.safe.js.case#security/no-user-controlled-redirect": {
+      "outcome": "TN",
+      "category": "security/command-injection",
+      "rule": "security/no-user-controlled-redirect",
+      "file": "security/command-injection/express-destructured-config-write.safe.js.case",
+      "line": null,
+      "pair": "express-destructured-config-write",
+      "framework": "express",
+      "cwe": "CWE-78",
+      "title": "branch from the query passed as an argument array to execFile, the config only read"
+    },
+    "security/command-injection/express-destructured-config-write.vuln.js.case#security/no-shell-interpolation": {
+      "outcome": "TP",
+      "category": "security/command-injection",
+      "rule": "security/no-shell-interpolation",
+      "file": "security/command-injection/express-destructured-config-write.vuln.js.case",
+      "line": 11,
+      "pair": "express-destructured-config-write",
+      "framework": "express",
+      "cwe": "CWE-78",
+      "title": "query fields destructured into a config object that feeds a git exec call"
     },
     "security/command-injection/express-dns-lookup.safe.ts.case#security/no-shell-interpolation": {
       "outcome": "FP",
@@ -2305,6 +2349,61 @@
       "framework": "express",
       "cwe": "CWE-614",
       "title": "express-session cookie config with secure false"
+    },
+    "security/cookie-flags/express-shared-flags-mutated.safe.js.case#security/auth-cookie-flags": {
+      "outcome": "TN",
+      "category": "security/cookie-flags",
+      "rule": "security/auth-cookie-flags",
+      "file": "security/cookie-flags/express-shared-flags-mutated.safe.js.case",
+      "line": null,
+      "pair": "express-shared-flags-mutated",
+      "framework": "express",
+      "cwe": "CWE-1004",
+      "title": "shared cookie flags object is only spread, never changed"
+    },
+    "security/cookie-flags/express-shared-flags-mutated.safe.js.case#security/no-shell-interpolation": {
+      "outcome": "TN",
+      "category": "security/cookie-flags",
+      "rule": "security/no-shell-interpolation",
+      "file": "security/cookie-flags/express-shared-flags-mutated.safe.js.case",
+      "line": null,
+      "pair": "express-shared-flags-mutated",
+      "framework": "express",
+      "cwe": "CWE-1004",
+      "title": "shared cookie flags object is only spread, never changed"
+    },
+    "security/cookie-flags/express-shared-flags-mutated.safe.js.case#security/no-user-controlled-fetch-url": {
+      "outcome": "TN",
+      "category": "security/cookie-flags",
+      "rule": "security/no-user-controlled-fetch-url",
+      "file": "security/cookie-flags/express-shared-flags-mutated.safe.js.case",
+      "line": null,
+      "pair": "express-shared-flags-mutated",
+      "framework": "express",
+      "cwe": "CWE-1004",
+      "title": "shared cookie flags object is only spread, never changed"
+    },
+    "security/cookie-flags/express-shared-flags-mutated.safe.js.case#security/no-user-controlled-redirect": {
+      "outcome": "TN",
+      "category": "security/cookie-flags",
+      "rule": "security/no-user-controlled-redirect",
+      "file": "security/cookie-flags/express-shared-flags-mutated.safe.js.case",
+      "line": null,
+      "pair": "express-shared-flags-mutated",
+      "framework": "express",
+      "cwe": "CWE-1004",
+      "title": "shared cookie flags object is only spread, never changed"
+    },
+    "security/cookie-flags/express-shared-flags-mutated.vuln.js.case#security/auth-cookie-flags": {
+      "outcome": "TP",
+      "category": "security/cookie-flags",
+      "rule": "security/auth-cookie-flags",
+      "file": "security/cookie-flags/express-shared-flags-mutated.vuln.js.case",
+      "line": 13,
+      "pair": "express-shared-flags-mutated",
+      "framework": "express",
+      "cwe": "CWE-1004",
+      "title": "shared cookie flags object has httpOnly turned off in place before it is spread"
     },
     "security/cookie-flags/koa-impersonation.safe.ts.case#security/auth-cookie-flags": {
       "outcome": "TN",
@@ -10163,45 +10262,45 @@
   },
   "variantRules": {
     "security/auth-cookie-flags": {
-      "tp": 108,
+      "tp": 123,
       "fn": 366,
       "fp": 0,
-      "tn": 474,
-      "detection": 0.2278,
+      "tn": 489,
+      "detection": 0.2515,
       "falseAlarm": 0,
-      "j": 0.2278,
+      "j": 0.2515,
       "transforms": {
         "arrow-to-function": {
-          "variants": 40,
-          "holds": 40,
+          "variants": 42,
+          "holds": 42,
           "missed": 0,
           "falseAlarms": 0,
           "gained": 0
         },
         "callback": {
-          "variants": 62,
-          "holds": 62,
+          "variants": 64,
+          "holds": 64,
           "missed": 0,
           "falseAlarms": 0,
           "gained": 0
         },
         "cjs-to-esm": {
-          "variants": 30,
-          "holds": 30,
+          "variants": 32,
+          "holds": 32,
           "missed": 0,
           "falseAlarms": 0,
           "gained": 0
         },
         "import-alias": {
-          "variants": 62,
-          "holds": 62,
+          "variants": 64,
+          "holds": 64,
           "missed": 0,
           "falseAlarms": 0,
           "gained": 0
         },
         "import-namespace": {
-          "variants": 56,
-          "holds": 56,
+          "variants": 58,
+          "holds": 58,
           "missed": 0,
           "falseAlarms": 0,
           "gained": 0
@@ -10214,29 +10313,29 @@
           "gained": 0
         },
         "promise-await": {
-          "variants": 54,
-          "holds": 54,
+          "variants": 56,
+          "holds": 56,
           "missed": 0,
           "falseAlarms": 0,
           "gained": 0
         },
         "promise-then": {
-          "variants": 48,
-          "holds": 48,
+          "variants": 50,
+          "holds": 50,
           "missed": 0,
           "falseAlarms": 0,
           "gained": 0
         },
         "rename-locals": {
-          "variants": 62,
-          "holds": 62,
+          "variants": 64,
+          "holds": 64,
           "missed": 0,
           "falseAlarms": 0,
           "gained": 0
         },
         "rename-params": {
-          "variants": 58,
-          "holds": 58,
+          "variants": 60,
+          "holds": 60,
           "missed": 0,
           "falseAlarms": 0,
           "gained": 0
@@ -10277,43 +10376,43 @@
           "gained": 0
         },
         "via-array": {
-          "variants": 62,
-          "holds": 62,
+          "variants": 64,
+          "holds": 64,
           "missed": 0,
           "falseAlarms": 0,
           "gained": 0
         },
         "via-destructuring": {
-          "variants": 62,
-          "holds": 62,
+          "variants": 64,
+          "holds": 64,
           "missed": 0,
           "falseAlarms": 0,
           "gained": 0
         },
         "via-helper": {
-          "variants": 62,
-          "holds": 62,
+          "variants": 64,
+          "holds": 64,
           "missed": 0,
           "falseAlarms": 0,
           "gained": 0
         },
         "via-object": {
-          "variants": 62,
-          "holds": 62,
+          "variants": 64,
+          "holds": 64,
           "missed": 0,
           "falseAlarms": 0,
           "gained": 0
         },
         "via-spread": {
-          "variants": 52,
-          "holds": 52,
+          "variants": 54,
+          "holds": 54,
           "missed": 0,
           "falseAlarms": 0,
           "gained": 0
         },
         "via-variable": {
-          "variants": 62,
-          "holds": 62,
+          "variants": 64,
+          "holds": 64,
           "missed": 0,
           "falseAlarms": 0,
           "gained": 0
@@ -10321,52 +10420,52 @@
       }
     },
     "security/no-shell-interpolation": {
-      "tp": 335,
+      "tp": 350,
       "fn": 177,
       "fp": 132,
-      "tn": 386,
-      "detection": 0.6543,
-      "falseAlarm": 0.2548,
-      "j": 0.3995,
+      "tn": 399,
+      "detection": 0.6641,
+      "falseAlarm": 0.2486,
+      "j": 0.4155,
       "transforms": {
         "arrow-to-function": {
-          "variants": 55,
-          "holds": 55,
+          "variants": 57,
+          "holds": 57,
           "missed": 0,
           "falseAlarms": 0,
           "gained": 0
         },
         "callback": {
-          "variants": 49,
-          "holds": 49,
+          "variants": 51,
+          "holds": 51,
           "missed": 0,
           "falseAlarms": 0,
           "gained": 0
         },
         "cjs-to-esm": {
-          "variants": 32,
-          "holds": 32,
+          "variants": 34,
+          "holds": 34,
           "missed": 0,
           "falseAlarms": 0,
           "gained": 0
         },
         "import-alias": {
-          "variants": 63,
-          "holds": 63,
+          "variants": 65,
+          "holds": 65,
           "missed": 0,
           "falseAlarms": 0,
           "gained": 0
         },
         "import-namespace": {
-          "variants": 62,
-          "holds": 62,
+          "variants": 64,
+          "holds": 64,
           "missed": 0,
           "falseAlarms": 0,
           "gained": 0
         },
         "node-prefix": {
-          "variants": 59,
-          "holds": 59,
+          "variants": 61,
+          "holds": 61,
           "missed": 0,
           "falseAlarms": 0,
           "gained": 0
@@ -10386,29 +10485,29 @@
           "gained": 0
         },
         "rename-locals": {
-          "variants": 62,
-          "holds": 62,
+          "variants": 64,
+          "holds": 64,
           "missed": 0,
           "falseAlarms": 0,
           "gained": 0
         },
         "rename-params": {
-          "variants": 65,
-          "holds": 65,
+          "variants": 67,
+          "holds": 67,
           "missed": 0,
           "falseAlarms": 0,
           "gained": 0
         },
         "string-concat": {
-          "variants": 47,
-          "holds": 47,
+          "variants": 48,
+          "holds": 48,
           "missed": 0,
           "falseAlarms": 0,
           "gained": 0
         },
         "string-concat-method": {
-          "variants": 55,
-          "holds": 55,
+          "variants": 56,
+          "holds": 56,
           "missed": 0,
           "falseAlarms": 0,
           "gained": 0
@@ -10449,29 +10548,29 @@
           "gained": 0
         },
         "via-array": {
-          "variants": 65,
-          "holds": 65,
+          "variants": 67,
+          "holds": 67,
           "missed": 0,
           "falseAlarms": 0,
           "gained": 0
         },
         "via-destructuring": {
-          "variants": 65,
-          "holds": 65,
+          "variants": 67,
+          "holds": 67,
           "missed": 0,
           "falseAlarms": 0,
           "gained": 0
         },
         "via-helper": {
-          "variants": 65,
-          "holds": 65,
+          "variants": 67,
+          "holds": 67,
           "missed": 0,
           "falseAlarms": 0,
           "gained": 0
         },
         "via-object": {
-          "variants": 65,
-          "holds": 65,
+          "variants": 67,
+          "holds": 67,
           "missed": 0,
           "falseAlarms": 0,
           "gained": 0
@@ -10484,8 +10583,8 @@
           "gained": 0
         },
         "via-variable": {
-          "variants": 65,
-          "holds": 65,
+          "variants": 67,
+          "holds": 67,
           "missed": 0,
           "falseAlarms": 0,
           "gained": 0
@@ -11418,6 +11517,34 @@
     "security/command-injection/express-convert-image.vuln.js.case~via-helper#security/no-shell-interpolation": "TP",
     "security/command-injection/express-convert-image.vuln.js.case~via-object#security/no-shell-interpolation": "TP",
     "security/command-injection/express-convert-image.vuln.js.case~via-variable#security/no-shell-interpolation": "TP",
+    "security/command-injection/express-destructured-config-write.safe.js.case~arrow-to-function#security/no-shell-interpolation": "TN",
+    "security/command-injection/express-destructured-config-write.safe.js.case~callback#security/no-shell-interpolation": "TN",
+    "security/command-injection/express-destructured-config-write.safe.js.case~cjs-to-esm#security/no-shell-interpolation": "TN",
+    "security/command-injection/express-destructured-config-write.safe.js.case~import-alias#security/no-shell-interpolation": "TN",
+    "security/command-injection/express-destructured-config-write.safe.js.case~import-namespace#security/no-shell-interpolation": "TN",
+    "security/command-injection/express-destructured-config-write.safe.js.case~node-prefix#security/no-shell-interpolation": "TN",
+    "security/command-injection/express-destructured-config-write.safe.js.case~rename-locals#security/no-shell-interpolation": "TN",
+    "security/command-injection/express-destructured-config-write.safe.js.case~rename-params#security/no-shell-interpolation": "TN",
+    "security/command-injection/express-destructured-config-write.safe.js.case~via-array#security/no-shell-interpolation": "TN",
+    "security/command-injection/express-destructured-config-write.safe.js.case~via-destructuring#security/no-shell-interpolation": "TN",
+    "security/command-injection/express-destructured-config-write.safe.js.case~via-helper#security/no-shell-interpolation": "TN",
+    "security/command-injection/express-destructured-config-write.safe.js.case~via-object#security/no-shell-interpolation": "TN",
+    "security/command-injection/express-destructured-config-write.safe.js.case~via-variable#security/no-shell-interpolation": "TN",
+    "security/command-injection/express-destructured-config-write.vuln.js.case~arrow-to-function#security/no-shell-interpolation": "TP",
+    "security/command-injection/express-destructured-config-write.vuln.js.case~callback#security/no-shell-interpolation": "TP",
+    "security/command-injection/express-destructured-config-write.vuln.js.case~cjs-to-esm#security/no-shell-interpolation": "TP",
+    "security/command-injection/express-destructured-config-write.vuln.js.case~import-alias#security/no-shell-interpolation": "TP",
+    "security/command-injection/express-destructured-config-write.vuln.js.case~import-namespace#security/no-shell-interpolation": "TP",
+    "security/command-injection/express-destructured-config-write.vuln.js.case~node-prefix#security/no-shell-interpolation": "TP",
+    "security/command-injection/express-destructured-config-write.vuln.js.case~rename-locals#security/no-shell-interpolation": "TP",
+    "security/command-injection/express-destructured-config-write.vuln.js.case~rename-params#security/no-shell-interpolation": "TP",
+    "security/command-injection/express-destructured-config-write.vuln.js.case~string-concat#security/no-shell-interpolation": "TP",
+    "security/command-injection/express-destructured-config-write.vuln.js.case~string-concat-method#security/no-shell-interpolation": "TP",
+    "security/command-injection/express-destructured-config-write.vuln.js.case~via-array#security/no-shell-interpolation": "TP",
+    "security/command-injection/express-destructured-config-write.vuln.js.case~via-destructuring#security/no-shell-interpolation": "TP",
+    "security/command-injection/express-destructured-config-write.vuln.js.case~via-helper#security/no-shell-interpolation": "TP",
+    "security/command-injection/express-destructured-config-write.vuln.js.case~via-object#security/no-shell-interpolation": "TP",
+    "security/command-injection/express-destructured-config-write.vuln.js.case~via-variable#security/no-shell-interpolation": "TP",
     "security/command-injection/express-dns-lookup.safe.ts.case~arrow-to-function#security/no-shell-interpolation": "FP",
     "security/command-injection/express-dns-lookup.safe.ts.case~callback#security/no-shell-interpolation": "FP",
     "security/command-injection/express-dns-lookup.safe.ts.case~import-alias#security/no-shell-interpolation": "FP",
@@ -12706,6 +12833,36 @@
     "security/cookie-flags/express-session-config.vuln.js.case~via-object#security/auth-cookie-flags": "FN",
     "security/cookie-flags/express-session-config.vuln.js.case~via-spread#security/auth-cookie-flags": "FN",
     "security/cookie-flags/express-session-config.vuln.js.case~via-variable#security/auth-cookie-flags": "FN",
+    "security/cookie-flags/express-shared-flags-mutated.safe.js.case~arrow-to-function#security/auth-cookie-flags": "TN",
+    "security/cookie-flags/express-shared-flags-mutated.safe.js.case~callback#security/auth-cookie-flags": "TN",
+    "security/cookie-flags/express-shared-flags-mutated.safe.js.case~cjs-to-esm#security/auth-cookie-flags": "TN",
+    "security/cookie-flags/express-shared-flags-mutated.safe.js.case~import-alias#security/auth-cookie-flags": "TN",
+    "security/cookie-flags/express-shared-flags-mutated.safe.js.case~import-namespace#security/auth-cookie-flags": "TN",
+    "security/cookie-flags/express-shared-flags-mutated.safe.js.case~promise-await#security/auth-cookie-flags": "TN",
+    "security/cookie-flags/express-shared-flags-mutated.safe.js.case~promise-then#security/auth-cookie-flags": "TN",
+    "security/cookie-flags/express-shared-flags-mutated.safe.js.case~rename-locals#security/auth-cookie-flags": "TN",
+    "security/cookie-flags/express-shared-flags-mutated.safe.js.case~rename-params#security/auth-cookie-flags": "TN",
+    "security/cookie-flags/express-shared-flags-mutated.safe.js.case~via-array#security/auth-cookie-flags": "TN",
+    "security/cookie-flags/express-shared-flags-mutated.safe.js.case~via-destructuring#security/auth-cookie-flags": "TN",
+    "security/cookie-flags/express-shared-flags-mutated.safe.js.case~via-helper#security/auth-cookie-flags": "TN",
+    "security/cookie-flags/express-shared-flags-mutated.safe.js.case~via-object#security/auth-cookie-flags": "TN",
+    "security/cookie-flags/express-shared-flags-mutated.safe.js.case~via-spread#security/auth-cookie-flags": "TN",
+    "security/cookie-flags/express-shared-flags-mutated.safe.js.case~via-variable#security/auth-cookie-flags": "TN",
+    "security/cookie-flags/express-shared-flags-mutated.vuln.js.case~arrow-to-function#security/auth-cookie-flags": "TP",
+    "security/cookie-flags/express-shared-flags-mutated.vuln.js.case~callback#security/auth-cookie-flags": "TP",
+    "security/cookie-flags/express-shared-flags-mutated.vuln.js.case~cjs-to-esm#security/auth-cookie-flags": "TP",
+    "security/cookie-flags/express-shared-flags-mutated.vuln.js.case~import-alias#security/auth-cookie-flags": "TP",
+    "security/cookie-flags/express-shared-flags-mutated.vuln.js.case~import-namespace#security/auth-cookie-flags": "TP",
+    "security/cookie-flags/express-shared-flags-mutated.vuln.js.case~promise-await#security/auth-cookie-flags": "TP",
+    "security/cookie-flags/express-shared-flags-mutated.vuln.js.case~promise-then#security/auth-cookie-flags": "TP",
+    "security/cookie-flags/express-shared-flags-mutated.vuln.js.case~rename-locals#security/auth-cookie-flags": "TP",
+    "security/cookie-flags/express-shared-flags-mutated.vuln.js.case~rename-params#security/auth-cookie-flags": "TP",
+    "security/cookie-flags/express-shared-flags-mutated.vuln.js.case~via-array#security/auth-cookie-flags": "TP",
+    "security/cookie-flags/express-shared-flags-mutated.vuln.js.case~via-destructuring#security/auth-cookie-flags": "TP",
+    "security/cookie-flags/express-shared-flags-mutated.vuln.js.case~via-helper#security/auth-cookie-flags": "TP",
+    "security/cookie-flags/express-shared-flags-mutated.vuln.js.case~via-object#security/auth-cookie-flags": "TP",
+    "security/cookie-flags/express-shared-flags-mutated.vuln.js.case~via-spread#security/auth-cookie-flags": "TP",
+    "security/cookie-flags/express-shared-flags-mutated.vuln.js.case~via-variable#security/auth-cookie-flags": "TP",
     "security/cookie-flags/koa-impersonation.safe.ts.case~arrow-to-function#security/auth-cookie-flags": "TN",
     "security/cookie-flags/koa-impersonation.safe.ts.case~callback#security/auth-cookie-flags": "TN",
     "security/cookie-flags/koa-impersonation.safe.ts.case~import-alias#security/auth-cookie-flags": "TN",

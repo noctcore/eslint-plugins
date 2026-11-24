@@ -1,0 +1,16 @@
+// @bench category=cookie-flags cwe=CWE-1004 framework=express pair=express-shared-flags-mutated title="shared cookie flags object is only spread, never changed"
+// ok
+const express = require('express');
+const { createSession } = require('./auth');
+
+const SESSION_FLAGS = { httpOnly: true, secure: true, sameSite: 'lax' };
+const router = express.Router();
+
+router.post('/login', express.json(), async (req, res) => {
+  const sid = await createSession(req.body);
+  const maxAge = req.body.rememberInBrowser ? 30 * 86_400_000 : 86_400_000;
+  res.cookie('session', sid, { ...SESSION_FLAGS, maxAge });
+  res.json({ ok: true });
+});
+
+module.exports = router;

@@ -1,0 +1,17 @@
+// @bench category=cookie-flags cwe=CWE-1004 framework=express pair=express-shared-flags-mutated title="shared cookie flags object has httpOnly turned off in place before it is spread"
+const express = require('express');
+const { createSession } = require('./auth');
+
+const SESSION_FLAGS = { httpOnly: true, secure: true, sameSite: 'lax' };
+const router = express.Router();
+
+router.post('/login', express.json(), async (req, res) => {
+  const sid = await createSession(req.body);
+  if (req.body.rememberInBrowser) {
+    SESSION_FLAGS.httpOnly = false;
+  }
+  res.cookie('session', sid, { ...SESSION_FLAGS, maxAge: 86_400_000 }); // expect: security/auth-cookie-flags
+  res.json({ ok: true });
+});
+
+module.exports = router;
