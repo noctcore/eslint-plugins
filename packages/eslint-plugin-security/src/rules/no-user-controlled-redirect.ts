@@ -282,6 +282,11 @@ function memberCallParts(
   return { method, receivers };
 }
 
+/** True when `name` is bound to an import from `@sveltejs/kit` (a named or a namespace import). */
+function isKitImport(name: TSESTree.Identifier, sourceCode: Readonly<TSESLint.SourceCode>): boolean {
+  return importedBinding(name, sourceCode)?.module === '@sveltejs/kit';
+}
+
 /** `matchCallee`, also through a chain of response-returning calls on the receiver. */
 function matchRedirectCallee(
   node: TSESTree.CallExpression,
@@ -291,6 +296,17 @@ function matchRedirectCallee(
   const direct = matchCallee(node, specs, sourceCode);
   if (direct !== undefined) {
     return direct;
+  }
+  // `kit.redirect(303, url)` through `import * as kit from '@sveltejs/kit'`
+  // is the bare `redirect` sink.
+  const callee = node.callee;
+  if (
+    callee.type === AST_NODE_TYPES.MemberExpression &&
+    callee.object.type === AST_NODE_TYPES.Identifier &&
+    propertyName(callee, sourceCode) === 'redirect' &&
+    isKitImport(callee.object, sourceCode)
+  ) {
+    return specs.find((spec) => spec.object === undefined && spec.name === 'redirect');
   }
   const parts = memberCallParts(node, sourceCode);
   return parts === null
@@ -321,9 +337,10 @@ function statusFirst(
   const inner =
     first === undefined || first.type === AST_NODE_TYPES.SpreadElement ? undefined : unwrapExpression(first);
   const status = inner?.type === AST_NODE_TYPES.Literal && typeof inner.value === 'number';
-  const fromKit =
-    node.callee.type === AST_NODE_TYPES.Identifier &&
-    importedBinding(node.callee, sourceCode)?.module === '@sveltejs/kit';
+  const callee = node.callee;
+  const root =
+    callee.type === AST_NODE_TYPES.MemberExpression ? callee.object : callee;
+  const fromKit = root.type === AST_NODE_TYPES.Identifier && isKitImport(root, sourceCode);
   return status || fromKit ? { ...spec, urlArgument: 1 } : spec;
 }
 
@@ -718,7 +735,29 @@ function isFetchResponse(
   });
 }
 
-/** The `Location` values of `r.headers.set('Location', url)` on a Fetch response `r`. */
+/** `r` in `const { headers } = r` when `name` is that `headers` binding, else null. */
+function destructuredHeadersSource(
+  name: TSESTree.Identifier,
+  sourceCode: Readonly<TSESLint.SourceCode>,
+): TSESTree.Expression | null {
+  const def = findVariable(sourceCode.getScope(name), name)?.defs[0];
+  if (def?.type !== 'Variable' || def.node.id.type !== AST_NODE_TYPES.ObjectPattern || def.node.init === null) {
+    return null;
+  }
+  const taken = def.node.id.properties.some(
+    (property) =>
+      property.type === AST_NODE_TYPES.Property &&
+      property.value === def.name &&
+      keyName(property, sourceCode) === 'headers',
+  );
+  return taken ? def.node.init : null;
+}
+
+/**
+ * The `Location` values of `r.headers.set('Location', url)` on a Fetch
+ * response `r`, also when `r.headers` reaches the call through a binding, a
+ * helper or a container (`const h = r.headers; h.set(...)`).
+ */
 function responseHeadersLocations(
   node: TSESTree.CallExpression,
   responseObjects: ReadonlySet<string>,
@@ -728,9 +767,18 @@ function responseHeadersLocations(
   if (
     callee.type !== AST_NODE_TYPES.MemberExpression ||
     !HOLDER_SETTERS.has(propertyName(callee, sourceCode) ?? '') ||
-    callee.object.type !== AST_NODE_TYPES.MemberExpression ||
-    propertyName(callee.object, sourceCode) !== 'headers' ||
-    !isFetchResponse(callee.object.object, responseObjects, sourceCode)
+    !flowSteps(callee.object, callee.object, sourceCode, 'taint').some(({ node: step }) => {
+      const headers = unwrapExpression(step as TSESTree.Expression);
+      if (headers.type === AST_NODE_TYPES.Identifier) {
+        const response = destructuredHeadersSource(headers, sourceCode);
+        return response !== null && isFetchResponse(response, responseObjects, sourceCode);
+      }
+      return (
+        headers.type === AST_NODE_TYPES.MemberExpression &&
+        propertyName(headers, sourceCode) === 'headers' &&
+        isFetchResponse(headers.object, responseObjects, sourceCode)
+      );
+    })
   ) {
     return [];
   }
