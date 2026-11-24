@@ -159,8 +159,15 @@ function commandName(word: string): string {
 /**
  * Classifies the runtime parts of a command built from `segments`: static text
  * (from literals and resolved constants) and runtime values, in order.
+ *
+ * A value in `opaque` is proven but its text is not known (a value the
+ * operator sets): it may hold a separator or a wrapper, so every later word up
+ * to the next separator in the string runs as a program.
  */
-export function classifyShellParts(segments: readonly (string | TSESTree.Node)[]): ShellPart[] {
+export function classifyShellParts(
+  segments: readonly (string | TSESTree.Node)[],
+  opaque: ReadonlySet<TSESTree.Node> = new Set(),
+): ShellPart[] {
   const items: (string | TSESTree.Node)[] = [];
   for (const segment of segments) {
     if (typeof segment === 'string') {
@@ -178,6 +185,7 @@ export function classifyShellParts(segments: readonly (string | TSESTree.Node)[]
   // has anything in it.
   let word = '';
   let started = false;
+  let wordOpaque = false;
   // The quote the scan is inside, and whether the last character was an
   // escaping backslash. Read only to keep an assignment word whole.
   let quote = '';
@@ -197,8 +205,18 @@ export function classifyShellParts(segments: readonly (string | TSESTree.Node)[]
       return;
     }
     const text = word;
+    const unknown = wordOpaque;
     word = '';
     started = false;
+    wordOpaque = false;
+    readWord(text);
+    if (unknown) {
+      mode = 'wrapped';
+      program = null;
+    }
+  };
+
+  const readWord = (text: string): void => {
     if (redirectTarget) {
       redirectTarget = false;
       return;
@@ -272,6 +290,7 @@ export function classifyShellParts(segments: readonly (string | TSESTree.Node)[]
       word += VALUE_MARK;
       started = true;
       escaped = false;
+      wordOpaque ||= opaque.has(item);
       return;
     }
     if (isSeparator(index)) {

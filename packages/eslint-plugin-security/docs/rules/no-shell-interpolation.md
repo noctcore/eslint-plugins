@@ -176,6 +176,9 @@ A value in a word that runs as a program is proven only by a literal allowlist, 
   (`$SHELL`, `"$SHELL"`, `${SUDO:-sudo}`, bash's `$'env'`) counts as a wrapper too: it can name any program.
 
 An in-file `const` bound to a string (`const P = 'sudo'`, `const SEP = ';'`) is read as its text.
+So is a value checked against literals: the command is read once with each text it can hold, and
+every reading must hold. After `if (e !== '=') return`, `` `A${e}1 ${t}` `` is an assignment and
+`t` runs as the program; after `['sudo', 'ls'].includes(p)`, `` `${p} ${t}` `` may be `sudo ${t}`.
 This is a list: a command not on it that runs its arguments is not seen. Bash's `&>file` is read
 as `&` and then a redirect, the way `/bin/sh` reads it where it is dash (Debian, Ubuntu): there
 `` `ls &>/dev/null ${x}` `` runs `x` as a program. `2>&1` and `>&2` stay redirects, but an escaped
@@ -257,7 +260,10 @@ With `trustEnvironment: true`, a value read from `process.env` with a fixed key 
 by whoever runs the process and left alone: directly, through `const` bindings, `String()`, string
 methods with literal arguments (`.trim()`, `.replace(/\0/g, '')`), literal fallbacks (`|| ''`),
 and templates or `+` of such values and literals. A computed key (`process.env[name]`) is still
-reported. Turn it on only where no variable carries outside input.
+reported. The rule cannot see the text such a value holds, and it may hold a separator or a
+wrapper, so every value after it up to the next separator is read as a program word: with
+`` `${process.env.TOOL} ${file}` `` or `` `git -C ${process.env.REPO_DIR} log ${file}` ``, `file`
+needs a literal allowlist or a constant. Turn it on only where no variable carries outside input.
 
 ```ts bad options={"trustEnvironment":true}
 // a computed key could name any variable

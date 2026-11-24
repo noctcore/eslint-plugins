@@ -252,6 +252,74 @@ function partContexts(part: ShellPart): GuardContext[] {
   return [part.midWord ? 'shell-word' : 'shell'];
 }
 
+/** The most readings of one command tried (see {@link commandReadings}). */
+const MAX_READINGS = 64;
+
+type Segments = readonly (string | TSESTree.Node)[];
+
+/**
+ * The texts a value can hold when it is proven by literals alone (an
+ * allowlist, a compared string, a constant), else null.
+ */
+function literalTexts(
+  node: TSESTree.Node,
+  sink: TSESTree.Node,
+  sourceCode: Readonly<TSESLint.SourceCode>,
+): string[] | null {
+  const texts = new Set<string>();
+  const proven = isProvenSafeValue(node, sink, 'command', sourceCode, {
+    onLiteral: (text) => texts.add(text),
+  });
+  return proven && texts.size > 0 ? [...texts] : null;
+}
+
+/**
+ * Every way the command can read. A value proven by literals is read as each
+ * text it can hold (`A${e}1` with `e === '='` is an assignment, `${p}` with
+ * `p` in `['sudo', 'ls']` may be a wrapper), and every reading must hold. A
+ * value proven some other way that a program name needs (a value from
+ * `process.env` under `trustEnvironment`), or one with more texts than
+ * {@link MAX_READINGS} allows, is opaque: its text is not known.
+ */
+function commandReadings(
+  segments: Segments,
+  sink: TSESTree.Node,
+  sourceCode: Readonly<TSESLint.SourceCode>,
+  trustEnvironment: boolean,
+): { readonly segments: Segments; readonly opaque: ReadonlySet<TSESTree.Node> }[] {
+  const choices = segments.map((segment) =>
+    typeof segment === 'string' ? null : literalTexts(segment, sink, sourceCode),
+  );
+  const opaque = new Set<TSESTree.Node>();
+  segments.forEach((segment, index) => {
+    if (
+      typeof segment !== 'string' &&
+      choices[index] === null &&
+      isProvenSafeValue(segment, sink, 'command', sourceCode, { trustEnvironment })
+    ) {
+      opaque.add(segment);
+    }
+  });
+  const count = choices.reduce((total, texts) => total * (texts?.length ?? 1), 1);
+  if (count > MAX_READINGS) {
+    segments.forEach((segment, index) => {
+      if (typeof segment !== 'string' && choices[index] !== null) {
+        opaque.add(segment);
+      }
+    });
+    return [{ segments, opaque }];
+  }
+  let readings: (string | TSESTree.Node)[][] = [[]];
+  segments.forEach((segment, index) => {
+    const texts = choices[index];
+    readings =
+      texts === null || texts === undefined
+        ? readings.map((reading) => [...reading, segment])
+        : readings.flatMap((reading) => texts.map((text) => [...reading, text]));
+  });
+  return readings.map((reading) => ({ segments: reading, opaque }));
+}
+
 /**
  * True when a `shell` option value may enable a shell. Only a value that is
  * statically off (`false`, `null`, `undefined`, `''`) is safe; anything decided
@@ -405,10 +473,25 @@ export const noShellInterpolationRule = createRule<RuleOptions, MessageIds>({
         // A value that starts a word must not start with `-` (an option) or
         // `#` (a comment); one glued to text before it may. A value in the
         // program name is proven only by a literal allowlist or a constant.
-        const parts = classifyShellParts(commandSegments(command, context.sourceCode));
-        const provenSafe = parts.every((part) =>
-          partContexts(part).every((where) =>
-            isProvenSafeValue(part.node, node, where, context.sourceCode, { trustEnvironment }),
+        const proven = new Map<string, boolean>();
+        const provenAt = (part: TSESTree.Node, where: GuardContext): boolean => {
+          const key = `${part.range.join(':')}:${where}`;
+          let known = proven.get(key);
+          if (known === undefined) {
+            known = isProvenSafeValue(part, node, where, context.sourceCode, { trustEnvironment });
+            proven.set(key, known);
+          }
+          return known;
+        };
+        const segments = commandSegments(command, context.sourceCode);
+        const provenSafe = commandReadings(
+          segments,
+          node,
+          context.sourceCode,
+          trustEnvironment,
+        ).every((reading) =>
+          classifyShellParts(reading.segments, reading.opaque).every((part) =>
+            partContexts(part).every((where) => provenAt(part.node, where)),
           ),
         );
         if (provenSafe) {

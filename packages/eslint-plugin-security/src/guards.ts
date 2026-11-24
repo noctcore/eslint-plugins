@@ -1160,23 +1160,38 @@ function isUnchangedChain(
 }
 
 /** True for an array literal (possibly behind a `const` that never changes) of string or number literals only. */
-function isLiteralList(node: TSESTree.Node, sourceCode: SourceCode): boolean {
+function isLiteralList(
+  node: TSESTree.Node,
+  sourceCode: SourceCode,
+  observe?: LiteralObserver,
+): boolean {
   const resolved = resolveConst(node, sourceCode);
   const frozen = frozenArgument(resolved, sourceCode);
-  if (frozen !== null) {
-    // `Object.freeze([...])`: the contents cannot change, whatever else reads the list.
-    return (
-      frozen.type === AST_NODE_TYPES.ArrayExpression &&
-      frozen.elements.length > 0 &&
-      frozen.elements.every((element) => element !== null && isStaticLiteral(element))
-    );
+  // `Object.freeze([...])`: the contents cannot change, whatever else reads the list.
+  const list = frozen ?? resolved;
+  const literal =
+    list.type === AST_NODE_TYPES.ArrayExpression &&
+    list.elements.length > 0 &&
+    list.elements.every((element) => element !== null && isStaticLiteral(element)) &&
+    (frozen !== null || isUnchangedChain(node, LIST_READS, sourceCode));
+  if (literal && observe !== undefined) {
+    for (const element of list.elements) {
+      observe(literalText(element as TSESTree.Node));
+    }
   }
-  return (
-    resolved.type === AST_NODE_TYPES.ArrayExpression &&
-    resolved.elements.length > 0 &&
-    resolved.elements.every((element) => element !== null && isStaticLiteral(element)) &&
-    isUnchangedChain(node, LIST_READS, sourceCode)
-  );
+  return literal;
+}
+
+/** Told the text of each literal a proof rests on (see `ProvenSafeOptions.onLiteral`). */
+type LiteralObserver = (value: string) => void;
+
+/** The text of a literal {@link isStaticLiteral} accepts. */
+function literalText(node: TSESTree.Node): string {
+  const inner = unwrap(node);
+  if (inner.type === AST_NODE_TYPES.TemplateLiteral) {
+    return inner.quasis[0]?.value.cooked ?? '';
+  }
+  return inner.type === AST_NODE_TYPES.Literal ? String(inner.value) : '';
 }
 
 /** For `Object.freeze(x)` with the global `Object`, the `x`; else null. */
@@ -1195,7 +1210,11 @@ function frozenArgument(node: TSESTree.Node, sourceCode: SourceCode): TSESTree.N
 }
 
 /** True for `new Set([...literals])`, inline or behind a `const` that never changes. */
-function isLiteralSet(node: TSESTree.Node, sourceCode: SourceCode): boolean {
+function isLiteralSet(
+  node: TSESTree.Node,
+  sourceCode: SourceCode,
+  observe?: LiteralObserver,
+): boolean {
   const resolved = resolveConst(node, sourceCode);
   return (
     isUnchangedChain(node, SET_READS, sourceCode) &&
@@ -1204,7 +1223,7 @@ function isLiteralSet(node: TSESTree.Node, sourceCode: SourceCode): boolean {
     resolved.arguments.length === 1 &&
     resolved.arguments[0] !== undefined &&
     resolved.arguments[0].type !== AST_NODE_TYPES.SpreadElement &&
-    isLiteralList(resolved.arguments[0], sourceCode)
+    isLiteralList(resolved.arguments[0], sourceCode, observe)
   );
 }
 
@@ -1284,7 +1303,14 @@ function regexOf(
 // Checks and guards
 // ---------------------------------------------------------------------------
 
-type RegexJudge = (pattern: string, flags: string) => boolean;
+/**
+ * Decides whether a regex check proves a value. `literal`, when set, is told
+ * the text of each literal a check rests on (see `ProvenSafeOptions.onLiteral`).
+ */
+interface RegexJudge {
+  (pattern: string, flags: string): boolean;
+  readonly literal?: LiteralObserver;
+}
 
 /** What a check must be about: a binding, or any expression a predicate accepts. */
 type Subject = Variable | ((node: TSESTree.Node) => boolean);
@@ -1317,6 +1343,7 @@ function isLiteralComparison(
   variable: Subject,
   negated: boolean,
   sourceCode: SourceCode,
+  observe?: LiteralObserver,
 ): boolean {
   const inner = unwrap(node);
   if (inner.type !== AST_NODE_TYPES.BinaryExpression) {
@@ -1333,14 +1360,15 @@ function isLiteralComparison(
     if (!isStaticLiteral(side)) {
       return false;
     }
-    if (inner.operator === strict) {
-      return true;
-    }
     const value = unwrap(side);
-    return (
+    const ok =
+      inner.operator === strict ||
       value.type === AST_NODE_TYPES.TemplateLiteral ||
-      (value.type === AST_NODE_TYPES.Literal && typeof value.value === 'string')
-    );
+      (value.type === AST_NODE_TYPES.Literal && typeof value.value === 'string');
+    if (ok) {
+      observe?.(literalText(side));
+    }
+    return ok;
   };
   return (
     (readsVariable(inner.left, variable, sourceCode) && literalOk(inner.right)) ||
@@ -1361,7 +1389,7 @@ function isCheck(
     includes !== null &&
     includes.callee.type === AST_NODE_TYPES.MemberExpression &&
     readsVariable(includes.arguments[0] as TSESTree.Node, variable, sourceCode) &&
-    isLiteralList(includes.callee.object, sourceCode)
+    isLiteralList(includes.callee.object, sourceCode, judge.literal)
   ) {
     return true;
   }
@@ -1370,7 +1398,7 @@ function isCheck(
     has !== null &&
     has.callee.type === AST_NODE_TYPES.MemberExpression &&
     readsVariable(has.arguments[0] as TSESTree.Node, variable, sourceCode) &&
-    isLiteralSet(has.callee.object, sourceCode)
+    isLiteralSet(has.callee.object, sourceCode, judge.literal)
   ) {
     return true;
   }
@@ -1384,8 +1412,8 @@ function isCheck(
     return regex !== null && judge(regex.pattern, regex.flags);
   }
   return (
-    indexOfCheck(inner, variable, true, sourceCode) ||
-    isLiteralComparison(inner, variable, false, sourceCode)
+    indexOfCheck(inner, variable, true, sourceCode, judge.literal) ||
+    isLiteralComparison(inner, variable, false, sourceCode, judge.literal)
   );
 }
 
@@ -1399,6 +1427,7 @@ function indexOfCheck(
   subject: Subject,
   positive: boolean,
   sourceCode: SourceCode,
+  observe?: LiteralObserver,
 ): boolean {
   const inner = unwrap(node);
   if (inner.type !== AST_NODE_TYPES.BinaryExpression) {
@@ -1410,7 +1439,7 @@ function indexOfCheck(
     call === null ||
     call.callee.type !== AST_NODE_TYPES.MemberExpression ||
     !readsVariable(call.arguments[0] as TSESTree.Node, subject, sourceCode) ||
-    !isLiteralList(call.callee.object, sourceCode)
+    !isLiteralList(call.callee.object, sourceCode, observe)
   ) {
     return false;
   }
@@ -1456,11 +1485,13 @@ function failsUnlessChecked(
     if (term.type === AST_NODE_TYPES.UnaryExpression && term.operator === '!') {
       return isCheck(term.argument, variable, judge, sourceCode);
     }
-    if (indexOfCheck(term, variable, false, sourceCode)) {
+    if (indexOfCheck(term, variable, false, sourceCode, judge.literal)) {
       return true;
     }
     const conjuncts = flattenLogical(term, '&&');
-    return conjuncts.every((conjunct) => isLiteralComparison(conjunct, variable, true, sourceCode));
+    return conjuncts.every((conjunct) =>
+      isLiteralComparison(conjunct, variable, true, sourceCode, judge.literal),
+    );
   });
 }
 
@@ -1475,7 +1506,9 @@ function holdsOnlyIfChecked(
     const disjuncts = flattenLogical(term, '||');
     return disjuncts.length === 1
       ? isCheck(term, variable, judge, sourceCode)
-      : disjuncts.every((disjunct) => isLiteralComparison(disjunct, variable, false, sourceCode));
+      : disjuncts.every((disjunct) =>
+          isLiteralComparison(disjunct, variable, false, sourceCode, judge.literal),
+        );
   });
 }
 
@@ -1805,6 +1838,13 @@ function schemaConfines(node: TSESTree.Node, judge: RegexJudge, sourceCode: Sour
         );
       if (!literal) {
         return false;
+      }
+      for (const arg of args) {
+        if (isStaticLiteral(arg)) {
+          judge.literal?.(literalText(arg));
+        } else {
+          isLiteralList(arg, sourceCode, judge.literal);
+        }
       }
       confined = true;
     } else if (!SCHEMA_NARROWING_METHODS.has(method)) {
@@ -2507,6 +2547,12 @@ export interface ProvenSafeOptions {
    * carry text an outsider chose (`GITHUB_HEAD_REF`, a pull request title).
    */
   readonly trustEnvironment?: boolean;
+  /**
+   * Told the text of every literal a proof rests on: an allowlist member, a
+   * compared literal, a literal schema set, a constant. A caller that reads
+   * the value as text (a shell command) learns what it can hold.
+   */
+  readonly onLiteral?: LiteralObserver;
 }
 
 /**
@@ -2522,7 +2568,10 @@ export function isProvenSafeValue(
   sourceCode: SourceCode,
   options: ProvenSafeOptions = {},
 ): boolean {
-  const judge: RegexJudge = (pattern, flags) => regexAdmitsOnlySafe(pattern, flags, context);
+  const judge: RegexJudge = Object.assign(
+    (pattern: string, flags: string) => regexAdmitsOnlySafe(pattern, flags, context),
+    { literal: options.onLiteral },
+  );
   return provenSafe(node, sink, judge, sourceCode, options, 0);
 }
 
@@ -2539,6 +2588,7 @@ function provenSafe(
   }
   const node = peelStringWrappers(raw, sourceCode);
   if (isStaticLiteral(node)) {
+    judge.literal?.(literalText(node));
     return true;
   }
   if (options.trustEnvironment === true && isEnvironmentValue(node, sourceCode, 0)) {
