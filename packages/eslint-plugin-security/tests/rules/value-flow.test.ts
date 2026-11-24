@@ -608,3 +608,118 @@ ruleTester.run('require-sanitized-html (containers kept from user code)', requir
   { code: "const M = { h: '<b>hi</b>' };\nexport function f(el: any, q: any) { const t = (s: any, o: any) => { o.h = q.x; return ''; }; t`${M}`; el.innerHTML = M.h; }", filename: "probe.ts" },
   ].map((entry) => ({ ...entry, errors: [{ messageId: 'unsanitizedHtml' as const }] })),
 });
+
+// A value taken from a binding that changes later (`const box = [u]; u = other`)
+// is judged where it was taken, and an `eval` in reach of a binding ends
+// any proof that relies on it.
+
+ruleTester.run('auth-cookie-flags (values taken before a change)', authCookieFlagsRule, {
+  valid: [],
+  invalid: [
+    // L11f eval writes C
+    { code: "const C = { secure: true, httpOnly: true, sameSite: 'lax' };\nexport function h(req: any, res: any) { eval('C.httpOnly = false'); res.cookie('session', req.body.t, { ...C }); }", filename: TS, errors: [{ messageId: 'missingFlag' }, { messageId: 'missingFlag' }, { messageId: 'missingFlag' }] },
+    // P08 cookie let flags single box, reassigned
+    { code: "export function h(req: any, res: any) { let f: any = { secure: false }; const box = [f]; f = { secure: true, httpOnly: true, sameSite: 'lax' }; res.cookie('session', req.body.t, { ...box[0] }); }", filename: TS, errors: [{ messageId: 'missingFlag' }, { messageId: 'missingFlag' }, { messageId: 'missingFlag' }] },
+    // P11 cookie eval in nested fn
+    { code: "const C = { secure: true, httpOnly: true, sameSite: 'lax' };\nfunction later() { eval('C.httpOnly = false'); }\nexport function h(req: any, res: any) { later(); res.cookie('session', req.body.t, { ...C }); }", filename: TS, errors: [{ messageId: 'missingFlag' }, { messageId: 'missingFlag' }, { messageId: 'missingFlag' }] },
+  ],
+});
+
+ruleTester.run('no-user-controlled-fetch-url (values taken before a change)', noUserControlledFetchUrlRule, {
+  valid: [
+    // N01g a check on the binding itself, after its last write
+    { code: "export async function h(req: any) { let u = new URL(req.query.u); u = new URL(req.query.v); if (u.host !== 'api.example.com') return; await fetch(u); }", filename: TS },
+  ],
+  invalid: [
+    // N01 fetch let URL, box array, reassign+pin
+    { code: "export async function h(req: any) { let u = new URL(req.query.u); const box = [u]; u = new URL('https://api.example.com'); if (u.host !== 'api.example.com') return; await fetch(box[0]); }", filename: TS, errors: [{ messageId: 'userControlledFetchUrl' }] },
+    // N01b same with object box
+    { code: "export async function h(req: any) { let u = new URL(req.query.u); const box = { a: u }; u = new URL(req.query.v); if (u.host !== 'api.example.com') return; await fetch(box.a); }", filename: TS, errors: [{ messageId: 'userControlledFetchUrl' }] },
+    // N01c plain const alias then reassign+pin
+    { code: "export async function h(req: any) { let u = new URL(req.query.u); const v = u; u = new URL(req.query.v); if (u.host !== 'api.example.com') return; await fetch(v); }", filename: TS, errors: [{ messageId: 'userControlledFetchUrl' }] },
+    // N01d forward() then reassign+pin
+    { code: "const fwd = (x: any) => x;\nexport async function h(req: any) { let u = new URL(req.query.u); const v = fwd(u); u = new URL(req.query.v); if (u.host !== 'api.example.com') return; await fetch(v); }", filename: TS, errors: [{ messageId: 'userControlledFetchUrl' }] },
+    // N01e callback [u].forEach then reassign inside
+    { code: "export async function h(req: any) { let u = new URL(req.query.u); [u].forEach((v) => { u = new URL(req.query.w); if (u.host !== 'api.example.com') return; fetch(v); }); }", filename: TS, errors: [{ messageId: 'userControlledFetchUrl' }] },
+    // N01h string url box then reassign+startsWith
+    { code: "export async function h(req: any) { let u: string = req.query.u; const box = [u]; u = req.query.v; if (!u.startsWith('https://api.example.com/')) return; await fetch(box[0]); }", filename: TS, errors: [{ messageId: 'userControlledFetchUrl' }] },
+    // N01i let single-write box
+    { code: "export async function h(req: any) { let u; u = new URL(req.query.u); const box = [u]; if (u.host !== 'api.example.com') return; await fetch(box[0]); }", filename: TS, errors: [{ messageId: 'userControlledFetchUrl' }] },
+    // P10 fetch let single-write eval rewrite
+    { code: "export async function h(req: any) { let u; u = 'https://api.example.com/x'; eval('u = req.query.u'); await fetch(u); }", filename: TS, errors: [{ messageId: 'userControlledFetchUrl' }] },
+    // Q8 fetch const literal eval
+    { code: "const L = { to: 'https://api.example.com/x' };\nexport async function h(req: any) { eval('L.to = req.query.u'); await fetch(L.to); }", filename: TS, errors: [{ messageId: 'userControlledFetchUrl' }] },
+  ],
+});
+
+ruleTester.run('no-user-controlled-redirect (values taken before a change)', noUserControlledRedirectRule, {
+  valid: [
+    // N02c a check on a const URL
+    { code: "export function h(req: any, res: any) { const u = new URL(req.query.u, 'https://app.example.com'); if (u.origin !== 'https://app.example.com') return; res.redirect(u.href); }", filename: TS },
+  ],
+  invalid: [
+    // N02 redirect let box reassign+guard
+    { code: "export function h(req: any, res: any) { let u: string = req.query.u; const box = [u]; u = req.query.v; if (!u.startsWith('/') || u.startsWith('//')) return; res.redirect(box[0]); }", filename: TS, errors: [{ messageId: 'userControlledRedirect' }] },
+    // N02b redirect let box reassign+URL pin
+    { code: "export function h(req: any, res: any) { let u = new URL(req.query.u, 'https://app.example.com'); const box = [u]; u = new URL(req.query.v, 'https://app.example.com'); if (u.origin !== 'https://app.example.com') return; res.redirect(box[0].href); }", filename: TS, errors: [{ messageId: 'userControlledRedirect' }] },
+    // N02e redirect box let reassign url
+    { code: "export function h(req: any, res: any) { let u = new URL(req.query.u, 'https://app.example.com'); const box = [u]; u = new URL(req.query.v, 'https://app.example.com'); if (u.origin !== 'https://app.example.com') return; res.redirect(box[0]); }", filename: TS, errors: [{ messageId: 'userControlledRedirect' }] },
+    // P01 redirect const alias of let, reassign+guard
+    { code: "export function h(req: any, res: any) { let u: string = req.query.u; const v = u; u = req.query.w; if (!u.startsWith('/') || u.startsWith('//')) return; res.redirect(v); }", filename: TS, errors: [{ messageId: 'userControlledRedirect' }] },
+    // P03 redirect same-origin path through let box
+    { code: "export function h(req: any, res: any) { let u = new URL(req.query.u, 'https://app.example.com'); const box = { p: u.pathname }; u = new URL('/', 'https://app.example.com'); if (u.origin !== 'https://app.example.com' || u.pathname.startsWith('//')) return; res.redirect(box.p); }", filename: TS, errors: [{ messageId: 'userControlledRedirect' }] },
+  ],
+});
+
+ruleTester.run('require-path-containment (values taken before a change)', requirePathContainmentRule, {
+  valid: [],
+  invalid: [
+    // N03 path let box reassign+guard
+    { code: "const fs = require('fs'); const path = require('path');\nfunction h(req: any) { let r = path.resolve('/srv/files', String(req.query.file)); const box = [r]; r = path.resolve('/srv/files', String(req.query.g)); if (!r.startsWith('/srv/files/')) return; fs.writeFileSync(box[0], 'data'); }", filename: TS, errors: [{ messageId: 'unguardedFsPath' }] },
+    // P06 path let object box reassign+guard
+    { code: "const fs = require('fs'); const path = require('path');\nfunction h(req: any) { let r = path.resolve('/srv/files', String(req.query.file)); const box = { p: r }; r = path.resolve('/srv/files', 'a'); if (!r.startsWith('/srv/files/')) return; fs.writeFileSync(box.p, 'data'); }", filename: TS, errors: [{ messageId: 'unguardedFsPath' }] },
+    // Q9 path let box reassign+guard via alias
+    { code: "const fs = require('fs'); const path = require('path');\nfunction h(req: any) { let r = path.resolve('/srv/files', String(req.query.file)); const v = r; r = path.resolve('/srv/files', 'a'); if (!r.startsWith('/srv/files/')) return; fs.writeFileSync(v, 'data'); }", filename: TS, errors: [{ messageId: 'unguardedFsPath' }] },
+  ],
+});
+
+ruleTester.run('no-shell-interpolation (values taken before a change)', noShellInterpolationRule, {
+  valid: [],
+  invalid: [
+    // N04 shell let box reassign+allowlist
+    { code: "import { exec } from 'child_process';\nexport function run(x: string, y: string) { let v = x; const box = [v]; v = y; if (v !== 'fast' && v !== 'slow') return; exec(`tool ${box[0]}`); }", filename: TS, errors: [{ messageId: 'shellInterpolation' }] },
+    // P04 shell param box reassign+allowlist
+    { code: "import { exec } from 'child_process';\nexport function run(x: string, y: string) { const box = [x]; x = y; if (x !== 'fast' && x !== 'slow') return; exec(`tool ${box[0]}`); }", filename: TS, errors: [{ messageId: 'shellInterpolation' }] },
+    // P05 shell let fwd reassign+allowlist
+    { code: "const fwd = (s: string) => s;\nimport { exec } from 'child_process';\nexport function run(x: string, y: string) { let v = x; const w = fwd(v); v = 'fast'; if (v !== 'fast' && v !== 'slow') return; exec(`tool ${w}`); }", filename: TS, errors: [{ messageId: 'shellInterpolation' }] },
+    // Q6 shell const cfg eval
+    { code: "import { exec } from 'child_process';\nconst cfg = { cmd: 'ls' };\nexport function h(req: any) { eval('cfg.cmd = req.query.c'); exec(`run ${cfg.cmd}`); }", filename: TS, errors: [{ messageId: 'shellInterpolation' }] },
+  ],
+});
+
+ruleTester.run('require-sanitized-html (values taken before a change)', requireSanitizedHtmlRule, {
+  valid: [
+    // Q3 a const that holds the sanitized value
+    { code: "import DOMPurify from 'dompurify';\nexport function f(el: any, q: any) { const h = DOMPurify.sanitize(q.x); const box = [h]; el.innerHTML = box[0]; }", filename: TS },
+  ],
+  invalid: [
+    // N05 html let box reassign sanitize
+    { code: "import DOMPurify from 'dompurify';\nexport function h(el: any, q: any) { let m = q.x; const holder = [m]; m = DOMPurify.sanitize(q.y); el.innerHTML = holder[0]; }", filename: TS, errors: [{ messageId: 'unsanitizedHtml' }] },
+    // Q1 html let box sanitized after
+    { code: "import DOMPurify from 'dompurify';\nexport function f(el: any, q: any) { let h = q.x; const box = [h]; h = DOMPurify.sanitize(h); el.innerHTML = box[0]; }", filename: TS, errors: [{ messageId: 'unsanitizedHtml' }] },
+    // Q2 html let alias sanitized after
+    { code: "import DOMPurify from 'dompurify';\nexport function f(el: any, q: any) { let h = q.x; const v = h; h = DOMPurify.sanitize(h); el.innerHTML = v; }", filename: TS, errors: [{ messageId: 'unsanitizedHtml' }] },
+    // Q4 html single write eval
+    { code: "import DOMPurify from 'dompurify';\nexport function f(el: any, q: any) { let h; h = '<b>hi</b>'; eval('h = q.x'); el.innerHTML = h; }", filename: TS, errors: [{ messageId: 'unsanitizedHtml' }] },
+    // Q5 html const literal box eval
+    { code: "import DOMPurify from 'dompurify';\nconst M = { h: '<b>hi</b>' };\nexport function f(el: any, q: any) { eval('M.h = q.x'); el.innerHTML = M.h; }", filename: TS, errors: [{ messageId: 'unsanitizedHtml' }] },
+  ],
+});
+
+ruleTester.run('no-unescaped-html-response (values taken before a change)', noUnescapedHtmlResponseRule, {
+  valid: [],
+  invalid: [
+    // P07 html let box reassign escape
+    { code: "export function h(req: any, res: any) { let v: string = req.query.v; const box = [v]; v = 'x'; if (!/^[a-z]+$/.test(v)) return; res.send('<p>' + box[0] + '</p>'); }", filename: TS, errors: [{ messageId: 'unescapedHtmlResponse' }] },
+  ],
+});
