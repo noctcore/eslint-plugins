@@ -1177,6 +1177,10 @@ ruleTester.run('no-shell-interpolation reading', noShellInterpolationRule, {
     // #314: a `+` admitted only after the first character, or glued to text before it.
     { code: 'function run(x: string) { if (!/^[a-z][\\w.+]*$/.test(x)) return; exec(`dig ${x} example.com`); }', filename: TS },
     { code: 'function run(x: string) { if (!/^[\\w+]+$/.test(x)) return; exec(`tool --tag=${x}`); }', filename: TS },
+    // #316: a wrapped constant that is a plain word.
+    { code: checked('exec(`ls ${String("-la")} ${t}`);'), filename: TS },
+    { code: checked('const P = String("git"); exec(`${P} log ${t}`);'), filename: TS },
+    { code: checked('exec(`ls ${`-l ${t}` as string}`);'), filename: TS },
     // #317: a parameter that is an argument, not the program.
     { code: checked('exec(`ls $HOME/${t}`);'), filename: TS },
     { code: checked('exec(`echo $PATH ${t}`);'), filename: TS },
@@ -1202,6 +1206,13 @@ ruleTester.run('no-shell-interpolation reading', noShellInterpolationRule, {
     { code: 'function run(name: string) { if (!/^[\\w.+]+$/.test(name)) return; exec(`dig ${name} example.com`); }', filename: TS, errors: error },
     { code: 'function run(x: string) { if (!/^[+a-z0-9]+$/.test(x)) return; exec(`sort ${x} file`); }', filename: TS, errors: error },
     { code: 'function run(x: string) { if (!/^\\+?[a-z]+$/.test(x)) return; exec(`set ${x}`); }', filename: TS, errors: error },
+    // #316: a separator or wrapper written as a wrapped or deep constant.
+    { code: checked('exec(`ls ${String(";")} ${t}`);'), filename: TS, errors: error },
+    { code: checked('exec(`ls ${";" as string} ${t}`);'), filename: TS, errors: error },
+    { code: checked('exec(`ls ${";" satisfies string} ${t}`);'), filename: TS, errors: error },
+    { code: checked('exec(`${"sudo" as string} ${t}`);'), filename: TS, errors: error },
+    { code: checked('const P = String("sudo"); exec(`${P} ${t}`);'), filename: TS, errors: error },
+    { code: 'const A0 = \'sudo\'; const A1 = A0; const A2 = A1; const A3 = A2; const A4 = A3; const A5 = A4; const A6 = A5; const A7 = A6; const A8 = A7; function run(t: string) { if (!/^[a-z][a-z0-9-]*$/.test(t)) return; exec(`${A8} ${t}`); }', filename: TS, errors: error },
     // #317: a shell parameter as the program name can be any program.
     { code: checked('exec(`$SHELL -c ${t}`);'), filename: TS, errors: error },
     { code: checked('exec(`"$SHELL" -c "${t}"`);'), filename: TS, errors: error },
