@@ -30,20 +30,28 @@ double-quoted value's escapes (`\"`, `\x27`, an escaped line break) are decoded.
 `if: ${{ github.ref == 'a #b' }}` reaches GitHub as an unclosed `${{ github.ref == 'a`; the message
 then says to quote the value to keep the `#`.
 
-A workflow that is not valid YAML (a duplicate key, a tab used as indentation, an unclosed quote or
-flow list, more than one document) is reported once, at the parser's first error: GitHub rejects it
-too. Its expressions are not checked until it parses.
+The YAML is read as close to GitHub's reader as the parser gets: not strict, so a `|# note` header,
+`"x"#c` and long or multi-line implicit keys pass, and a flow collection or quoted value continued
+below its parent's indent (which GitHub accepts) is read as GitHub reads it. What GitHub fails to
+load is reported: a duplicate key (compared without case, so `On` repeats `on`), an alias to an
+anchor not defined before it, more than one document, an unclosed quote or bracket, a tab used as
+indentation. A parse error is reported once, at the parser's first error, and the file's expressions
+are checked once it parses.
 
 Inside a closed `${{ }}`, the shape of the expression: a string that is never closed, an empty
 expression, unbalanced brackets, an operator with no left or right operand, two operands with no
 operator between them, an empty call argument, and `=`, `&` or `|` where `==`, `&&` or `||` was
 meant. GitHub rejects the workflow for each of these too.
 
-Two `if:` values: one that mixes a `${{ }}` with other text, which GitHub reads as a
-string and a non-empty string is always true, so the condition never skips anything; and an unquoted
-one that starts with `!`, which YAML reads as a tag, not a negation. The parsed value is checked, so
-a quoted, wrapped or block `if:` is checked the same way. A core tag YAML resolves itself
-(`if: !!str ${{ ... }}`) is not reported.
+Two kinds of `if:` value, at job level (`jobs.<id>.if`) and step level (`jobs.<id>.steps[*].if`);
+an `if` key anywhere else, such as an action input under `with:`, is not a condition. First, one with
+any text outside its `${{ }}`, which GitHub reads as a string, and a non-empty string is always true,
+so the condition never skips anything. GitHub keeps every character of the value, so this includes
+whitespace: spaces inside quotes (`if: " ${{ a }}"`) and the trailing newline a block keeps. Of the
+block styles, only `|-` and `>-` strip it; `|`, `>`, `|+` and `>+` make the condition always true. A
+block `if:` with no `${{ }}` at all is a plain expression and is fine in any style. Second, an
+unquoted one that starts with `!`, which YAML reads as a tag, not a negation. A core tag YAML
+resolves itself (`if: !!str ${{ ... }}`) is not reported.
 
 ```yaml
 # Bad
@@ -53,6 +61,8 @@ if: ${{ contains(github.ref, 'x' }}
 if: ${{ github.actor = 'bot' }}
 if: ${{ github.ref == 'x' }} && github.actor == 'y'
 if: !cancelled()
+if: |
+  ${{ github.event_name == 'push' }}
 
 # Good
 - run: python -c "print(f'$' + '{{' + name + '}}')"
