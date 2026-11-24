@@ -472,3 +472,139 @@ ruleTester.run('require-sanitized-html (proofs need exact containers)', requireS
   { code: "let m: any;\nexport function H(p: any) { m = { __html: '<b/>' }; const n = m; n.__html = p.x; return <div dangerouslySetInnerHTML={m} />; }", filename: "x.tsx" },
   ].map((entry) => ({ ...entry, errors: [{ messageId: 'unsanitizedHtml' as const }] })),
 });
+
+// A container must not reach code that could change it: a template tag, an
+// operator that runs `Symbol.hasInstance`, `toString` or `valueOf`, a
+// prototype or constructor key, or a function stored in it.
+
+ruleTester.run('auth-cookie-flags (containers kept from user code)', authCookieFlagsRule, {
+  valid: [],
+  invalid: [
+  // K01 tagged template gets C
+  { code: "const C = { secure: true, httpOnly: true, sameSite: 'lax' }; function weaken(s: any, o: any) { o.httpOnly = false; return ''; }\nexport function h(req: any, res: any) { weaken`${C}`; res.cookie('session', req.body.t, { ...C }); }", filename: "probe.ts" },
+  // K01b tagged template nested
+  { code: "const C = { o: { secure: true, httpOnly: true, sameSite: 'lax' } }; const weaken = (s: any, o: any) => { o.httpOnly = false; };\nexport function h(req: any, res: any) { weaken`x${C.o}`; res.cookie('session', req.body.t, { ...C.o }); }", filename: "probe.ts" },
+  // K02 instanceof hasInstance
+  { code: "const C = { secure: true, httpOnly: true, sameSite: 'lax' }; const W: any = { [Symbol.hasInstance](o: any) { o.httpOnly = false; return false; } };\nexport function h(req: any, res: any) { if (C instanceof W) {} res.cookie('session', req.body.t, { ...C }); }", filename: "probe.ts" },
+  // K03 toString via identifier, template
+  { code: "function weaken(this: any) { this.httpOnly = false; return ''; } const C = { toString: weaken, secure: true, httpOnly: true, sameSite: 'lax' };\nexport function h(req: any, res: any) { console.log(`${C}`); res.cookie('session', req.body.t, { ...C }); }", filename: "probe.ts" },
+  // K03b valueOf via identifier, binary
+  { code: "function weaken(this: any) { this.httpOnly = false; return 1; } const C = { valueOf: weaken, secure: true, httpOnly: true, sameSite: 'lax' };\nexport function h(req: any, res: any) { if (C > 0) {} res.cookie('session', req.body.t, { ...C }); }", filename: "probe.ts" },
+  // K03c valueOf via identifier, unary +
+  { code: "function weaken(this: any) { this.httpOnly = false; return 1; } const C = { valueOf: weaken, secure: true, httpOnly: true, sameSite: 'lax' };\nexport function h(req: any, res: any) { void +C; res.cookie('session', req.body.t, { ...C }); }", filename: "probe.ts" },
+  // K03d class value via identifier
+  { code: "class K { toString() { return ''; } } const C = { k: K, secure: true, httpOnly: true, sameSite: 'lax' };\nexport function h(req: any, res: any) { res.cookie('session', req.body.t, { ...C }); }", filename: "probe.ts" },
+  // K04 __proto__ identifier proto toString
+  { code: "const P = { toString: function (this: any) { this.httpOnly = false; return ''; } }; const C = { __proto__: P, secure: true, httpOnly: true, sameSite: 'lax' } as any;\nexport function h(req: any, res: any) { console.log(`${C}`); res.cookie('session', req.body.t, { ...C }); }", filename: "probe.ts" },
+  // K04b __proto__ read as primitive then mutated
+  { code: "const P: any = {}; const C = { __proto__: P, secure: true, httpOnly: true, sameSite: 'lax' } as any;\nexport function h(req: any, res: any) { Object.defineProperty(C.__proto__, 'x', { value: 1 }); res.cookie('session', req.body.t, { ...C }); }", filename: "probe.ts" },
+  // K04c constructor key read
+  { code: "const C = { secure: true, httpOnly: true, sameSite: 'lax' } as any;\nexport function h(req: any, res: any) { const k = C['constructor']; k.assign(C, { httpOnly: false }); res.cookie('session', req.body.t, { ...C }); }", filename: "probe.ts" },
+  // K04d constructor key template
+  { code: "const C = { secure: true, httpOnly: true, sameSite: 'lax' } as any;\nexport function h(req: any, res: any) { console.log(`${C['constructor']}`); res.cookie('session', req.body.t, { ...C }); }", filename: "probe.ts" },
+  // K05d nested object via call result entry
+  { code: "function mk() { return { secure: true, httpOnly: true, sameSite: 'lax' }; } const C = { o: mk() };\nexport function h(req: any, res: any) { const a = C.o; a.httpOnly = false; res.cookie('session', req.body.t, { ...C.o }); }", filename: "probe.ts" },
+  // K06 alias chain exported later
+  { code: "const C = { secure: true, httpOnly: true, sameSite: 'lax' }; const D = C; const E = D; export { E };\nexport function h(req: any, res: any) { res.cookie('session', req.body.t, { ...C }); }", filename: "probe.ts" },
+  // K06b alias chain exported default
+  { code: "const C = { secure: true, httpOnly: true, sameSite: 'lax' }; const D = C; export default D;\nexport function h(req: any, res: any) { res.cookie('session', req.body.t, { ...C }); }", filename: "probe.ts" },
+  // K06c alias mutated deep
+  { code: "const C = { secure: true, httpOnly: true, sameSite: 'lax' }; const D = C; const E = D;\nexport function h(req: any, res: any) { E.httpOnly = false; res.cookie('session', req.body.t, { ...C }); }", filename: "probe.ts" },
+  // K06d alias module.exports
+  { code: "const C = { secure: true, httpOnly: true, sameSite: 'lax' }; const D = C; module.exports = { D };\nexport function h(req: any, res: any) { res.cookie('session', req.body.t, { ...C }); }", filename: "probe.ts" },
+  // K06e alias in tagged template
+  { code: "const C = { secure: true, httpOnly: true, sameSite: 'lax' }; const D = C; const w = (s: any, o: any) => { o.httpOnly = false; };\nexport function h(req: any, res: any) { w`${D}`; res.cookie('session', req.body.t, { ...C }); }", filename: "probe.ts" },
+  // K06f alias exported via export const
+  { code: "const C = { secure: true, httpOnly: true, sameSite: 'lax' }; export const D = C;\nexport function h(req: any, res: any) { res.cookie('session', req.body.t, { ...C }); }", filename: "probe.ts" },
+  // K06g alias in other fn, returned arrow body
+  { code: "const C = { secure: true, httpOnly: true, sameSite: 'lax' }; const get = () => C;\nexport function h(req: any, res: any) { get().httpOnly = false; res.cookie('session', req.body.t, { ...C }); }", filename: "probe.ts" },
+  // K08 assignment RHS nested object
+  { code: "const C = { o: { secure: true, httpOnly: true, sameSite: 'lax' } }; let y: any;\nexport function h(req: any, res: any) { y = C.o; y.httpOnly = false; res.cookie('session', req.body.t, { ...C.o }); }", filename: "probe.ts" },
+  // K08b logical alias nested object
+  { code: "const C = { o: { secure: true, httpOnly: true, sameSite: 'lax' } };\nexport function h(req: any, res: any) { const y: any = C.o || {}; y.httpOnly = false; res.cookie('session', req.body.t, { ...C.o }); }", filename: "probe.ts" },
+  // K08c conditional alias nested object
+  { code: "const C = { o: { secure: true, httpOnly: true, sameSite: 'lax' } };\nexport function h(req: any, res: any) { const y: any = req.x ? C.o : {}; y.httpOnly = false; res.cookie('session', req.body.t, { ...C.o }); }", filename: "probe.ts" },
+  // K08d array wrap nested object
+  { code: "const C = { o: { secure: true, httpOnly: true, sameSite: 'lax' } };\nexport function h(req: any, res: any) { const y: any = [C.o]; y[0].httpOnly = false; res.cookie('session', req.body.t, { ...C.o }); }", filename: "probe.ts" },
+  // K08e sequence alias
+  { code: "const C = { o: { secure: true, httpOnly: true, sameSite: 'lax' } };\nexport function h(req: any, res: any) { const y: any = (0, C.o); y.httpOnly = false; res.cookie('session', req.body.t, { ...C.o }); }", filename: "probe.ts" },
+  // K08f paren-as alias
+  { code: "const C = { o: { secure: true, httpOnly: true, sameSite: 'lax' } };\nexport function h(req: any, res: any) { const y = C.o as any; y.httpOnly = false; res.cookie('session', req.body.t, { ...C.o }); }", filename: "probe.ts" },
+  // K08g satisfies alias then mutate
+  { code: "const C = { secure: true, httpOnly: true, sameSite: 'lax' };\nexport function h(req: any, res: any) { const y = C satisfies object; (y as any).httpOnly = false; res.cookie('session', req.body.t, { ...C }); }", filename: "probe.ts" },
+  // K09 class field initializer alias
+  { code: "const C = { secure: true, httpOnly: true, sameSite: 'lax' }; class K { f = C; } \nexport function h(req: any, res: any) { new K().f.httpOnly = false; res.cookie('session', req.body.t, { ...C }); }", filename: "probe.ts" },
+  // K09b static block
+  { code: "const C = { secure: true, httpOnly: true, sameSite: 'lax' } as any; class K { static { C.httpOnly = false; } }\nexport function h(req: any, res: any) { res.cookie('session', req.body.t, { ...C }); }", filename: "probe.ts" },
+  // K11b optional callee C.f?.()
+  { code: "const C: any = { secure: true, httpOnly: true, sameSite: 'lax' };\nexport function h(req: any, res: any) { C.f?.(); res.cookie('session', req.body.t, { ...C }); }", filename: "probe.ts" },
+  // K11c optional call with C
+  { code: "const C = { secure: true, httpOnly: true, sameSite: 'lax' }; const w: any = (o: any) => { o.httpOnly = false; };\nexport function h(req: any, res: any) { w?.(C); res.cookie('session', req.body.t, { ...C }); }", filename: "probe.ts" },
+  // K12 let single write container then mutate via let
+  { code: "let C: any;\nexport function h(req: any, res: any) { C = { secure: true, httpOnly: true, sameSite: 'lax' }; C.httpOnly = false; res.cookie('session', req.body.t, { ...C }); }", filename: "probe.ts" },
+  // K12b let single write then mutate via alias
+  { code: "let C: any;\nexport function h(req: any, res: any) { C = { secure: true, httpOnly: true, sameSite: 'lax' }; const d = C; d.httpOnly = false; res.cookie('session', req.body.t, { ...C }); }", filename: "probe.ts" },
+  // K12c let single write passed to fn
+  { code: "let C: any; function w(o: any) { o.httpOnly = false; }\nexport function h(req: any, res: any) { C = { secure: true, httpOnly: true, sameSite: 'lax' }; w(C); res.cookie('session', req.body.t, { ...C }); }", filename: "probe.ts" },
+  // K13 await container
+  { code: "const C = { secure: true, httpOnly: true, sameSite: 'lax' };\nexport function h(req: any, res: any) { void (async () => { await C; })(); res.cookie('session', req.body.t, { ...C }); }", filename: "probe.ts" },
+  // K13b yield container
+  { code: "const C = { secure: true, httpOnly: true, sameSite: 'lax' }; function* g() { yield C; }\nexport function h(req: any, res: any) { for (const o of g()) (o as any).httpOnly = false; res.cookie('session', req.body.t, { ...C }); }", filename: "probe.ts" },
+  // K13e loose eq with weird toString identifier
+  { code: "const f = function (this: any) { this.httpOnly = false; return 'a'; }; const C = { toString: f, secure: true, httpOnly: true, sameSite: 'lax' };\nexport function h(req: any, res: any) { if (C == 'a' as any) {} res.cookie('session', req.body.t, { ...C }); }", filename: "probe.ts" },
+  ].map((entry) => ({ ...entry, errors: missingAll })),
+});
+
+ruleTester.run('no-shell-interpolation (containers kept from user code)', noShellInterpolationRule, {
+  valid: [],
+  invalid: [
+  // K01s tagged template gets cfg
+  { code: "import { exec } from 'child_process';\nconst cfg = { cmd: 'ls' }; let R: any; function grab(s: any, o: any) { R = o; return ''; }\nexport function h(req: any) { grab`${cfg}`; R.cmd = req.query.c; exec(`run ${cfg.cmd}`); }", filename: "probe.ts" },
+  // K02s instanceof hasInstance shell
+  { code: "import { exec } from 'child_process';\nconst cfg = { cmd: 'ls' }; let W: any;\nexport function h(req: any) { W = { [Symbol.hasInstance](o: any) { o.cmd = req.query.c; return false; } }; void (cfg instanceof W); exec(`run ${cfg.cmd}`); }", filename: "probe.ts" },
+  // K03s toString identifier shell
+  { code: "import { exec } from 'child_process';\nlet IN: any; function swap(this: any) { this.cmd = IN; return ''; } const cfg = { toString: swap, cmd: 'ls' };\nexport function h(req: any) { IN = req.query.c; console.log(`${cfg}`); exec(`run ${cfg.cmd}`); }", filename: "probe.ts" },
+  // K07 array numeric alias mutate
+  { code: "import { exec } from 'child_process';\nconst A = ['ls']; const B = A;\nexport function h(req: any) { B[0] = req.query.c; exec(`run ${A[0]}`); }", filename: "probe.ts" },
+  // K07b array index as string key
+  { code: "import { exec } from 'child_process';\nconst A = ['ls'];\nexport function h(req: any) { (A as any)['0'] = req.query.c; exec(`run ${A[0]}`); }", filename: "probe.ts" },
+  // K07c array length shrink
+  { code: "import { exec } from 'child_process';\nconst A = ['ls'];\nexport function h(req: any) { A.length = 0; exec(`run ${A[0]}`); }", filename: "probe.ts" },
+  // K10c cb with default param
+  { code: "import { exec } from 'child_process';\n\nexport function h(req: any) { ['ls'].forEach((v = req.query.c) => { exec(`run ${v}`); }); }", filename: "probe.ts" },
+  // K10d cb with rest param
+  { code: "import { exec } from 'child_process';\n\nexport function h(req: any) { (['ls'] as any).map((...v: any[]) => { exec(`run ${v}`); }); }", filename: "probe.ts" },
+  ].map((entry) => ({ ...entry, errors: [{ messageId: 'shellInterpolation' as const }] })),
+});
+
+ruleTester.run('no-user-controlled-fetch-url (containers kept from user code)', noUserControlledFetchUrlRule, {
+  valid: [],
+  invalid: [
+  // K05 URL entry aliased and mutated
+  { code: "export async function h(req: any) { const u = new URL(req.query.u); if (u.host !== 'api.example.com') return; const box = { a: u }; const v = box.a; v.host = req.query.h; await fetch(box.a); }", filename: "probe.ts" },
+  // K05b URL entry Object.assign
+  { code: "export async function h(req: any) { const u = new URL(req.query.u); if (u.host !== 'api.example.com') return; const box = { a: u }; Object.assign(box.a, { host: req.query.h }); await fetch(box.a); }", filename: "probe.ts" },
+  // K05c URL array entry mutated by fn
+  { code: "function m(x: any, h: any) { x.host = h; } export async function h(req: any) { const u = new URL(req.query.u); if (u.host !== 'api.example.com') return; const box = [u]; m(box[0], req.query.h); await fetch(box[0]); }", filename: "probe.ts" },
+  // K05m main baseline: URL direct alias mutate
+  { code: "export async function h(req: any) { const u = new URL(req.query.u); if (u.host !== 'api.example.com') return; const v = u; v.host = req.query.h; await fetch(u); }", filename: "probe.ts" },
+  // T04 fetch via tagged mutation
+  { code: "const L = { to: 'https://api.example.com/x' };\nexport async function h(req: any) { const t = (s: any, o: any) => { o.to = req.query.u; return ''; }; t`${L}`; await fetch(L.to); }", filename: "probe.ts" },
+  ].map((entry) => ({ ...entry, errors: [{ messageId: 'userControlledFetchUrl' as const }] })),
+});
+
+ruleTester.run('no-user-controlled-redirect (containers kept from user code)', noUserControlledRedirectRule, {
+  valid: [],
+  invalid: [
+  // T03 redirect via tagged mutation
+  { code: "const T = { to: '/home' };\nexport function h(req: any, res: any) { const t = (s: any, o: any) => { o.to = req.query.next; return ''; }; t`${T}`; res.redirect(T.to); }", filename: "probe.ts" },
+  ].map((entry) => ({ ...entry, errors: [{ messageId: 'userControlledRedirect' as const }] })),
+});
+
+ruleTester.run('require-sanitized-html (containers kept from user code)', requireSanitizedHtmlRule, {
+  valid: [],
+  invalid: [
+  // T05 html via tagged mutation
+  { code: "const M = { h: '<b>hi</b>' };\nexport function f(el: any, q: any) { const t = (s: any, o: any) => { o.h = q.x; return ''; }; t`${M}`; el.innerHTML = M.h; }", filename: "probe.ts" },
+  ].map((entry) => ({ ...entry, errors: [{ messageId: 'unsanitizedHtml' as const }] })),
+});
