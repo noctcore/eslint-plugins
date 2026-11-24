@@ -31,11 +31,16 @@ Precision is the whole point — this rule fires **only** on the genuinely dange
   expressions, or a `+` concatenation with a dynamic part.
 - **`spawn` / `spawnSync` / `execFile` / `execFileSync`**: the same dynamic first argument, but **only**
   when an options object literal passes a `shell` value other than `false`: `true`, a shell path
-  string, or any value decided at run time.
+  string, or any value decided at run time. With a shell, Node joins the program and the args
+  array with spaces into the command string, so a dynamic element of the args array is checked the
+  same way, read where it lands (`spawn('sudo', [tool], { shell: true })` runs `tool` as a
+  program). An args value that is not an inline array (a binding, a call, a spread) is reported.
 
 ```ts bad
 // shell:true re-parses the interpolated command
 spawn(`cmd ${x}`, { shell: true });
+// and the args array, joined into it
+spawn('ls', [req.query.dir], { shell: true });
 ```
 
 A shell chosen at run time is a shell on some machine. This call is an injection sink on Windows
@@ -114,11 +119,13 @@ the rule can read:
   anywhere;
 - `test` with a regex (inline or in a `const`) anchored at both ends, without the `m` flag, whose
   every character is shell-inert: no `.`, no `\s`, no negated class, none of
-  ``;&|$`()<>{}[]*?!~'"\^``, and no whitespace or line break (a space splits the value into
-  several arguments). A regex that admits `-` or `#` must pin the first character to something
-  else (`^[a-z][a-z0-9-]*$`): a leading `-` turns the value into an option (argument injection,
-  CWE-88) and a leading `#` comments out the rest. A value glued to text before it in the same
-  word (`` `git log --author=${author}` ``) cannot start an option, so there `-` and `#` may lead.
+  ``;&|$`()<>{}[]*?!~%'"\^``, and no whitespace or line break (a space splits the value into
+  several arguments). `%` is there for Windows, where Node runs the command through `cmd.exe`,
+  which expands `%VAR%` anywhere in a word. A regex that admits `-`, `+` or `#` must pin the first
+  character to something else (`^[a-z][a-z0-9-]*$`): a leading `-` turns the value into an option
+  (argument injection, CWE-88), so does a leading `+` for some tools (`dig +short`, `set +x`), and
+  a leading `#` comments out the rest. A value glued to text before it in the same word
+  (`` `git log --author=${author}` ``) cannot start an option, so there `-`, `+` and `#` may lead.
   Text ending in `-` or `+` does not count as inside a word: `` `tool -${x}` `` with
   `x = '-output=f'` is a long option. The regex must not accept the empty string (`^[a-z]*$`,
   `^([a-z]+)?$`): an empty value drops out of the command, so `` `rm -rf /srv/${x}` `` removes
@@ -157,8 +164,9 @@ A value in a word that runs as a program is proven only by a literal allowlist, 
 
 - the first word of a command: first in the string, or after `;`, `&`, `|`, `(`, `)`, a backtick or
   a line break, after `NAME=value` (whatever the value, `NODE_ENV=${mode}` included, and also when
-  a value forms the name, `${name}=x`), after bash's `NAME+=value` and `NAME[i]=value`, after a
-  redirect (`>out`, `2>/dev/null`, `< in`), or after a reserved word (`!`, `{`, `if`, `then`,
+  a value forms the name, `${name}=x`), after bash's `NAME+=value` and `NAME[i]=value` (an
+  assignment is one word through spaces in its brackets or quotes: `A[ 0 ]=x`, `A["x y"]=1`,
+  `A="x y"`), after a redirect (`>out`, `2>/dev/null`, `< in`), or after a reserved word (`!`, `{`, `if`, `then`,
   `else`, `elif`, `do`, `while`, `until`); a value glued to a path there (`/usr/bin/${tool}`,
   `./${tool}`) counts too;
 - any word after a wrapper, up to the next separator, options included (`sudo -u deploy ${tool}`,
@@ -169,12 +177,18 @@ A value in a word that runs as a program is proven only by a literal allowlist, 
   the shells `sh`, `bash`, `zsh`, `dash`, `ksh`, `fish` and `busybox`, and the package runners
   `npx`, `bunx`, `uvx`, `pipx`, `npm exec`, `pnpm dlx` / `exec`, `yarn dlx` / `exec` and
   `bun x`, plus `find ... -exec` / `-execdir` / `-ok` / `-okdir`. They match by basename and with
-  quotes stripped (`/usr/bin/env`, `'sudo'`).
+  quotes stripped (`/usr/bin/env`, `'sudo'`). A program word that holds a shell parameter
+  (`$SHELL`, `"$SHELL"`, `${SUDO:-sudo}`, bash's `$'env'`) counts as a wrapper too: it can name any program.
 
-An in-file `const` bound to a string (`const P = 'sudo'`, `const SEP = ';'`) is read as its text.
+An in-file `const` bound to a string (`const P = 'sudo'`, `const SEP = ';'`) is read as its text,
+through wrappers that keep it (`String(';')`, `';' as string`, `';' satisfies string`).
+So is a value checked against literals: the command is read once with each text it can hold, and
+every reading must hold. After `if (e !== '=') return`, `` `A${e}1 ${t}` `` is an assignment and
+`t` runs as the program; after `['sudo', 'ls'].includes(p)`, `` `${p} ${t}` `` may be `sudo ${t}`.
 This is a list: a command not on it that runs its arguments is not seen. Bash's `&>file` is read
 as `&` and then a redirect, the way `/bin/sh` reads it where it is dash (Debian, Ubuntu): there
-`` `ls &>/dev/null ${x}` `` runs `x` as a program. `2>&1` and `>&2` stay redirects. Quotes do not
+`` `ls &>/dev/null ${x}` `` runs `x` as a program. `2>&1` and `>&2` stay redirects, but an escaped
+`>` before `&` does not make one (`` `echo \>&${x}` `` runs `echo` in the background, then `x`). Quotes do not
 hide separators here, so `` `echo "a; ${x}"` `` reads `x` as a program, which only reports more.
 
 ```ts bad
@@ -200,8 +214,11 @@ can run between the outer writes (hoisted above them, or resumed after an `await
 through an alias (`const p = parts; p.push(y)`), `Object.assign` or `Reflect.set` counts as a
 write, and so does a list or `Set` changed through another `const` name for it. A count written as
 `{00}` allows zero repetitions like `{0}`. A value glued right after a `/`
-(`` `rm -rf /srv/${x}` ``) is a path segment, so its regex must refuse `.` and `..` as well as the
-empty string. A direct `eval(s)` (also behind a type-only wrapper such as `eval!(s)` or
+(`` `rm -rf /srv/${x}` ``, also through quotes, `` `rm -rf /srv/"${x}"` ``) is a path segment, so
+its regex must refuse `.`, `..`, `/` and the empty string, and may admit `/` only when it admits no
+`.` and cannot start with `/` (`^[a-z]+(\/[a-z]+)*$`): `^[a-z./]+[a-z]$` lets `../../etc` climb out
+of `/srv`. A value glued right after another value (`/srv/${a}${b}`) must hold both as a path
+segment and as the start of a word. A direct `eval(s)` (also behind a type-only wrapper such as `eval!(s)` or
 `(eval as any)(s)`) in the function after the check, or in any function nested in the one that
 declares the binding, counts as a write. A global with no declaration in the file (one the config
 declares writable) is never treated as checked: another script can reassign it, across an `await`
@@ -249,7 +266,10 @@ With `trustEnvironment: true`, a value read from `process.env` with a fixed key 
 by whoever runs the process and left alone: directly, through `const` bindings, `String()`, string
 methods with literal arguments (`.trim()`, `.replace(/\0/g, '')`), literal fallbacks (`|| ''`),
 and templates or `+` of such values and literals. A computed key (`process.env[name]`) is still
-reported. Turn it on only where no variable carries outside input.
+reported. The rule cannot see the text such a value holds, and it may hold a separator or a
+wrapper, so every value after it up to the next separator is read as a program word: with
+`` `${process.env.TOOL} ${file}` `` or `` `git -C ${process.env.REPO_DIR} log ${file}` ``, `file`
+needs a literal allowlist or a constant. Turn it on only where no variable carries outside input.
 
 ```ts bad options={"trustEnvironment":true}
 // a computed key could name any variable
@@ -266,9 +286,10 @@ export function status() {
 
 ### What the rule does not see
 
-A value from a literal allowlist is taken as the author wrote it: an allowlist that holds a wrapper
-(`sudo`) or a separator lets the words after it be read as arguments. A wrapper command that is not
-on the list above is not seen.
+A wrapper command that is not on the list above is not seen, and neither is the `sh -c` form
+without a `shell` option (`spawn('sh', ['-c', cmd])`). A value a regex proves can still spell a
+`find` action or a package runner's subcommand (`find . -${x}` or `npm ${x} ${t}` with
+`x = 'exec'`): such a word is not read as one.
 
 A checked array changed in place after the check (`parts.push(y)`, `parts[0] = y`) cancels the
 check. Handing it to a function, or storing it in an array or object, after the check also cancels
@@ -285,7 +306,7 @@ as checked: the other module can reassign it after the check.
 | Option | Type | Default | Meaning |
 | --- | --- | --- | --- |
 | `extraCallees` | `string[]` | `[]` | Extra callee names to treat as always-shell command runners (checked like `exec`). |
-| `trustEnvironment` | `boolean` | `false` | Leave values read from `process.env` with a fixed key alone. Off by default because CI variables such as `GITHUB_HEAD_REF` hold outside input. |
+| `trustEnvironment` | `boolean` | `false` | Do not report values read from `process.env` with a fixed key. Their text is still unknown, so values after one, up to the next separator, are read as program words. Off by default because CI variables such as `GITHUB_HEAD_REF` hold outside input. |
 
 ```js
 'noctcore-security/no-shell-interpolation': ['error', { extraCallees: ['runShell', 'sh'] }]

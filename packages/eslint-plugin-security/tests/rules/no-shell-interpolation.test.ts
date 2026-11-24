@@ -70,7 +70,8 @@ ruleTester.run('no-shell-interpolation', noShellInterpolationRule, {
       filename: TS,
     },
     {
-      code: "const SAFE = /^[a-zA-Z0-9_.%][a-zA-Z0-9_.%\\-]*$/; function run(x: string) { if (!SAFE.test(x)) return; execSync('echo ' + x); }",
+      // With `%` the same regex is reported (#313): `cmd.exe` expands `%VAR%`.
+      code: "const SAFE = /^[a-zA-Z0-9_.][a-zA-Z0-9_.\\-]*$/; function run(x: string) { if (!SAFE.test(x)) return; execSync('echo ' + x); }",
       filename: TS,
     },
     {
@@ -1160,5 +1161,104 @@ ruleTester.run('no-shell-interpolation', noShellInterpolationRule, {
       filename: TS,
       errors: [{ messageId: 'shellInterpolation' }],
     },
+  ],
+});
+
+/** A function whose `t` passed a shell-inert regex check before `body` runs. */
+const checked = (body: string, params = 't: string'): string =>
+  `function run(${params}) { if (!/^[a-z][a-z0-9-]*$/.test(t)) return; ${body} }`;
+const error = [{ messageId: 'shellInterpolation' as const }];
+
+// How the command text around a proven value is read (#313 to #321).
+ruleTester.run('no-shell-interpolation reading', noShellInterpolationRule, {
+  valid: [
+    // #313: a regex that refuses `%` (cmd.exe expands `%VAR%`).
+    { code: checked('exec(`echo ${t}`);'), filename: TS },
+    // #314: a `+` admitted only after the first character, or glued to text before it.
+    { code: 'function run(x: string) { if (!/^[a-z][\\w.+]*$/.test(x)) return; exec(`dig ${x} example.com`); }', filename: TS },
+    { code: 'function run(x: string) { if (!/^[\\w+]+$/.test(x)) return; exec(`tool --tag=${x}`); }', filename: TS },
+    // #315: static args, a proven arg, or no shell.
+    { code: 'spawn(\'ls\', [\'-la\'], { shell: true });', filename: TS },
+    { code: 'spawn(\'ls\', [dir], { shell: false });', filename: TS },
+    { code: 'spawn(\'ls\', { shell: true });', filename: TS },
+    { code: 'function run(d: string) { if (!/^[a-z]+$/.test(d)) return; spawn(\'ls\', [d], { shell: true }); }', filename: TS },
+    { code: 'function run(d: string) { if (!/^[a-z]+$/.test(d)) return; execFile(\'git\', [\'log\', \'--\', d], { shell: true }, cb); }', filename: TS },
+    // #316: a wrapped constant that is a plain word.
+    { code: checked('exec(`ls ${String("-la")} ${t}`);'), filename: TS },
+    { code: checked('const P = String("git"); exec(`${P} log ${t}`);'), filename: TS },
+    { code: checked('exec(`ls ${`-l ${t}` as string}`);'), filename: TS },
+    // #317: a parameter that is an argument, not the program.
+    { code: checked('exec(`ls $HOME/${t}`);'), filename: TS },
+    { code: checked('exec(`echo $PATH ${t}`);'), filename: TS },
+    // #318: a path segment regex with `/` between words but no `.`, or `.` but no `/`.
+    { code: 'function run(x: string) { if (!/^[a-z]+(\\/[a-z]+)*$/.test(x)) return; exec(`rm -rf /srv/${x}`); }', filename: TS },
+    { code: 'function run(x: string) { if (!/^[a-z]+\\.txt$/.test(x)) return; exec(`rm -f /srv/${x}`); }', filename: TS },
+    { code: 'function run(x: string) { if (!/^[a-z]+$/.test(x)) return; exec(`rm -rf /srv/"${x}"`); }', filename: TS },
+    // #319: an escaped backslash leaves `>&` a redirect.
+    { code: checked('exec(`echo \\\\\\\\>&${t}`);'), filename: TS },
+    // #321: an allowlist of plain words.
+    { code: checked('if (![\'ls\', \'date\'].includes(p)) return; exec(`${p} ${t}`);', 't: string, p: string'), filename: TS },
+    { code: checked('if (![\'git\', \'hg\'].includes(p)) return; exec(`/usr/bin/${p} log ${t}`);', 't: string, p: string'), filename: TS },
+    { code: checked('if (![\'--json\', \'--yaml\'].includes(f)) return; exec(`tool ${f} ${t}`);', 't: string, f: string'), filename: TS },
+    { code: checked('exec(`git -C ${t} checkout ${process.env.BRANCH}`);'), filename: TS, options: [{ trustEnvironment: true }] },
+  ],
+  invalid: [
+    // #313: cmd.exe expands `%VAR%` in a value the regex lets through.
+    { code: 'function run(x: string) { if (!/^[\\w%]+$/.test(x)) return; exec(`echo ${x}`); }', filename: TS, errors: error },
+    { code: 'function run(x: string) { if (!/^[a-z%]+$/.test(x)) return; exec(`tool --name=${x}`); }', filename: TS, errors: error },
+    { code: 'function run(x: string) { if (!/^[a-z%]+$/.test(x)) return; exec(`cat /srv/${x}`); }', filename: TS, errors: error },
+    { code: 'const SAFE = /^[a-zA-Z0-9_.%][a-zA-Z0-9_.%\\-]*$/; function run(x: string) { if (!SAFE.test(x)) return; execSync(\'echo \' + x); }', filename: TS, errors: error },
+    // #314: a leading `+` is an option to some tools (`dig +short`, `sort +1`).
+    { code: 'function run(name: string) { if (!/^[\\w.+]+$/.test(name)) return; exec(`dig ${name} example.com`); }', filename: TS, errors: error },
+    { code: 'function run(x: string) { if (!/^[+a-z0-9]+$/.test(x)) return; exec(`sort ${x} file`); }', filename: TS, errors: error },
+    { code: 'function run(x: string) { if (!/^\\+?[a-z]+$/.test(x)) return; exec(`set ${x}`); }', filename: TS, errors: error },
+    // #315: with a shell, the args array is joined into the command string.
+    { code: 'spawn(\'ls\', [req.query.dir], { shell: true });', filename: TS, errors: error },
+    { code: 'execFile(\'git\', [\'log\', branch], { shell: true }, cb);', filename: TS, errors: error },
+    { code: 'spawnSync(\'ls\', [`${dir}/x`], { shell: process.platform === \'win32\' });', filename: TS, errors: error },
+    { code: 'spawn(\'ls\', args, { shell: true });', filename: TS, errors: error },
+    { code: 'spawn(\'ls\', [...extra], { shell: true });', filename: TS, errors: error },
+    { code: 'function run(t: string) { if (!/^[a-z]+$/.test(t)) return; spawn(\'sudo\', [t], { shell: true }); }', filename: TS, errors: error },
+    { code: 'function run(t: string) { if (!/^[a-z]+$/.test(t)) return; spawn(\'ls\', [\';\', t], { shell: true }); }', filename: TS, errors: error },
+    // #316: a separator or wrapper written as a wrapped or deep constant.
+    { code: checked('exec(`ls ${String(";")} ${t}`);'), filename: TS, errors: error },
+    { code: checked('exec(`ls ${";" as string} ${t}`);'), filename: TS, errors: error },
+    { code: checked('exec(`ls ${";" satisfies string} ${t}`);'), filename: TS, errors: error },
+    { code: checked('exec(`${"sudo" as string} ${t}`);'), filename: TS, errors: error },
+    { code: checked('const P = String("sudo"); exec(`${P} ${t}`);'), filename: TS, errors: error },
+    { code: 'const A0 = \'sudo\'; const A1 = A0; const A2 = A1; const A3 = A2; const A4 = A3; const A5 = A4; const A6 = A5; const A7 = A6; const A8 = A7; function run(t: string) { if (!/^[a-z][a-z0-9-]*$/.test(t)) return; exec(`${A8} ${t}`); }', filename: TS, errors: error },
+    // #317: a shell parameter as the program name can be any program.
+    { code: checked('exec(`$SHELL -c ${t}`);'), filename: TS, errors: error },
+    { code: checked('exec(`"$SHELL" -c "${t}"`);'), filename: TS, errors: error },
+    { code: checked('exec(`W=sudo; $W ${t}`);'), filename: TS, errors: error },
+    { code: checked('exec(`\\${SUDO:-sudo} ${t}`);'), filename: TS, errors: error },
+    { code: checked('exec(`$\'env\' ${t}`);'), filename: TS, errors: error },
+    { code: checked('exec(`$\'\\\\x65nv\' ${t}`);'), filename: TS, errors: error },
+    // #318: a path segment that holds `/` and `.`, or sits in quotes or after another value.
+    { code: 'function run(x: string) { if (!/^[a-z./]+[a-z]$/.test(x)) return; exec(`rm -rf /srv/${x}`); }', filename: TS, errors: error },
+    { code: 'function run(x: string) { if (!/^[a-z]+(\\/\\.\\.)?$/.test(x)) return; exec(`rm -rf /srv/${x}`); }', filename: TS, errors: error },
+    { code: 'function run(x: string) { if (!/^[a-z.]+$/.test(x)) return; exec(`rm -rf /srv/"${x}"`); }', filename: TS, errors: error },
+    { code: 'function run(x: string) { if (!/^[a-z.]+$/.test(x)) return; exec(`rm -rf \'/srv/\'${x}`); }', filename: TS, errors: error },
+    { code: 'function run(a: string, b: string) { if (!/^[a-z]+\\/?$/.test(a)) return; if (!/^[a-z.]+$/.test(b)) return; exec(`rm -rf /srv/${a}${b}`); }', filename: TS, errors: error },
+    { code: 'function run(x: string) { if (!/^[a-z/]+$/.test(x)) return; exec(`rm -rf /srv/${x}`); }', filename: TS, errors: error },
+    // #319: an escaped `>` before `&` leaves `&` a separator.
+    { code: checked('exec(`echo \\\\>&${t}`);'), filename: TS, errors: error },
+    { code: checked('exec(`echo \\\\\\\\\\\\>&${t}`);'), filename: TS, errors: error },
+    // #320: bash subscript and quoted assignments before the program.
+    { code: checked('execSync(`A[ 0 ]=x ${t}`);'), filename: TS, errors: error },
+    { code: checked('execSync(`A["x y"]=1 ${t}`);'), filename: TS, errors: error },
+    { code: checked('execSync(`A[a[0]]=x ${t}`);'), filename: TS, errors: error },
+    { code: checked('execSync(`A="x y" ${t}`);'), filename: TS, errors: error },
+    { code: checked('execSync(`A=\'x y\' B=1 ${t}`);'), filename: TS, errors: error },
+    // #321: an allowlisted value read as the shell text it holds.
+    { code: checked('if (e !== \'=\') return; execSync(`A${e}1 ${t}`);', 't: string, e: string'), filename: TS, errors: error },
+    { code: checked('if (![\'A=1\'].includes(kv)) return; execSync(`${kv} ${t}`);', 't: string, kv: string'), filename: TS, errors: error },
+    { code: checked('if (![\'sudo\', \'ls\'].includes(p)) return; exec(`${p} ${t}`);', 't: string, p: string'), filename: TS, errors: error },
+    { code: checked('if (!new Set([\'env\']).has(p)) return; exec(`${p} ${t}`);', 't: string, p: string'), filename: TS, errors: error },
+    { code: checked('if (![\';\', \'&&\'].includes(s)) return; exec(`ls ${s} ${t}`);', 't: string, s: string'), filename: TS, errors: error },
+    { code: checked('if (p !== \'sudo ls\') return; exec(`${p} ${t}`);', 't: string, p: string'), filename: TS, errors: error },
+    { code: 'function run(base: string, x: string) { if (![\'/srv/\', \'/tmp/\'].includes(base)) return; if (!/^[a-z.]+$/.test(x)) return; exec(`rm -rf ${base}${x}`); }', filename: TS, errors: error },
+    { code: checked('exec(`${process.env.TOOL} ${t}`);'), filename: TS, options: [{ trustEnvironment: true }], errors: error },
+    { code: checked('exec(`git -C ${process.env.REPO_DIR} log ${t}`);'), filename: TS, options: [{ trustEnvironment: true }], errors: error },
   ],
 });

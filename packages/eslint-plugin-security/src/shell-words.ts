@@ -14,7 +14,8 @@ import type { TSESTree } from '@typescript-eslint/utils';
  * options included (`sudo -u deploy ${tool}`, `timeout 30 ${tool}`). Wrappers
  * match by basename and with quotes and backslashes stripped (`/usr/bin/env`,
  * `'sudo'`). `find ... -exec` and `pnpm dlx` / `npm exec` / `yarn dlx` /
- * `bun x` start a wrapped run too.
+ * `bun x` start a wrapped run too, and so does a program word that holds a
+ * shell parameter (`$SHELL`, `${SUDO:-sudo}`), which can name any program.
  *
  * The wrapper list is a list: a command it does not name that runs its
  * arguments is not seen. Quotes do not hide separators here, so
@@ -98,7 +99,14 @@ const SEPARATORS = ';|()`\n\r';
  * `NAME+=value` and `NAME[i]=value` (`/bin/sh` is bash on macOS, RHEL and
  * Arch). A value in the name is read as a word character, see `isAssignment`.
  */
-const ASSIGNMENT_WORD = /^[A-Za-z_]\w*(?:\[[^\]]*\])?\+?=/u;
+const ASSIGNMENT_WORD = /^[A-Za-z_]\w*(?:\[.*\])?\+?=/u;
+
+/**
+ * The start of a word that may still become an assignment: bash reads
+ * `A[ 0 ]=x`, `A["x y"]=1` and `A="x y"` as one word, so a space inside its
+ * brackets or quotes (or escaped) does not end it.
+ */
+const ASSIGNMENT_START = /^[A-Za-z_\u0000][\w\u0000]*(?:\[|\+?=)/u;
 
 /**
  * A redirect operator, alone (`>`, `2>`) or with its target (`>out`, `2>&1`).
@@ -120,8 +128,10 @@ export interface ShellPart {
   readonly node: TSESTree.Node;
   /** Static text right before it puts it inside a word (`--author=${x}`). */
   readonly midWord: boolean;
-  /** It follows a `/` in the same word, as a path segment (`/srv/${x}`). */
+  /** It follows a `/` in the same word, as a path segment (`/srv/${x}`, `'/srv/'${x}`). */
   readonly afterSlash: boolean;
+  /** It is glued right after another runtime value in the same word (`${a}${b}`). */
+  readonly afterValue: boolean;
   /** The word it is in runs as a program (see the header). */
   readonly commandWord: boolean;
 }
@@ -132,7 +142,9 @@ const VALUE_MARK = '\u0000';
 /**
  * Whether a word may assign a variable. A value in it stands for a word
  * character, so a value that forms the name (`${name}=x`, `A${p}=x`) keeps
- * the word an assignment: that only reports more.
+ * the word an assignment, and the word after it is read as the program. That
+ * moves reports both ways: in `${n}=x -exec ${t}` and `A+=x -exec ${t}`,
+ * `-exec` is the program (not a `find` action), so `t` is an argument there.
  */
 function isAssignment(text: string): boolean {
   return ASSIGNMENT_WORD.test(text.replaceAll(VALUE_MARK, 'v'));
@@ -147,8 +159,15 @@ function commandName(word: string): string {
 /**
  * Classifies the runtime parts of a command built from `segments`: static text
  * (from literals and resolved constants) and runtime values, in order.
+ *
+ * A value in `opaque` is proven but its text is not known (a value the
+ * operator sets): it may hold a separator or a wrapper, so every later word up
+ * to the next separator in the string runs as a program.
  */
-export function classifyShellParts(segments: readonly (string | TSESTree.Node)[]): ShellPart[] {
+export function classifyShellParts(
+  segments: readonly (string | TSESTree.Node)[],
+  opaque: ReadonlySet<TSESTree.Node> = new Set(),
+): ShellPart[] {
   const items: (string | TSESTree.Node)[] = [];
   for (const segment of segments) {
     if (typeof segment === 'string') {
@@ -166,14 +185,38 @@ export function classifyShellParts(segments: readonly (string | TSESTree.Node)[]
   // has anything in it.
   let word = '';
   let started = false;
+  let wordOpaque = false;
+  // The quote the scan is inside, and whether the last character was an
+  // escaping backslash. Read only to keep an assignment word whole.
+  let quote = '';
+  let escaped = false;
+
+  /** A space here belongs to an assignment word still being read (see `ASSIGNMENT_START`). */
+  const insideAssignment = (): boolean => {
+    if (mode !== 'command' || !ASSIGNMENT_START.test(word)) {
+      return false;
+    }
+    const depth = word.split('[').length - word.split(']').length;
+    return quote !== '' || escaped || depth > 0;
+  };
 
   const endWord = (): void => {
     if (!started) {
       return;
     }
     const text = word;
+    const unknown = wordOpaque;
     word = '';
     started = false;
+    wordOpaque = false;
+    readWord(text);
+    if (unknown) {
+      mode = 'wrapped';
+      program = null;
+    }
+  };
+
+  const readWord = (text: string): void => {
     if (redirectTarget) {
       redirectTarget = false;
       return;
@@ -193,7 +236,9 @@ export function classifyShellParts(segments: readonly (string | TSESTree.Node)[]
       } else if (text.includes(VALUE_MARK)) {
         mode = 'args';
         program = null;
-      } else if (WRAPPER_COMMANDS.has(commandName(text))) {
+      } else if (text.includes('$') || WRAPPER_COMMANDS.has(commandName(text))) {
+        // A shell parameter (`$SHELL`, `${SUDO:-sudo}`, bash's `$'env'`) can
+        // name any program, a wrapper included.
         mode = 'wrapped';
       } else {
         program = commandName(text);
@@ -215,9 +260,17 @@ export function classifyShellParts(segments: readonly (string | TSESTree.Node)[]
     if (char === '&') {
       // `2>&1` and `<&0` are redirects, not a background `&`. `&>file` is
       // read as dash reads it: `&`, then a redirect before the next program
-      // (in bash this only reports more).
+      // (in bash this only reports more). An odd run of backslashes before
+      // the `>` escapes it (`echo \>&x` is `echo '>' &`, then `x`).
       const before = items[index - 1];
-      return before !== '>' && before !== '<';
+      if (before !== '>' && before !== '<') {
+        return true;
+      }
+      let slashes = 0;
+      while (items[index - 2 - slashes] === '\\') {
+        slashes += 1;
+      }
+      return slashes % 2 === 1;
     }
     return SEPARATORS.includes(char);
   };
@@ -229,22 +282,35 @@ export function classifyShellParts(segments: readonly (string | TSESTree.Node)[]
       parts.push({
         node: item,
         midWord: typeof before === 'string' && WORD_END.test(before),
-        afterSlash: before === '/',
+        // Read past quotes: `/srv/"${x}"` is still a segment of `/srv/`.
+        afterSlash: prefix.endsWith('/'),
+        afterValue: prefix.endsWith(VALUE_MARK),
         commandWord: mode !== 'args' && !redirectTarget && !REDIRECT_START.test(prefix),
       });
       word += VALUE_MARK;
       started = true;
+      escaped = false;
+      wordOpaque ||= opaque.has(item);
       return;
     }
     if (isSeparator(index)) {
+      escaped = false;
       endWord();
       mode = 'command';
       program = null;
       redirectTarget = false;
-    } else if (item === ' ' || item === '\t') {
+    } else if ((item === ' ' || item === '\t') && !insideAssignment()) {
+      escaped = false;
       endWord();
     } else {
       started = true;
+      if (escaped) {
+        escaped = false;
+      } else if (item === '\\' && quote !== "'") {
+        escaped = true;
+      } else if ((item === "'" || item === '"') && (quote === '' || quote === item)) {
+        quote = quote === '' ? item : '';
+      }
       if (item !== "'" && item !== '"' && item !== '\\') {
         word += item;
       }

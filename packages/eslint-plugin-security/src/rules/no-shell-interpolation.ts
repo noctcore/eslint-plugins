@@ -8,7 +8,7 @@ import { ASTUtils } from '@typescript-eslint/utils';
 import type { JSONSchema4 } from '@typescript-eslint/utils/json-schema';
 
 import { createRule } from '../createRule';
-import { type GuardContext, isProvenSafeValue } from '../guards';
+import { type GuardContext, isProvenSafeValue, peelStringWrappers } from '../guards';
 import { classifyShellParts, type ShellPart } from '../shell-words';
 import { callArguments, conventionalCallee, stringPieces } from '../value-flow';
 
@@ -36,8 +36,10 @@ type MessageIds = 'shellInterpolation';
  *  - `spawn` / `spawnSync` / `execFile` / `execFileSync`: same dynamic first arg,
  *    but ONLY when an options object literal passes a `shell` value other than
  *    `false` (`true`, a shell path, or a runtime value such as
- *    `process.platform === 'win32'`, which is a shell on some machines). The
- *    array-args, no-shell forms are safe and left entirely alone.
+ *    `process.platform === 'win32'`, which is a shell on some machines). With
+ *    a shell, Node joins the args array into the command, so its elements are
+ *    read as command text too. The array-args, no-shell forms are safe and
+ *    left entirely alone.
  *  - A binding made with `promisify(exec)` (or `util.promisify(cp.exec)`) is
  *    followed through scope and checked like the runner it wraps.
  *  - A runtime part the function already proved harmless is accepted (see
@@ -157,14 +159,16 @@ const MAX_CONST_DEPTH = 8;
  * The static text and runtime values of a command string, in order. An
  * in-file `const` bound to a string literal (or to a template or `+` of such
  * parts) is read as the text it holds, so `const P = 'sudo'` or
- * `const SEP = ';'` changes where the next value lands.
+ * `const SEP = ';'` changes where the next value lands. Wrappers that keep
+ * the text (`String(x)`, `as`, `satisfies`, `!`) are read through.
  */
 function commandSegments(
   node: TSESTree.Node,
   sourceCode: Readonly<TSESLint.SourceCode>,
 ): (string | TSESTree.Node)[] {
   const segments: (string | TSESTree.Node)[] = [];
-  const collect = (part: TSESTree.Node, depth: number): void => {
+  const collect = (raw: TSESTree.Node, depth: number): void => {
+    const part = peelStringWrappers(raw, sourceCode);
     const pieces = stringPieces(part, sourceCode);
     if (pieces !== null) {
       for (const piece of pieces) {
@@ -224,7 +228,7 @@ function constStringInit(
   ) {
     return null;
   }
-  const init = unwrapTypeWrappers(def.node.init);
+  const init = peelStringWrappers(def.node.init, sourceCode);
   const textual =
     (init.type === AST_NODE_TYPES.Literal && typeof init.value === 'string') ||
     init.type === AST_NODE_TYPES.TemplateLiteral ||
@@ -234,15 +238,90 @@ function constStringInit(
   return textual ? init : null;
 }
 
-/** The guard context a runtime part needs, from where it lands in the command. */
-function partContext(part: ShellPart): GuardContext {
+/**
+ * The guard contexts a runtime part must be proven in, from where it lands in
+ * the command. A value glued after another value may start the word (when
+ * that one is empty) or follow a `/` it ends with, so it needs both.
+ */
+function partContexts(part: ShellPart): GuardContext[] {
   if (part.commandWord) {
-    return 'command';
+    return ['command'];
   }
   if (part.afterSlash) {
-    return 'shell-path';
+    return ['shell-path'];
   }
-  return part.midWord ? 'shell-word' : 'shell';
+  if (part.afterValue) {
+    return ['shell', 'shell-path'];
+  }
+  return [part.midWord ? 'shell-word' : 'shell'];
+}
+
+/** The most readings of one command tried (see {@link commandReadings}). */
+const MAX_READINGS = 64;
+
+type Segments = readonly (string | TSESTree.Node)[];
+
+/**
+ * The texts a value can hold when it is proven by literals alone (an
+ * allowlist, a compared string, a constant), else null.
+ */
+function literalTexts(
+  node: TSESTree.Node,
+  sink: TSESTree.Node,
+  sourceCode: Readonly<TSESLint.SourceCode>,
+): string[] | null {
+  const texts = new Set<string>();
+  const proven = isProvenSafeValue(node, sink, 'command', sourceCode, {
+    onLiteral: (text) => texts.add(text),
+  });
+  return proven && texts.size > 0 ? [...texts] : null;
+}
+
+/**
+ * Every way the command can read. A value proven by literals is read as each
+ * text it can hold (`A${e}1` with `e === '='` is an assignment, `${p}` with
+ * `p` in `['sudo', 'ls']` may be a wrapper), and every reading must hold. A
+ * value proven some other way that a program name needs (a value from
+ * `process.env` under `trustEnvironment`), or one with more texts than
+ * {@link MAX_READINGS} allows, is opaque: its text is not known.
+ */
+function commandReadings(
+  segments: Segments,
+  sink: TSESTree.Node,
+  sourceCode: Readonly<TSESLint.SourceCode>,
+  trustEnvironment: boolean,
+): { readonly segments: Segments; readonly opaque: ReadonlySet<TSESTree.Node> }[] {
+  const choices = segments.map((segment) =>
+    typeof segment === 'string' ? null : literalTexts(segment, sink, sourceCode),
+  );
+  const opaque = new Set<TSESTree.Node>();
+  segments.forEach((segment, index) => {
+    if (
+      typeof segment !== 'string' &&
+      choices[index] === null &&
+      isProvenSafeValue(segment, sink, 'command', sourceCode, { trustEnvironment })
+    ) {
+      opaque.add(segment);
+    }
+  });
+  const count = choices.reduce((total, texts) => total * (texts?.length ?? 1), 1);
+  if (count > MAX_READINGS) {
+    segments.forEach((segment, index) => {
+      if (typeof segment !== 'string' && choices[index] !== null) {
+        opaque.add(segment);
+      }
+    });
+    return [{ segments, opaque }];
+  }
+  let readings: (string | TSESTree.Node)[][] = [[]];
+  segments.forEach((segment, index) => {
+    const texts = choices[index];
+    readings =
+      texts === null || texts === undefined
+        ? readings.map((reading) => [...reading, segment])
+        : readings.flatMap((reading) => texts.map((text) => [...reading, text]));
+  });
+  return readings.map((reading) => ({ segments: reading, opaque }));
 }
 
 /**
@@ -275,6 +354,44 @@ function argsRequestShell(args: readonly TSESTree.Node[]): boolean {
           isShellEnabled(prop.value),
       ),
   );
+}
+
+/**
+ * The args array of `spawn` / `execFile` with a shell, as command text: Node
+ * joins `[file, ...args]` with spaces into the string the shell reads. Each
+ * element of an inline array is read in place; any other args value (a
+ * binding, a call) or a spread element is one runtime value. Null when the
+ * call passes no args array.
+ */
+function shellArgSegments(
+  args: readonly TSESTree.CallExpressionArgument[],
+  sourceCode: Readonly<TSESLint.SourceCode>,
+): { readonly node: TSESTree.Node; readonly segments: (string | TSESTree.Node)[] } | null {
+  const list = args[1];
+  if (list === undefined || list.type === AST_NODE_TYPES.SpreadElement) {
+    return list === undefined ? null : { node: list, segments: [' ', list.argument] };
+  }
+  const value = unwrapTypeWrappers(list);
+  if (
+    value.type === AST_NODE_TYPES.ObjectExpression ||
+    (value.type === AST_NODE_TYPES.Literal && value.value === null) ||
+    (value.type === AST_NODE_TYPES.Identifier && value.name === 'undefined')
+  ) {
+    return null;
+  }
+  if (value.type !== AST_NODE_TYPES.ArrayExpression) {
+    return { node: list, segments: [' ', value] };
+  }
+  const segments: (string | TSESTree.Node)[] = [];
+  for (const element of value.elements) {
+    segments.push(' ');
+    if (element?.type === AST_NODE_TYPES.SpreadElement) {
+      segments.push(element.argument);
+    } else if (element !== null) {
+      segments.push(...commandSegments(element, sourceCode));
+    }
+  }
+  return { node: list, segments };
 }
 
 /** True when `callee` is `promisify` or `<x>.promisify` (`util.promisify`). */
@@ -387,7 +504,13 @@ export const noShellInterpolationRule = createRule<RuleOptions, MessageIds>({
         if (!runsShell) {
           return;
         }
-        if (!isDynamicCommandString(command, context.sourceCode)) {
+        const shellArgs = CONDITIONAL_SHELL.has(info.name)
+          ? shellArgSegments(args, context.sourceCode)
+          : null;
+        const dynamicCommand = isDynamicCommandString(command, context.sourceCode);
+        const dynamicArgs =
+          shellArgs !== null && shellArgs.segments.some((segment) => typeof segment !== 'string');
+        if (!dynamicCommand && !dynamicArgs) {
           return;
         }
         // Every runtime part already proven harmless: checked against an
@@ -398,17 +521,35 @@ export const noShellInterpolationRule = createRule<RuleOptions, MessageIds>({
         // A value that starts a word must not start with `-` (an option) or
         // `#` (a comment); one glued to text before it may. A value in the
         // program name is proven only by a literal allowlist or a constant.
-        const parts = classifyShellParts(commandSegments(command, context.sourceCode));
-        const provenSafe = parts.every((part) =>
-          isProvenSafeValue(part.node, node, partContext(part), context.sourceCode, {
-            trustEnvironment,
-          }),
+        const proven = new Map<string, boolean>();
+        const provenAt = (part: TSESTree.Node, where: GuardContext): boolean => {
+          const key = `${part.range.join(':')}:${where}`;
+          let known = proven.get(key);
+          if (known === undefined) {
+            known = isProvenSafeValue(part, node, where, context.sourceCode, { trustEnvironment });
+            proven.set(key, known);
+          }
+          return known;
+        };
+        const segments = [
+          ...commandSegments(command, context.sourceCode),
+          ...(shellArgs?.segments ?? []),
+        ];
+        const provenSafe = commandReadings(
+          segments,
+          node,
+          context.sourceCode,
+          trustEnvironment,
+        ).every((reading) =>
+          classifyShellParts(reading.segments, reading.opaque).every((part) =>
+            partContexts(part).every((where) => provenAt(part.node, where)),
+          ),
         );
         if (provenSafe) {
           return;
         }
         context.report({
-          node: command,
+          node: dynamicCommand || shellArgs === null ? command : shellArgs.node,
           messageId: 'shellInterpolation',
           data: { callee: direct.name },
         });

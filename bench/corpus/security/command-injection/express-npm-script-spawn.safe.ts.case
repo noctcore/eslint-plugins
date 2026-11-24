@@ -1,0 +1,21 @@
+// @bench category=command-injection cwe=CWE-78 framework=express pair=express-npm-script-spawn title="script name checked against a fixed list before the args array of spawn with a shell on Windows"
+// ok
+import express, { Request, Response } from 'express';
+import { spawn } from 'node:child_process';
+
+const SCRIPTS = ['build', 'lint', 'test'];
+
+const app = express();
+
+app.post('/tasks/run', (req: Request, res: Response) => {
+  const script = String(req.query.script);
+  if (!SCRIPTS.includes(script)) {
+    res.status(400).json({ error: 'unknown script' });
+    return;
+  }
+  // npm is npm.cmd on Windows, so the shell is turned on there and the args are joined into its command.
+  const child = spawn('npm', ['run', script], { shell: process.platform === 'win32' });
+  child.on('close', (code) => res.json({ code }));
+});
+
+app.listen(3000);

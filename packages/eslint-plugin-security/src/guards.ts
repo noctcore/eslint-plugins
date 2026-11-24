@@ -36,17 +36,20 @@ import { type FlowStep, flowStep, flowSteps, isImmediateCallback, stringPieces, 
 
 /**
  * Characters a shell value must not start with: a leading `-` turns the value
- * into an option (argument injection, CWE-88) and a leading `#` comments out
- * the rest of the line.
+ * into an option (argument injection, CWE-88), and so does a leading `+` for
+ * some tools (`dig +short`, `set +x`, `sort +1`, `more +/pattern`); a leading
+ * `#` comments out the rest of the line.
  */
-const SHELL_LEADING = '-#';
+const SHELL_LEADING = '-+#';
 
 /**
  * Where a value lands, which decides the characters a regex may admit.
  * `shell-word` is a shell value glued to text before it in the same word
- * (`--author=${x}`), where a leading `-` or `#` is not an option or a comment.
+ * (`--author=${x}`), where a leading `-`, `+` or `#` is not an option or a comment.
  * `shell-path` is a shell word glued right after a `/` (`/srv/${x}`), a path
- * segment that must not be `.` or `..` either.
+ * segment that must not be `.`, `..` or `/` either, and may hold a `/` only
+ * when it holds no `.` and does not start with one, so it cannot climb out
+ * (`../../etc`, `a/..`) or name the directory itself (`//`).
  * `command` is a shell value in the program-name position, which no regex or
  * schema pattern proves, only a literal allowlist or a constant.
  * `html` is a value inside an HTML attribute or element; `html-text` is a value
@@ -61,12 +64,15 @@ export type GuardContext =
   | 'html-text'
   | 'path';
 
-const SHELL_UNSAFE = ';&|$`()<>{}[]*?!~\'"\\^\n\r \t\v\f';
+const SHELL_UNSAFE = ';&|$`()<>{}[]*?!~%\'"\\^\n\r \t\v\f';
 /** Characters each context must never receive from a value it cannot see. */
 const UNSAFE_CHARACTERS: Readonly<Record<GuardContext, string>> = {
   // Command separators, substitution, quoting, redirection, globbing,
   // escapes and whitespace (which splits one value into several arguments).
-  // A leading `-` or `#` is refused apart (see `SHELL_LEADING`).
+  // On Windows, Node runs the command through `cmd.exe`, which expands
+  // `%VAR%` anywhere in a word (and `!VAR!` with delayed expansion) before
+  // it reads `&` or `|`, and takes `^` as its escape.
+  // A leading `-`, `+` or `#` is refused apart (see `SHELL_LEADING`).
   shell: SHELL_UNSAFE,
   'shell-word': SHELL_UNSAFE,
   'shell-path': SHELL_UNSAFE,
@@ -406,12 +412,12 @@ function anchoredBody(pattern: string, flags: string): RegexToken[] | null {
  * Whole values a context must never receive, whatever their characters. An
  * empty shell value drops out of the command (`rm -rf /srv/${x}` with `x = ''`
  * removes `/srv/`, and an empty unquoted argument shifts the ones after it); a
- * path segment of `.` or `..` (or empty) names the directory itself or its parent.
+ * path segment of `.`, `..` or `/` (or empty) names the directory itself or its parent.
  */
 const FORBIDDEN_VALUES: Readonly<Record<GuardContext, readonly string[]>> = {
   shell: [''],
   'shell-word': [''],
-  'shell-path': ['', '.', '..'],
+  'shell-path': ['', '.', '..', '/'],
   command: [''],
   html: [],
   'html-text': [],
@@ -464,18 +470,25 @@ export function regexAdmitsOnlySafe(
   if (!admitsOnlySafe || matchesAny(pattern, flags, FORBIDDEN_VALUES[context])) {
     return false;
   }
-  if (context !== 'shell') {
-    return true;
+  if (context === 'shell-path') {
+    // A segment that holds `/` must hold no `.` (`../../etc`, `a/..`) and must
+    // not start with `/` (`//` names the directory itself).
+    return !admitsAny(body, '/') || (!admitsAny(body, '.') && !leadsWithAny(body, '/'));
   }
-  const admitsLeading = body.some(
-    (token) =>
-      token.kind === 'chars' && [...(token.chars ?? '')].some((c) => SHELL_LEADING.includes(c)),
+  return context !== 'shell' || !admitsAny(body, SHELL_LEADING) || !leadsWithAny(body, SHELL_LEADING);
+}
+
+/** True when some character token of the body can consume one of `chars`. */
+function admitsAny(body: readonly RegexToken[], chars: string): boolean {
+  return body.some(
+    (token) => token.kind === 'chars' && [...(token.chars ?? '')].some((c) => chars.includes(c)),
   );
-  if (!admitsLeading) {
-    return true;
-  }
+}
+
+/** True when the body can start with one of `chars`, or its start is not a plain run of characters. */
+function leadsWithAny(body: readonly RegexToken[], chars: string): boolean {
   const first = firstCharacters(body);
-  return first !== null && ![...first].some((char) => SHELL_LEADING.includes(char));
+  return first === null || [...first].some((char) => chars.includes(char));
 }
 
 /**
@@ -661,7 +674,7 @@ function unwrap(node: TSESTree.Node): TSESTree.Node {
  * Peels wrappers that keep a string's characters: `String(x)` and a template
  * holding only `${x}`.
  */
-function peelStringWrappers(node: TSESTree.Node, sourceCode?: SourceCode): TSESTree.Node {
+export function peelStringWrappers(node: TSESTree.Node, sourceCode?: SourceCode): TSESTree.Node {
   let current = unwrap(node);
   for (;;) {
     if (
@@ -1147,23 +1160,38 @@ function isUnchangedChain(
 }
 
 /** True for an array literal (possibly behind a `const` that never changes) of string or number literals only. */
-function isLiteralList(node: TSESTree.Node, sourceCode: SourceCode): boolean {
+function isLiteralList(
+  node: TSESTree.Node,
+  sourceCode: SourceCode,
+  observe?: LiteralObserver,
+): boolean {
   const resolved = resolveConst(node, sourceCode);
   const frozen = frozenArgument(resolved, sourceCode);
-  if (frozen !== null) {
-    // `Object.freeze([...])`: the contents cannot change, whatever else reads the list.
-    return (
-      frozen.type === AST_NODE_TYPES.ArrayExpression &&
-      frozen.elements.length > 0 &&
-      frozen.elements.every((element) => element !== null && isStaticLiteral(element))
-    );
+  // `Object.freeze([...])`: the contents cannot change, whatever else reads the list.
+  const list = frozen ?? resolved;
+  const literal =
+    list.type === AST_NODE_TYPES.ArrayExpression &&
+    list.elements.length > 0 &&
+    list.elements.every((element) => element !== null && isStaticLiteral(element)) &&
+    (frozen !== null || isUnchangedChain(node, LIST_READS, sourceCode));
+  if (literal && observe !== undefined) {
+    for (const element of list.elements) {
+      observe(literalText(element as TSESTree.Node));
+    }
   }
-  return (
-    resolved.type === AST_NODE_TYPES.ArrayExpression &&
-    resolved.elements.length > 0 &&
-    resolved.elements.every((element) => element !== null && isStaticLiteral(element)) &&
-    isUnchangedChain(node, LIST_READS, sourceCode)
-  );
+  return literal;
+}
+
+/** Told the text of each literal a proof rests on (see `ProvenSafeOptions.onLiteral`). */
+type LiteralObserver = (value: string) => void;
+
+/** The text of a literal {@link isStaticLiteral} accepts. */
+function literalText(node: TSESTree.Node): string {
+  const inner = unwrap(node);
+  if (inner.type === AST_NODE_TYPES.TemplateLiteral) {
+    return inner.quasis[0]?.value.cooked ?? '';
+  }
+  return inner.type === AST_NODE_TYPES.Literal ? String(inner.value) : '';
 }
 
 /** For `Object.freeze(x)` with the global `Object`, the `x`; else null. */
@@ -1182,7 +1210,11 @@ function frozenArgument(node: TSESTree.Node, sourceCode: SourceCode): TSESTree.N
 }
 
 /** True for `new Set([...literals])`, inline or behind a `const` that never changes. */
-function isLiteralSet(node: TSESTree.Node, sourceCode: SourceCode): boolean {
+function isLiteralSet(
+  node: TSESTree.Node,
+  sourceCode: SourceCode,
+  observe?: LiteralObserver,
+): boolean {
   const resolved = resolveConst(node, sourceCode);
   return (
     isUnchangedChain(node, SET_READS, sourceCode) &&
@@ -1191,7 +1223,7 @@ function isLiteralSet(node: TSESTree.Node, sourceCode: SourceCode): boolean {
     resolved.arguments.length === 1 &&
     resolved.arguments[0] !== undefined &&
     resolved.arguments[0].type !== AST_NODE_TYPES.SpreadElement &&
-    isLiteralList(resolved.arguments[0], sourceCode)
+    isLiteralList(resolved.arguments[0], sourceCode, observe)
   );
 }
 
@@ -1271,7 +1303,14 @@ function regexOf(
 // Checks and guards
 // ---------------------------------------------------------------------------
 
-type RegexJudge = (pattern: string, flags: string) => boolean;
+/**
+ * Decides whether a regex check proves a value. `literal`, when set, is told
+ * the text of each literal a check rests on (see `ProvenSafeOptions.onLiteral`).
+ */
+interface RegexJudge {
+  (pattern: string, flags: string): boolean;
+  readonly literal?: LiteralObserver;
+}
 
 /** What a check must be about: a binding, or any expression a predicate accepts. */
 type Subject = Variable | ((node: TSESTree.Node) => boolean);
@@ -1304,6 +1343,7 @@ function isLiteralComparison(
   variable: Subject,
   negated: boolean,
   sourceCode: SourceCode,
+  observe?: LiteralObserver,
 ): boolean {
   const inner = unwrap(node);
   if (inner.type !== AST_NODE_TYPES.BinaryExpression) {
@@ -1320,14 +1360,15 @@ function isLiteralComparison(
     if (!isStaticLiteral(side)) {
       return false;
     }
-    if (inner.operator === strict) {
-      return true;
-    }
     const value = unwrap(side);
-    return (
+    const ok =
+      inner.operator === strict ||
       value.type === AST_NODE_TYPES.TemplateLiteral ||
-      (value.type === AST_NODE_TYPES.Literal && typeof value.value === 'string')
-    );
+      (value.type === AST_NODE_TYPES.Literal && typeof value.value === 'string');
+    if (ok) {
+      observe?.(literalText(side));
+    }
+    return ok;
   };
   return (
     (readsVariable(inner.left, variable, sourceCode) && literalOk(inner.right)) ||
@@ -1348,7 +1389,7 @@ function isCheck(
     includes !== null &&
     includes.callee.type === AST_NODE_TYPES.MemberExpression &&
     readsVariable(includes.arguments[0] as TSESTree.Node, variable, sourceCode) &&
-    isLiteralList(includes.callee.object, sourceCode)
+    isLiteralList(includes.callee.object, sourceCode, judge.literal)
   ) {
     return true;
   }
@@ -1357,7 +1398,7 @@ function isCheck(
     has !== null &&
     has.callee.type === AST_NODE_TYPES.MemberExpression &&
     readsVariable(has.arguments[0] as TSESTree.Node, variable, sourceCode) &&
-    isLiteralSet(has.callee.object, sourceCode)
+    isLiteralSet(has.callee.object, sourceCode, judge.literal)
   ) {
     return true;
   }
@@ -1371,8 +1412,8 @@ function isCheck(
     return regex !== null && judge(regex.pattern, regex.flags);
   }
   return (
-    indexOfCheck(inner, variable, true, sourceCode) ||
-    isLiteralComparison(inner, variable, false, sourceCode)
+    indexOfCheck(inner, variable, true, sourceCode, judge.literal) ||
+    isLiteralComparison(inner, variable, false, sourceCode, judge.literal)
   );
 }
 
@@ -1386,6 +1427,7 @@ function indexOfCheck(
   subject: Subject,
   positive: boolean,
   sourceCode: SourceCode,
+  observe?: LiteralObserver,
 ): boolean {
   const inner = unwrap(node);
   if (inner.type !== AST_NODE_TYPES.BinaryExpression) {
@@ -1397,7 +1439,7 @@ function indexOfCheck(
     call === null ||
     call.callee.type !== AST_NODE_TYPES.MemberExpression ||
     !readsVariable(call.arguments[0] as TSESTree.Node, subject, sourceCode) ||
-    !isLiteralList(call.callee.object, sourceCode)
+    !isLiteralList(call.callee.object, sourceCode, observe)
   ) {
     return false;
   }
@@ -1443,11 +1485,13 @@ function failsUnlessChecked(
     if (term.type === AST_NODE_TYPES.UnaryExpression && term.operator === '!') {
       return isCheck(term.argument, variable, judge, sourceCode);
     }
-    if (indexOfCheck(term, variable, false, sourceCode)) {
+    if (indexOfCheck(term, variable, false, sourceCode, judge.literal)) {
       return true;
     }
     const conjuncts = flattenLogical(term, '&&');
-    return conjuncts.every((conjunct) => isLiteralComparison(conjunct, variable, true, sourceCode));
+    return conjuncts.every((conjunct) =>
+      isLiteralComparison(conjunct, variable, true, sourceCode, judge.literal),
+    );
   });
 }
 
@@ -1462,7 +1506,9 @@ function holdsOnlyIfChecked(
     const disjuncts = flattenLogical(term, '||');
     return disjuncts.length === 1
       ? isCheck(term, variable, judge, sourceCode)
-      : disjuncts.every((disjunct) => isLiteralComparison(disjunct, variable, false, sourceCode));
+      : disjuncts.every((disjunct) =>
+          isLiteralComparison(disjunct, variable, false, sourceCode, judge.literal),
+        );
   });
 }
 
@@ -1792,6 +1838,13 @@ function schemaConfines(node: TSESTree.Node, judge: RegexJudge, sourceCode: Sour
         );
       if (!literal) {
         return false;
+      }
+      for (const arg of args) {
+        if (isStaticLiteral(arg)) {
+          judge.literal?.(literalText(arg));
+        } else {
+          isLiteralList(arg, sourceCode, judge.literal);
+        }
       }
       confined = true;
     } else if (!SCHEMA_NARROWING_METHODS.has(method)) {
@@ -2494,6 +2547,12 @@ export interface ProvenSafeOptions {
    * carry text an outsider chose (`GITHUB_HEAD_REF`, a pull request title).
    */
   readonly trustEnvironment?: boolean;
+  /**
+   * Told the text of every literal a proof rests on: an allowlist member, a
+   * compared literal, a literal schema set, a constant. A caller that reads
+   * the value as text (a shell command) learns what it can hold.
+   */
+  readonly onLiteral?: LiteralObserver;
 }
 
 /**
@@ -2509,7 +2568,10 @@ export function isProvenSafeValue(
   sourceCode: SourceCode,
   options: ProvenSafeOptions = {},
 ): boolean {
-  const judge: RegexJudge = (pattern, flags) => regexAdmitsOnlySafe(pattern, flags, context);
+  const judge: RegexJudge = Object.assign(
+    (pattern: string, flags: string) => regexAdmitsOnlySafe(pattern, flags, context),
+    { literal: options.onLiteral },
+  );
   return provenSafe(node, sink, judge, sourceCode, options, 0);
 }
 
@@ -2526,6 +2588,7 @@ function provenSafe(
   }
   const node = peelStringWrappers(raw, sourceCode);
   if (isStaticLiteral(node)) {
+    judge.literal?.(literalText(node));
     return true;
   }
   if (options.trustEnvironment === true && isEnvironmentValue(node, sourceCode, 0)) {

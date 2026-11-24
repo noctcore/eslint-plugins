@@ -1,0 +1,25 @@
+// @bench category=command-injection cwe=CWE-78 framework=express pair=express-report-hash-windows title="report name allowed to hold % put into a command that cmd.exe runs on Windows"
+import express, { Request, Response } from 'express';
+import { exec } from 'node:child_process';
+
+// `%` is let through for URL escapes such as `q3%20draft.pdf`, but cmd.exe expands `%VAR%`.
+const REPORT = /^[\w%]+\.pdf$/;
+
+const app = express();
+
+app.get('/reports/:name/hash', (req: Request, res: Response) => {
+  const { name } = req.params;
+  if (!REPORT.test(name)) {
+    res.status(400).end();
+    return;
+  }
+  exec(`certutil -hashfile reports/${name} SHA256`, (error, stdout) => { // expect: security/no-shell-interpolation
+    if (error) {
+      res.status(500).end();
+      return;
+    }
+    res.type('text/plain').send(stdout);
+  });
+});
+
+app.listen(3000);
