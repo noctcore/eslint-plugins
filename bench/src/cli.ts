@@ -9,6 +9,7 @@
  *   bun run bench --update --allow-removals      drop TP or TN cases on purpose
  *   bun run bench --plugin security    only the named plugin(s)
  *   bun run bench --variant <file>~<transform>   print one generated variant
+ *   bun run bench --promote <file>~<transform>   write that variant's pair into the corpus
  *
  * Every run also generates the variants of every case (see `variants/`),
  * scores them and holds them to the same ratchet as the cases.
@@ -21,6 +22,7 @@ import { fileURLToPath } from 'node:url';
 
 import { buildBaseline, compareBaseline, serializeBaseline, type Baseline } from './baseline';
 import { CorpusError, loadCorpus } from './corpus';
+import { promoteVariant } from './promote';
 import { renderMarkdown, renderSarif } from './report';
 import { loadPlugin, scoreCategories, type LoadedPlugin } from './score';
 import { generateCorpusVariants, VariantError } from './variants/generate';
@@ -39,6 +41,7 @@ interface Flags {
   readonly allowRemovals: boolean;
   readonly plugins: readonly string[] | undefined;
   readonly variant: string | undefined;
+  readonly promote: string | undefined;
 }
 
 function parseFlags(argv: readonly string[]): Flags {
@@ -47,7 +50,7 @@ function parseFlags(argv: readonly string[]): Flags {
   argv.forEach((arg, i) => {
     const value = argv[i + 1];
     if (arg === '--plugin' && value !== undefined) plugins.push(value);
-    if (arg === '--variant' && value !== undefined) values.set(arg, value);
+    if ((arg === '--variant' || arg === '--promote') && value !== undefined) values.set(arg, value);
   });
   const known = new Set([
     '--check',
@@ -56,6 +59,7 @@ function parseFlags(argv: readonly string[]): Flags {
     '--allow-removals',
     '--plugin',
     '--variant',
+    '--promote',
     ...plugins,
     ...values.values(),
   ]);
@@ -68,6 +72,7 @@ function parseFlags(argv: readonly string[]): Flags {
     allowRemovals: argv.includes('--allow-removals'),
     plugins: plugins.length > 0 ? plugins : undefined,
     variant: values.get('--variant'),
+    promote: values.get('--promote'),
   };
 }
 
@@ -86,6 +91,18 @@ async function main(): Promise<number> {
       return 1;
     }
     console.log(variant.source);
+    return 0;
+  }
+  if (flags.promote !== undefined) {
+    let promotion: ReturnType<typeof promoteVariant>;
+    try {
+      promotion = promoteVariant(CORPUS, corpus.categories, generated.variants, flags.promote);
+    } catch (error) {
+      console.error((error as Error).message);
+      return 1;
+    }
+    for (const file of promotion.written) console.log(`Wrote bench/corpus/${file}${promotion.unchanged.includes(file) ? ' (the transform does not apply: copied unchanged)' : ''}`);
+    console.log('Review the new cases (titles, labels), then run `bun run bench --update` and commit them with bench/baseline.json.');
     return 0;
   }
   const plugins = new Map<string, LoadedPlugin>();

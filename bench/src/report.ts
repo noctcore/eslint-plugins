@@ -72,6 +72,7 @@ function renderVariants(baseline: Baseline, counts: ReadonlyMap<string, number> 
     })
     .filter((f) => f.flip === 'missed' || f.flip === 'falseAlarms');
   lines.push('', `### Variants that flip a caught or clean case (${flips.length})`, '');
+  lines.push('Promote one to a committed case with `bun run bench --promote <file>~<transform>`.', '');
   for (const f of flips) {
     lines.push(`- ${f.flip === 'missed' ? 'missed' : 'false alarm'} \`${f.id}\`: ${f.base?.title ?? ''}`);
   }
