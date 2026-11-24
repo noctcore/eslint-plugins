@@ -68,8 +68,23 @@ function scanExpression(text: string, from: number): Scan {
   return { close: -1, next: -1, inString };
 }
 
-const TOKEN =
-  /\s+|'(?:[^']|'')*'|(?:0x[\dA-Fa-f]+|[-+]?(?:\d+\.?\d*|\.\d+)(?:[eE][-+]?\d+)?)(?![\w-])|[A-Za-z_][\w-]*|==|!=|<=|>=|&&|\|\||[\s\S]/gu;
+/**
+ * A number literal. Every digit run is atomic (`(?=(\d+))\1` cannot give
+ * digits back), so a long run is matched in linear time instead of being
+ * split every possible way.
+ */
+const NUMBER =
+  /0x(?=([\dA-Fa-f]+))\1|[-+]?(?:(?=(\d+))\2(?:\.(?=(\d*))\3)?|\.(?=(\d+))\4)(?:[eE][-+]?(?=(\d+))\5)?/u.source;
+/**
+ * The tokens of an expression body. A number glued to name characters
+ * (`123abc`, `1-2`) is one token, so the scan moves past the whole run at
+ * once; {@link NUMBER_TOKEN} then rejects it as not a number.
+ */
+const TOKEN = new RegExp(
+  `\\s+|'(?:[^']|'')*'|(?:${NUMBER})(?![\\w-])|\\d[\\w-]*|[A-Za-z_][\\w-]*|==|!=|<=|>=|&&|\\|\\||[\\s\\S]`,
+  'gu',
+);
+const NUMBER_TOKEN = new RegExp(`^(?:${NUMBER})$`, 'u');
 const BINARY = new Set(['==', '!=', '<', '<=', '>', '>=', '&&', '||']);
 const NOT_OPERATORS: Readonly<Record<string, string>> = { '=': '==', '&': '&&', '|': '||' };
 const IDENT = /^[A-Za-z_]/u;
@@ -102,7 +117,7 @@ function grammarProblem(body: string): string | null {
     } else if (token === '.') {
       if (wantOperand) return 'has `.` with nothing before it';
       afterDot = true;
-    } else if (token.startsWith("'") || IDENT.test(token) || /^[-+]?\.?\d/u.test(token)) {
+    } else if (token.startsWith("'") || IDENT.test(token) || NUMBER_TOKEN.test(token)) {
       if (!wantOperand) return `needs an operator between \`${prev}\` and \`${token}\``;
       wantOperand = false;
     } else if (token === '!') {

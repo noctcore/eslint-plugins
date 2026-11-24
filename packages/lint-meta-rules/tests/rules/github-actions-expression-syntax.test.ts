@@ -190,6 +190,21 @@ describe('github-actions-expression-syntax', () => {
     expect(violations[0]?.message ?? '').toContain('GitHub rejects the whole workflow');
   });
 
+  test('reads a number glued to name characters as one invalid token', () => {
+    expect(checkWorkflowExpressionSyntax('w.yml', 'A: ${{ 123abc }}\n')[0]?.message ?? '').toContain(
+      'holds `123abc`, which is not valid',
+    );
+    expect(checkWorkflowExpressionSyntax('w.yml', 'A: ${{ 1-2 }}\n')[0]?.message ?? '').toContain('holds `1-2`');
+  });
+
+  test('tokenizes a long digit run in linear time', () => {
+    const started = performance.now();
+    const violations = checkWorkflowExpressionSyntax('w.yml', `A: \${{ ${'1'.repeat(100_000)}x }}\n`);
+
+    expect(violations).toHaveLength(1);
+    expect(performance.now() - started).toBeLessThan(1000);
+  });
+
   test('reports a grammar problem in an expression that spans a block scalar, at the opener line', () => {
     const body = ['    if: >-', '      ${{ github.event_name == &&', "      github.ref == 'x' }}", ''].join('\n');
     const violations = violationsFor(body);
