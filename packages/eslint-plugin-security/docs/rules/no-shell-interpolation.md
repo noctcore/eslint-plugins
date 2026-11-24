@@ -202,8 +202,11 @@ can run between the outer writes (hoisted above them, or resumed after an `await
 through an alias (`const p = parts; p.push(y)`), `Object.assign` or `Reflect.set` counts as a
 write, and so does a list or `Set` changed through another `const` name for it. A count written as
 `{00}` allows zero repetitions like `{0}`. A value glued right after a `/`
-(`` `rm -rf /srv/${x}` ``) is a path segment, so its regex must refuse `.` and `..` as well as the
-empty string. A direct `eval(s)` (also behind a type-only wrapper such as `eval!(s)` or
+(`` `rm -rf /srv/${x}` ``, also through quotes, `` `rm -rf /srv/"${x}"` ``) is a path segment, so
+its regex must refuse `.`, `..`, `/` and the empty string, and may admit `/` only when it admits no
+`.` and cannot start with `/` (`^[a-z]+(\/[a-z]+)*$`): `^[a-z./]+[a-z]$` lets `../../etc` climb out
+of `/srv`. A value glued right after another value (`/srv/${a}${b}`) must hold both as a path
+segment and as the start of a word. A direct `eval(s)` (also behind a type-only wrapper such as `eval!(s)` or
 `(eval as any)(s)`) in the function after the check, or in any function nested in the one that
 declares the binding, counts as a write. A global with no declaration in the file (one the config
 declares writable) is never treated as checked: another script can reassign it, across an `await`

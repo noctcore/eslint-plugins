@@ -47,7 +47,9 @@ const SHELL_LEADING = '-+#';
  * `shell-word` is a shell value glued to text before it in the same word
  * (`--author=${x}`), where a leading `-`, `+` or `#` is not an option or a comment.
  * `shell-path` is a shell word glued right after a `/` (`/srv/${x}`), a path
- * segment that must not be `.` or `..` either.
+ * segment that must not be `.`, `..` or `/` either, and may hold a `/` only
+ * when it holds no `.` and does not start with one, so it cannot climb out
+ * (`../../etc`, `a/..`) or name the directory itself (`//`).
  * `command` is a shell value in the program-name position, which no regex or
  * schema pattern proves, only a literal allowlist or a constant.
  * `html` is a value inside an HTML attribute or element; `html-text` is a value
@@ -410,12 +412,12 @@ function anchoredBody(pattern: string, flags: string): RegexToken[] | null {
  * Whole values a context must never receive, whatever their characters. An
  * empty shell value drops out of the command (`rm -rf /srv/${x}` with `x = ''`
  * removes `/srv/`, and an empty unquoted argument shifts the ones after it); a
- * path segment of `.` or `..` (or empty) names the directory itself or its parent.
+ * path segment of `.`, `..` or `/` (or empty) names the directory itself or its parent.
  */
 const FORBIDDEN_VALUES: Readonly<Record<GuardContext, readonly string[]>> = {
   shell: [''],
   'shell-word': [''],
-  'shell-path': ['', '.', '..'],
+  'shell-path': ['', '.', '..', '/'],
   command: [''],
   html: [],
   'html-text': [],
@@ -468,18 +470,25 @@ export function regexAdmitsOnlySafe(
   if (!admitsOnlySafe || matchesAny(pattern, flags, FORBIDDEN_VALUES[context])) {
     return false;
   }
-  if (context !== 'shell') {
-    return true;
+  if (context === 'shell-path') {
+    // A segment that holds `/` must hold no `.` (`../../etc`, `a/..`) and must
+    // not start with `/` (`//` names the directory itself).
+    return !admitsAny(body, '/') || (!admitsAny(body, '.') && !leadsWithAny(body, '/'));
   }
-  const admitsLeading = body.some(
-    (token) =>
-      token.kind === 'chars' && [...(token.chars ?? '')].some((c) => SHELL_LEADING.includes(c)),
+  return context !== 'shell' || !admitsAny(body, SHELL_LEADING) || !leadsWithAny(body, SHELL_LEADING);
+}
+
+/** True when some character token of the body can consume one of `chars`. */
+function admitsAny(body: readonly RegexToken[], chars: string): boolean {
+  return body.some(
+    (token) => token.kind === 'chars' && [...(token.chars ?? '')].some((c) => chars.includes(c)),
   );
-  if (!admitsLeading) {
-    return true;
-  }
+}
+
+/** True when the body can start with one of `chars`, or its start is not a plain run of characters. */
+function leadsWithAny(body: readonly RegexToken[], chars: string): boolean {
   const first = firstCharacters(body);
-  return first !== null && ![...first].some((char) => SHELL_LEADING.includes(char));
+  return first === null || [...first].some((char) => chars.includes(char));
 }
 
 /**

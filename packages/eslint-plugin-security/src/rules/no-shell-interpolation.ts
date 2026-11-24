@@ -234,15 +234,22 @@ function constStringInit(
   return textual ? init : null;
 }
 
-/** The guard context a runtime part needs, from where it lands in the command. */
-function partContext(part: ShellPart): GuardContext {
+/**
+ * The guard contexts a runtime part must be proven in, from where it lands in
+ * the command. A value glued after another value may start the word (when
+ * that one is empty) or follow a `/` it ends with, so it needs both.
+ */
+function partContexts(part: ShellPart): GuardContext[] {
   if (part.commandWord) {
-    return 'command';
+    return ['command'];
   }
   if (part.afterSlash) {
-    return 'shell-path';
+    return ['shell-path'];
   }
-  return part.midWord ? 'shell-word' : 'shell';
+  if (part.afterValue) {
+    return ['shell', 'shell-path'];
+  }
+  return [part.midWord ? 'shell-word' : 'shell'];
 }
 
 /**
@@ -400,9 +407,9 @@ export const noShellInterpolationRule = createRule<RuleOptions, MessageIds>({
         // program name is proven only by a literal allowlist or a constant.
         const parts = classifyShellParts(commandSegments(command, context.sourceCode));
         const provenSafe = parts.every((part) =>
-          isProvenSafeValue(part.node, node, partContext(part), context.sourceCode, {
-            trustEnvironment,
-          }),
+          partContexts(part).every((where) =>
+            isProvenSafeValue(part.node, node, where, context.sourceCode, { trustEnvironment }),
+          ),
         );
         if (provenSafe) {
           return;

@@ -120,8 +120,10 @@ export interface ShellPart {
   readonly node: TSESTree.Node;
   /** Static text right before it puts it inside a word (`--author=${x}`). */
   readonly midWord: boolean;
-  /** It follows a `/` in the same word, as a path segment (`/srv/${x}`). */
+  /** It follows a `/` in the same word, as a path segment (`/srv/${x}`, `'/srv/'${x}`). */
   readonly afterSlash: boolean;
+  /** It is glued right after another runtime value in the same word (`${a}${b}`). */
+  readonly afterValue: boolean;
   /** The word it is in runs as a program (see the header). */
   readonly commandWord: boolean;
 }
@@ -229,7 +231,9 @@ export function classifyShellParts(segments: readonly (string | TSESTree.Node)[]
       parts.push({
         node: item,
         midWord: typeof before === 'string' && WORD_END.test(before),
-        afterSlash: before === '/',
+        // Read past quotes: `/srv/"${x}"` is still a segment of `/srv/`.
+        afterSlash: prefix.endsWith('/'),
+        afterValue: prefix.endsWith(VALUE_MARK),
         commandWord: mode !== 'args' && !redirectTarget && !REDIRECT_START.test(prefix),
       });
       word += VALUE_MARK;
