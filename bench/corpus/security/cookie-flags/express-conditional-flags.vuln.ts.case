@@ -1,0 +1,17 @@
+// @bench category=cookie-flags cwe=CWE-1004 framework=express pair=express-conditional-flags title="cookie flags object only built in production, spread as undefined elsewhere"
+import express from 'express';
+import { createSession } from './auth';
+
+const router = express.Router();
+
+router.post('/login', express.json(), async (req, res) => {
+  const sid = await createSession(req.body);
+  let flags;
+  if (process.env.NODE_ENV === 'production') {
+    flags = { httpOnly: true, secure: true, sameSite: 'lax' };
+  }
+  res.cookie('session', sid, { ...flags, maxAge: 86_400_000 }); // expect: security/auth-cookie-flags
+  res.json({ ok: true });
+});
+
+export default router;

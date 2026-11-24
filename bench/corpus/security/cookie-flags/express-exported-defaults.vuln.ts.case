@@ -1,0 +1,15 @@
+// @bench category=cookie-flags cwe=CWE-1004 framework=express pair=express-exported-defaults title="exported cookie defaults spread into the session cookie, open to change by any importer"
+import express from 'express';
+import { createSession } from './auth';
+
+export const COOKIE_DEFAULTS = { httpOnly: true, secure: true, sameSite: 'lax' };
+
+const router = express.Router();
+
+router.post('/login', express.json(), async (req, res) => {
+  const sid = await createSession(req.body);
+  res.cookie('session', sid, { ...COOKIE_DEFAULTS, maxAge: 86_400_000 }); // expect: security/auth-cookie-flags
+  res.json({ ok: true });
+});
+
+export default router;
