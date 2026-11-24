@@ -17,12 +17,23 @@ import { AST_NODE_TYPES, ASTUtils, type TSESLint, type TSESTree } from '@typescr
  *
  * `flowSteps` lists the expressions a value is equal to, the value first. A
  * rule asks its own question (is it proven safe? does it carry the request?)
- * of each step: a proof found on any step holds for the value, so following a
- * step never loses one the rule found before. Only exact moves are followed:
- * a container written anywhere (`holder.value = x`, `items.push(x)`, handing it
- * to a function), a binding written more than once, a default value, a rest
- * element or a spread that may hide the key ends the walk, and the rule keeps
- * what it decided from the steps before.
+ * of each step.
+ *
+ * There are two modes. A `'proof'` walk (the default) feeds checks that turn a
+ * report into no report, so it follows a move only when it can show the value
+ * is still exact, from an allow-list rather than a list of known writes:
+ *
+ *   - a container is a `const` object or array literal that is not exported,
+ *     holds only plain data (no methods, getters, setters, function values or
+ *     spreads, at any depth), and whose every reference is a fixed-key read
+ *     in a read-only place (see `readOnlyUse`);
+ *   - a `let` written once counts only when that write runs unconditionally
+ *     before the read, earlier in the same statement list;
+ *   - a callback value counts only for a callback with exactly one parameter.
+ *
+ * Anything else ends the walk, and the rule keeps what it decided before. A
+ * `'taint'` walk feeds checks that turn no report into a report, and keeps the
+ * looser moves: a rule only adds what it finds there to what it found before.
  *
  * A step that crosses into a callback (`[x].forEach((v) => ...)`, a `.then`,
  * a write inside a nested function) also moves the sink: a check outside the
@@ -234,9 +245,9 @@ function entryAt(literal: TSESTree.ObjectExpression | TSESTree.ArrayExpression, 
  * (`const d = holder`), and the binding handed on whole (`Object.assign(holder, x)`).
  * A nested object or array of the literal (`cfg.opts`) may only be read
  * further or copied: aliased or handed to a call it could be changed. When
- * unsure it is false, so the value is not followed.
+ * unsure it is false. Used by taint walks only; proofs use `trustedLiteral`.
  */
-function onlyReadByKey(variable: Variable, literal: TSESTree.ObjectExpression | TSESTree.ArrayExpression): boolean {
+function looselyReadByKey(variable: Variable, literal: TSESTree.ObjectExpression | TSESTree.ArrayExpression): boolean {
   return variable.references.every((reference) => {
     if (reference.init === true) {
       return true;
@@ -270,31 +281,239 @@ function onlyReadByKey(variable: Variable, literal: TSESTree.ObjectExpression | 
   });
 }
 
+export type FlowMode = 'proof' | 'taint';
+
+type ContainerLiteral = TSESTree.ObjectExpression | TSESTree.ArrayExpression;
+
+function isContainer(node: TSESTree.Node): node is ContainerLiteral {
+  return node.type === AST_NODE_TYPES.ObjectExpression || node.type === AST_NODE_TYPES.ArrayExpression;
+}
+
+/**
+ * True when a literal holds only plain data, at any depth: properties with
+ * fixed keys and plain values, elements with no hole or spread, and no
+ * method, getter, setter, function or class value that could change the
+ * object (`this.secure = false`) when called or read.
+ */
+function isPlainData(node: TSESTree.Node, depth = 0): boolean {
+  const inner = peelTypeWrappers(node);
+  if (depth > MAX_FLOW_DEPTH) {
+    return false;
+  }
+  switch (inner.type) {
+    case AST_NODE_TYPES.ObjectExpression:
+      return inner.properties.every(
+        (property) =>
+          property.type === AST_NODE_TYPES.Property &&
+          property.kind === 'init' &&
+          !property.method &&
+          propertyKey(property) !== null &&
+          property.value.type !== AST_NODE_TYPES.AssignmentPattern &&
+          isPlainData(property.value, depth + 1),
+      );
+    case AST_NODE_TYPES.ArrayExpression:
+      return inner.elements.every(
+        (element) => element !== null && element.type !== AST_NODE_TYPES.SpreadElement && isPlainData(element, depth + 1),
+      );
+    case AST_NODE_TYPES.FunctionExpression:
+    case AST_NODE_TYPES.ArrowFunctionExpression:
+    case AST_NODE_TYPES.ClassExpression:
+      return false;
+    default:
+      return true;
+  }
+}
+
+/** True when another module can reach the binding: `export const`, `export { x }`, `export default x`. */
+function isExported(variable: Variable): boolean {
+  const def = variable.defs[0];
+  if (def?.type === 'Variable' && def.parent.parent?.type === AST_NODE_TYPES.ExportNamedDeclaration) {
+    return true;
+  }
+  return variable.references.some((reference) => {
+    const parent = reference.identifier.parent;
+    return (
+      parent?.type === AST_NODE_TYPES.ExportSpecifier ||
+      parent?.type === AST_NODE_TYPES.ExportDefaultDeclaration ||
+      parent?.type === AST_NODE_TYPES.TSExportAssignment
+    );
+  });
+}
+
+function isTypeWrapperOf(parent: TSESTree.Node | undefined, child: TSESTree.Node): boolean {
+  return (
+    parent !== undefined &&
+    (parent.type === AST_NODE_TYPES.TSAsExpression ||
+      parent.type === AST_NODE_TYPES.TSSatisfiesExpression ||
+      parent.type === AST_NODE_TYPES.TSNonNullExpression ||
+      parent.type === AST_NODE_TYPES.TSTypeAssertion) &&
+    parent.expression === child
+  );
+}
+
+/**
+ * True when `node`, a read of a literal or of an entry in it, sits in a place
+ * that only reads it. `container` says whether the value read is itself an
+ * object or array (or not known to be a plain value): such a value may only
+ * be copied (`{ ...x }`), stringified, compared or tested, or bound to a
+ * `const` that passes the same check. A plain value may also be passed on
+ * (a call argument, a variable, a property, a return), since nothing can
+ * change a primitive. Every other place, including any write, ends trust.
+ */
+function readOnlyUse(
+  node: TSESTree.Node,
+  container: boolean,
+  entry: TSESTree.Node | null,
+  sourceCode: SourceCode,
+  depth: number,
+): boolean {
+  let current = node;
+  while (current.parent !== undefined && isTypeWrapperOf(current.parent, current)) {
+    current = current.parent;
+  }
+  const parent = current.parent;
+  if (parent === undefined) {
+    return false;
+  }
+  switch (parent.type) {
+    case AST_NODE_TYPES.SpreadElement:
+      return parent.parent.type === AST_NODE_TYPES.ObjectExpression;
+    case AST_NODE_TYPES.TemplateLiteral:
+    case AST_NODE_TYPES.BinaryExpression:
+      return true;
+    case AST_NODE_TYPES.UnaryExpression:
+      return parent.operator !== 'delete';
+    case AST_NODE_TYPES.IfStatement:
+    case AST_NODE_TYPES.WhileStatement:
+    case AST_NODE_TYPES.DoWhileStatement:
+      return parent.test === current;
+    case AST_NODE_TYPES.SwitchStatement:
+      return parent.discriminant === current;
+    case AST_NODE_TYPES.SwitchCase:
+      return parent.test === current;
+    case AST_NODE_TYPES.ConditionalExpression:
+      return parent.test === current || !container;
+    case AST_NODE_TYPES.VariableDeclarator: {
+      if (parent.init !== current) {
+        return false;
+      }
+      if (!container) {
+        return true;
+      }
+      // `const alias = holder`: trusted only when the alias is too.
+      const declaration = parent.parent;
+      const literal = entry === null ? null : peelTypeWrappers(entry);
+      const [alias] = sourceCode.getDeclaredVariables(parent);
+      return (
+        parent.id.type === AST_NODE_TYPES.Identifier &&
+        declaration.type === AST_NODE_TYPES.VariableDeclaration &&
+        declaration.kind === 'const' &&
+        literal !== null &&
+        isContainer(literal) &&
+        alias !== undefined &&
+        depth < MAX_FLOW_DEPTH &&
+        referencesReadOnly(alias, literal, sourceCode, depth + 1)
+      );
+    }
+    default:
+      break;
+  }
+  if (container) {
+    return false;
+  }
+  switch (parent.type) {
+    case AST_NODE_TYPES.CallExpression:
+    case AST_NODE_TYPES.NewExpression:
+      return parent.arguments.includes(current as TSESTree.CallExpressionArgument);
+    case AST_NODE_TYPES.LogicalExpression:
+    case AST_NODE_TYPES.AwaitExpression:
+    case AST_NODE_TYPES.ReturnStatement:
+    case AST_NODE_TYPES.JSXExpressionContainer:
+    case AST_NODE_TYPES.ArrayExpression:
+      return true;
+    case AST_NODE_TYPES.Property:
+      return parent.value === current && parent.parent.type === AST_NODE_TYPES.ObjectExpression;
+    case AST_NODE_TYPES.AssignmentExpression:
+      return parent.right === current;
+    case AST_NODE_TYPES.ArrowFunctionExpression:
+      return parent.body === current;
+    default:
+      return false;
+  }
+}
+
+/**
+ * True when a `const` bound to `literal` can be trusted to still hold it: not
+ * exported, plain data only, and every reference a fixed-key read (`x.k`,
+ * `x[0]`, `x.a.b`) or a copy, each in a read-only place (`readOnlyUse`).
+ */
+function referencesReadOnly(variable: Variable, literal: ContainerLiteral, sourceCode: SourceCode, depth: number): boolean {
+  if (isExported(variable) || !isPlainData(literal)) {
+    return false;
+  }
+  return variable.references.every((reference) => {
+    if (reference.init === true) {
+      return true;
+    }
+    if (reference.isWrite()) {
+      return false;
+    }
+    const path: string[] = [];
+    let end: TSESTree.Node = reference.identifier;
+    for (let parent = end.parent; parent?.type === AST_NODE_TYPES.MemberExpression && parent.object === end; parent = end.parent) {
+      const key = parent.optional ? null : memberKey(parent);
+      if (key === null) {
+        return false;
+      }
+      path.push(key);
+      end = parent;
+    }
+    const entry = path.length === 0 ? literal : entryAt(literal, path);
+    const value = entry === null ? null : peelTypeWrappers(entry);
+    const container =
+      value === null ||
+      isContainer(value) ||
+      (value.type === AST_NODE_TYPES.Literal && 'regex' in value && value.regex !== undefined);
+    return readOnlyUse(end, container, entry, sourceCode, depth);
+  });
+}
+
+/** The literal a `const` holds when a proof may rely on it (see `referencesReadOnly`). */
+function trustedLiteral(variable: Variable, sourceCode: SourceCode): ContainerLiteral | null {
+  const declarator = constDeclarator(variable);
+  if (declarator?.id.type !== AST_NODE_TYPES.Identifier) {
+    return null;
+  }
+  const init = peelTypeWrappers(declarator.init as TSESTree.Node);
+  return isContainer(init) && referencesReadOnly(variable, init, sourceCode, 0) ? init : null;
+}
+
 /**
  * The object or array literal a container expression holds: the literal
- * itself, or a `const` bound to one whose every use reads a fixed key.
+ * itself, or a `const` bound to one that a proof may trust (`'proof'`) or
+ * whose uses only read fixed keys as far as can be seen (`'taint'`).
  */
-function containerLiteral(
-  node: TSESTree.Node,
-  sourceCode: SourceCode,
-): TSESTree.ObjectExpression | TSESTree.ArrayExpression | null {
+function containerLiteral(node: TSESTree.Node, sourceCode: SourceCode, mode: FlowMode = 'proof'): ContainerLiteral | null {
   const inner = peelTypeWrappers(node);
-  if (inner.type === AST_NODE_TYPES.ObjectExpression || inner.type === AST_NODE_TYPES.ArrayExpression) {
+  if (isContainer(inner)) {
     return inner;
   }
   if (inner.type !== AST_NODE_TYPES.Identifier) {
     return null;
   }
   const variable = variableOf(inner, sourceCode);
-  const declarator = variable === null ? null : constDeclarator(variable);
-  if (variable === null || declarator?.id.type !== AST_NODE_TYPES.Identifier) {
+  if (variable === null) {
+    return null;
+  }
+  if (mode === 'proof') {
+    return trustedLiteral(variable, sourceCode);
+  }
+  const declarator = constDeclarator(variable);
+  if (declarator?.id.type !== AST_NODE_TYPES.Identifier) {
     return null;
   }
   const init = peelTypeWrappers(declarator.init as TSESTree.Node);
-  return (init.type === AST_NODE_TYPES.ObjectExpression || init.type === AST_NODE_TYPES.ArrayExpression) &&
-    onlyReadByKey(variable, init)
-    ? init
-    : null;
+  return isContainer(init) && looselyReadByKey(variable, init) ? init : null;
 }
 
 /**
@@ -303,11 +522,18 @@ function containerLiteral(
  * argument, an object property, a binding read only here. Null when there is
  * none, or when some use could have changed the object on the way.
  */
-export function objectLiteralOf(node: TSESTree.Node, sourceCode: SourceCode): TSESTree.ObjectExpression | null {
-  for (const step of flowSteps(node, node, sourceCode)) {
-    const literal = containerLiteral(step.node, sourceCode);
+export function objectLiteralOf(
+  node: TSESTree.Node,
+  sourceCode: SourceCode,
+  mode: FlowMode = 'proof',
+): TSESTree.ObjectExpression | null {
+  for (const step of flowSteps(node, node, sourceCode, mode)) {
+    const literal = containerLiteral(step.node, sourceCode, mode);
     if (literal !== null) {
-      return literal.type === AST_NODE_TYPES.ObjectExpression ? literal : null;
+      // A getter or method can change the object while it is read or spread.
+      return literal.type === AST_NODE_TYPES.ObjectExpression && (mode === 'taint' || isPlainData(literal))
+        ? literal
+        : null;
     }
     // Past any other binding (a `let` written once, a callback's value) the
     // walk goes on only when this is its one read: nothing else can reach
@@ -315,7 +541,11 @@ export function objectLiteralOf(node: TSESTree.Node, sourceCode: SourceCode): TS
     const inner = peelTypeWrappers(step.node);
     if (inner.type === AST_NODE_TYPES.Identifier) {
       const variable = variableOf(inner, sourceCode);
-      if (variable === null || variable.references.filter((reference) => reference.isRead()).length !== 1) {
+      if (
+        variable === null ||
+        isExported(variable) ||
+        variable.references.filter((reference) => reference.isRead()).length !== 1
+      ) {
         return null;
       }
     }
@@ -537,7 +767,7 @@ function patternPath(pattern: TSESTree.Node, name: TSESTree.Identifier): string[
 }
 
 /** The value `const { a: { b } } = { a: { b: x } }` binds to `b`: `x`, else null. */
-function destructuredValue(variable: Variable, sourceCode: SourceCode): TSESTree.Node | null {
+function destructuredValue(variable: Variable, sourceCode: SourceCode, mode: FlowMode): TSESTree.Node | null {
   const declarator = constDeclarator(variable);
   const name = variable.defs[0]?.name;
   if (declarator === null || declarator.id.type === AST_NODE_TYPES.Identifier || name?.type !== AST_NODE_TYPES.Identifier) {
@@ -549,7 +779,7 @@ function destructuredValue(variable: Variable, sourceCode: SourceCode): TSESTree
   }
   let current: TSESTree.Node = declarator.init as TSESTree.Node;
   for (const key of path) {
-    const literal = containerLiteral(current, sourceCode);
+    const literal = containerLiteral(current, sourceCode, mode);
     const entry = literal === null ? null : literalEntry(literal, key);
     if (entry === null) {
       return null;
@@ -592,9 +822,12 @@ export function isImmediateCallback(fn: TSESTree.Node, sourceCode: SourceCode): 
 /**
  * For the first parameter of a callback that receives one known value, that
  * value: `x` for `v` in `[x].forEach((v) => ...)` or
- * `Promise.resolve(x).then((v) => ...)`. Null otherwise.
+ * `Promise.resolve(x).then((v) => ...)`. Null otherwise. A proof walk also
+ * needs the callback to take exactly one parameter, so no second name (the
+ * index, the array itself: `(o, i, arr) => { arr[0].x = y }`) reaches the
+ * value, and to be neither async nor a generator.
  */
-function callbackValue(variable: Variable, sourceCode: SourceCode): TSESTree.Node | null {
+function callbackValue(variable: Variable, sourceCode: SourceCode, mode: FlowMode): TSESTree.Node | null {
   const def = variable.defs[0];
   if (variable.defs.length !== 1 || def?.type !== 'Parameter' || !neverReassigned(variable)) {
     return null;
@@ -603,7 +836,8 @@ function callbackValue(variable: Variable, sourceCode: SourceCode): TSESTree.Nod
   if (
     (fn.type !== AST_NODE_TYPES.ArrowFunctionExpression && fn.type !== AST_NODE_TYPES.FunctionExpression) ||
     fn.params[0] !== def.name ||
-    readsArguments(fn, sourceCode)
+    readsArguments(fn, sourceCode) ||
+    (mode === 'proof' && (fn.params.length !== 1 || fn.async || fn.generator))
   ) {
     return null;
   }
@@ -633,9 +867,13 @@ function callbackValue(variable: Variable, sourceCode: SourceCode): TSESTree.Nod
 /**
  * For a `let` declared without a value and assigned exactly once with a plain
  * `=` (`let body; [x].forEach((v) => { body = f(v); })`), the value written.
- * Before the write it holds `undefined`, which no sink treats as dangerous.
+ * A taint walk takes it wherever the write sits. A proof walk takes it only
+ * when the write surely ran before `read`: a statement of its own, earlier in
+ * the same statement list as the read, with no condition, loop, `try` or
+ * function between. Otherwise the read may see `undefined`, which is not
+ * harmless for every rule (`{ ...undefined }` sets no cookie flag).
  */
-function singleWriteValue(variable: Variable): TSESTree.Node | null {
+function singleWriteValue(variable: Variable, read: TSESTree.Node, mode: FlowMode): TSESTree.Node | null {
   const def = variable.defs[0];
   if (
     variable.defs.length !== 1 ||
@@ -657,11 +895,47 @@ function singleWriteValue(variable: Variable): TSESTree.Node | null {
   ) {
     return null;
   }
-  return assignment.right;
+  return mode === 'taint' || writeDominates(assignment, read) ? assignment.right : null;
 }
 
-/** One exact move back from `node`, or null when the value is not followed further. */
-export function flowStep(node: TSESTree.Node, sink: TSESTree.Node, sourceCode: SourceCode): FlowStep | null {
+/** True when the assignment statement runs, unconditionally, before `read` (see `singleWriteValue`). */
+function writeDominates(assignment: TSESTree.AssignmentExpression, read: TSESTree.Node): boolean {
+  const statement = assignment.parent;
+  const list = statement.parent;
+  if (
+    statement.type !== AST_NODE_TYPES.ExpressionStatement ||
+    statement.expression !== assignment ||
+    (list?.type !== AST_NODE_TYPES.BlockStatement && list?.type !== AST_NODE_TYPES.Program)
+  ) {
+    return false;
+  }
+  let child: TSESTree.Node = read;
+  for (let parent = read.parent; parent !== undefined; child = parent, parent = parent.parent) {
+    if (parent === list) {
+      const body = list.body as readonly TSESTree.Node[];
+      return body.indexOf(statement) < body.indexOf(child);
+    }
+    if (
+      parent.type === AST_NODE_TYPES.FunctionDeclaration ||
+      parent.type === AST_NODE_TYPES.FunctionExpression ||
+      parent.type === AST_NODE_TYPES.ArrowFunctionExpression
+    ) {
+      return false;
+    }
+  }
+  return false;
+}
+
+/**
+ * One exact move back from `node`, or null when the value is not followed
+ * further. `mode` picks the proof or taint rules (see the header).
+ */
+export function flowStep(
+  node: TSESTree.Node,
+  sink: TSESTree.Node,
+  sourceCode: SourceCode,
+  mode: FlowMode = 'proof',
+): FlowStep | null {
   if (isTypeWrapper(node)) {
     return { node: peelTypeWrappers(node), sink };
   }
@@ -686,7 +960,7 @@ export function flowStep(node: TSESTree.Node, sink: TSESTree.Node, sourceCode: S
     }
     case AST_NODE_TYPES.MemberExpression: {
       const key = memberKey(node);
-      const literal = key === null || node.optional ? null : containerLiteral(node.object, sourceCode);
+      const literal = key === null || node.optional ? null : containerLiteral(node.object, sourceCode, mode);
       const entry = literal === null || key === null ? null : literalEntry(literal, key);
       return entry === null ? null : { node: entry, sink };
     }
@@ -697,20 +971,24 @@ export function flowStep(node: TSESTree.Node, sink: TSESTree.Node, sourceCode: S
       }
       const declarator = constDeclarator(variable);
       if (declarator?.id.type === AST_NODE_TYPES.Identifier) {
-        return { node: declarator.init as TSESTree.Node, sink };
+        // A proof reaches an object or array literal only while it is trusted.
+        const init = declarator.init as TSESTree.Node;
+        return mode === 'proof' && isContainer(peelTypeWrappers(init)) && trustedLiteral(variable, sourceCode) === null
+          ? null
+          : { node: init, sink };
       }
-      const destructured = destructuredValue(variable, sourceCode);
+      const destructured = destructuredValue(variable, sourceCode, mode);
       if (destructured !== null) {
         return { node: destructured, sink };
       }
       // A callback runs right where it is passed (see `isImmediateCallback`),
       // so checks before that call still count at the sink inside it.
-      const received = callbackValue(variable, sourceCode);
+      const received = callbackValue(variable, sourceCode, mode);
       if (received !== null) {
         return { node: received, sink };
       }
       // A write may sit in a nested function: a proof must hold where it was written.
-      const written = singleWriteValue(variable);
+      const written = singleWriteValue(variable, node, mode);
       return written === null ? null : { node: written, sink: written };
     }
     default:
@@ -722,12 +1000,17 @@ export function flowStep(node: TSESTree.Node, sink: TSESTree.Node, sourceCode: S
  * The value at `node` and every expression it is equal to, in order, up to
  * {@link MAX_FLOW_DEPTH} moves (see the header).
  */
-export function flowSteps(node: TSESTree.Node, sink: TSESTree.Node, sourceCode: SourceCode): FlowStep[] {
+export function flowSteps(
+  node: TSESTree.Node,
+  sink: TSESTree.Node,
+  sourceCode: SourceCode,
+  mode: FlowMode = 'proof',
+): FlowStep[] {
   const steps: FlowStep[] = [{ node, sink }];
   const seen = new Set<TSESTree.Node>([node]);
   let current: FlowStep = steps[0] as FlowStep;
   for (let depth = 0; depth < MAX_FLOW_DEPTH; depth += 1) {
-    const next = flowStep(current.node, current.sink, sourceCode);
+    const next = flowStep(current.node, current.sink, sourceCode, mode);
     if (next === null || seen.has(next.node)) {
       break;
     }
