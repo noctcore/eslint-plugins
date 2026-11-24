@@ -61,11 +61,14 @@ export type GuardContext =
   | 'html-text'
   | 'path';
 
-const SHELL_UNSAFE = ';&|$`()<>{}[]*?!~\'"\\^\n\r \t\v\f';
+const SHELL_UNSAFE = ';&|$`()<>{}[]*?!~%\'"\\^\n\r \t\v\f';
 /** Characters each context must never receive from a value it cannot see. */
 const UNSAFE_CHARACTERS: Readonly<Record<GuardContext, string>> = {
   // Command separators, substitution, quoting, redirection, globbing,
   // escapes and whitespace (which splits one value into several arguments).
+  // On Windows, Node runs the command through `cmd.exe`, which expands
+  // `%VAR%` anywhere in a word (and `!VAR!` with delayed expansion) before
+  // it reads `&` or `|`, and takes `^` as its escape.
   // A leading `-` or `#` is refused apart (see `SHELL_LEADING`).
   shell: SHELL_UNSAFE,
   'shell-word': SHELL_UNSAFE,

@@ -70,7 +70,8 @@ ruleTester.run('no-shell-interpolation', noShellInterpolationRule, {
       filename: TS,
     },
     {
-      code: "const SAFE = /^[a-zA-Z0-9_.%][a-zA-Z0-9_.%\\-]*$/; function run(x: string) { if (!SAFE.test(x)) return; execSync('echo ' + x); }",
+      // With `%` the same regex is reported (#313): `cmd.exe` expands `%VAR%`.
+      code: "const SAFE = /^[a-zA-Z0-9_.][a-zA-Z0-9_.\\-]*$/; function run(x: string) { if (!SAFE.test(x)) return; execSync('echo ' + x); }",
       filename: TS,
     },
     {
