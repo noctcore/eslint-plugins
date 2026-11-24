@@ -1,0 +1,21 @@
+// @bench category=command-injection cwe=CWE-22 framework=express pair=express-workspace-cleanup title="nested workspace path whose pattern admits both / and . removed with rm -rf under /srv"
+import express, { Request, Response } from 'express';
+import { execSync } from 'node:child_process';
+
+// Meant for `team/build.cache`, but `a/../../etc` climbs out of /srv/workspaces.
+const WORKSPACE_PATH = /^[a-z0-9][a-z0-9./_]*$/;
+
+const app = express();
+app.use(express.json());
+
+app.post('/workspaces/cleanup', (req: Request, res: Response) => {
+  const path: string = req.body.path;
+  if (typeof path !== 'string' || !WORKSPACE_PATH.test(path)) {
+    res.status(400).json({ error: 'invalid path' });
+    return;
+  }
+  execSync(`rm -rf /srv/workspaces/${path}`); // expect: security/no-shell-interpolation
+  res.status(204).end();
+});
+
+app.listen(3000);
