@@ -306,7 +306,7 @@ as checked: the other module can reassign it after the check.
 | Option | Type | Default | Meaning |
 | --- | --- | --- | --- |
 | `extraCallees` | `string[]` | `[]` | Extra callee names to treat as always-shell command runners (checked like `exec`). |
-| `trustEnvironment` | `boolean` | `false` | Leave values read from `process.env` with a fixed key alone. Off by default because CI variables such as `GITHUB_HEAD_REF` hold outside input. |
+| `trustEnvironment` | `boolean` | `false` | Do not report values read from `process.env` with a fixed key. Their text is still unknown, so values after one, up to the next separator, are read as program words. Off by default because CI variables such as `GITHUB_HEAD_REF` hold outside input. |
 
 ```js
 'noctcore-security/no-shell-interpolation': ['error', { extraCallees: ['runShell', 'sh'] }]
