@@ -1,0 +1,16 @@
+// @bench category=ssrf cwe=CWE-918 framework=node pair=node-mirror-pool title="mirror health check keeps one undici Pool on a fixed origin and takes only the region path"
+// ok
+const http = require('node:http');
+const { Pool } = require('undici');
+
+const pool = new Pool('https://mirror.example.com');
+
+const server = http.createServer(async (req, res) => {
+  const incoming = new URL(req.url, 'http://localhost');
+  const region = encodeURIComponent(incoming.searchParams.get('region') ?? 'eu');
+  const { statusCode } = await pool.request({ path: `/health/${region}`, method: 'GET' });
+  res.writeHead(200, { 'Content-Type': 'application/json' });
+  res.end(JSON.stringify({ up: statusCode === 200 }));
+});
+
+server.listen(3000);

@@ -1,0 +1,16 @@
+// @bench category=ssrf cwe=CWE-918 framework=express pair=express-report-relay title="report relay hands the posted request options to https.request"
+import express from 'express';
+import https from 'node:https';
+
+const app = express();
+app.use(express.json());
+
+app.post('/reports/relay', (req, res) => {
+  const upstream = https.request('https://reports.example.com/v1/render', req.body.options, (reply) => { // expect: security/no-user-controlled-fetch-url
+    res.status(reply.statusCode ?? 502);
+    reply.pipe(res);
+  });
+  upstream.end(JSON.stringify(req.body.report));
+});
+
+app.listen(3000);

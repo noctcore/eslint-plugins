@@ -1,0 +1,27 @@
+// @bench category=ssrf cwe=CWE-918 framework=nest pair=nest-feed-probe title="feed probe calls the DTO url through an alias of axios"
+import { Body, Controller, Injectable, Post } from '@nestjs/common';
+import axios, { type AxiosStatic } from 'axios';
+
+const client: AxiosStatic = axios;
+
+class ProbeDto {
+  url!: string;
+}
+
+@Injectable()
+export class ProbeService {
+  async probe(dto: ProbeDto) {
+    const res = await client.get<string>(dto.url); // expect: security/no-user-controlled-fetch-url
+    return { length: res.data.length };
+  }
+}
+
+@Controller('probe')
+export class ProbeController {
+  constructor(private readonly service: ProbeService) {}
+
+  @Post()
+  create(@Body() dto: ProbeDto) {
+    return this.service.probe(dto);
+  }
+}

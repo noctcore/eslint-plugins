@@ -1,0 +1,17 @@
+// @bench category=open-redirect cwe=CWE-601 framework=express pair=express-preview-redirect title="preview link host regex pins the project label under pages.dev"
+// ok
+const express = require('express');
+
+const app = express();
+const PREVIEW_HOST = /^[a-f0-9]{8}\.acme-docs\.pages\.dev$/;
+
+app.get('/preview/open', (req, res) => {
+  const target = new URL(String(req.query.to));
+  if (target.protocol !== 'https:' || !PREVIEW_HOST.test(target.hostname)) {
+    res.status(400).send('not a preview link');
+    return;
+  }
+  res.redirect(target.href);
+});
+
+app.listen(3000);
