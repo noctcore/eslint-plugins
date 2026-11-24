@@ -130,6 +130,11 @@ ruleTester.run('no-user-controlled-fetch-url', noUserControlledFetchUrlRule, {
       code: "const HOSTS = ['api.example.com']; function probe(input: string) { const host = new URL(input).hostname; if (!HOSTS.includes(host)) return; https.get({ hostname: new URL(input).hostname, path: '/x' }); }",
       filename: TS,
     },
+    // A host regex over a public suffix with one more literal label pinned.
+    {
+      code: "async function h(src: string) { if (!/^[a-z0-9-]+\\.assets\\.github\\.io$/.test(new URL(src).hostname)) return; await fetch(src); }",
+      filename: TS,
+    },
     // A fixed options object behind a type wrapper is read as written.
     { code: "const opts = { hostname: 'api.example.com' } satisfies RequestOptions; https.get(opts);", filename: TS },
     { code: "https.get({ hostname: 'api.example.com', path: '/x' } as https.RequestOptions);", filename: TS },
@@ -354,6 +359,12 @@ ruleTester.run('no-user-controlled-fetch-url', noUserControlledFetchUrlRule, {
     { code: 'axios.create(req.body);', filename: TS, errors: [option] },
     { code: 'function mk(cfg) { return axios.create(cfg); }', filename: TS, errors: [option] },
     { code: 'axios.create(c ? { baseURL: x } : {});', filename: TS, errors: [option] },
+    // A host regex over a public suffix: anyone can register a name under it.
+    ...['vercel\\.app', 'github\\.io', 'netlify\\.app', 'pages\\.dev', 'co\\.uk'].map((suffix) => ({
+      code: `async function h(src: string) { if (!/^[a-z0-9-]+\\.${suffix}$/.test(new URL(src).hostname)) return; await fetch(src); }`,
+      filename: TS,
+      errors: [error],
+    })),
     // A relative prefix made only of scheme characters can still grow into a scheme.
     { code: 'fetch(`h${x}`);', filename: TS, errors: [error] },
     { code: 'fetch(`java${x}`);', filename: TS, errors: [error] },
