@@ -143,7 +143,68 @@ function declaredBefore(p: Parsed, expression: Node, at: number): boolean {
   });
 }
 
-/** Where a statement can go before the sink, or null when the leaf sits in an expression-bodied function or a class member. */
+const LOGICAL_ASSIGNMENTS = new Set(['&&=', '||=', '??=']);
+
+/**
+ * Whether the leaf is read every time its statement runs, exactly once, with
+ * nothing in the statement able to skip it. Only then can a statement placed
+ * before it (or a callback handed it) read it instead: hoisting the read out
+ * of `req.body && fetch(req.body.url)` would run it when `req.body` is
+ * missing. Refused: the right of `&&`, `||`, `??` and their assignments, a
+ * branch of a ternary, a destructuring default, anything an optional link can
+ * skip, the branches of an `if` without braces, a `case` test, and loop tests,
+ * updates and bodies. The head of an optional chain (`req.body` in
+ * `req.body?.url`) is always read, so it stays a leaf.
+ */
+function readsUnconditionally(p: Parsed, leaf: Node, statement: Node): boolean {
+  // Whether every step so far went up through an object or callee slot, so an optional link above cannot skip the leaf.
+  let chainHead = true;
+  for (let node = leaf, parent = parentOf(p, node); node !== statement && parent !== null; node = parent, parent = parentOf(p, node)) {
+    switch (parent.type) {
+      case 'LogicalExpression':
+      case 'AssignmentPattern':
+        if (parent.right === node) return false;
+        break;
+      case 'AssignmentExpression':
+        if (parent.right === node && LOGICAL_ASSIGNMENTS.has(parent.operator)) return false;
+        break;
+      case 'ConditionalExpression':
+      case 'IfStatement':
+        if (parent.test !== node) return false;
+        break;
+      case 'ChainExpression':
+        if (!chainHead) return false;
+        break;
+      case 'ForStatement':
+        if (parent.init !== node) return false;
+        break;
+      case 'ForInStatement':
+      case 'ForOfStatement':
+        if (parent.right !== node) return false;
+        break;
+      case 'SwitchCase':
+      case 'WhileStatement':
+      case 'DoWhileStatement':
+      case 'WithStatement':
+        return false;
+      default:
+        break;
+    }
+    const headStep =
+      (parent.type === 'MemberExpression' && parent.object === node) ||
+      (parent.type === 'CallExpression' && parent.callee === node) ||
+      parent.type === 'TSNonNullExpression' ||
+      parent.type === 'ChainExpression';
+    if (!headStep) chainHead = false;
+  }
+  return true;
+}
+
+/**
+ * Where a statement can go before the sink, or null when the leaf sits in an
+ * expression-bodied function or a class member, reads a binding declared
+ * later, or is not read every time the statement runs.
+ */
 function siteOf(p: Parsed, leaf: Leaf): Site | null {
   let node: Node = leaf.node;
   let statement: Node | null = null;
@@ -157,7 +218,7 @@ function siteOf(p: Parsed, leaf: Leaf): Site | null {
   if (statement === null || !startsItsLine(p, statement)) return null;
   if (/Declaration$/u.test(statement.type) && statement.type !== 'VariableDeclaration') return null;
   const at = statement.range[0];
-  if (!declaredBefore(p, leaf.node, at)) return null;
+  if (!declaredBefore(p, leaf.node, at) || !readsUnconditionally(p, leaf.node, statement)) return null;
   return {
     statement,
     indent: indentOf(p, statement.loc.start.line),

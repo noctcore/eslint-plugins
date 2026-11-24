@@ -16,7 +16,16 @@ import {
   MIN_VARIANTS_PER_CASE,
   TRANSFORMS,
 } from '../src/variants/generate';
-import { callback, promiseThen, viaDestructuring, viaSpread, viaVariable } from '../src/variants/flow';
+import {
+  callback,
+  promiseAwait,
+  promiseThen,
+  viaArray,
+  viaDestructuring,
+  viaObject,
+  viaSpread,
+  viaVariable,
+} from '../src/variants/flow';
 import { cjsToEsm, importAlias, importNamespace, nodePrefix } from '../src/variants/modules';
 import { renameLocals, renameParams } from '../src/variants/names';
 import { scoreVariants } from '../src/variants/score';
@@ -146,6 +155,37 @@ describe('transforms', () => {
       '',
     );
     expect(rewrite(vuln, viaVariable)).toBeNull();
+  });
+
+  it('never moves a read that the statement may skip, such as the right of && or an optional call argument', () => {
+    const hoisting = [viaVariable, viaObject, viaArray, viaDestructuring, promiseAwait, promiseThen, callback];
+    const sink = (line: string): CorpusCase =>
+      demoPair(
+        `import { exec } from 'node:child_process';\nimport { ENABLED, OPTIONS, api } from './flags';\nasync function run(req) {\n  ${line} // expect: security/no-shell-interpolation\n}\n`,
+        '',
+      ).vuln;
+    const skippable = [
+      'ENABLED && exec(req.query.cmd);',
+      'exec(OPTIONS.cmd ?? req.query.cmd);',
+      'exec((OPTIONS.cmd ||= req.query.cmd));',
+      'ENABLED ? exec(req.query.cmd) : null;',
+      'api?.run(exec(req.query.cmd));',
+      'if (ENABLED) exec(req.query.cmd);',
+      'while (ENABLED) exec(req.query.cmd);',
+      'for (;;) exec(req.query.cmd);',
+    ];
+    for (const line of skippable) {
+      for (const transform of hoisting) expect(rewrite(sink(line), transform), `${transform.name}: ${line}`).toBeNull();
+      expect(rewrite(sink(line), viaSpread) ?? '', line).not.toContain('{ ...req.query }');
+    }
+    // Always read: the left of ??, the head of an optional chain, the test of an if.
+    expect(body(rewrite(sink('const out = exec(req.query.cmd) ?? OPTIONS.cmd;'), viaVariable))).toContain(
+      '  const relay = req.query.cmd;\n  const out = exec(relay) ?? OPTIONS.cmd;',
+    );
+    expect(body(rewrite(sink('exec(req.query?.cmd);'), viaVariable))).toContain('  const relay = req.query;\n  exec(relay?.cmd);');
+    expect(body(rewrite(sink('if (exec(req.query.cmd)) api.log();'), promiseAwait))).toContain(
+      '  const relay = await Promise.resolve(req.query.cmd);\n  if (exec(relay)) api.log();',
+    );
   });
 
   it('wraps the sink statement in a callback, and in a then callback only inside async functions', () => {

@@ -150,7 +150,10 @@ function-local variable or parameter (`req.query.next`, `dto.url`), else the fir
 receiver (`res` in `res.redirect`), module-level constants, imports and globals are never moved. A line that
 reads no local value, such as a cookie flag inside an options object, moves the options object instead. A
 rewrite that needs a new statement puts it on its own line before the statement holding the sink, so the sink
-and its label move down together and the label still states where the problem is.
+and its label move down together and the label still states where the problem is. Such a rewrite, and a
+callback that receives the value, reads it before the statement runs, so it applies only to a value the
+statement always reads: never one on the right of `&&`, `||` or `??`, in a branch of a ternary, behind an
+optional link, in a destructuring default, in the branch of an `if` without braces or in a loop.
 
 Assumptions worth knowing when reading a flip: module interop is taken as the usual one (`import x from 'm'`
 reads what `require('m')` returns); `promise-then` and `promise-await` add a microtask before the sink.
