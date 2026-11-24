@@ -1163,3 +1163,23 @@ ruleTester.run('no-shell-interpolation', noShellInterpolationRule, {
     },
   ],
 });
+
+/** A function whose `t` passed a shell-inert regex check before `body` runs. */
+const checked = (body: string, params = 't: string'): string =>
+  `function run(${params}) { if (!/^[a-z][a-z0-9-]*$/.test(t)) return; ${body} }`;
+const error = [{ messageId: 'shellInterpolation' as const }];
+
+// How the command text around a proven value is read (#313 to #321).
+ruleTester.run('no-shell-interpolation reading', noShellInterpolationRule, {
+  valid: [
+    // #313: a regex that refuses `%` (cmd.exe expands `%VAR%`).
+    { code: checked('exec(`echo ${t}`);'), filename: TS },
+  ],
+  invalid: [
+    // #313: cmd.exe expands `%VAR%` in a value the regex lets through.
+    { code: 'function run(x: string) { if (!/^[\\w%]+$/.test(x)) return; exec(`echo ${x}`); }', filename: TS, errors: error },
+    { code: 'function run(x: string) { if (!/^[a-z%]+$/.test(x)) return; exec(`tool --name=${x}`); }', filename: TS, errors: error },
+    { code: 'function run(x: string) { if (!/^[a-z%]+$/.test(x)) return; exec(`cat /srv/${x}`); }', filename: TS, errors: error },
+    { code: 'const SAFE = /^[a-zA-Z0-9_.%][a-zA-Z0-9_.%\\-]*$/; function run(x: string) { if (!SAFE.test(x)) return; execSync(\'echo \' + x); }', filename: TS, errors: error },
+  ],
+});
