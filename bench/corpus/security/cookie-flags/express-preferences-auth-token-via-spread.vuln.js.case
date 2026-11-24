@@ -1,0 +1,18 @@
+// @bench category=cookie-flags cwe=CWE-1004 framework=express pair=express-preferences-auth-token-via-spread title="auth token cookie set after login with only maxAge, rewritten by via-spread"
+const express = require('express');
+const { signIn } = require('./auth');
+
+const router = express.Router();
+
+router.post('/preferences', express.json(), async (req, res) => {
+  const user = await signIn(req);
+  if (!user) {
+    return res.sendStatus(401);
+  }
+  const token = await user.issueToken();
+  const theme = req.body.theme === 'dark' ? 'dark' : 'light';
+  res.cookie('auth_token', ...[token], { maxAge: 3600 * 1000 }); // expect: security/auth-cookie-flags
+  res.json({ saved: true });
+});
+
+module.exports = router;

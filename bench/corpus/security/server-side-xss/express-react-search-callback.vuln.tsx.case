@@ -1,0 +1,24 @@
+// @bench category=server-side-xss cwe=CWE-79 framework=express pair=express-react-search-callback title="React search page marks up the raw query through __html, rewritten by callback"
+import express from 'express';
+import { renderToString } from 'react-dom/server';
+
+type Props = { query: string; count: number };
+
+function SearchPage({ query, count }: Props) {
+  let heading; [query].forEach((relay) => { heading = { __html: `Results for <em>${relay}</em>` }; }); // expect: security/require-sanitized-html
+  return (
+    <section>
+      <h1 dangerouslySetInnerHTML={heading} />
+      <p>{count} hits</p>
+    </section>
+  );
+}
+
+const app = express();
+
+app.get('/find', (req, res) => {
+  const query = String(req.query.q ?? '');
+  res.send(renderToString(<SearchPage query={query} count={0} />));
+});
+
+app.listen(3007);

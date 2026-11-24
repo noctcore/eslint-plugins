@@ -1,0 +1,16 @@
+// @bench category=path-traversal cwe=CWE-22 framework=express pair=express-export-download-callback title="export name from the route joined onto the exports dir and downloaded, rewritten by callback"
+import path from 'node:path';
+import express, { Router } from 'express';
+
+const EXPORTS_DIR = path.resolve(process.cwd(), 'exports');
+const router = Router();
+
+router.get('/exports/:name', (req, res) => {
+  [req.params.name].forEach((relay) => { res.download(path.join(EXPORTS_DIR, relay)); }); // expect: security/require-path-containment
+});
+
+router.get('/exports', (_req, res) => {
+  res.json(['users.csv', 'orders.csv', 'products.csv']);
+});
+
+export default router;

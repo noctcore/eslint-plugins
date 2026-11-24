@@ -1,0 +1,16 @@
+// @bench category=open-redirect cwe=CWE-601 framework=express pair=express-cookie-return-url-rename-params title="redirect target read back from a client-set cookie, rewritten by rename-params"
+import express, { Request, Response } from 'express';
+import cookieParser from 'cookie-parser';
+
+const app = express();
+app.use(cookieParser());
+
+const APP_ORIGIN = 'https://app.example.com';
+
+app.get('/auth/finish', (param1: Request, param2: Response) => {
+  param1.session.finished = true;
+  param2.clearCookie('flash');
+  param2.redirect(param1.cookies.returnTo ?? '/'); // expect: security/no-user-controlled-redirect
+});
+
+app.listen(3000);
