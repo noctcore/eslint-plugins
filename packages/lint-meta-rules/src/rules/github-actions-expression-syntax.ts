@@ -9,6 +9,7 @@ import {
   parseDocument,
   visit,
   type Document,
+  type Node,
   type Scalar,
   type YAMLError,
   type YAMLMap,
@@ -490,11 +491,26 @@ function malformedIn(source: string): Malformed[] {
     const kind = ifProblem(value);
     return kind === null ? [] : [{ line: lineOf(key.range?.[0] ?? 0), kind }];
   });
+  // YAML only lets an alias name an anchor defined before it; visit walks the document in order.
+  const anchors = new Set<string>();
+  const anchor = (node: Node): void => {
+    if (node.anchor !== undefined) anchors.add(node.anchor);
+  };
   visit(doc, {
+    Alias(_, alias) {
+      if (anchors.has(alias.source)) return;
+      const detail = `the alias \`*${alias.source}\` names no anchor defined before it`;
+      found.push({ line: lineOf(alias.range?.[0] ?? 0), kind: 'yaml', detail });
+    },
     Map(_, map) {
+      anchor(map);
       found.push(...duplicateKeys(map, lineOf));
     },
+    Seq(_, seq) {
+      anchor(seq);
+    },
     Scalar(_, node) {
+      anchor(node);
       const scalar = scalarText(text, node);
       if (scalar !== null) found.push(...malformedOpeners(scalar, endsAtComment(text, node), lineOf));
     },

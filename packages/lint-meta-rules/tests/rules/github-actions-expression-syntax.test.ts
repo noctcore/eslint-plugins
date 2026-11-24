@@ -420,6 +420,16 @@ describe('github-actions-expression-syntax', () => {
     expect(violations[0]?.message ?? '').toContain('GitHub fails to load a workflow like this');
   });
 
+  test('reports an alias to an anchor that is not defined before it, which GitHub cannot load', () => {
+    const undefinedAlias = checkWorkflowExpressionSyntax('w.yml', 'a: 1\nb: *x\n');
+
+    expect(undefinedAlias).toHaveLength(1);
+    expect(undefinedAlias[0]?.line).toBe(2);
+    expect(undefinedAlias[0]?.message ?? '').toContain('the alias `*x` names no anchor defined before it');
+    expect(checkWorkflowExpressionSyntax('w.yml', 'a: *x\nb: &x 1\n')).toHaveLength(1);
+    expect(checkWorkflowExpressionSyntax('w.yml', 'a: &x 1\nb: *x\nc: &m {k: v}\nd: *m\ne: &s [1]\nf: *s\n')).toEqual([]);
+  });
+
   test.each([
     ['a block header with a comment and no space', 'a:\n  run: |# note\n    echo ok\n'],
     ['a quoted value followed by a comment with no space', 'key: "x"#c\n'],
