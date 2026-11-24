@@ -337,7 +337,29 @@ describe('github-actions-expression-syntax', () => {
     expect(wrapped[0]?.line).toBe(5);
     expect(wrapped[0]?.message ?? '').toContain('always true');
     expect(violationsFor('    if: >-\n      ${{ a }} &&\n      b\n')[0]?.message ?? '').toContain('always true');
-    expect(violationsFor('    if: |\n      ${{ a &&\n      b }}\n')).toEqual([]);
+    expect(violationsFor('    if: |-\n      ${{ a &&\n      b }}\n')).toEqual([]);
+  });
+
+  test.each([
+    ['a | block, whose clip keeps one newline', '    if: |\n      ${{ a &&\n      b }}\n', 'Write `|-` or `>-`'],
+    ['a > block', '    if: >\n      ${{ a }}\n', 'Write `|-` or `>-`'],
+    ['a >+ block', '    if: >+\n      ${{ a }}\n\n', 'Write `|-` or `>-`'],
+    ['a quoted value with a trailing space', '    if: "${{ a }} "\n', 'Remove the padding'],
+    ['a quoted value with a leading space', '    if: " ${{ a }}"\n', 'Remove the padding'],
+  ])('reports an if: in %s as always true, since GitHub keeps the text outside ${{ }}', (_, body, fix) => {
+    const violations = violationsFor(body);
+
+    expect(violations).toHaveLength(1);
+    expect(violations[0]?.line).toBe(5);
+    expect(violations[0]?.message ?? '').toContain('a non-empty string is always true');
+    expect(violations[0]?.message ?? '').toContain(fix);
+  });
+
+  test('accepts an if: in a |- or >- block, and a block if: with no ${{ }}', () => {
+    expect(violationsFor('    if: |-\n      ${{ a }}\n')).toEqual([]);
+    expect(violationsFor('    if: >-\n      ${{ a &&\n      b }}\n')).toEqual([]);
+    expect(violationsFor("    if: |\n      github.ref == 'refs/heads/main'\n")).toEqual([]);
+    expect(violationsFor("    if: >\n      github.event_name == 'push' &&\n      github.ref == 'x'\n")).toEqual([]);
   });
 
   test('accepts an if: with a core YAML tag, which YAML resolves', () => {

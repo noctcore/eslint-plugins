@@ -20,7 +20,7 @@ const OPENER_LENGTH = OPENER.length;
 
 interface Malformed {
   readonly line: number;
-  readonly kind: 'brace' | 'unclosed' | 'string' | 'grammar' | 'if-mixed' | 'if-tag' | 'yaml';
+  readonly kind: 'brace' | 'unclosed' | 'string' | 'grammar' | 'if-mixed' | 'if-newline' | 'if-padded' | 'if-tag' | 'yaml';
   /** The expression and what is wrong with it, for `grammar`; the parser's message, for `yaml`. */
   readonly detail?: string;
   /** For `unclosed` and `string`: a ` #` comment cut the plain scalar short, and with it the expression. */
@@ -145,18 +145,24 @@ const CORE_TAG_PREFIX = 'tag:yaml.org,2002:';
 
 /**
  * An `if:` value that carries a non-core YAML tag (an unquoted `if: !cancelled()`),
- * or a string value that mixes a `${{ }}` with other text (so always true).
- * Reads the parsed value, so a quoted, block or wrapped `if:` is checked alike.
+ * or a string value with text outside its `${{ }}` (so always true). Reads the
+ * parsed value untrimmed, as GitHub does: a `|` or `>` block keeps a trailing
+ * newline and a quoted value keeps its spaces, and either makes the value a
+ * string. Only one `${{ }}` that is the whole value is a condition.
  */
 function ifProblem(node: Scalar): Malformed['kind'] | null {
   if (node.tag !== undefined && !node.tag.startsWith(CORE_TAG_PREFIX)) return 'if-tag';
   if (typeof node.value !== 'string') return null;
-  const value = node.value.trim();
+  const value = node.value;
   const first = value.indexOf(OPENER);
   if (first === -1) return null;
-  if (first !== 0) return 'if-mixed';
-  const { close } = scanExpression(value, OPENER_LENGTH);
-  return close !== -1 && close + CLOSER.length !== value.length ? 'if-mixed' : null;
+  const { close } = scanExpression(value, first + OPENER_LENGTH);
+  const end = close === -1 ? -1 : close + CLOSER.length;
+  if (first === 0 && (end === -1 || end === value.length)) return null;
+  const onlyWhitespaceOutside = end !== -1 && value.slice(0, first).trim() === '' && value.slice(end).trim() === '';
+  if (!onlyWhitespaceOutside) return 'if-mixed';
+  const block = node.type === 'BLOCK_LITERAL' || node.type === 'BLOCK_FOLDED';
+  return block && first === 0 ? 'if-newline' : 'if-padded';
 }
 
 /** The text GitHub reads from one scalar, with the source offset of each of its characters. */
@@ -361,6 +367,10 @@ function messageFor({ line, kind, detail, cutByComment }: Malformed): string {
       return `${at} ${detail ?? ''}. ${REJECTS}`;
     case 'if-mixed':
       return `${at} \`if:\` mixes a \`\${{ }}\` with other text, so GitHub reads the value as a string, and a non-empty string is always true. Put the whole condition inside one \`\${{ }}\`, or drop the \`\${{ }}\`.`;
+    case 'if-newline':
+      return `${at} \`if:\` is a \`|\` or \`>\` block, which keeps a trailing newline after its \`\${{ }}\`, so GitHub reads the value as a string, and a non-empty string is always true. Write \`|-\` or \`>-\`, which strip the newline.`;
+    case 'if-padded':
+      return `${at} \`if:\` keeps whitespace around its \`\${{ }}\` (spaces inside the quotes, or extra lines in a block), so GitHub reads the value as a string, and a non-empty string is always true. Remove the padding so the \`\${{ }}\` is the whole value.`;
     case 'if-tag':
       return `${at} \`if:\` starts with \`!\`, which YAML reads as a tag, not a negation. Quote the value or wrap it in \`\${{ }}\`.`;
     case 'yaml':
