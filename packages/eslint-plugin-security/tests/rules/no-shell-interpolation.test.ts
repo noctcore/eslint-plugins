@@ -1174,6 +1174,9 @@ ruleTester.run('no-shell-interpolation reading', noShellInterpolationRule, {
   valid: [
     // #313: a regex that refuses `%` (cmd.exe expands `%VAR%`).
     { code: checked('exec(`echo ${t}`);'), filename: TS },
+    // #314: a `+` admitted only after the first character, or glued to text before it.
+    { code: 'function run(x: string) { if (!/^[a-z][\\w.+]*$/.test(x)) return; exec(`dig ${x} example.com`); }', filename: TS },
+    { code: 'function run(x: string) { if (!/^[\\w+]+$/.test(x)) return; exec(`tool --tag=${x}`); }', filename: TS },
   ],
   invalid: [
     // #313: cmd.exe expands `%VAR%` in a value the regex lets through.
@@ -1181,5 +1184,9 @@ ruleTester.run('no-shell-interpolation reading', noShellInterpolationRule, {
     { code: 'function run(x: string) { if (!/^[a-z%]+$/.test(x)) return; exec(`tool --name=${x}`); }', filename: TS, errors: error },
     { code: 'function run(x: string) { if (!/^[a-z%]+$/.test(x)) return; exec(`cat /srv/${x}`); }', filename: TS, errors: error },
     { code: 'const SAFE = /^[a-zA-Z0-9_.%][a-zA-Z0-9_.%\\-]*$/; function run(x: string) { if (!SAFE.test(x)) return; execSync(\'echo \' + x); }', filename: TS, errors: error },
+    // #314: a leading `+` is an option to some tools (`dig +short`, `sort +1`).
+    { code: 'function run(name: string) { if (!/^[\\w.+]+$/.test(name)) return; exec(`dig ${name} example.com`); }', filename: TS, errors: error },
+    { code: 'function run(x: string) { if (!/^[+a-z0-9]+$/.test(x)) return; exec(`sort ${x} file`); }', filename: TS, errors: error },
+    { code: 'function run(x: string) { if (!/^\\+?[a-z]+$/.test(x)) return; exec(`set ${x}`); }', filename: TS, errors: error },
   ],
 });
