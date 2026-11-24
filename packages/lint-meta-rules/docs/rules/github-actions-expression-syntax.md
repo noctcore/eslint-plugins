@@ -16,26 +16,34 @@ lost in an edit.
 
 ## What it flags
 
-A `${{` immediately followed by another `{`, and a `${{` with no closing `}}`. A scalar that wraps
-over several lines (a folded or literal block, or a plain or quoted scalar with deeper continuation
-lines) is read as one unit, so an expression may close on a later line of the same scalar but not
-past its end. A second `${{` before the first one closes is also reported, at the first opener.
+A `${{` immediately followed by another `{`, and a `${{` with no closing `}}`. The workflow is read
+with a YAML parser, and each scalar (key or value: plain, quoted, literal `|` or folded `>`) is
+checked as one unit, so an expression may close on a later line of the same scalar but not past its
+end. A second `${{` before the first one closes is also reported, at the first opener. Reported lines
+are the source lines of the opener.
 
-YAML comments are skipped, because GitHub parses the YAML first and never sees them: a whole-line
-`#` comment, and a trailing comment (` #` after whitespace) after a value or inside a plain value.
-A `#` inside a single- or double-quoted value is text, and so is a `#` line inside a `|` or `>`
-block scalar, which GitHub evaluates. In a plain value, ` #` starts a comment even inside what
-looks like an expression, so `if: ${{ github.ref == 'a #b' }}` reaches GitHub as an unclosed
-`${{ github.ref == 'a`; quote the value to keep the `#`.
+Each scalar is read as GitHub gets it. YAML comments never reach the checks, because GitHub parses the
+YAML first and never sees them. A `#` inside a quoted value or a `|` / `>` block scalar is text, and
+so is a `#` after a non-breaking space. A `''` in a single-quoted value is one quote, and a
+double-quoted value's escapes (`\"`, `\x27`, an escaped line break) are decoded. In a plain value,
+` #` starts a comment even inside what looks like an expression, so
+`if: ${{ github.ref == 'a #b' }}` reaches GitHub as an unclosed `${{ github.ref == 'a`; the message
+then says to quote the value to keep the `#`.
+
+A workflow that is not valid YAML (a duplicate key, a tab used as indentation, an unclosed quote or
+flow list, more than one document) is reported once, at the parser's first error: GitHub rejects it
+too. Its expressions are not checked until it parses.
 
 Inside a closed `${{ }}`, the shape of the expression: a string that is never closed, an empty
 expression, unbalanced brackets, an operator with no left or right operand, two operands with no
 operator between them, an empty call argument, and `=`, `&` or `|` where `==`, `&&` or `||` was
 meant. GitHub rejects the workflow for each of these too.
 
-Two single-line `if:` values: one that mixes a `${{ }}` with other text, which GitHub reads as a
+Two `if:` values: one that mixes a `${{ }}` with other text, which GitHub reads as a
 string and a non-empty string is always true, so the condition never skips anything; and an unquoted
-one that starts with `!`, which YAML reads as a tag, not a negation.
+one that starts with `!`, which YAML reads as a tag, not a negation. The parsed value is checked, so
+a quoted, wrapped or block `if:` is checked the same way. A core tag YAML resolves itself
+(`if: !!str ${{ ... }}`) is not reported.
 
 ```yaml
 # Bad
@@ -60,14 +68,9 @@ if: >-
   it checks the shape, not the names. A workflow linter such as actionlint covers those.
 - A `-` inside a name (`needs.build-job.result`): GitHub has no minus operator, so it is part of the
   name.
-- An `if:` that wraps over several lines or sits in a block scalar is checked for expression shape
-  but not for mixed text.
 - An expression that spans lines inside a block or multi-line scalar and closes before the scalar ends.
 - A `'}}'` or `'${{'` inside a single-quoted string within an expression: it is string text, and `''`
   is an escaped quote.
-
-Line-based text, not a YAML parse. A `key: &anchor` header absorbs its deeper child lines into one
-unit, so an unclosed opener there can be closed by a `}}` on a nested line.
 
 ## Options
 
