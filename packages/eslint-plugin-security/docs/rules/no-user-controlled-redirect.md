@@ -125,11 +125,15 @@ export function GET(request: Request) {
   redirect (an `if` that exits, or an `if` around it), and the URL was not written after the read.
   The allowlist is `includes` / `has` on in-file literals, `===` against literals, or a regex
   anchored at both ends, without the `m` flag or a `.` wildcard, whose every alternative ends in a
-  literal domain of at least two labels, bounded by `^` or a dot: right before the domain comes
-  `^`, a literal `\.`, a group whose every alternative ends in `\.`, or (for `origin`) a literal
-  `://` (`^(app|docs)\.example\.com$`, `^([a-z]+\.)?example\.com$`,
+  literal domain of at least two labels, bounded by `^`, a dot or `://`: right before the domain
+  comes `^`, a literal `\.`, a group whose every alternative ends in `\.`, or a literal `://` (only
+  an `origin` holds one) (`^(app|docs)\.example\.com$`, `^([a-z]+\.)?example\.com$`,
   `^(?:[a-z0-9-]+\.)*example\.com$`). `^[a-z0-9.-]*example\.com$` accepts `evilexample.com` and
-  `^[a-z]+\.com$` accepts any `.com` host, so neither counts. `const` aliases and
+  `^[a-z]+\.com$` accepts any `.com` host, so neither counts. A domain that ends in a common
+  public suffix (`vercel.app`, `github.io`, `netlify.app`, `pages.dev`, `co.uk` and similar) needs
+  one more literal label before the suffix: `^[a-z0-9-]+\.vercel\.app$` accepts anyone's
+  `evil.vercel.app`, while `^[a-z0-9-]+\.myapp\.vercel\.app$` counts. The list is short and built
+  in; a public suffix it does not know is read like any other domain of two labels. `const` aliases and
   `String(url)` are followed. The host can also be checked inline:
   `if (!HOSTS.includes(new URL(url).hostname)) return;`. A change to the URL object after the check
   (`u.host = x`, `Object.assign(u, ...)`, `Reflect.set(u, ...)`, a write through an alias, or

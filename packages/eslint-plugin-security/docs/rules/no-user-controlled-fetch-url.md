@@ -152,7 +152,10 @@ net.connect({ path: '/var/run/app.sock' });
   base argument) into a binding that passed an allowlist before the call (an `if` that exits, or an
   `if` around it), and the URL was not written after the read. The allowlist is `includes` / `has`
   on in-file literals, `===` against literals, or a regex anchored at both ends, without the `m` flag
-  or a `.` wildcard, whose every alternative ends in a literal domain. `new URL(pinned).hostname`
+  or a `.` wildcard, whose every alternative ends in a literal domain. A domain that ends in a
+  common public suffix (`vercel.app`, `github.io`, `netlify.app`, `pages.dev`, `co.uk` and similar)
+  needs one more literal label before it, since anyone can register `evil.vercel.app`; the list is
+  short and built in. `new URL(pinned).hostname`
   passed as a socket host is pinned too. The host can also be checked inline
   (`HOSTS.includes(new URL(url).hostname)`), or on a parsed `const u = new URL(...)` that the call
   then receives as `u`, `u.href` or `u.toString()`, as long as nothing changes `u` after the check
