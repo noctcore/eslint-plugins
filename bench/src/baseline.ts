@@ -17,10 +17,16 @@
  * (deleting a case is the other way to hide a regression) unless
  * `--allow-removals` is passed, so either is a visible choice in the diff of
  * baseline.json, never a side effect.
+ *
+ * Variants (semantics-preserving rewrites of each case, see `variants/`) are
+ * recorded and ratcheted the same way, outcome by outcome under ids of the
+ * form `<file>~<transform>#<rule>`, plus a per-rule, per-transform count of
+ * the variants whose verdict differs from their case's.
  */
 import type { Category } from './corpus';
 import { scoreBy, scoreOf, type Score } from './metrics';
 import type { CaseResult, LoadedPlugin, Outcome, Report } from './score';
+import type { VariantResult } from './variants/score';
 
 export interface BaselineCase {
   readonly outcome: Outcome;
@@ -64,13 +70,34 @@ export interface BaselinePlugin {
   readonly rules: readonly string[];
 }
 
+/** How the variants of one rule under one transform compare with their cases. */
+export interface VariantTransformScore {
+  readonly variants: number;
+  /** Same outcome as the case. */
+  readonly holds: number;
+  /** The case is caught (TP), the variant is missed (FN). */
+  readonly missed: number;
+  /** The case is left alone (TN), the variant is reported (FP). */
+  readonly falseAlarms: number;
+  /** The case is a known gap (FN or FP) and the variant is not: the verdict still depends on the shape. */
+  readonly gained: number;
+}
+
+export interface BaselineVariantRule extends Score {
+  readonly transforms: Readonly<Record<string, VariantTransformScore>>;
+}
+
 export interface Baseline {
   readonly $comment: string;
-  readonly schema: 1;
+  readonly schema: 2;
   readonly plugins: Readonly<Record<string, BaselinePlugin>>;
   readonly rules: Readonly<Record<string, BaselineRule>>;
   readonly categories: Readonly<Record<string, BaselineCategory>>;
   readonly cases: Readonly<Record<string, BaselineCase>>;
+  /** Scores over the variants, per rule, with the per-transform comparison against the cases. */
+  readonly variantRules: Readonly<Record<string, BaselineVariantRule>>;
+  /** The outcome of every variant, keyed `<file>~<transform>#<rule>`. */
+  readonly variants: Readonly<Record<string, Outcome>>;
 }
 
 const COMMENT =
@@ -80,11 +107,39 @@ function sortedRecord<T>(entries: Iterable<readonly [string, T]>): Record<string
   return Object.fromEntries([...entries].sort(([a], [b]) => (a < b ? -1 : a > b ? 1 : 0)));
 }
 
+/** How a variant's outcome relates to its case's. */
+export function variantFlip(base: Outcome, variant: Outcome): keyof Omit<VariantTransformScore, 'variants'> {
+  if (base === variant) return 'holds';
+  if (base === 'TP') return 'missed';
+  if (base === 'TN') return 'falseAlarms';
+  return 'gained';
+}
+
+function buildVariantRules(results: readonly CaseResult[], variantResults: readonly VariantResult[]): Record<string, BaselineVariantRule> {
+  const baseOutcome = new Map(results.map((r) => [r.id, r.outcome]));
+  const scores = scoreBy(variantResults, (r) => r.rule);
+  return sortedRecord(
+    [...scores].map(([rule, score]) => {
+      const transforms = new Map<string, { variants: number; holds: number; missed: number; falseAlarms: number; gained: number }>();
+      for (const r of variantResults.filter((v) => v.rule === rule)) {
+        const base = baseOutcome.get(r.baseId);
+        if (base === undefined) continue;
+        const entry = transforms.get(r.transform) ?? { variants: 0, holds: 0, missed: 0, falseAlarms: 0, gained: 0 };
+        entry.variants++;
+        entry[variantFlip(base, r.outcome)]++;
+        transforms.set(r.transform, entry);
+      }
+      return [rule, { ...score, transforms: sortedRecord(transforms) }] as const;
+    }),
+  );
+}
+
 export function buildBaseline(
   results: readonly CaseResult[],
   reports: readonly Report[],
   categories: readonly Category[],
   plugins: ReadonlyMap<string, LoadedPlugin>,
+  variantResults: readonly VariantResult[] = [],
 ): Baseline {
   // The rates come from a rule's own categories, where every vulnerable case
   // has a twin: that is the paired measurement. A rule that also runs on other
@@ -165,7 +220,16 @@ export function buildBaseline(
     }),
   );
 
-  return { $comment: COMMENT, schema: 1, plugins: pluginRecord, rules, categories: categoryRecord, cases };
+  return {
+    $comment: COMMENT,
+    schema: 2,
+    plugins: pluginRecord,
+    rules,
+    categories: categoryRecord,
+    cases,
+    variantRules: buildVariantRules(results, variantResults),
+    variants: sortedRecord(variantResults.map((r) => [r.id, r.outcome] as const)),
+  };
 }
 
 export function serializeBaseline(baseline: Baseline): string {
@@ -193,24 +257,39 @@ export interface Comparison {
   readonly upToDate: boolean;
 }
 
+/** `<file>#<rule>` or `<file>#<rule>#<n>`: the rule part. File paths never contain `#`. */
+function ruleOfId(id: string): string {
+  return id.slice(id.indexOf('#') + 1).replace(/#\d+$/u, '');
+}
+
+/** Every recorded outcome, corpus cases and variants alike, by id. */
+function outcomes(baseline: Baseline | null): Map<string, { outcome: Outcome; rule: string }> {
+  const index = new Map<string, { outcome: Outcome; rule: string }>();
+  for (const [id, c] of Object.entries(baseline?.cases ?? {})) index.set(id, { outcome: c.outcome, rule: c.rule });
+  // A baseline written before variants existed has no `variants`.
+  for (const [id, outcome] of Object.entries(baseline?.variants ?? {})) index.set(id, { outcome, rule: ruleOfId(id) });
+  return index;
+}
+
 export function compareBaseline(committed: Baseline | null, current: Baseline): Comparison {
-  const before = committed?.cases ?? {};
+  const before = outcomes(committed);
+  const now = outcomes(current);
   const regressions: CaseChange[] = [];
   const improvements: CaseChange[] = [];
   const added: CaseChange[] = [];
   const removed: CaseChange[] = [];
-  for (const [id, now] of Object.entries(current.cases)) {
-    const was = before[id];
+  for (const [id, entry] of now) {
+    const was = before.get(id);
     if (was === undefined) {
-      added.push({ id, rule: now.rule, from: null, to: now.outcome });
-    } else if (was.outcome !== now.outcome) {
-      const change = { id, rule: now.rule, from: was.outcome, to: now.outcome };
-      const worse = (was.outcome === 'TP' && now.outcome === 'FN') || (was.outcome === 'TN' && now.outcome === 'FP');
+      added.push({ id, rule: entry.rule, from: null, to: entry.outcome });
+    } else if (was.outcome !== entry.outcome) {
+      const change = { id, rule: entry.rule, from: was.outcome, to: entry.outcome };
+      const worse = (was.outcome === 'TP' && entry.outcome === 'FN') || (was.outcome === 'TN' && entry.outcome === 'FP');
       (worse ? regressions : improvements).push(change);
     }
   }
-  for (const [id, was] of Object.entries(before)) {
-    if (!(id in current.cases)) removed.push({ id, rule: was.rule, from: was.outcome, to: null });
+  for (const [id, was] of before) {
+    if (!now.has(id)) removed.push({ id, rule: was.rule, from: was.outcome, to: null });
   }
   const upToDate = committed !== null && serializeBaseline(committed) === serializeBaseline(current);
   const removedProtection = removed.filter((c) => c.from === 'TP' || c.from === 'TN');
