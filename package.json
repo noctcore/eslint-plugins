@@ -26,7 +26,8 @@
     "sync:versions": "bun scripts/sync-plugin-versions.ts",
     "check:package": "bun scripts/check-package-shape.ts",
     "lint": "eslint .",
-    "bench": "bun bench/src/cli.ts"
+    "bench": "bun bench/src/cli.ts",
+    "bench:replay": "bun bench/src/replay/cli.ts"
   },
   "devDependencies": {
     "@arethetypeswrong/cli": "0.18.5",
