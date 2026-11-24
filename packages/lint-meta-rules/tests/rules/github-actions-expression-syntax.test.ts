@@ -370,6 +370,14 @@ describe('github-actions-expression-syntax', () => {
     expect(violations[0]?.message ?? '').toContain(fix);
   });
 
+  test('reports a block if: with spaces after its ${{ }} as padding, even in a |- block', () => {
+    const violations = violationsFor('    if: |-\n      ${{ a }}  \n');
+
+    expect(violations).toHaveLength(1);
+    expect(violations[0]?.message ?? '').toContain('Remove the padding');
+    expect(violations[0]?.message ?? '').not.toContain('Write `|-` or `>-`');
+  });
+
   test('accepts an if: in a |- or >- block, and a block if: with no ${{ }}', () => {
     expect(violationsFor('    if: |-\n      ${{ a }}\n')).toEqual([]);
     expect(violationsFor('    if: >-\n      ${{ a &&\n      b }}\n')).toEqual([]);
