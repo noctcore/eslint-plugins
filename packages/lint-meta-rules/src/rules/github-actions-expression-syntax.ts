@@ -1,6 +1,6 @@
 import type { IMetaRule, IViolation } from '@noctcore/harness';
 
-import { isScalar, LineCounter, parseDocument, visit, type Scalar } from 'yaml';
+import { isScalar, LineCounter, parseDocument, visit, type Document, type Scalar, type YAMLError } from 'yaml';
 
 import { DEFAULT_WORKFLOW_GLOBS, globFiles } from './shared';
 
@@ -20,8 +20,8 @@ const OPENER_LENGTH = OPENER.length;
 
 interface Malformed {
   readonly line: number;
-  readonly kind: 'brace' | 'unclosed' | 'string' | 'grammar' | 'if-mixed' | 'if-tag';
-  /** The expression and what is wrong with it, for `grammar`. */
+  readonly kind: 'brace' | 'unclosed' | 'string' | 'grammar' | 'if-mixed' | 'if-tag' | 'yaml';
+  /** The expression and what is wrong with it, for `grammar`; the parser's message, for `yaml`. */
   readonly detail?: string;
   /** For `unclosed` and `string`: a ` #` comment cut the plain scalar short, and with it the expression. */
   readonly cutByComment?: boolean;
@@ -308,11 +308,26 @@ function malformedOpeners(
   return found;
 }
 
+/** The first YAML error in a workflow, as GitHub rejects a workflow it cannot parse. */
+function yamlProblem(error: YAMLError, lineOf: (offset: number) => number): Malformed {
+  const detail = error.code === 'MULTIPLE_DOCS' ? 'it holds more than one YAML document' : error.message;
+  return { line: lineOf(error.pos[0]), kind: 'yaml', detail: detail.replace(/\.$/u, '') };
+}
+
 /** Every malformed expression and `if:` in one workflow's text. */
 function malformedIn(source: string): Malformed[] {
   const counter = new LineCounter();
   const lineOf = (offset: number): number => counter.linePos(offset).line;
-  const doc = parseDocument(source, { lineCounter: counter, prettyErrors: false });
+  let doc: Document.Parsed;
+  try {
+    doc = parseDocument(source, { lineCounter: counter, prettyErrors: false });
+  } catch (thrown) {
+    // The parser collects errors rather than throwing; this is a guard, so one odd file never stops the run.
+    return [{ line: 1, kind: 'yaml', detail: thrown instanceof Error ? thrown.message : String(thrown) }];
+  }
+  const error = doc.errors[0];
+  // A broken parse leaves a partial tree, so its scalars are not what GitHub would read.
+  if (error !== undefined) return [yamlProblem(error, lineOf)];
   const found: Malformed[] = [];
   visit(doc, {
     Pair(_, pair) {
@@ -348,6 +363,8 @@ function messageFor({ line, kind, detail, cutByComment }: Malformed): string {
       return `${at} \`if:\` mixes a \`\${{ }}\` with other text, so GitHub reads the value as a string, and a non-empty string is always true. Put the whole condition inside one \`\${{ }}\`, or drop the \`\${{ }}\`.`;
     case 'if-tag':
       return `${at} \`if:\` starts with \`!\`, which YAML reads as a tag, not a negation. Quote the value or wrap it in \`\${{ }}\`.`;
+    case 'yaml':
+      return `${at} the workflow is not valid YAML: ${detail ?? ''}. ${REJECTS}`;
   }
 }
 

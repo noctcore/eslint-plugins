@@ -344,6 +344,19 @@ describe('github-actions-expression-syntax', () => {
     expect(violationsFor('    if: !!str ${{ always() }}\n')).toEqual([]);
   });
 
+  test('reports a workflow that is not valid YAML, which GitHub rejects', () => {
+    const duplicate = violationsFor('    runs-on: ubuntu-24.04\n    runs-on: ubuntu-22.04\n');
+
+    expect(duplicate).toHaveLength(1);
+    expect(duplicate[0]?.line).toBe(6);
+    expect(duplicate[0]?.message ?? '').toMatch(/^line 6: the workflow is not valid YAML: Map keys must be unique\. /u);
+    expect(duplicate[0]?.message ?? '').toContain('GitHub rejects the whole workflow');
+    expect(violationsFor('    steps: [a\n')[0]?.message ?? '').toContain('not valid YAML');
+    expect(checkWorkflowExpressionSyntax('w.yml', 'a: 1\n---\nb: 2\n')[0]?.message ?? '').toContain(
+      'more than one YAML document',
+    );
+  });
+
   test('reads an empty or comment-only workflow without reporting', () => {
     expect(checkWorkflowExpressionSyntax('w.yml', '')).toEqual([]);
     expect(checkWorkflowExpressionSyntax('w.yml', '# nothing yet\n')).toEqual([]);
