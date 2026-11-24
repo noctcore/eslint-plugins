@@ -208,7 +208,9 @@ function carried(raw: TSESTree.Node, walk: Walk, depth: number): TSESTree.Node |
   }
   const node = raw;
   // An exact move keeps the text: `forward(x)`, `holder.value`, `items[0]`
-  // and `await Promise.resolve(x)` are `x`, so its proofs still hold.
+  // and `await Promise.resolve(x)` are `x`. A move a proof may rely on
+  // replaces the expression, so the proofs of `x` hold. A looser move only
+  // adds what it carries to what the expression carries by its own shape.
   // A configured sanitizer keeps its meaning even when this file defines it.
   if (
     (node.type === AST_NODE_TYPES.CallExpression &&
@@ -216,9 +218,14 @@ function carried(raw: TSESTree.Node, walk: Walk, depth: number): TSESTree.Node |
     node.type === AST_NODE_TYPES.MemberExpression ||
     node.type === AST_NODE_TYPES.AwaitExpression
   ) {
-    const step = flowStep(node, walk.sink, walk.sourceCode);
-    if (step !== null) {
-      return next(step.node);
+    const exact = flowStep(node, walk.sink, walk.sourceCode);
+    if (exact !== null) {
+      return next(exact.node);
+    }
+    const loose = flowStep(node, walk.sink, walk.sourceCode, 'taint');
+    const moved = loose === null ? null : next(loose.node);
+    if (moved !== null) {
+      return moved;
     }
   }
   switch (node.type) {
@@ -460,13 +467,19 @@ function carriedByVariable(
   }
   // A callback's parameter holds the value it was handed: `v` in `[x].forEach((v) => ...)`.
   if (variable.defs[0]?.type === 'Parameter') {
-    const step = flowStep(node, walk.sink, walk.sourceCode);
+    const exact = flowStep(node, walk.sink, walk.sourceCode);
+    const step = exact ?? flowStep(node, walk.sink, walk.sourceCode, 'taint');
     if (step !== null) {
       walk.seen.add(variable);
+      let moved: TSESTree.Node | null;
       try {
-        return carried(step.node, walk, depth + 1);
+        moved = carried(step.node, walk, depth + 1);
       } finally {
         walk.seen.delete(variable);
+      }
+      // An exact move decides; a looser one only adds a source.
+      if (exact !== null || moved !== null) {
+        return moved;
       }
     }
   }

@@ -151,7 +151,7 @@ function requestSource(
   sourceCode: SourceCode,
 ): TSESTree.Node | null {
   for (const arg of call.arguments) {
-    for (const step of flowSteps(arg, call, sourceCode)) {
+    for (const step of flowSteps(arg, call, sourceCode, 'taint')) {
       const inner = peel(step.node);
       if (inner.type === AST_NODE_TYPES.Identifier) {
         if (isProvenSafeValue(inner, step.sink, 'path', sourceCode)) {
