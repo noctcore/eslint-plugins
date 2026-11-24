@@ -5,6 +5,8 @@
  */
 import { AST_NODE_TYPES, ASTUtils, type TSESLint, type TSESTree } from '@typescript-eslint/utils';
 
+import { isExported } from './value-flow';
+
 type SourceCode = Readonly<TSESLint.SourceCode>;
 
 /** One key of an options object: the node to report and the value, null when it cannot be read. */
@@ -137,7 +139,8 @@ function onlyReads(reference: TSESLint.Scope.Reference, readsOptions: ReadsOptio
  * The object literal a node stands for: inline, or the initializer of an
  * in-file `const` that nothing changes (every other use is a request call, a
  * spread or a plain read). `opts.host = x`, `Object.assign(opts, ...)` or
- * `helper(opts)` make it unreadable.
+ * `helper(opts)` make it unreadable, and so does an export: an importing
+ * module can change the object (`as const` freezes only the type).
  */
 export function objectLiteralOf(
   node: TSESTree.Node | undefined,
@@ -164,6 +167,7 @@ export function objectLiteralOf(
     def.parent.kind !== 'const' ||
     def.node.id.type !== AST_NODE_TYPES.Identifier ||
     init?.type !== AST_NODE_TYPES.ObjectExpression ||
+    isExported(variable) ||
     !variable.references.every((reference) => onlyReads(reference, readsOptions))
   ) {
     return undefined;

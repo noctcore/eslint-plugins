@@ -37,7 +37,7 @@ import {
   type UrlTrustOptions,
   urlArgumentOf,
 } from '../url-origin';
-import { callArguments, holdsAlongFlow, importedBinding, withArguments } from '../value-flow';
+import { callArguments, flowSteps, holdsAlongFlow, importedBinding, withArguments } from '../value-flow';
 
 const RULE_NAME = 'no-user-controlled-fetch-url';
 
@@ -144,7 +144,7 @@ const SOCKET_KEYS: ReadonlyMap<string, KeyCheck> = new Map([
 type AxiosForm = 'call' | 'request' | 'create' | 'method' | 'body-method';
 
 /** True for `axios` itself: the name, or the module's default export or namespace under another name. */
-function isAxiosName(node: TSESTree.Node, sourceCode: Readonly<TSESLint.SourceCode>): boolean {
+function namesAxios(node: TSESTree.Node, sourceCode: Readonly<TSESLint.SourceCode>): boolean {
   if (node.type !== AST_NODE_TYPES.Identifier) {
     return false;
   }
@@ -153,6 +153,15 @@ function isAxiosName(node: TSESTree.Node, sourceCode: Readonly<TSESLint.SourceCo
   }
   const binding = importedBinding(node, sourceCode);
   return binding?.module === 'axios' && (binding.imported === 'default' || binding.imported === '*');
+}
+
+/**
+ * True for `axios`, also behind a type wrapper or a binding that holds it
+ * (`(axios as any)`, `const ax = axios`). Seeing more calls as axios only
+ * adds checks, so the loose (taint) moves of `../value-flow` are followed.
+ */
+function isAxiosName(node: TSESTree.Node, sourceCode: Readonly<TSESLint.SourceCode>): boolean {
+  return flowSteps(node, node, sourceCode, 'taint').some((step) => namesAxios(peelTypes(step.node), sourceCode));
 }
 
 function isAxiosCreate(node: TSESTree.Node, sourceCode: Readonly<TSESLint.SourceCode>): boolean {
@@ -165,22 +174,15 @@ function isAxiosCreate(node: TSESTree.Node, sourceCode: Readonly<TSESLint.Source
   );
 }
 
-/** True for a `const api = axios.create(...)` binding read here. */
+/** True for a binding that holds `axios.create(...)` (`const api = axios.create(...)`, or an alias of it). */
 function isAxiosInstance(raw: TSESTree.Node, sourceCode: Readonly<TSESLint.SourceCode>): boolean {
-  const node = peelTypes(raw);
-  if (node.type !== AST_NODE_TYPES.Identifier) {
+  if (peelTypes(raw).type !== AST_NODE_TYPES.Identifier) {
     return false;
   }
-  const variable = ASTUtils.findVariable(sourceCode.getScope(node), node);
-  const def = variable?.defs[0];
-  const init = def?.type === 'Variable' && def.node.init !== null ? peelTypes(def.node.init) : null;
-  return (
-    variable?.defs.length === 1 &&
-    def?.type === 'Variable' &&
-    def.parent.kind === 'const' &&
-    init?.type === AST_NODE_TYPES.CallExpression &&
-    isAxiosCreate(init.callee, sourceCode)
-  );
+  return flowSteps(raw, raw, sourceCode, 'taint').some((step) => {
+    const node = peelTypes(step.node);
+    return node.type === AST_NODE_TYPES.CallExpression && isAxiosCreate(node.callee, sourceCode);
+  });
 }
 
 /** `new Request(input, ...)` (the global), or a `const` bound to one: the `input`. */
