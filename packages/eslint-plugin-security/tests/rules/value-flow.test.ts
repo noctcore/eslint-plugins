@@ -228,3 +228,66 @@ ruleTester.run('require-sanitized-html (value flow)', requireSanitizedHtmlRule, 
     },
   ],
 });
+
+// A container is followed only while nothing can change it: a write at any
+// depth, a destructuring write, an alias or a call handed the container ends
+// the walk, and the rule judges the value as it did before.
+
+const missingAll = ['httpOnly', 'secure', 'sameSite'].map((flag) => ({
+  messageId: 'missingFlag' as const,
+  data: { cookie: 'session', flag },
+}));
+const FLAGS = "{ secure: true, httpOnly: true, sameSite: 'lax' }";
+const cookieAfter = (setup: string, spread: string): string =>
+  `const C = ${FLAGS}; ${setup} function h(req, res) { res.cookie('session', req.body.t, { ...${spread} }); }`;
+const nestedCookieAfter = (change: string): string =>
+  `const C = { opts: ${FLAGS} }; function h(req, res) { ${change} res.cookie('session', req.body.t, { ...C.opts }); }`;
+
+ruleTester.run('auth-cookie-flags (changed containers)', authCookieFlagsRule, {
+  valid: [],
+  invalid: [
+    cookieAfter('C.httpOnly = false; C.secure = false; C.sameSite = undefined;', 'C'),
+    cookieAfter('Object.assign(C, { httpOnly: false });', 'C'),
+    cookieAfter('const D = C; D.httpOnly = false;', 'C'),
+    cookieAfter('function f(req) { ({ httpOnly: C.httpOnly } = req.body); }', 'C'),
+    nestedCookieAfter('C.opts.secure = false; C.opts.httpOnly = false;'),
+    nestedCookieAfter('Object.assign(C.opts, { httpOnly: false });'),
+  ].map((code) => ({ code, filename: TS, errors: missingAll })),
+});
+
+ruleTester.run('no-shell-interpolation (changed containers)', noShellInterpolationRule, {
+  valid: [],
+  invalid: [
+    "import { exec } from 'node:child_process'; const cfg = { cmd: 'ls' }; function h(req) { ({ cmd: cfg.cmd } = req.query); exec(`run ${cfg.cmd}`); }",
+    "import { exec } from 'node:child_process'; const cfg = { cmd: 'ls' }; function h(req) { [cfg.cmd = 'x'] = [req.query.c]; exec(`run ${cfg.cmd}`); }",
+    // Of two parameters with one name the last wins, so `pick` returns the request value.
+    "import { exec } from 'node:child_process'; function h(req) { exec('run ' + pick('ls', req.query.c)); } function pick(v, v) { return v; }",
+  ].map((code) => ({ code, filename: 'runner.js', errors: [{ messageId: 'shellInterpolation' as const }] })),
+});
+
+ruleTester.run('no-user-controlled-fetch-url (changed containers)', noUserControlledFetchUrlRule, {
+  valid: [],
+  invalid: [
+    {
+      code: "const links = { to: 'https://api.example.com/x' }; async function h(req) { ({ to: links.to } = req.query); await fetch(links.to); }",
+      filename: TS,
+      errors: [{ messageId: 'userControlledFetchUrl' }],
+    },
+  ],
+});
+
+ruleTester.run('require-sanitized-html (changed containers)', requireSanitizedHtmlRule, {
+  valid: [],
+  invalid: [
+    {
+      code: "const cfg = { html: '<b>hi</b>' }; function h(el, q) { ({ html: cfg.html } = q); el.innerHTML = cfg.html; }",
+      filename: TS,
+      errors: [{ messageId: 'unsanitizedHtml' }],
+    },
+    {
+      code: "const cfg = { m: { __html: '<b>hi</b>' } }; function H(p) { cfg.m.__html = p.x; return <div dangerouslySetInnerHTML={cfg.m} />; }",
+      filename: TSX,
+      errors: [{ messageId: 'unsanitizedHtml' }],
+    },
+  ],
+});
