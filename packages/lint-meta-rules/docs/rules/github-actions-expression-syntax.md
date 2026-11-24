@@ -19,8 +19,14 @@ lost in an edit.
 A `${{` immediately followed by another `{`, and a `${{` with no closing `}}`. A scalar that wraps
 over several lines (a folded or literal block, or a plain or quoted scalar with deeper continuation
 lines) is read as one unit, so an expression may close on a later line of the same scalar but not
-past its end. A second `${{` before the first one closes is also reported, at the first opener. A
-`${{` inside a YAML comment is checked like any other text, because GitHub lexes it too.
+past its end. A second `${{` before the first one closes is also reported, at the first opener.
+
+YAML comments are skipped, because GitHub parses the YAML first and never sees them: a whole-line
+`#` comment, and a trailing comment (` #` after whitespace) after a value or inside a plain value.
+A `#` inside a single- or double-quoted value is text, and so is a `#` line inside a `|` or `>`
+block scalar, which GitHub evaluates. In a plain value, ` #` starts a comment even inside what
+looks like an expression, so `if: ${{ github.ref == 'a #b' }}` reaches GitHub as an unclosed
+`${{ github.ref == 'a`; quote the value to keep the `#`.
 
 Inside a closed `${{ }}`, the shape of the expression: a string that is never closed, an empty
 expression, unbalanced brackets, an operator with no left or right operand, two operands with no

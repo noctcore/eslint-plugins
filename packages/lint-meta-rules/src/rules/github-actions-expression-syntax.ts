@@ -1,6 +1,6 @@
 import type { IMetaRule, IViolation } from '@noctcore/harness';
 
-import { DEFAULT_WORKFLOW_GLOBS, globFiles, stripYamlComment, unquote } from './shared';
+import { DEFAULT_WORKFLOW_GLOBS, globFiles, unquote } from './shared';
 
 /** Options for {@link createGithubActionsExpressionSyntaxRule}. */
 export interface GithubActionsExpressionSyntaxOptions {
@@ -31,6 +31,8 @@ interface Malformed {
   readonly kind: 'brace' | 'unclosed' | 'string' | 'grammar' | 'if-mixed' | 'if-tag';
   /** The expression and what is wrong with it, for `grammar`. */
   readonly detail?: string;
+  /** For `unclosed` and `string`: a YAML comment cut the rest of a line off the expression. */
+  readonly cutByComment?: boolean;
 }
 
 interface Scan {
@@ -156,7 +158,7 @@ const IF_KEY = /^\s*(?:-\s+)?if:[ \t]+(.+)$/u;
 function ifProblem(line: string): Malformed['kind'] | null {
   const raw = IF_KEY.exec(line)?.[1];
   if (raw === undefined) return null;
-  const value = stripYamlComment(raw).trim();
+  const value = raw.trim();
   if (value.startsWith('!')) return 'if-tag';
   const unquoted = value.startsWith("'") ? unquote(value).replaceAll("''", "'") : unquote(value);
   const first = unquoted.indexOf(OPENER);
@@ -198,11 +200,114 @@ function valueOnNextLineColumn(lines: readonly string[], index: number): number 
   return column;
 }
 
+type Lexed = 'node' | 'plain' | 'after';
+
+/** Where a YAML comment starts on `line`, carrying an open quoted scalar across lines in `quote`. */
+interface CommentScan {
+  /** Offset of the `#` that starts a comment, or -1. */
+  readonly comment: number;
+  /** The quote of a quoted scalar still open at the end of the line, or null. */
+  readonly quote: "'" | '"' | null;
+  /** The line opens a block scalar (`|` or `>` where a value starts). */
+  readonly block: boolean;
+}
+
+/**
+ * Find the comment on one line outside block scalars. A `#` starts a comment
+ * at the start of the line or after whitespace, never inside a single- or
+ * double-quoted scalar. A quote only opens a quoted scalar where a value
+ * starts; in a plain scalar it is text, so `if: ${{ x == 'a #b' }}` has a
+ * comment from ` #`.
+ */
+function scanComment(line: string, open: "'" | '"' | null): CommentScan {
+  let quote = open;
+  let state: Lexed = quote === null ? 'node' : 'after';
+  let flow = 0;
+  for (let index = 0; index < line.length; index += 1) {
+    const char = line[index] ?? '';
+    if (quote === "'") {
+      if (char === "'") {
+        if (line[index + 1] === "'") index += 1;
+        else quote = null;
+      }
+      continue;
+    }
+    if (quote === '"') {
+      if (char === '\\') index += 1;
+      else if (char === '"') quote = null;
+      continue;
+    }
+    const spaced = index === 0 || /\s/u.test(line[index - 1] ?? '');
+    if (char === '#' && spaced) return { comment: index, quote: null, block: false };
+    if (/\s/u.test(char)) continue;
+    const ends = (line[index + 1] ?? ' ').trim() === '';
+    if (char === ':' && ends && state !== 'node') {
+      state = 'node';
+    } else if (flow > 0 && (char === ',' || char === ']' || char === '}')) {
+      if (char !== ',') flow -= 1;
+      state = char === ',' ? 'node' : 'after';
+    } else if (state !== 'node') {
+      state = state === 'after' ? 'plain' : state;
+    } else if (char === "'" || char === '"') {
+      quote = char;
+      state = 'after';
+    } else if (char === '[' || char === '{') {
+      flow += 1;
+    } else if (char === '-' && ends) {
+      // A list item: a node still comes next.
+    } else if ((char === '|' || char === '>') && flow === 0) {
+      const rest = line.slice(index + 1);
+      const header = /^[-+\d]*(?=\s|$)/u.exec(rest);
+      if (header !== null) {
+        const after = index + 1 + header[0].length;
+        const hash = line.indexOf('#', after);
+        const comment = hash !== -1 && /^\s*$/u.test(line.slice(after, hash)) && hash > after ? hash : -1;
+        return { comment, quote: null, block: true };
+      }
+      state = 'plain';
+    } else {
+      state = 'plain';
+    }
+  }
+  return { comment: -1, quote, block: false };
+}
+
+/**
+ * The workflow's lines with every YAML comment cut off: whole-line comments
+ * and trailing ` #` comments, outside quoted scalars. GitHub parses the YAML
+ * first and drops comments, so a `${{` in one is never read. A block scalar
+ * (`|`, `>`) keeps its `#` text: that is literal text GitHub evaluates.
+ */
+function withoutYamlComments(lines: readonly string[]): { lines: string[]; cut: Set<number> } {
+  const kept: string[] = [];
+  const cut = new Set<number>();
+  let quote: "'" | '"' | null = null;
+  let blockColumn: number | null = null;
+  for (const line of lines) {
+    if (blockColumn !== null && (line.trim() === '' || indentOf(line) > blockColumn)) {
+      kept.push(line);
+      continue;
+    }
+    blockColumn = null;
+    const scan = scanComment(line, quote);
+    quote = scan.quote;
+    if (scan.comment === -1) {
+      kept.push(line);
+    } else {
+      cut.add(kept.length + 1);
+      kept.push(line.slice(0, scan.comment).trimEnd());
+    }
+    if (scan.block) blockColumn = scalarKeyColumn(line) ?? indentOf(line);
+  }
+  return { lines: kept, cut };
+}
+
 /**
  * Group lines into the units GitHub lexes together: a scalar's header plus the
  * blank or deeper lines that continue it (block, plain and quoted scalars),
- * and every other line on its own. Comments are kept, because the lexer reads
- * a `${{` in a comment too.
+ * and every other line on its own. Comments are already gone (see
+ * {@link withoutYamlComments}), because GitHub parses the YAML first and never
+ * sees them.
  */
 function scalarSegments(lines: readonly string[]): Segment[] {
   const segments: Segment[] = [];
@@ -225,7 +330,7 @@ function scalarSegments(lines: readonly string[]): Segment[] {
 }
 
 /** Every malformed expression in a segment, and a malformed `if:` on its first line. */
-function malformedOpeners(segment: Segment): Malformed[] {
+function malformedOpeners(segment: Segment, cut: ReadonlySet<number>): Malformed[] {
   const joined = segment.lines.join('\n');
   // A single-quoted YAML scalar writes a quote as `''`; GitHub sees one quote. No newline moves, so lines stay put.
   const singleQuoted = (HEADER.exec(segment.lines[0] ?? '')?.[3] ?? '').startsWith("'");
@@ -246,7 +351,11 @@ function malformedOpeners(segment: Segment): Malformed[] {
     }
     const { close, next, inString } = scanExpression(text, opener + OPENER_LENGTH);
     if (close === -1) {
-      found.push({ line: lineAt(opener), kind: inString ? 'string' : 'unclosed' });
+      const line = lineAt(opener);
+      const last = next === -1 ? segment.startLine + segment.lines.length - 1 : lineAt(next);
+      const cutByComment = Array.from({ length: last - line + 1 }, (_, step) => line + step).some((at) => cut.has(at));
+      // A comment cut means GitHub never sees the rest of the expression: it is unclosed, whatever string it holds.
+      found.push({ line, kind: inString && !cutByComment ? 'string' : 'unclosed', cutByComment });
       cursor = next;
       continue;
     }
@@ -263,13 +372,16 @@ function malformedOpeners(segment: Segment): Malformed[] {
 
 const REJECTS = 'GitHub rejects the whole workflow before any job runs, so its required checks never report.';
 
-function messageFor({ line, kind, detail }: Malformed): string {
+const COMMENT_CUT =
+  ' In a plain YAML value, ` #` starts a comment, so the rest of the line never reaches GitHub. Quote the value to keep the `#`.';
+
+function messageFor({ line, kind, detail, cutByComment }: Malformed): string {
   const at = `line ${String(line)}:`;
   switch (kind) {
     case 'brace':
       return `${at} \`\${{{\` opens an expression with another \`{\`. ${REJECTS} Put a space after \`\${{\` if the brace belongs to the expression, or keep a literal \`\${{\` out of scripts and f-strings, for example by building it from pieces.`;
     case 'unclosed':
-      return `${at} \`\${{\` has no closing \`}}\` (on its line, or within its block scalar). ${REJECTS}`;
+      return `${at} \`\${{\` has no closing \`}}\` (on its line, or within its block scalar). ${REJECTS}${cutByComment === true ? COMMENT_CUT : ''}`;
     case 'string':
       return `${at} a string inside \`\${{\` is never closed, so every \`}}\` after it is string text and the expression never ends. ${REJECTS}`;
     case 'grammar':
@@ -283,8 +395,9 @@ function messageFor({ line, kind, detail }: Malformed): string {
 
 /** Check one workflow's text. */
 export function checkWorkflowExpressionSyntax(file: string, text: string): IViolation[] {
-  return scalarSegments(text.split(/\r?\n/u)).flatMap((segment) =>
-    malformedOpeners(segment).map(
+  const { lines, cut } = withoutYamlComments(text.split(/\r?\n/u));
+  return scalarSegments(lines).flatMap((segment) =>
+    malformedOpeners(segment, cut).map(
       (malformed): IViolation => ({ file, rule: RULE_ID, line: malformed.line, message: messageFor(malformed) }),
     ),
   );

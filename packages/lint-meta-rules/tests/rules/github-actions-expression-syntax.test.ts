@@ -114,10 +114,39 @@ describe('github-actions-expression-syntax', () => {
     expect(violations[0]?.line).toBe(6);
   });
 
-  test('checks a ${{ in a YAML comment like any other text', () => {
-    expect(violationsFor('    # ${{ github.ref\n')).toHaveLength(1);
-    expect(violationsFor('      - run: echo hi # ${{ x\n')).toHaveLength(1);
-    expect(violationsFor('    # ${{ github.ref }}\n')).toEqual([]);
+  test('skips a ${{ in a YAML comment, which GitHub drops before it reads expressions', () => {
+    expect(violationsFor('    # ${{ github.ref\n')).toEqual([]);
+    expect(violationsFor('# never write ${{ a = b }}\n')).toEqual([]);
+    expect(violationsFor('    # wrap it in ${{ ... }}\n')).toEqual([]);
+    expect(violationsFor('      - run: echo hi # ${{ x\n')).toEqual([]);
+    expect(violationsFor('    if: ${{ always() }} # never inline ${{ }} in the\n')).toEqual([]);
+    expect(violationsFor('    if: "${{ always() }}" # ${{ x\n')).toEqual([]);
+    expect(violationsFor('      - run: | # ${{ x\n          echo ok\n')).toEqual([]);
+    expect(violationsFor("    branches: [main, 'a #b'] # ${{\n")).toEqual([]);
+  });
+
+  test('still reads a # line inside a block scalar, which is literal text GitHub evaluates', () => {
+    const run = violationsFor('      - run: |\n          # comment-in-run ${{ github.ref\n          echo ok\n');
+
+    expect(run).toHaveLength(1);
+    expect(run[0]?.line).toBe(6);
+    expect(violationsFor('      - run: >-\n          # never ${{ }}\n')[0]?.message ?? '').toContain('`${{ }}` is empty');
+    expect(violationsFor('      - run: |\n          echo # ${{ a = b }}\n')[0]?.message ?? '').toContain('uses `=`');
+  });
+
+  test('keeps a # inside a quoted value as text', () => {
+    expect(violationsFor('    if: "${{ github.ref == \'a #b\' }}"\n')).toEqual([]);
+    expect(violationsFor("    if: '${{ github.ref == ''a #b'' }}'\n")).toEqual([]);
+    expect(violationsFor('      - run: "echo # ${{ x"\n')).toHaveLength(1);
+  });
+
+  test('reports an expression a plain-value comment cuts short as unclosed', () => {
+    const violations = violationsFor("    if: ${{ github.ref == 'a #b' }}\n");
+
+    expect(violations).toHaveLength(1);
+    expect(violations[0]?.line).toBe(5);
+    expect(violations[0]?.message ?? '').toMatch(/^line 5: `\$\{\{` has no closing `\}\}`/u);
+    expect(violations[0]?.message ?? '').toContain('` #` starts a comment');
   });
 
   test('reports each malformed opener once, on its own line', () => {
