@@ -1,0 +1,1553 @@
+{
+  "excluded": [
+    {
+      "id": "GHSA-9qw7-j9xw-fv9c",
+      "reason": "same fix commit as GHSA-cw2g-2vwq-88w6"
+    },
+    {
+      "id": "GHSA-7jvc-9xq8-frff",
+      "reason": "not an SSRF fix in the listed file: only a version constant bump"
+    },
+    {
+      "id": "GHSA-w6x9-28jw-hq7j",
+      "reason": "not an SSRF fix: Socket.IO IP allowlist enforcement in an access control middleware"
+    },
+    {
+      "id": "GHSA-998g-7v5w-cr7g",
+      "reason": "not an SSRF fix: the same diff as GHSA-w6x9-28jw-hq7j"
+    },
+    {
+      "id": "GHSA-x34j-47hf-4xg7",
+      "reason": "not an open redirect fix: a preview iframe origin and postMessage trust flaw"
+    },
+    {
+      "id": "GHSA-f7fh-qg34-x2xh",
+      "reason": "not an open redirect fix: an SSRF policy check on a CDP URL"
+    },
+    {
+      "id": "GHSA-grj7-r4jv-pw9j",
+      "reason": "not an HTML injection fix in the listed files: a chart constructor looked up by a user-controlled name"
+    }
+  ],
+  "entries": [
+    {
+      "id": "GHSA-xvcc-vqjv-phqh",
+      "package": "@augment-vir/node",
+      "repo": "electrovir/augment-vir",
+      "cwe": "CWE-78",
+      "vulnerableCommit": "c0a17704c98c56c381336a70f99d1c59c968e7d3",
+      "fixCommit": "9e1a3592903a56e500959be72276ede1708c3437",
+      "files": [
+        {
+          "path": "packages/node/src/augments/fs/grep.ts"
+        }
+      ],
+      "scope": "out",
+      "scopeReason": "cross-file",
+      "note": "grep.ts built a shell string with a quote-escape helper and passed it to runShellCommand, whose shell call lives in another file; the fix switches to spawn with an argument array."
+    },
+    {
+      "id": "GHSA-jq3q-62jc-fqq9",
+      "package": "code-review-mcp-server",
+      "repo": "Orcus2021/code-review-mcp-server",
+      "cwe": "CWE-78",
+      "vulnerableCommit": "8141a8f11dbfc5e7bc5bebe7f8290c70c341ad81",
+      "fixCommit": "d11642322b607556affaaa3fd631d4f8942c05d8",
+      "files": [
+        {
+          "path": "src/utils/formatComment.ts"
+        },
+        {
+          "path": "src/utils/getGitHandler.ts"
+        },
+        {
+          "path": "src/utils/githubProvider/cliProvider.ts"
+        }
+      ],
+      "scope": "in",
+      "note": "getGitHandler.ts and cliProvider.ts build git and gh command strings from folder, branch and PR values with template literals and pass them to execSync; the fix uses execFileSync with argument arrays."
+    },
+    {
+      "id": "GHSA-3f7j-7jwc-fxfj",
+      "package": "systeminformation",
+      "repo": "sebhildebrandt/systeminformation",
+      "cwe": "CWE-78",
+      "vulnerableCommit": "52dda715fe83d5f630d54778ad8e5b147c0de3c8",
+      "fixCommit": "5014c6d25cfce7363b937977327baa853cdba0bf",
+      "files": [
+        {
+          "path": "lib/processes.js"
+        },
+        {
+          "path": "lib/util.js"
+        }
+      ],
+      "scope": "in",
+      "note": "processes.js interpolates a service name into a PowerShell command string run through the powerShell helper in util.js; the fix filters the name inline and extends the shell string sanitizer in util.js."
+    },
+    {
+      "id": "GHSA-698v-4r3x-3vcv",
+      "package": "launch-editor",
+      "repo": "vitejs/launch-editor",
+      "cwe": "CWE-78",
+      "vulnerableCommit": "ecdfce1f9ec56a9c08f225f27d8047f3cf9690b1",
+      "fixCommit": "3c2f9bf2ff8fe63d056a8f9cc52d825b66ca79fc",
+      "files": [
+        {
+          "path": "packages/launch-editor/construct-windows-launch-command.js"
+        },
+        {
+          "path": "packages/launch-editor/index.js"
+        }
+      ],
+      "scope": "out",
+      "scopeReason": "sanitizer-logic",
+      "note": "index.js passes the command built by constructWindowsLaunchCommand to exec with shell true, but the fix only adds line break and percent sign rejection to the cmd escaping helper, so the sink already goes through the buggy helper."
+    },
+    {
+      "id": "GHSA-pqg4-j6r4-53mv",
+      "package": "shell-quote",
+      "repo": "ljharb/shell-quote",
+      "cwe": "CWE-78",
+      "vulnerableCommit": "36f23944db50dd3f0df4da9c7cba0bb63df05f64",
+      "fixCommit": "6002b2ed90c6b83095eb272b6b0adaf3a172b0bc",
+      "files": [
+        {
+          "path": "quote.js"
+        }
+      ],
+      "scope": "out",
+      "scopeReason": "sanitizer-logic",
+      "note": "quote.js is a shell quoting function with no command runner; the fix rejects line terminators in tokens that follow a comment token."
+    },
+    {
+      "id": "GHSA-v5rq-49vh-5v5c",
+      "package": "@simple-git/argv-parser",
+      "repo": "steveukx/git-js",
+      "cwe": "CWE-78",
+      "vulnerableCommit": "8430817f552ffb7cb52072b2f87def14dcfc0a4b",
+      "fixCommit": "68874c239f0c7a87f4a68c3d2c4a0d7c75bb27f4",
+      "files": [
+        {
+          "path": "packages/argv-parser/src/env/parse-env.ts"
+        }
+      ],
+      "scope": "out",
+      "scopeReason": "sanitizer-logic",
+      "note": "parse-env.ts only maps git environment variable names to vulnerability categories; the fix adds the visual editor variable to that list and the file has no command runner."
+    },
+    {
+      "id": "GHSA-x6jw-m9v5-85vh",
+      "package": "simple-git",
+      "repo": "steveukx/git-js",
+      "cwe": "CWE-78",
+      "vulnerableCommit": "76f308ed445013d8dd973bc515e7815b59426e3e",
+      "fixCommit": "d762810c13b331ff1e5eb24c0b434646d2a8d1b3",
+      "files": [
+        {
+          "path": "packages/argv-parser/src/tokens/flag-specs.ts"
+        },
+        {
+          "path": "packages/argv-parser/src/vulnerabilities/detect-vulnerable-config-writes.ts"
+        },
+        {
+          "path": "packages/argv-parser/src/vulnerabilities/detect-vulnerable-flags.ts"
+        }
+      ],
+      "scope": "out",
+      "scopeReason": "sanitizer-logic",
+      "note": "The argv-parser files only detect unsafe git flags and config keys; the fix adds rebase exec flags and trailer command config entries to the blocklists, with no command runner in the files."
+    },
+    {
+      "id": "GHSA-q69g-4hcv-6jg4",
+      "package": "@cyclonedx/cyclonedx-npm",
+      "repo": "CycloneDX/cyclonedx-node-npm",
+      "cwe": "CWE-78",
+      "vulnerableCommit": "ee61a4416b45410dae2e5e65a97aebff6cac24f5",
+      "fixCommit": "15d3beb5bcd2b0b6eccfdf31192f5103b3f12c0f",
+      "files": [
+        {
+          "path": "src/npmRunner.ts"
+        }
+      ],
+      "scope": "in",
+      "note": "npmRunner.ts located npm with execSync and ran it through cmd.exe /c or execFileSync with the environment-supplied npm path, which allowed shell parsing on Windows; the fix resolves the npm script path and runs node with shell false."
+    },
+    {
+      "id": "GHSA-4x45-gxvp-6283",
+      "package": "@argos-ci/core",
+      "repo": "argos-ci/argos-javascript",
+      "cwe": "CWE-78",
+      "vulnerableCommit": "1787fe78cba46f408493e02114150f2d73f47fa4",
+      "fixCommit": "8355f3af3be3f4fe361d58a688d21535cf672717",
+      "files": [
+        {
+          "path": "packages/core/src/ci-environment/git.ts"
+        }
+      ],
+      "scope": "in",
+      "note": "git.ts passes the head and base refs, the fetch ref and the path into execSync through template literals; the fix switches to execFileSync with argument arrays."
+    },
+    {
+      "id": "GHSA-79wm-x847-7cvg",
+      "package": "claude-code-templates",
+      "repo": "davila7/claude-code-templates",
+      "cwe": "CWE-78",
+      "vulnerableCommit": "acdb5893412a81eaec9862ee24a4613bf296ab45",
+      "fixCommit": "bc4618b07232633c1c0aac12a43e436268d31783",
+      "files": [
+        {
+          "path": "cli-tool/src/sandbox-server.js"
+        }
+      ],
+      "scope": "in",
+      "note": "sandbox-server.js passes the request-supplied agent name and prompt to spawn with shell true; the fix removes the shell option and validates the agent name with an anchored regex."
+    },
+    {
+      "id": "GHSA-p853-83gj-wjj3",
+      "package": "@nocobase/plugin-backups",
+      "repo": "nocobase/nocobase",
+      "cwe": "CWE-78",
+      "vulnerableCommit": "3f4ec12fc60157ea15c41ea3f696f0ddb7366e7c",
+      "fixCommit": "0e1aba1b7b112ffc841588963f7343c00edd9806",
+      "files": [
+        {
+          "path": "packages/plugins/@nocobase/plugin-backups/src/server/adapters/database.ts"
+        }
+      ],
+      "scope": "in",
+      "note": "database.ts builds pg_dump and restore command strings with shell-quoted table names and runs them through promisified exec and execSync; the fix moves to spawn and spawnSync with argument arrays."
+    },
+    {
+      "id": "GHSA-vcrf-j523-4mrf",
+      "package": "aws-cdk-lib",
+      "repo": "aws/aws-cdk",
+      "cwe": "CWE-78",
+      "vulnerableCommit": "e360dd9b44d2111e28cd16ac683a813f33ed5793",
+      "fixCommit": "baa9e1dff469306cc23b8f4bd232d703f98bf68a",
+      "files": [
+        {
+          "path": "packages/aws-cdk-lib/aws-lambda-nodejs/lib/bundling.ts"
+        }
+      ],
+      "scope": "out",
+      "scopeReason": "cross-file",
+      "note": "bundling.ts only builds echo and cp command strings for the bundling script and the fix adds POSIX escaping of the path and data; the shell execution happens elsewhere."
+    },
+    {
+      "id": "GHSA-5xpp-75jx-m839",
+      "package": "systeminformation",
+      "repo": "sebhildebrandt/systeminformation",
+      "cwe": "CWE-78",
+      "vulnerableCommit": "da1cbf5eb09907cf5c3431f4c9ea441b7a227617",
+      "fixCommit": "bbfddde48672d0ee124fefdb3cb4442fd9dd4f03",
+      "files": [
+        {
+          "path": "lib/network.js"
+        }
+      ],
+      "scope": "in",
+      "note": "network.js builds a cat and grep pipeline from a file path and passes it to execSync; the fix reads the file with readFileSync and filters the lines in JavaScript."
+    },
+    {
+      "id": "GHSA-v5ff-xmfp-p245",
+      "package": "electerm",
+      "repo": "electerm/electerm",
+      "cwe": "CWE-78",
+      "vulnerableCommit": "fde153d677a170c5816368f6586647f3af4ef284",
+      "fixCommit": "aa778818843b9c083bd711cd04644d102fcb5a42",
+      "files": [
+        {
+          "path": "src/app/lib/fs.js"
+        }
+      ],
+      "scope": "in",
+      "note": "fs.js interpolates local paths into rm, mv and cp command strings and PowerShell commands run through exec; the fix replaces them with fs API calls."
+    },
+    {
+      "id": "GHSA-q4p8-8j9m-8hxj",
+      "package": "electerm",
+      "repo": "electerm/electerm",
+      "cwe": "CWE-78",
+      "vulnerableCommit": "4ca96d8cf947d8ae1af3aeff520e82d253e4edf9",
+      "fixCommit": "24ce7103e264cffe6eb5476c0506a2379e6f8333",
+      "files": [
+        {
+          "path": "src/app/lib/fs.js"
+        }
+      ],
+      "scope": "in",
+      "note": "fs.js interpolates the file path into an open, xdg-open or PowerShell Invoke-Item command string run through promisified exec; the fix uses spawn with an argument array."
+    },
+    {
+      "id": "GHSA-8h25-q488-4hxw",
+      "package": "openlearnx",
+      "repo": "th30d4y/OpenLearnX",
+      "cwe": "CWE-78",
+      "vulnerableCommit": "d19c4e4d153f5c2b46f08b74053c48a5851e1db6",
+      "fixCommit": "14765d7d1856d564747c55c5412e2f38feab079e",
+      "files": [
+        {
+          "path": "frontend/app/admin/logs/page.tsx"
+        }
+      ],
+      "scope": "out",
+      "scopeReason": "cross-file",
+      "note": "The diff only adds an execution log tab to a React admin logs page and has no command call in this file; the command injection fix is elsewhere."
+    },
+    {
+      "id": "GHSA-j6c7-3h5x-99g9",
+      "package": "openclaw",
+      "repo": "openclaw/openclaw",
+      "cwe": "CWE-78",
+      "vulnerableCommit": "6640b352988b903804eebd6548d12c41e5effd88",
+      "fixCommit": "8f8492d172f4c5b4fd7dd9a47855ed620c8770ab",
+      "files": [
+        {
+          "path": "src/infra/dispatch-wrapper-resolution.ts"
+        },
+        {
+          "path": "src/infra/host-env-security.ts"
+        },
+        {
+          "path": "src/infra/shell-wrapper-resolution.ts"
+        },
+        {
+          "path": "src/node-host/invoke-system-run.ts"
+        }
+      ],
+      "scope": "out",
+      "scopeReason": "sanitizer-logic",
+      "note": "The diff changes shell-wrapper detection, multiplexer unwrapping and the environment override allowlist that gate approval of system run requests; no child_process call is in the diff."
+    },
+    {
+      "id": "GHSA-jcxm-m3jx-f287",
+      "package": "simple-git",
+      "repo": "steveukx/git-js",
+      "cwe": "CWE-78",
+      "vulnerableCommit": "1402490d14f4125b08f3b2d6c86d3baa0feae6fb",
+      "fixCommit": "1effd8e5012a5da05a9776512fac3e39b11f2d2d",
+      "files": [
+        {
+          "path": "simple-git/src/lib/plugins/block-unsafe-operations-plugin.ts"
+        }
+      ],
+      "scope": "out",
+      "scopeReason": "sanitizer-logic",
+      "note": "block-unsafe-operations-plugin.ts only changes the validator that detects the clone -u upload-pack switch, replacing a narrow regex with a broader option matcher, and has no command runner."
+    },
+    {
+      "id": "GHSA-vcx7-pfrh-mcfg",
+      "package": "storyblok-backup",
+      "repo": "webflorist/storyblok-backup",
+      "cwe": "CWE-22",
+      "vulnerableCommit": "3ad6ecca6dd7c240ac9119c3805c50913d9a4e4d",
+      "fixCommit": "f4e4bb1979832abd7e4eb1666e2b3cfc767f587a",
+      "files": [
+        {
+          "path": "bin/storyblok-backup.mjs"
+        }
+      ],
+      "scope": "in",
+      "note": "bin/storyblok-backup.mjs builds the output path from a story-derived file name and writes it with fs.writeFileSync; the fix replaces slashes and dot-dot in the name."
+    },
+    {
+      "id": "GHSA-jwgx-mp9m-jwcr",
+      "package": "@appium/storage-plugin",
+      "repo": "appium/appium",
+      "cwe": "CWE-22",
+      "vulnerableCommit": "1445da48d8b619d5a7c8a996ae29a214d7d7716b",
+      "fixCommit": "5fee01752f2782e96fbe64fd13520b433d4a7535",
+      "files": [
+        {
+          "path": "packages/storage-plugin/lib/plugin.ts"
+        },
+        {
+          "path": "packages/storage-plugin/lib/storage.ts"
+        }
+      ],
+      "scope": "in",
+      "note": "The delete handler passes the request body name to storage.delete in storage.ts, which builds a path from it and removes the file; the fix validates the name as a plain file name first."
+    },
+    {
+      "id": "GHSA-mc8w-wjhw-45x5",
+      "package": "ep_etherpad-lite",
+      "repo": "ether/etherpad",
+      "cwe": "CWE-22",
+      "vulnerableCommit": "f8686dda1043b4003efe0d06afce2aea68d814aa",
+      "fixCommit": "9c8d16d50e2fdfd9693ab35c43280410cb4db2fc",
+      "files": [
+        {
+          "path": "src/node/utils/Minify.ts"
+        }
+      ],
+      "scope": "in",
+      "note": "Minify.ts joins the plugin root with the request library path via path.join and later reads the file; an unconditional backslash-to-slash rewrite after sanitizing reintroduced dot-dot segments, and the fix limits it to Windows."
+    },
+    {
+      "id": "GHSA-r3h5-4585-7x3w",
+      "package": "@astrojs/node",
+      "repo": "withastro/astro",
+      "cwe": "CWE-22",
+      "vulnerableCommit": "7a1255f1e6149f9542f083681cf1654414606e41",
+      "fixCommit": "7da442bb286e0c29e1c9e1add6727b7cbf434f1a",
+      "files": [
+        {
+          "path": "packages/internal-helpers/src/path.ts"
+        }
+      ],
+      "scope": "out",
+      "scopeReason": "sanitizer-logic",
+      "note": "path.ts only changes the isParentDirectory containment helper to compare case exactly on non-Windows paths; the file has no fs or path.join sink of its own."
+    },
+    {
+      "id": "GHSA-cw2g-2vwq-88w6",
+      "package": "isomorphic-git",
+      "repo": "isomorphic-git/isomorphic-git",
+      "cwe": "CWE-22",
+      "vulnerableCommit": "1395431bc1ee8770e6936eeb26da3ec34ca0ae7b",
+      "fixCommit": "823843d1cd19182df79bc907c767f5bcecb39a0b",
+      "files": [
+        {
+          "path": "src/commands/checkout.js"
+        },
+        {
+          "path": "src/internal-apis.js"
+        },
+        {
+          "path": "src/managers/GitRefManager.js"
+        },
+        {
+          "path": "src/models/GitTree.js"
+        },
+        {
+          "path": "src/utils/applyDelta.js"
+        }
+      ],
+      "scope": "in",
+      "note": "checkout.js writes tree entry paths into the working directory via dir/fullpath through fs mkdir and write calls; the fix refuses to write through symlinked leading directories and tightens entry name checks."
+    },
+    {
+      "id": "GHSA-4xm8-rg9h-jhq2",
+      "package": "signalk-server",
+      "repo": "SignalK/signalk-server",
+      "cwe": "CWE-22",
+      "vulnerableCommit": "535104f655304c697d535252da397948e5101dc6",
+      "fixCommit": "83689f040d7e90280dddc643f44f3e4ce348fbb1",
+      "files": [
+        {
+          "path": "packages/resources-provider-plugin/src/filestorage.ts"
+        },
+        {
+          "path": "packages/resources-provider-plugin/src/index.ts"
+        },
+        {
+          "path": "src/api/resources/index.ts"
+        },
+        {
+          "path": "src/api/resources/validate.ts"
+        },
+        {
+          "path": "src/interfaces/applicationData.js"
+        }
+      ],
+      "scope": "in",
+      "note": "filestorage.ts and applicationData.js join the request resource id, collection name or principal onto a storage root and read, write or delete it; the fix resolves and checks the result stays in one directory and validates ids as single segments."
+    },
+    {
+      "id": "GHSA-4vjg-vx72-qq4g",
+      "package": "systeminformation",
+      "repo": "sebhildebrandt/systeminformation",
+      "cwe": "CWE-22",
+      "vulnerableCommit": "88f2fa6def2fe99680a18c764489f96d949dfd80",
+      "fixCommit": "8d294b3139fec654a912969ac898037578a218cd",
+      "files": [
+        {
+          "path": "lib/network.js"
+        }
+      ],
+      "scope": "in",
+      "note": "lib/network.js concatenates the interface name onto /sys/class/net/ and calls fs.existsSync before reading stats; the fix requires the name to be a single path segment."
+    },
+    {
+      "id": "GHSA-7w82-6f9j-v9jp",
+      "package": "mcp-sanitizer",
+      "repo": "starman69/mcp-sanitizer",
+      "cwe": "CWE-22",
+      "vulnerableCommit": "4a1a7595ce18c7708fd85e697628e328220fe615",
+      "fixCommit": "200685889b073f7470859b0941b67b7f46255f09",
+      "files": [
+        {
+          "path": "src/config/default-config.js"
+        },
+        {
+          "path": "src/config/security-policies.js"
+        },
+        {
+          "path": "src/utils/validation-utils.js"
+        }
+      ],
+      "scope": "out",
+      "scopeReason": "sanitizer-logic",
+      "note": "The fix only changes validateFilePath and the URL location validator; the files hold validators and config with no fs or path sink."
+    },
+    {
+      "id": "GHSA-p223-2wr2-j562",
+      "package": "payload",
+      "repo": "payloadcms/payload",
+      "cwe": "CWE-22",
+      "vulnerableCommit": "2f94a4205e5ba3ec0e91c92ed54f24f429826dd0",
+      "fixCommit": "6b74418f628fa633c2f297e5919a9f91b383dc11",
+      "files": [
+        {
+          "path": "packages/payload/src/uploads/deleteAssociatedFiles.ts"
+        },
+        {
+          "path": "packages/payload/src/uploads/getBaseFields.ts"
+        }
+      ],
+      "scope": "in",
+      "note": "deleteAssociatedFiles.ts builds the path from staticDir and the document filename with a template string and calls fs.unlink; the fix resolves it, checks containment with path.relative and realpath, then unlinks."
+    },
+    {
+      "id": "GHSA-75qf-886x-5xf2",
+      "package": "@backstage/plugin-scaffolder-backend-module-confluence-to-markdown",
+      "repo": "backstage/backstage",
+      "cwe": "CWE-22",
+      "vulnerableCommit": "61a10f19926aeda7f4a32de48d733e6710584634",
+      "fixCommit": "506c2c11bce3ed9d1f8f50de5d6474b16e43a65e",
+      "files": [
+        {
+          "path": "plugins/scaffolder-backend-module-confluence-to-markdown/src/actions/confluence/helpers.ts"
+        }
+      ],
+      "scope": "in",
+      "note": "helpers.ts writes a Confluence attachment to a docs image path built from the remote title using fs.openSync and fs.createWriteStream; the fix resolves the path with resolveSafeChildPath."
+    },
+    {
+      "id": "GHSA-2cmg-v53w-8xfp",
+      "package": "@backstage/plugin-scaffolder-backend-module-confluence-to-markdown",
+      "repo": "backstage/backstage",
+      "cwe": "CWE-22",
+      "vulnerableCommit": "a7d995f11a5d27f0efbdbe8bb6c21b06988c79c9",
+      "fixCommit": "5f0000c1d0af05571e357926b3fa33a453337ff0",
+      "files": [
+        {
+          "path": "plugins/scaffolder-backend-module-confluence-to-markdown/src/actions/confluence/confluenceToMarkdown.ts"
+        },
+        {
+          "path": "plugins/scaffolder-backend-module-confluence-to-markdown/src/actions/confluence/helpers.ts"
+        }
+      ],
+      "scope": "in",
+      "note": "confluenceToMarkdown.ts builds paths from the repo file path and the Confluence page title and calls fs.mkdirSync and fs.outputFile; the fix resolves each with resolveSafeChildPath."
+    },
+    {
+      "id": "GHSA-g8rx-f7m5-7794",
+      "package": "@backstage/plugin-scaffolder-backend-module-bitbucket-cloud",
+      "repo": "backstage/backstage",
+      "cwe": "CWE-22",
+      "vulnerableCommit": "bf6bbf7326ada7d96d7b2c4ebc4a71546106f311",
+      "fixCommit": "818528e112c36167d76187e9e63fb518399c4dd2",
+      "files": [
+        {
+          "path": "plugins/scaffolder-backend-module-bitbucket-cloud/src/actions/bitbucketCloudPullRequest.ts"
+        },
+        {
+          "path": "plugins/scaffolder-backend-module-bitbucket-server/src/actions/bitbucketServerPullRequest.ts"
+        }
+      ],
+      "scope": "in",
+      "note": "The Bitbucket pull request actions call fs.cpSync on the workspace source directory into a temp dir; the fix swaps to fs-extra copySync with a filter, so it is really a symlink-copy fix."
+    },
+    {
+      "id": "GHSA-rg9r-hr7g-5gc2",
+      "package": "@backstage/plugin-techdocs-backend",
+      "repo": "backstage/backstage",
+      "cwe": "CWE-22",
+      "vulnerableCommit": "c211b4b67d28efd2f4fac63e35e2ac515e305cb3",
+      "fixCommit": "bf6bbf7326ada7d96d7b2c4ebc4a71546106f311",
+      "files": [
+        {
+          "path": "plugins/techdocs-backend/src/service/router.ts"
+        }
+      ],
+      "scope": "out",
+      "scopeReason": "cross-file",
+      "note": "router.ts only adds a request path check before the static docs middleware; the file read happens in the publisher serving code in another file."
+    },
+    {
+      "id": "GHSA-7mfx-xg57-53c9",
+      "package": "@backstage/plugin-techdocs-backend",
+      "repo": "backstage/backstage",
+      "cwe": "CWE-22",
+      "vulnerableCommit": "0253c50673f2832b0b1e9f73348186434e7bd09e",
+      "fixCommit": "40ecc4c2e88b0218125b0a3405d1f6315b321974",
+      "files": [
+        {
+          "path": "plugins/techdocs-backend/src/service/router.ts"
+        }
+      ],
+      "scope": "out",
+      "scopeReason": "cross-file",
+      "note": "router.ts replaces the dot-dot check with a posix resolve and relative test on the request path, but the file serving happens in the publisher docs router elsewhere."
+    },
+    {
+      "id": "GHSA-xvh9-35w9-42m4",
+      "package": "@backstage/plugin-catalog-backend-module-azure",
+      "repo": "backstage/backstage",
+      "cwe": "CWE-22",
+      "vulnerableCommit": "21424faa2e280a6bc6b9e5c5245952f16aafca7b",
+      "fixCommit": "47ddbd8b4a3efd812309f759c38f4877fbd9e5ff",
+      "files": [
+        {
+          "path": "packages/backend-defaults/src/entrypoints/urlReader/lib/AwsS3UrlReader.ts"
+        },
+        {
+          "path": "packages/backend-defaults/src/entrypoints/urlReader/lib/AzureBlobStorageUrlReader.ts"
+        },
+        {
+          "path": "packages/backend-defaults/src/entrypoints/urlReader/lib/util.ts"
+        },
+        {
+          "path": "plugins/catalog-backend-module-aws/src/providers/AwsS3EntityProvider.ts"
+        },
+        {
+          "path": "plugins/catalog-backend-module-azure/src/providers/AzureBlobStorageEntityProvider.ts"
+        }
+      ],
+      "scope": "out",
+      "scopeReason": "dependency-sink",
+      "note": "The URL readers and entity providers parse URLs and object keys and pass them to the S3 and Azure SDKs; the fix rejects dot segments and encodes keys."
+    },
+    {
+      "id": "GHSA-9ghw-48h5-v2w5",
+      "package": "@backstage/plugin-proxy-backend",
+      "repo": "backstage/backstage",
+      "cwe": "CWE-22",
+      "vulnerableCommit": "017ace52d9b327ededc6704cf17799c875ae0f29",
+      "fixCommit": "233287d0ce3133e41549bf92a7470c940a41753c",
+      "files": [
+        {
+          "path": "plugins/proxy-backend/src/service/router.ts"
+        }
+      ],
+      "scope": "out",
+      "scopeReason": "dependency-sink",
+      "note": "The proxy router adds a middleware that returns 400 when the request URL has dot-dot segments before the http-proxy middleware forwards it; there is no local path or fs call."
+    },
+    {
+      "id": "GHSA-7649-wm97-w3j3",
+      "package": "@backstage/backend-defaults",
+      "repo": "backstage/backstage",
+      "cwe": "CWE-22",
+      "vulnerableCommit": "6aecb26f337ffec1d4e67ce903cf1e39b6082ec4",
+      "fixCommit": "14e925ce5b905dd8daa64c3009722febda76034c",
+      "files": [
+        {
+          "path": "packages/backend-defaults/src/entrypoints/urlReader/lib/AwsCodeCommitUrlReader.ts"
+        },
+        {
+          "path": "packages/backend-defaults/src/entrypoints/urlReader/lib/AwsS3UrlReader.ts"
+        },
+        {
+          "path": "packages/backend-defaults/src/entrypoints/urlReader/lib/AzureBlobStorageUrlReader.ts"
+        },
+        {
+          "path": "packages/backend-defaults/src/entrypoints/urlReader/lib/GoogleGcsUrlReader.ts"
+        },
+        {
+          "path": "packages/backend-defaults/src/entrypoints/urlReader/lib/util.ts"
+        }
+      ],
+      "scope": "out",
+      "scopeReason": "dependency-sink",
+      "note": "The URL readers skip object keys with dot segments before passing them to the CodeCommit, S3, Azure and GCS SDK calls."
+    },
+    {
+      "id": "GHSA-4mfg-r38w-w8fg",
+      "package": "mcp-sanitizer",
+      "repo": "starman69/mcp-sanitizer",
+      "cwe": "CWE-918",
+      "vulnerableCommit": "4a1a7595ce18c7708fd85e697628e328220fe615",
+      "fixCommit": "200685889b073f7470859b0941b67b7f46255f09",
+      "files": [
+        {
+          "path": "src/config/default-config.js"
+        },
+        {
+          "path": "src/config/security-policies.js"
+        },
+        {
+          "path": "src/utils/validation-utils.js"
+        }
+      ],
+      "scope": "out",
+      "scopeReason": "sanitizer-logic",
+      "note": "validation-utils.js has no outgoing request call; the fix rewrites the localhost, private IPv4 and IPv6 URL location check."
+    },
+    {
+      "id": "GHSA-322m-ff4g-9vx9",
+      "package": "ghost",
+      "repo": "TryGhost/Ghost",
+      "cwe": "CWE-918",
+      "vulnerableCommit": "20d3f792bf4a7c349ee56b746a067550d8684ff5",
+      "fixCommit": "3f8594eb53de883ac017545c358f59039cb152de",
+      "files": [
+        {
+          "path": "ghost/core/core/server/services/oembed/oembed-service.js"
+        }
+      ],
+      "scope": "out",
+      "scopeReason": "dependency-sink",
+      "note": "oembed-service.js hands the page URL to metascraper-logo-favicon, whose bundled resolver probes favicons and ignores the DNS guard; the fix replaces that resolver with its own request call."
+    },
+    {
+      "id": "GHSA-r7f2-6fj8-6fg2",
+      "package": "ghost",
+      "repo": "TryGhost/Ghost",
+      "cwe": "CWE-918",
+      "vulnerableCommit": "69432300f032d05ddb68885bcc209f23378cec22",
+      "fixCommit": "20d3f792bf4a7c349ee56b746a067550d8684ff5",
+      "files": [
+        {
+          "path": "ghost/core/core/server/lib/request-external.js"
+        }
+      ],
+      "scope": "out",
+      "scopeReason": "sanitizer-logic",
+      "note": "request-external.js already checks resolved IPs before connecting; the fix only replaces the private IP range classification with ipaddr.js."
+    },
+    {
+      "id": "GHSA-cjq9-62q9-8jv4",
+      "package": "next",
+      "repo": "vercel/next.js",
+      "cwe": "CWE-918",
+      "vulnerableCommit": "4c20699e29178d444994cf5a31b8a617ca3a2c80",
+      "fixCommit": "e002ad68bd676bb0ed0c87bb22e3590304763e0b",
+      "files": [
+        {
+          "path": "packages/next/src/server/image-optimizer.ts"
+        }
+      ],
+      "scope": "out",
+      "scopeReason": "sanitizer-logic",
+      "note": "image-optimizer.ts fetches the upstream image URL after a DNS and private IP pre-check; the fix pins the connection to the validated IP to stop DNS rebinding and redirect bypass."
+    },
+    {
+      "id": "GHSA-g734-fhp4-7mfp",
+      "package": "@backstage/plugin-scaffolder-backend-module-sentry",
+      "repo": "backstage/backstage",
+      "cwe": "CWE-918",
+      "vulnerableCommit": "e53d33f6fa67d46a5b7fe45aa930a62f0e6a41d3",
+      "fixCommit": "b0170fad7962fb8c3d71366b5265cf283c7bbcf7",
+      "files": [
+        {
+          "path": "plugins/scaffolder-backend-module-sentry/src/actions/createProject.examples.ts"
+        },
+        {
+          "path": "plugins/scaffolder-backend-module-sentry/src/actions/createProject.ts"
+        },
+        {
+          "path": "plugins/scaffolder-backend-module-sentry/src/actions/fetchDSN.examples.ts"
+        },
+        {
+          "path": "plugins/scaffolder-backend-module-sentry/src/actions/fetchDSN.ts"
+        }
+      ],
+      "scope": "in",
+      "note": "createProject.ts and fetchDSN.ts call fetch with a template-supplied apiBaseUrl input as the host; the fix only accepts a value matching the operator configured base URL."
+    },
+    {
+      "id": "GHSA-354h-gmhv-mr9c",
+      "package": "ghost",
+      "repo": "TryGhost/Ghost",
+      "cwe": "CWE-918",
+      "vulnerableCommit": "2f6564591f34c519ed5d4c851da282b8c3b5428f",
+      "fixCommit": "815962dd2760e55c5dc8d0fb7fac732a7634566f",
+      "files": [
+        {
+          "path": "ghost/core/core/server/services/webhooks/webhook-trigger.js"
+        }
+      ],
+      "scope": "in",
+      "note": "webhook-trigger.js posts to the user-configured webhook target URL via the plain request client; the fix switches to the request-external client that rejects private addresses."
+    },
+    {
+      "id": "GHSA-xvq9-wjp8-hwqf",
+      "package": "i18next-http-backend",
+      "repo": "i18next/i18next-http-backend",
+      "cwe": "CWE-918",
+      "vulnerableCommit": "08cb05d3ef8396cb74ab9d6885f4c3ddb43bfbf3",
+      "fixCommit": "07e028862b25d0b9251bf3cafb92be2d35285f85",
+      "files": [
+        {
+          "path": "i18nextHttpBackend.js"
+        },
+        {
+          "path": "lib/utils.js"
+        }
+      ],
+      "scope": "out",
+      "scopeReason": "sanitizer-logic",
+      "note": "The fix only tightens the URL segment validators for language and namespace values that gate the backend's request URL; the request itself is unchanged."
+    },
+    {
+      "id": "GHSA-4233-jc72-56c5",
+      "package": "@astrojs/netlify",
+      "repo": "withastro/astro",
+      "cwe": "CWE-918",
+      "vulnerableCommit": "660991c820fbeb087b2f27361e6ebaeba8285358",
+      "fixCommit": "e362d4cf540b27730482455c8fc02efe57d16702",
+      "files": [
+        {
+          "path": "packages/integrations/netlify/src/index.ts"
+        }
+      ],
+      "scope": "out",
+      "scopeReason": "sanitizer-logic",
+      "note": "The Netlify integration builds regexes for the remote image allowlist and the fix only anchors them; the image fetch is done by the image CDN, not in this file."
+    },
+    {
+      "id": "GHSA-rpw4-54j3-4h4q",
+      "package": "ip-address",
+      "repo": "beaugunderson/ip-address",
+      "cwe": "CWE-918",
+      "vulnerableCommit": "ab3dc88bcf5374344168a2ba075ca7ac4ff257f8",
+      "fixCommit": "d03e960c7cc3179ef25c8a44b4f94dd499625546",
+      "files": [
+        {
+          "path": "src/ipv6.ts"
+        },
+        {
+          "path": "src/v6/constants.ts"
+        }
+      ],
+      "scope": "out",
+      "scopeReason": "sanitizer-logic",
+      "note": "ip-address is an IP parsing library with no request call; the fix corrects the IPv6 isLinkLocal check."
+    },
+    {
+      "id": "GHSA-2vr4-cq9g-pvrc",
+      "package": "ip-address",
+      "repo": "beaugunderson/ip-address",
+      "cwe": "CWE-918",
+      "vulnerableCommit": "ef98e0a0e77fbef1fdf8bc3bd33288b00b3103c9",
+      "fixCommit": "ab3dc88bcf5374344168a2ba075ca7ac4ff257f8",
+      "files": [
+        {
+          "path": "src/ipv6.ts"
+        }
+      ],
+      "scope": "out",
+      "scopeReason": "sanitizer-logic",
+      "note": "ip-address is an IP parsing library with no request call; the fix makes Address6.isPrivate cover the NAT64 local-use range."
+    },
+    {
+      "id": "GHSA-6mwv-4mrm-5p3m",
+      "package": "9router",
+      "repo": "decolua/9router",
+      "cwe": "CWE-918",
+      "vulnerableCommit": "f2a7ae20309b4af55023eb11d1c02f63be1b80d1",
+      "fixCommit": "126aa244c5b51b74ab8c7594e3418fcf4437bf6f",
+      "files": [
+        {
+          "path": "src/app/api/oauth/kiro/api-key/route.js"
+        },
+        {
+          "path": "src/lib/oauth/constants/oauth.js"
+        },
+        {
+          "path": "src/lib/oauth/providers.js"
+        },
+        {
+          "path": "src/lib/oauth/services/kiro.js"
+        }
+      ],
+      "scope": "in",
+      "note": "kiro.js and providers.js call fetch on an AWS OIDC URL where a user-supplied region sets the host; the fix validates it against an AWS region pattern."
+    },
+    {
+      "id": "GHSA-cmhj-wh2f-9cgx",
+      "package": "9router",
+      "repo": "decolua/9router",
+      "cwe": "CWE-918",
+      "vulnerableCommit": "7ae9fff663b5227fe214c5225a767ed4c4380a7b",
+      "fixCommit": "c7d07448c58bec1200741de0b73305b860416b82",
+      "files": [
+        {
+          "path": "open-sse/translator/concerns/image.js"
+        }
+      ],
+      "scope": "out",
+      "scopeReason": "sanitizer-logic",
+      "note": "image.js fetches a user image URL after a DNS and private IP check; the fix resolves once, requires all records public, and pins the connection to the validated IP."
+    },
+    {
+      "id": "GHSA-798p-78g2-v556",
+      "package": "@aborruso/ckan-mcp-server",
+      "repo": "ondata/ckan-mcp-server",
+      "cwe": "CWE-918",
+      "vulnerableCommit": "129ba172ec15429347ea1faf5c919af730720370",
+      "fixCommit": "bb7439b553b9f965adc3d43bcd415c42eebe2f40",
+      "files": [
+        {
+          "path": "src/server.ts"
+        },
+        {
+          "path": "src/tools/sparql.ts"
+        },
+        {
+          "path": "src/transport/http.ts"
+        },
+        {
+          "path": "src/utils/http.ts"
+        },
+        {
+          "path": "src/worker.ts"
+        }
+      ],
+      "scope": "in",
+      "note": "sparql.ts and makeCkanRequest in http.ts request a client-chosen endpoint or server URL; the fix adds a private IP guard on the connection and a domain allowlist for the HTTP transport."
+    },
+    {
+      "id": "GHSA-q8hw-4fvp-9rwv",
+      "package": "nuxt-og-image",
+      "repo": "nuxt-modules/og-image",
+      "cwe": "CWE-918",
+      "vulnerableCommit": "5aa6dbf0b3848b578a87144032cfb6b734454b56",
+      "fixCommit": "243cac2228671d3711c2bd65e300c278fcdf5a4e",
+      "files": [
+        {
+          "path": "src/runtime/server/og-image/bindings/font-assets/cloudflare.ts"
+        },
+        {
+          "path": "src/runtime/server/og-image/bindings/font-assets/dev-prerender.ts"
+        },
+        {
+          "path": "src/runtime/server/og-image/bindings/font-assets/node.ts"
+        },
+        {
+          "path": "src/runtime/server/og-image/fonts.ts"
+        },
+        {
+          "path": "src/runtime/server/util/ssrf.ts"
+        }
+      ],
+      "scope": "in",
+      "note": "font-assets node.ts and dev-prerender.ts call fetch on a font path taken from an attacker-controlled fonts URL parameter; the fix handles data and external URLs separately and validates redirects."
+    },
+    {
+      "id": "GHSA-83x6-42hr-jc76",
+      "package": "@aborruso/ckan-mcp-server",
+      "repo": "ondata/ckan-mcp-server",
+      "cwe": "CWE-918",
+      "vulnerableCommit": "ccfecb8f0504babf49655d02169e505908d32bff",
+      "fixCommit": "8e1522f9bbfa1f3b21550f17887f60f133e24151",
+      "files": [
+        {
+          "path": "src/tools/quality.ts"
+        },
+        {
+          "path": "src/utils/cache.ts"
+        },
+        {
+          "path": "src/utils/http.ts"
+        }
+      ],
+      "scope": "out",
+      "scopeReason": "sanitizer-logic",
+      "note": "The SSRF fix is isValidMqaServer in quality.ts, an unanchored host regex replaced with exact hostname parsing."
+    },
+    {
+      "id": "GHSA-pfhg-q3qv-9q6r",
+      "package": "@sveltejs/kit",
+      "repo": "sveltejs/kit",
+      "cwe": "CWE-601",
+      "vulnerableCommit": "1c1d19c028aca0424d70551d6aacfa1fc189d426",
+      "fixCommit": "91aae3547c6cd2935d79c09a53e27c740100000a",
+      "files": [
+        {
+          "path": "packages/kit/src/runtime/app/forms/client.js"
+        },
+        {
+          "path": "packages/kit/src/runtime/client/client.js"
+        },
+        {
+          "path": "packages/kit/src/runtime/server/page/actions.js"
+        }
+      ],
+      "scope": "in",
+      "note": "forms/client.js navigates client-side to the form action result location; the fix only navigates when the resolved origin matches the current one, and also fixes a leading double slash in actions.js."
+    },
+    {
+      "id": "GHSA-m44r-7c5h-m6mj",
+      "package": "@medplum/core",
+      "repo": "medplum/medplum",
+      "cwe": "CWE-601",
+      "vulnerableCommit": "5d4a8654b02aa67c444f96ae1eb5663c09854006",
+      "fixCommit": "7ae10035ddadde4dba7b18d3156553940465b3a1",
+      "files": [
+        {
+          "path": "packages/server/src/auth/external.ts"
+        },
+        {
+          "path": "packages/server/src/oauth/clients.ts"
+        }
+      ],
+      "scope": "in",
+      "note": "auth/external.ts builds a redirect URL from the client supplied redirectUri after a prefix match check; the fix requires the same origin for a partial match."
+    },
+    {
+      "id": "GHSA-jjmj-jmhj-qwj2",
+      "package": "react-router",
+      "repo": "remix-run/react-router",
+      "cwe": "CWE-601",
+      "vulnerableCommit": "f29c6c95631368afa1b475f824854a781e690c02",
+      "fixCommit": "3a5b5ad0e5cf9918c646509563f5c41a89226ff3",
+      "files": [
+        {
+          "path": "packages/react-router/lib/router/utils.ts"
+        }
+      ],
+      "scope": "out",
+      "scopeReason": "sanitizer-logic",
+      "note": "resolvePath in router/utils.ts is a path normalizer that now stops absolute or double-slash targets; there is no redirect call in the listed file."
+    },
+    {
+      "id": "GHSA-r557-wffq-wvrc",
+      "package": "@astrojs/node",
+      "repo": "withastro/astro",
+      "cwe": "CWE-601",
+      "vulnerableCommit": "014296439e084384432e13f2e5b192b0f595045d",
+      "fixCommit": "eb6f97e391ee587747e37609c255c7cd4b9cce3c",
+      "files": [
+        {
+          "path": "packages/internal-helpers/src/path.ts"
+        }
+      ],
+      "scope": "out",
+      "scopeReason": "cross-file",
+      "note": "internal-helpers path.ts only changes isInternalPath to fold backslashes; the Location header write happens in the Node adapter."
+    },
+    {
+      "id": "GHSA-9phm-9p8f-hw5m",
+      "package": "nitro",
+      "repo": "unjs/ufo",
+      "cwe": "CWE-601",
+      "vulnerableCommit": "a7b94e69ff6159de8ddfd4940c90db4708c0d67e",
+      "fixCommit": "5cd9e676711af3f4e4b5398ddf6ca8d52c1c7e1f",
+      "files": [
+        {
+          "path": "src/utils.ts"
+        }
+      ],
+      "scope": "out",
+      "scopeReason": "cross-file",
+      "note": "ufo withoutBase is a pure string helper that now collapses leading slashes; any redirect using its result is in another package."
+    },
+    {
+      "id": "GHSA-vvvv-983w-r7pv",
+      "package": "@workos/authkit-session",
+      "repo": "workos/authkit-session",
+      "cwe": "CWE-601",
+      "vulnerableCommit": "64e82e3bb217e24d8b5a5a7f8e9606bda91b1c78",
+      "fixCommit": "f56e1d6214a93160759e5677b7a3d772b244db39",
+      "files": [
+        {
+          "path": "src/service/AuthService.ts"
+        },
+        {
+          "path": "src/utils.ts"
+        }
+      ],
+      "scope": "out",
+      "scopeReason": "cross-file",
+      "note": "AuthService returns returnPathname from decoded OAuth state and the fix sanitizes it; the Location header is emitted by the consumer elsewhere."
+    },
+    {
+      "id": "GHSA-6qvv-pj99-48qm",
+      "package": "@adonisjs/http-server",
+      "repo": "adonisjs/http-server",
+      "cwe": "CWE-601",
+      "vulnerableCommit": "929ea1abda5bf0ce4a6d5b52fe8c5f7e621f4240",
+      "fixCommit": "2008fb6cf4f6f1c0ca5797d57def4d93e1c3de08",
+      "files": [
+        {
+          "path": "src/helpers.ts"
+        },
+        {
+          "path": "src/redirect.ts"
+        },
+        {
+          "path": "src/response.ts"
+        }
+      ],
+      "scope": "in",
+      "note": "The redirect class in redirect.ts and response.ts sends the user back to the Referer header value; the fix adds isValidRedirectUrl for it."
+    },
+    {
+      "id": "GHSA-8f24-v5vv-gm5j",
+      "package": "next-intl",
+      "repo": "amannn/next-intl",
+      "cwe": "CWE-601",
+      "vulnerableCommit": "b65f8c4e88ad3f2ac8df3443b6cdd66c08c19e60",
+      "fixCommit": "1c80b668aa6d853f470319eec10a3f61e78a70e6",
+      "files": [
+        {
+          "path": "packages/next-intl/.size-limit.ts"
+        },
+        {
+          "path": "packages/next-intl/src/middleware/utils.tsx"
+        }
+      ],
+      "scope": "out",
+      "scopeReason": "sanitizer-logic",
+      "note": "middleware/utils.tsx only changes sanitizePathname to strip tab, newline and carriage return; the redirect is built in other middleware files."
+    },
+    {
+      "id": "GHSA-fp4x-ggrf-wmc6",
+      "package": "h3",
+      "repo": "h3js/h3",
+      "cwe": "CWE-601",
+      "vulnerableCommit": "388b8f06e060a219d11bbc6be7f70f38d8bbea01",
+      "fixCommit": "459a1c6593365b0810e9c502df7c3e82837321d7",
+      "files": [
+        {
+          "path": "src/utils/response.ts"
+        }
+      ],
+      "scope": "in",
+      "note": "redirectBack in response.ts redirects to the Referer pathname; a path starting with a double slash became a protocol-relative URL, and the fix collapses the leading slashes inline."
+    },
+    {
+      "id": "GHSA-wqvh-63mv-9w92",
+      "package": "@backstage/plugin-auth-backend",
+      "repo": "backstage/backstage",
+      "cwe": "CWE-601",
+      "vulnerableCommit": "96adbec3f93f94ec437026798604f290dc6f155c",
+      "fixCommit": "6042dd0c7f0706e0f473dafa92799ecf19c825ec",
+      "files": [
+        {
+          "path": "plugins/auth-backend/src/service/OidcService.ts"
+        }
+      ],
+      "scope": "out",
+      "scopeReason": "sanitizer-logic",
+      "note": "OidcService.ts validates the registered redirect_uri against allowed patterns and the fix normalizes it before matching; no redirect call is in the file."
+    },
+    {
+      "id": "GHSA-xh43-g2fq-wjrj",
+      "package": "@angular/ssr",
+      "repo": "angular/angular-cli",
+      "cwe": "CWE-601",
+      "vulnerableCommit": "6cf621c905de4815b1e12964fb909876ca6e3ea3",
+      "fixCommit": "f086eccc36d10cf01c426e35864bc32e1e292323",
+      "files": [
+        {
+          "path": "packages/angular/ssr/src/utils/url.ts"
+        },
+        {
+          "path": "packages/angular/ssr/src/utils/validation.ts"
+        }
+      ],
+      "scope": "out",
+      "scopeReason": "cross-file",
+      "note": "url.ts and validation.ts only join and validate the x-forwarded-prefix header; the redirect that uses the prefix is in another SSR file."
+    },
+    {
+      "id": "GHSA-ppf9-4ffw-hh4p",
+      "package": "@feathersjs/authentication-oauth",
+      "repo": "feathersjs/feathers",
+      "cwe": "CWE-601",
+      "vulnerableCommit": "e4c0dac68b00615c7bc4724871375a14863a2447",
+      "fixCommit": "ee19a0ae9bc2ebf23b1fe598a1f7361981b65401",
+      "files": [
+        {
+          "path": "packages/authentication-oauth/src/service.ts"
+        },
+        {
+          "path": "packages/authentication-oauth/src/strategy.ts"
+        }
+      ],
+      "scope": "out",
+      "scopeReason": "cross-file",
+      "note": "strategy.ts builds the redirect URL from the origin plus the query redirect and the fix adds validation; the redirect response itself is produced by the grant handler elsewhere."
+    },
+    {
+      "id": "GHSA-m4w9-gch5-c2g4",
+      "package": "client-certificate-auth",
+      "repo": "tgies/client-certificate-auth",
+      "cwe": "CWE-601",
+      "vulnerableCommit": "5de6e601939cd1646f1a2a5adeb111533ee69f12",
+      "fixCommit": "8fc995e953db483495be46862965e50fe9e1cc52",
+      "files": [
+        {
+          "path": "lib/clientCertificateAuth.cjs"
+        },
+        {
+          "path": "lib/clientCertificateAuth.js"
+        }
+      ],
+      "scope": "in",
+      "note": "The middleware calls res.redirect(301) to https plus the Host header plus req.url, so the host is attacker-controlled; the fix removes the redirectInsecure option."
+    },
+    {
+      "id": "GHSA-3573-4c68-g8cc",
+      "package": "directus",
+      "repo": "directus/directus",
+      "cwe": "CWE-601",
+      "vulnerableCommit": "e34134363cfa93a8c82d770d33bdc871d9d9672e",
+      "fixCommit": "dad9576ea9362905cc4de8028d3877caff36dc23",
+      "files": [
+        {
+          "path": "api/src/auth/drivers/saml.ts"
+        }
+      ],
+      "scope": "in",
+      "note": "The SAML callback in saml.ts redirects after login to the relayState value; the fix rejects relayState when isLoginRedirectAllowed fails."
+    },
+    {
+      "id": "GHSA-g8mr-fgfg-5qpc",
+      "package": "koa",
+      "repo": "koajs/koa",
+      "cwe": "CWE-601",
+      "vulnerableCommit": "433b20c9e5954113e8d7a23a25e9d5bb750c3034",
+      "fixCommit": "769fd75cc6b30d72493b370b5a3ae2332ca03c5b",
+      "files": [
+        {
+          "path": "lib/response.js"
+        }
+      ],
+      "scope": "in",
+      "note": "response.js back() calls this.redirect with the Referrer header when it starts with a slash, so a protocol-relative path redirects off-site; the fix removes that branch."
+    },
+    {
+      "id": "GHSA-xph5-278p-26qx",
+      "package": "@lobehub/chat",
+      "repo": "lobehub/lobe-chat",
+      "cwe": "CWE-601",
+      "vulnerableCommit": "8711ea244c8dcb43c5cb5e74f6679633e241cea4",
+      "fixCommit": "70f52a3c1fadbd41a9db0e699d1e44d9965de445",
+      "files": [
+        {
+          "path": "packages/utils/src/server/correctOIDCUrl.ts"
+        }
+      ],
+      "scope": "out",
+      "scopeReason": "cross-file",
+      "note": "correctOIDCUrl only rewrites and returns a URL from forwarded host headers, and the fix adds a host validation; the redirect is done by the callers of this helper."
+    },
+    {
+      "id": "GHSA-r2q3-7m4h-63qg",
+      "package": "@budibase/server",
+      "repo": "Budibase/budibase",
+      "cwe": "CWE-79",
+      "vulnerableCommit": "1c7c0839020fa2dfca76634e995ec8f52d83778d",
+      "fixCommit": "5f37fb43728639c540cc7233283f1100e9315424",
+      "files": [
+        {
+          "path": "packages/frontend-core/src/utils/jsonFormatter.ts"
+        }
+      ],
+      "scope": "out",
+      "scopeReason": "cross-file",
+      "note": "jsonFormatter.ts only returns an HTML string of colored spans built from JSON, and the fix escapes every token; the innerHTML sink is in a consumer file."
+    },
+    {
+      "id": "GHSA-mh32-jxcr-mh9f",
+      "package": "astro",
+      "repo": "withastro/astro",
+      "cwe": "CWE-79",
+      "vulnerableCommit": "e3bec3d2c770cb53771dad723db57a2ebf931b42",
+      "fixCommit": "e023abac912d7cb6af2b9fb5107ef5dabc667096",
+      "files": [
+        {
+          "path": "packages/astro/src/runtime/server/jsx.ts"
+        },
+        {
+          "path": "packages/astro/src/runtime/server/render/component.ts"
+        },
+        {
+          "path": "packages/astro/src/runtime/server/render/streaming.ts"
+        },
+        {
+          "path": "packages/astro/src/runtime/server/render/util.ts"
+        }
+      ],
+      "scope": "out",
+      "scopeReason": "template-engine",
+      "note": "Astro's own SSR renderer interpolates a dynamic element name into the tag string unsanitized, and the fix adds a shared name sanitizer."
+    },
+    {
+      "id": "GHSA-3gg2-335m-rxc6",
+      "package": "hono",
+      "repo": "honojs/hono",
+      "cwe": "CWE-79",
+      "vulnerableCommit": "3cb29de8f110654c37aa9b4c7eccdeae5254f5f2",
+      "fixCommit": "15bbd96ad1b62a0b189db4fd8dc7bf8ef280c513",
+      "files": [
+        {
+          "path": "src/helper/css/common.ts"
+        }
+      ],
+      "scope": "out",
+      "scopeReason": "sanitizer-logic",
+      "note": "hono's css helper builds a style string and the fix only changes its escaping of quotes, backslashes and a closing style sequence; no HTML sink in the file."
+    },
+    {
+      "id": "GHSA-jmv2-qgxf-f995",
+      "package": "@astrojs/solid-js",
+      "repo": "withastro/astro",
+      "cwe": "CWE-79",
+      "vulnerableCommit": "9c889945820781a336217aa84a507e320445aabd",
+      "fixCommit": "290b196ddb48de11783ff128e2b7272c61490a20",
+      "files": [
+        {
+          "path": "packages/integrations/solid/src/server.ts"
+        }
+      ],
+      "scope": "out",
+      "scopeReason": "template-engine",
+      "note": "The Solid renderer integration puts the slot name into a name attribute of an HTML string passed to the framework's SSR helper; the fix escapes the name."
+    },
+    {
+      "id": "GHSA-f4j9-crrj-867q",
+      "package": "@astrojs/svelte",
+      "repo": "withastro/astro",
+      "cwe": "CWE-79",
+      "vulnerableCommit": "290b196ddb48de11783ff128e2b7272c61490a20",
+      "fixCommit": "5e476365378e41aa2745d003b2383d02008d7b44",
+      "files": [
+        {
+          "path": "packages/integrations/svelte/src/client.svelte.ts"
+        },
+        {
+          "path": "packages/integrations/svelte/src/server.ts"
+        }
+      ],
+      "scope": "out",
+      "scopeReason": "dependency-sink",
+      "note": "The Svelte integration builds a slot string with an unescaped slot key and hands it to Svelte's raw snippet renderer; the fix escapes the key before passing it on."
+    },
+    {
+      "id": "GHSA-3cgg-c5pp-57h6",
+      "package": "odf-kit",
+      "repo": "GitHubNewbie0/odf-kit",
+      "cwe": "CWE-79",
+      "vulnerableCommit": "1424227d1ca2716a249b623d1456575ff0331dcc",
+      "fixCommit": "fa3abc5a7a757f56c7212b2dbe99d1d2db995420",
+      "files": [
+        {
+          "path": "src/odt/to-html/html-renderer.ts"
+        }
+      ],
+      "scope": "out",
+      "scopeReason": "template-engine",
+      "note": "odf-kit is an ODT to HTML renderer whose style and data attributes were interpolated without escaping; the fix wraps them in an attribute escaper."
+    },
+    {
+      "id": "GHSA-f86p-h4j2-7qgj",
+      "package": "seroval",
+      "repo": "lxsmnsyc/seroval",
+      "cwe": "CWE-79",
+      "vulnerableCommit": "e34c984d8d7b31345abb8e5b2fc1364c47d1d5e6",
+      "fixCommit": "1313ebbad9687bc0245e08bfd576376e57e0e5c1",
+      "files": [
+        {
+          "path": "packages/seroval/src/core/base-primitives.ts"
+        },
+        {
+          "path": "packages/seroval/src/core/context/parser.ts"
+        },
+        {
+          "path": "packages/seroval/src/core/utils/typed-array.ts"
+        }
+      ],
+      "scope": "out",
+      "scopeReason": "template-engine",
+      "note": "The seroval serializer trusted a value's own constructor name when emitting JavaScript, and the fix reads the real typed-array type instead."
+    },
+    {
+      "id": "GHSA-9wx9-5pv9-3349",
+      "package": "seroval",
+      "repo": "lxsmnsyc/seroval",
+      "cwe": "CWE-79",
+      "vulnerableCommit": "0e44d4ccd714a7f90316590f4c8db36dced8235c",
+      "fixCommit": "f94ee0b63936dae954ff50d5b5e8ea7cb9b284e6",
+      "files": [
+        {
+          "path": "packages/seroval/src/core/context/serializer.ts"
+        }
+      ],
+      "scope": "out",
+      "scopeReason": "template-engine",
+      "note": "The seroval serializer emitted a regexp literal that could put a closing script sequence into its output; the fix switches such sources to a constructor call."
+    },
+    {
+      "id": "GHSA-8rc2-428q-7ww3",
+      "package": "vue-i18n",
+      "repo": "intlify/vue-i18n",
+      "cwe": "CWE-79",
+      "vulnerableCommit": "43391d20e7c85403cb59bdb21b5d542819f54042",
+      "fixCommit": "d657ce8f4b3b6b198a8f6e3d09e2b57a5d019fb8",
+      "files": [
+        {
+          "path": "packages/core-base/src/translate.ts"
+        }
+      ],
+      "scope": "out",
+      "scopeReason": "sanitizer-logic",
+      "note": "vue-i18n's escapeParams only escaped list or named values, not both; the fix escapes each, inside the escaping helper."
+    },
+    {
+      "id": "GHSA-83rm-6c8r-g728",
+      "package": "vue-i18n",
+      "repo": "intlify/vue-i18n",
+      "cwe": "CWE-79",
+      "vulnerableCommit": "db04efef4e1ab6662a4e5f544815276d1fa81abc",
+      "fixCommit": "43391d20e7c85403cb59bdb21b5d542819f54042",
+      "files": [
+        {
+          "path": "packages/shared/src/sanitize.ts"
+        }
+      ],
+      "scope": "out",
+      "scopeReason": "sanitizer-logic",
+      "note": "The fix adds a srcdoc attribute pattern to vue-i18n's translated-HTML sanitizer; a pure sanitizer bypass fix."
+    },
+    {
+      "id": "GHSA-6hgp-fmhr-mrg4",
+      "package": "@highcharts/dashboards",
+      "repo": "highcharts/highcharts",
+      "cwe": "CWE-79",
+      "vulnerableCommit": "298aa6cca6269b7acdaf0c01a6a5f5557c032570",
+      "fixCommit": "45b74403acafbe9f621c4a343506721d9129e991",
+      "files": [
+        {
+          "path": "ts/Grid/Core/Credits.ts"
+        },
+        {
+          "path": "ts/Grid/Pro/Credits/CreditsPro.ts"
+        }
+      ],
+      "scope": "in",
+      "note": "Credits.ts and CreditsPro.ts set the href attribute to the user-supplied URL on a credits anchor; the fix filters it through an allowlist, so the sink is a javascript: URL rather than HTML."
+    },
+    {
+      "id": "GHSA-r5wg-q8fc-p6w2",
+      "package": "@highcharts/grid-lite",
+      "repo": "highcharts/highcharts",
+      "cwe": "CWE-79",
+      "vulnerableCommit": "4f2f35dfca96316494899c6c7fc286a89f0052e9",
+      "fixCommit": "1e8ded84d52191883965641b863cf0c73eb759aa",
+      "files": [
+        {
+          "path": "ts/Grid/Core/Pagination/Pagination.ts"
+        }
+      ],
+      "scope": "in",
+      "rules": [
+        "security/require-sanitized-html"
+      ],
+      "note": "Pagination.ts assigns page info text, language labels and option values to innerHTML; the fix switches them to textContent or innerText."
+    },
+    {
+      "id": "GHSA-58g7-7f52-h92c",
+      "package": "@highcharts/dashboards",
+      "repo": "highcharts/highcharts",
+      "cwe": "CWE-79",
+      "vulnerableCommit": "4f2f35dfca96316494899c6c7fc286a89f0052e9",
+      "fixCommit": "f97213bab745e40f628720c21f4e8b31ee3e768b",
+      "files": [
+        {
+          "path": "ts/Dashboards/EditMode/Fullscreen.ts"
+        }
+      ],
+      "scope": "in",
+      "rules": [
+        "security/require-sanitized-html"
+      ],
+      "note": "Fullscreen.ts assigns a language string to a button's innerHTML; the fix uses textContent."
+    },
+    {
+      "id": "GHSA-rcqf-f6h2-ccg9",
+      "package": "@highcharts/dashboards",
+      "repo": "highcharts/highcharts",
+      "cwe": "CWE-79",
+      "vulnerableCommit": "4f2f35dfca96316494899c6c7fc286a89f0052e9",
+      "fixCommit": "e65f8c21b9974dcccfa1c600a375d836acef4a7d",
+      "files": [
+        {
+          "path": "ts/Dashboards/EditMode/SidebarPopup.ts"
+        }
+      ],
+      "scope": "in",
+      "rules": [
+        "security/require-sanitized-html"
+      ],
+      "note": "SidebarPopup.ts assigns the component text to a grid element's innerHTML; the fix uses textContent."
+    },
+    {
+      "id": "GHSA-5793-x2q3-c3q7",
+      "package": "highcharts",
+      "repo": "highcharts/highcharts",
+      "cwe": "CWE-79",
+      "vulnerableCommit": "72c8a69f8b5d0dfcdff2168672a0bca5c45333b3",
+      "fixCommit": "9534773d0f41400aac0945bf8aaebc38dfc72aff",
+      "files": [
+        {
+          "path": "ts/Core/Chart/Chart.ts"
+        },
+        {
+          "path": "ts/Core/Defaults.ts"
+        }
+      ],
+      "scope": "in",
+      "note": "Chart.ts assigns the user-supplied credits href to window.location.href on click, allowing a javascript: URL; the fix filters it through the allowed-references list."
+    },
+    {
+      "id": "GHSA-35rr-xwfh-x789",
+      "package": "highcharts",
+      "repo": "highcharts/highcharts",
+      "cwe": "CWE-79",
+      "vulnerableCommit": "b340c5e02d6f20987275e299b1c096742c042903",
+      "fixCommit": "b0fafdaaee7d0cac2ecfeb0eaf37b11cd40594ef",
+      "files": [
+        {
+          "path": "samples/unit-tests/breadcrumbs/xss-style/demo.js"
+        },
+        {
+          "path": "ts/Core/Renderer/SVG/SVGElement.ts"
+        },
+        {
+          "path": "ts/Extensions/Breadcrumbs/Breadcrumbs.ts"
+        },
+        {
+          "path": "ts/Extensions/Breadcrumbs/BreadcrumbsDefaults.ts"
+        }
+      ],
+      "scope": "out",
+      "scopeReason": "template-engine",
+      "note": "Highcharts breadcrumbs style keys were applied through the SVG renderer's attribute setter, so a key like onmouseover became an event handler; the fix moves the option into the renderer's CSS theme."
+    },
+    {
+      "id": "GHSA-65hg-cf3f-5m39",
+      "package": "highcharts",
+      "repo": "highcharts/highcharts",
+      "cwe": "CWE-79",
+      "vulnerableCommit": "0f917e05320277bb7b1732972da004bee734002a",
+      "fixCommit": "abde7c576793bf50b0e0636e59b49630de6dd0d5",
+      "files": [
+        {
+          "path": "ts/Core/Renderer/HTML/AST.ts"
+        }
+      ],
+      "scope": "in",
+      "rules": [
+        "security/require-sanitized-html"
+      ],
+      "note": "AST.ts assigns untrusted markup to a live div's innerHTML when DOMParser fails; the fix retries the parser and otherwise uses a detached inert document."
+    }
+  ]
+}

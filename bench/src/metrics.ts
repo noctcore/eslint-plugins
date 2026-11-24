@@ -6,7 +6,7 @@
  * better than reporting at random, and negative for one that fires more on
  * the safe code than on the vulnerable code.
  */
-import type { CaseResult } from './score';
+import type { CaseResult, Outcome } from './score';
 
 export interface Counts {
   readonly tp: number;
@@ -24,7 +24,7 @@ export interface Score extends Counts {
   readonly j: number | null;
 }
 
-export function countOutcomes(results: readonly CaseResult[]): Counts {
+export function countOutcomes(results: readonly { readonly outcome: Outcome }[]): Counts {
   const counts = { tp: 0, fn: 0, fp: 0, tn: 0 };
   for (const result of results) {
     counts[result.outcome.toLowerCase() as keyof typeof counts]++;
@@ -37,7 +37,7 @@ function round(value: number): number {
   return Math.round(value * 10_000) / 10_000;
 }
 
-export function scoreOf(results: readonly CaseResult[]): Score {
+export function scoreOf(results: readonly { readonly outcome: Outcome }[]): Score {
   const counts = countOutcomes(results);
   const positives = counts.tp + counts.fn;
   const negatives = counts.fp + counts.tn;

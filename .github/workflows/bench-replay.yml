@@ -1,0 +1,54 @@
+name: bench replay
+
+# Replays published npm advisories (bench/advisories/manifest.json): fetches the
+# files each fix touched at the vulnerable and the fixed commit, lints them with
+# the security plugin in a container with no network and read-only mounts, and
+# compares the outcomes with bench/advisories/baseline.json. The before and
+# after tables land on the run's summary page and as the `bench-replay` artifact.
+#
+# Nightly and on demand only: it depends on fetching third-party files, so it is
+# never a pull request check. Nothing fetched is installed, imported or run.
+#
+# Every action is pinned to a full commit SHA with its version beside it.
+on:
+  schedule:
+    - cron: '17 3 * * *'
+  workflow_dispatch: {}
+
+permissions:
+  contents: read
+
+# One run at a time; a newer run waits rather than cancelling a replay part way.
+concurrency:
+  group: bench-replay-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  replay:
+    name: bench · advisory replay
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2.2.0
+        with:
+          bun-version: 1.4.2
+      - run: bun install --frozen-lockfile
+      # The replay imports the security plugin from its built dist/, as a consumer would.
+      - run: bun run build
+      # Fetch on the runner, then `docker run --network none --read-only` with the
+      # repository and the fetched files mounted read-only (bench/src/replay/cli.ts).
+      # Fails on a regression against the committed replay baseline, or when the
+      # baseline is out of date.
+      - run: bun run bench:replay --check
+      - if: always()
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: bench-replay
+          path: |
+            bench/out/replay/report.md
+            bench/out/replay/report.json
+          if-no-files-found: warn
+          retention-days: 30

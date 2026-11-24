@@ -185,6 +185,88 @@ pair `<pair>-<transform>` next to the original (a twin the transform does not ap
 the pair still has both kinds). Review the title and labels, then run `bun run bench --update`.
 `bun run bench --variant <file>~<transform>` prints a variant without writing anything.
 
+## Advisory replay
+
+A corpus we write shares our blind spots, so the bench also replays published npm vulnerabilities: the code
+at the commit before the fix must be reported, the code at the fix must not.
+
+```sh
+bun run build
+bun run bench:replay                  # fetch, lint in a container, write out/replay/report.md and report.json
+bun run bench:replay --check          # what the nightly job runs: exit 1 on a regression or a stale baseline
+bun run bench:replay --update         # rewrite advisories/baseline.json (refuses a regression without --allow-regressions)
+bun run bench:replay fetch            # only fetch the pinned files into out/replay-cache/
+bun run bench:replay collect --cwe CWE-78 --limit 10   # print candidate manifest entries
+```
+
+Docker must be running: the lint step always runs in a container.
+
+**The manifest** (`advisories/manifest.json`) stores no code. Each entry names the advisory (`GHSA-...`), the npm
+package, the GitHub `owner/repo`, the CWE, the vulnerable commit (the fix commit's parent), the fix commit, the
+touched files (optionally with `lines`, 1-based ranges in the vulnerable file that a report must start in), a
+`scope` and a one-sentence `note` on the call and the flow. An entry may name `rules`, the category rules that
+model its sink, when not all of them do (a DOM `innerHTML` write is not a server response). `excluded` lists
+candidates that were read and left out, with the reason: the fix in the listed files is not a fix of the CWE's
+flaw (a version bump, an access control change filed under SSRF), or it duplicates another entry's commit.
+
+**Selection** is mechanical, so the sample is not picked by what the rules catch: `collect` takes reviewed npm
+advisories for the CWE from the GitHub Advisory Database, newest first, that link exactly one fix commit whose
+commit has one parent and modifies 1 to 5 JavaScript or TypeScript source files (tests, docs, examples, samples,
+fixtures, built, vendored, minified and bundled files do not count). It never writes the manifest: a candidate
+has `scope: "TODO"`, which fails validation until a person has read the fix.
+
+**Scope** is set by hand from the diff, before looking at what the rules report, never by the runner and never
+from the lint result. A case is `in` scope when one of its files, at the vulnerable commit, holds the dangerous
+call itself receiving the vulnerable value, including when that value is only a library function's parameter and
+when the rule obviously misses the shape today. It is `out`, with a `scopeReason`, only when a single-file,
+syntactic rule cannot see it in principle:
+
+| `scopeReason` | Meaning |
+| --- | --- |
+| `cross-file` | the untrusted value reaches the sink through code in another file of the package |
+| `dependency-sink` | the dangerous call happens inside a dependency; the touched file only passes the value on |
+| `template-engine` | the flaw is in template compilation or output escaping, not in a call the rules model |
+| `sanitizer-logic` | the flaw is a bypass of a validator or sanitizer written in the file; there is no unguarded sink to report |
+
+Out-of-scope cases are still linted and listed, with their own columns in every table, so a rule that catches
+one anyway shows, and the tag cannot hide a result.
+
+**Safety.** Every manifest field is validated before any request or path join: `owner/repo` shape, 40-hex
+SHAs, relative `/`-separated paths with no `.` or `..` segment. `fetch` downloads one raw file per request from
+`raw.githubusercontent.com` at the pinned commit (no clone, no submodules, no hooks, no install) and stores it as
+`<path>.fetched` under `out/replay-cache/`, so no tool that picks files by extension treats it as source. The
+lint step then runs `bun bench/src/replay/cli.ts lint` in `oven/bun` (pinned by digest) with
+`--network none --read-only --cap-drop ALL --security-opt no-new-privileges`, the repository and the fetched
+files mounted read-only and one writable output directory; `lint` refuses to run outside that container. ESLint
+parses the fetched files from strings (`Linter#verify`), with their inline config comments ignored so a
+`/* eslint-disable */` in them cannot hide a report. Nothing fetched is installed, imported or run.
+
+**Scoring.** Each advisory is linted with the corpus category whose `category.json` names its CWE, with the same
+config the corpus uses (`recommended` plus the category's `overrides`). A file has more than one sink and most
+survive the fix untouched, so a report counts only when it is **near the fix**: in the innermost function that
+holds a line the fix changed on that side (a line diff of the two versions; an insertion also touches the old
+lines around it), or within three lines of one at module level, or inside `lines` when the entry gives them.
+Per advisory and rule: the vulnerable side is **detected** (TP) when a rule reports near the fix, else missed
+(FN); the fixed side is a **false alarm** (FP) when a rule still reports near the fix, else clean (TN). A guard
+added at the top of a function therefore ties the sink below it to the fix: a rule that cannot see the guard
+scores TP and FP. Per CWE, any of the category's rules counts. An advisory with a file that could not be fetched
+or parsed has no outcome and is listed as not linted. Detection, false-alarm rate and J are computed over
+in-scope advisories.
+
+**The ratchet.** `advisories/baseline.json` records every outcome (`<GHSA>#<rule>`). The nightly
+`bench replay` workflow (and a manual run) fails when an outcome got worse (TP to FN, TN to FP) or the
+baseline is out of date, and uploads `report.md` and `report.json` as the `bench-replay` artifact. A side that
+could not be fetched this run keeps its recorded value and is listed, so a flaky download is never a
+regression and never erases a result. The replay is not part of `bun run bench --check`: it needs the network
+and third-party hosts, and a pull request check must not fail because a repository moved. So a rule change that
+loses a replayed advisory surfaces in the next nightly run rather than on the PR; run `bun run bench:replay`
+locally when changing a rule's sink or source model.
+
+**Limits.** Scope tags and the `excluded` list are judgments, recorded in the manifest for review. "Near the
+fix" is a heuristic: in a file wrapped in one large function (a UMD wrapper) it widens to the whole wrapper, and
+a report on another sink in the changed function that is still unsafe after the fix is charged as a false alarm
+although it may be right.
+
 ## Adding another plugin
 
 The scorer is not security-specific. A plugin joins by having a folder and a dependency:
