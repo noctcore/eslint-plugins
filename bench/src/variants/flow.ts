@@ -143,7 +143,68 @@ function declaredBefore(p: Parsed, expression: Node, at: number): boolean {
   });
 }
 
-/** Where a statement can go before the sink, or null when the leaf sits in an expression-bodied function or a class member. */
+const LOGICAL_ASSIGNMENTS = new Set(['&&=', '||=', '??=']);
+
+/**
+ * Whether the leaf is read every time its statement runs, exactly once, with
+ * nothing in the statement able to skip it. Only then can a statement placed
+ * before it (or a callback handed it) read it instead: hoisting the read out
+ * of `req.body && fetch(req.body.url)` would run it when `req.body` is
+ * missing. Refused: the right of `&&`, `||`, `??` and their assignments, a
+ * branch of a ternary, a destructuring default, anything an optional link can
+ * skip, the branches of an `if` without braces, a `case` test, and loop tests,
+ * updates and bodies. The head of an optional chain (`req.body` in
+ * `req.body?.url`) is always read, so it stays a leaf.
+ */
+function readsUnconditionally(p: Parsed, leaf: Node, statement: Node): boolean {
+  // Whether every step so far went up through an object or callee slot, so an optional link above cannot skip the leaf.
+  let chainHead = true;
+  for (let node = leaf, parent = parentOf(p, node); node !== statement && parent !== null; node = parent, parent = parentOf(p, node)) {
+    switch (parent.type) {
+      case 'LogicalExpression':
+      case 'AssignmentPattern':
+        if (parent.right === node) return false;
+        break;
+      case 'AssignmentExpression':
+        if (parent.right === node && LOGICAL_ASSIGNMENTS.has(parent.operator)) return false;
+        break;
+      case 'ConditionalExpression':
+      case 'IfStatement':
+        if (parent.test !== node) return false;
+        break;
+      case 'ChainExpression':
+        if (!chainHead) return false;
+        break;
+      case 'ForStatement':
+        if (parent.init !== node) return false;
+        break;
+      case 'ForInStatement':
+      case 'ForOfStatement':
+        if (parent.right !== node) return false;
+        break;
+      case 'SwitchCase':
+      case 'WhileStatement':
+      case 'DoWhileStatement':
+      case 'WithStatement':
+        return false;
+      default:
+        break;
+    }
+    const headStep =
+      (parent.type === 'MemberExpression' && parent.object === node) ||
+      (parent.type === 'CallExpression' && parent.callee === node) ||
+      parent.type === 'TSNonNullExpression' ||
+      parent.type === 'ChainExpression';
+    if (!headStep) chainHead = false;
+  }
+  return true;
+}
+
+/**
+ * Where a statement can go before the sink, or null when the leaf sits in an
+ * expression-bodied function or a class member, reads a binding declared
+ * later, or is not read every time the statement runs.
+ */
 function siteOf(p: Parsed, leaf: Leaf): Site | null {
   let node: Node = leaf.node;
   let statement: Node | null = null;
@@ -157,7 +218,7 @@ function siteOf(p: Parsed, leaf: Leaf): Site | null {
   if (statement === null || !startsItsLine(p, statement)) return null;
   if (/Declaration$/u.test(statement.type) && statement.type !== 'VariableDeclaration') return null;
   const at = statement.range[0];
-  if (!declaredBefore(p, leaf.node, at)) return null;
+  if (!declaredBefore(p, leaf.node, at) || !readsUnconditionally(p, leaf.node, statement)) return null;
   return {
     statement,
     indent: indentOf(p, statement.loc.start.line),
@@ -355,6 +416,57 @@ export const promiseThen: Transform = {
     }),
 };
 
+/** The statements of the list a statement sits in, or null when its parent is not a statement list. */
+function siblingsOf(p: Parsed, statement: Node): readonly Node[] | null {
+  const parent = parentOf(p, statement);
+  if (parent === null) return null;
+  if (parent.type === 'Program' || parent.type === 'BlockStatement' || parent.type === 'StaticBlock' || parent.type === 'TSModuleBlock') return parent.body;
+  return parent.type === 'SwitchCase' ? parent.consequent : null;
+}
+
+/** Whether a statement ends in a block or a body, so the next line starts a new statement whatever its first token. */
+function endsInBlock(statement: Node): boolean {
+  switch (statement.type) {
+    case 'BlockStatement':
+    case 'EmptyStatement':
+    case 'FunctionDeclaration':
+    case 'ClassDeclaration':
+    case 'SwitchStatement':
+    case 'TryStatement':
+    case 'StaticBlock':
+    case 'TSInterfaceDeclaration':
+    case 'TSEnumDeclaration':
+    case 'TSModuleDeclaration':
+      return true;
+    case 'IfStatement':
+      return endsInBlock(statement.alternate ?? statement.consequent);
+    case 'ForStatement':
+    case 'ForInStatement':
+    case 'ForOfStatement':
+    case 'WhileStatement':
+    case 'WithStatement':
+    case 'LabeledStatement':
+      return endsInBlock(statement.body);
+    case 'ExportNamedDeclaration':
+    case 'ExportDefaultDeclaration':
+      return statement.declaration !== null && endsInBlock(statement.declaration);
+    default:
+      return false;
+  }
+}
+
+/**
+ * Whether a statement that starts with `[` or `(` would be read as part of the
+ * statement before it: that one ends without a semicolon (semicolon-free
+ * code) and not in a block, so `foo()` then `[x].forEach(...)` parses as
+ * `foo()[x].forEach(...)`.
+ */
+function continuesPrevious(p: Parsed, statement: Node): boolean {
+  const siblings = siblingsOf(p, statement) ?? [];
+  const previous = siblings[siblings.indexOf(statement) - 1];
+  return previous !== undefined && !textOf(p, previous).endsWith(';') && !endsInBlock(previous);
+}
+
 export const callback: Transform = {
   name: 'callback',
   summary: 'the sink statement runs in a callback that receives the value: `[url].forEach((relay) => { ... })`',
@@ -370,7 +482,9 @@ export const callback: Transform = {
       const replaced = replaceNode(p, leaf.node, name);
       let edits: Edit[] | null = null;
       if (statement.type === 'ExpressionStatement') {
-        edits = [insertAt(statement.range[0], head), replaced, insertAt(statement.range[1], ' });')];
+        // In semicolon-free code a leading `;` keeps the previous line from taking the array as an index.
+        const guard = continuesPrevious(p, statement) ? ';' : '';
+        edits = [insertAt(statement.range[0], `${guard}${head}`), replaced, insertAt(statement.range[1], ' });')];
       } else if (statement.type === 'VariableDeclaration' && statement.kind !== 'var' && statement.declarations.length === 1) {
         const declarator = statement.declarations[0];
         const init = declarator?.init ?? null;

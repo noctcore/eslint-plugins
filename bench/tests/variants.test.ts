@@ -16,12 +16,21 @@ import {
   MIN_VARIANTS_PER_CASE,
   TRANSFORMS,
 } from '../src/variants/generate';
-import { callback, promiseThen, viaDestructuring, viaSpread, viaVariable } from '../src/variants/flow';
+import {
+  callback,
+  promiseAwait,
+  promiseThen,
+  viaArray,
+  viaDestructuring,
+  viaObject,
+  viaSpread,
+  viaVariable,
+} from '../src/variants/flow';
 import { cjsToEsm, importAlias, importNamespace, nodePrefix } from '../src/variants/modules';
 import { renameLocals, renameParams } from '../src/variants/names';
 import { scoreVariants } from '../src/variants/score';
 import { sinkLines } from '../src/variants/sinks';
-import { stringConcat, stringJoin, stringTemplate } from '../src/variants/strings';
+import { stringConcat, stringConcatMethod, stringJoin, stringTemplate } from '../src/variants/strings';
 import type { Transform } from '../src/variants/transform';
 import { header, SHELL_CATEGORY, writeCorpus } from './helpers';
 
@@ -148,6 +157,37 @@ describe('transforms', () => {
     expect(rewrite(vuln, viaVariable)).toBeNull();
   });
 
+  it('never moves a read that the statement may skip, such as the right of && or an optional call argument', () => {
+    const hoisting = [viaVariable, viaObject, viaArray, viaDestructuring, promiseAwait, promiseThen, callback];
+    const sink = (line: string): CorpusCase =>
+      demoPair(
+        `import { exec } from 'node:child_process';\nimport { ENABLED, OPTIONS, api } from './flags';\nasync function run(req) {\n  ${line} // expect: security/no-shell-interpolation\n}\n`,
+        '',
+      ).vuln;
+    const skippable = [
+      'ENABLED && exec(req.query.cmd);',
+      'exec(OPTIONS.cmd ?? req.query.cmd);',
+      'exec((OPTIONS.cmd ||= req.query.cmd));',
+      'ENABLED ? exec(req.query.cmd) : null;',
+      'api?.run(exec(req.query.cmd));',
+      'if (ENABLED) exec(req.query.cmd);',
+      'while (ENABLED) exec(req.query.cmd);',
+      'for (;;) exec(req.query.cmd);',
+    ];
+    for (const line of skippable) {
+      for (const transform of hoisting) expect(rewrite(sink(line), transform), `${transform.name}: ${line}`).toBeNull();
+      expect(rewrite(sink(line), viaSpread) ?? '', line).not.toContain('{ ...req.query }');
+    }
+    // Always read: the left of ??, the head of an optional chain, the test of an if.
+    expect(body(rewrite(sink('const out = exec(req.query.cmd) ?? OPTIONS.cmd;'), viaVariable))).toContain(
+      '  const relay = req.query.cmd;\n  const out = exec(relay) ?? OPTIONS.cmd;',
+    );
+    expect(body(rewrite(sink('exec(req.query?.cmd);'), viaVariable))).toContain('  const relay = req.query;\n  exec(relay?.cmd);');
+    expect(body(rewrite(sink('if (exec(req.query.cmd)) api.log();'), promiseAwait))).toContain(
+      '  const relay = await Promise.resolve(req.query.cmd);\n  if (exec(relay)) api.log();',
+    );
+  });
+
   it('wraps the sink statement in a callback, and in a then callback only inside async functions', () => {
     const { vuln } = demoPair(
       "import { exec } from 'node:child_process';\nfunction run(cmd) {\n  exec(cmd); // expect: security/no-shell-interpolation\n}\n",
@@ -157,6 +197,23 @@ describe('transforms', () => {
     expect(rewrite(vuln, promiseThen)).toBeNull();
   });
 
+  it('starts the callback with a semicolon when the previous statement ends without one', () => {
+    const wrapped = (before: string): string => {
+      const { vuln } = demoPair(
+        `import { exec } from 'node:child_process'\nfunction run(cmd) {\n  ${before}\n  exec(cmd) // expect: security/no-shell-interpolation\n}\n`,
+        '',
+      );
+      return body(rewrite(vuln, callback));
+    };
+    const line = '[cmd].forEach((relay) => { exec(relay) }); // expect';
+    expect(wrapped("console.log('start')")).toContain(`  ;${line}`);
+    expect(wrapped('if (!cmd) console.log(cmd)')).toContain(`  ;${line}`);
+    expect(wrapped('const ready = true')).toContain(`  ;${line}`);
+    expect(wrapped("console.log('start');")).toContain(`\n  ${line}`);
+    expect(wrapped('if (!cmd) {\n    return\n  }')).toContain(`\n  ${line}`);
+    expect(wrapped('function noop() {}')).toContain(`\n  ${line}`);
+  });
+
   it('rewrites string building between template, concatenation and join, keeping a template\'s lines', () => {
     const { vuln } = demoPair(
       "import { exec } from 'node:child_process';\nfunction run(a, b) {\n  exec(`ls ${a}\n  --x ${b}`); // expect: security/no-shell-interpolation\n  exec('cat ' + a); // expect: security/no-shell-interpolation\n}\n",
@@ -164,7 +221,29 @@ describe('transforms', () => {
     );
     expect(body(rewrite(vuln, stringConcat))).toContain("  exec('ls ' + a + '\\n' +\n'  --x ' + b); // expect");
     expect(body(rewrite(vuln, stringTemplate))).toContain('  exec(`cat ${a}`); // expect');
-    expect(body(rewrite(vuln, stringJoin))).toContain("  exec(['cat ', a].join('')); // expect");
+    expect(rewrite(vuln, stringJoin)).toBeNull();
+  });
+
+  it('joins only strings whose every piece is provably a string, since a join prints null and undefined as empty', () => {
+    const proven = demoPair(
+      "import { exec } from 'node:child_process';\nconst BASE = '/srv/' + 'data';\nfunction run(a) {\n  exec('cat ' + String(a) + BASE + typeof a + encodeURIComponent(a) + `x${a}`); // expect: security/no-shell-interpolation\n}\n",
+      '',
+    );
+    expect(body(rewrite(proven.vuln, stringJoin))).toContain(
+      "  exec(['cat ', String(a), BASE, typeof a, encodeURIComponent(a), `x${a}`].join('')); // expect",
+    );
+    const unproven = [
+      "exec('cat ' + req.query.file); // expect: security/no-shell-interpolation",
+      'exec(`cat ${req.query.file}`); // expect: security/no-shell-interpolation',
+      "let base = '/srv';\nexec('cat ' + base); // expect: security/no-shell-interpolation",
+      "const String = (v) => v;\nexec('cat ' + String(req.query.file)); // expect: security/no-shell-interpolation",
+      "exec('cat ' + JSON.stringify(req.query.file)); // expect: security/no-shell-interpolation",
+    ];
+    for (const line of unproven) {
+      const { vuln } = demoPair(`import { exec } from 'node:child_process';\nfunction run(req) {\n${line}\n}\n`, '');
+      expect(rewrite(vuln, stringJoin), line).toBeNull();
+      expect(rewrite(vuln, stringConcatMethod), line).not.toBeNull();
+    }
   });
 
   it('leaves a `+` that may add numbers alone', () => {

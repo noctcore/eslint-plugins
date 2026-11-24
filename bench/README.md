@@ -132,10 +132,10 @@ exactly its case's labels, or the run fails. A variant's id is `<case file>~<tra
 | `string-concat` | template literals become `+` chains, line by line |
 | `string-template` | `+` chains that start as string concatenation become template literals |
 | `string-concat-method` | templates and `+` chains become `'...'.concat(...)` |
-| `string-join` | templates and `+` chains become `['...', x].join('')` |
+| `string-join` | templates and `+` chains whose every piece is provably a string become `['...', x].join('')` |
 | `promise-await` | the sink value is awaited through `Promise.resolve` first (async functions only) |
 | `promise-then` | the sink statement runs in a `.then` callback that receives the value (async functions only) |
-| `callback` | the sink statement runs in a callback that receives the value: `[url].forEach((relay) => { ... })` |
+| `callback` | the sink statement runs in a callback that receives the value: `[url].forEach((relay) => { ... })`, led by `;` after a line without one |
 | `arrow-to-function` | arrow functions that do not read `this` or `arguments` become function expressions |
 | `function-to-arrow` | anonymous function expressions that do not read `this` or `arguments` become arrows |
 | `ts-annotations` | TypeScript only: unannotated variables and parameters get annotations |
@@ -150,12 +150,18 @@ function-local variable or parameter (`req.query.next`, `dto.url`), else the fir
 receiver (`res` in `res.redirect`), module-level constants, imports and globals are never moved. A line that
 reads no local value, such as a cookie flag inside an options object, moves the options object instead. A
 rewrite that needs a new statement puts it on its own line before the statement holding the sink, so the sink
-and its label move down together and the label still states where the problem is.
+and its label move down together and the label still states where the problem is. Such a rewrite, and a
+callback that receives the value, reads it before the statement runs, so it applies only to a value the
+statement always reads: never one on the right of `&&`, `||` or `??`, in a branch of a ternary, behind an
+optional link, in a destructuring default, in the branch of an `if` without braces or in a loop.
 
 Assumptions worth knowing when reading a flip: module interop is taken as the usual one (`import x from 'm'`
-reads what `require('m')` returns); `[a, b].join('')` renders `null` and `undefined` as empty strings where a
-template prints them, which changes no verdict in this corpus; `promise-then` and `promise-await` add a
-microtask before the sink.
+reads what `require('m')` returns); `promise-then` and `promise-await` add a microtask before the sink.
+`[a, b].join('')` renders `null` and `undefined` as empty strings where a template prints them, so
+`string-join` applies only when every piece is provably a string (a literal, a template, `typeof`, `String(x)`,
+`encodeURIComponent(x)`, a `+` with a string operand, or a `const` holding one); a `string` type annotation is
+not proof, since absent request data is `undefined` whatever its type says. Templates, `+` and `.concat()`
+differ only for an object with its own `valueOf` or `Symbol.toPrimitive`, which request data never is.
 
 **Scoring.** A variant is linted and classified exactly like its case, but a safe variant is a negative only for
 the rules of its own category (other categories' rules already get every safe case). The report adds a
