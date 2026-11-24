@@ -1,7 +1,9 @@
 import type { IMetaRule, IViolation } from '@noctcore/harness';
 
 import {
+  isMap,
   isScalar,
+  isSeq,
   Lexer,
   LineCounter,
   parseDocument,
@@ -439,6 +441,22 @@ function duplicateKeys(map: YAMLMap, lineOf: (offset: number) => number): Malfor
   return found;
 }
 
+/** The `if:` keys GitHub evaluates as conditions, with their scalar values: `jobs.<id>.if` and `jobs.<id>.steps[*].if`. */
+function conditions(doc: Document.Parsed): { key: Scalar; value: Scalar }[] {
+  const jobs = doc.get('jobs', true);
+  if (!isMap(jobs)) return [];
+  return jobs.items.flatMap(({ value: job }) => {
+    if (!isMap(job)) return [];
+    const steps = job.get('steps', true);
+    const owners = [job, ...(isSeq(steps) ? steps.items.filter(isMap) : [])];
+    return owners.flatMap((owner) =>
+      owner.items.flatMap(({ key, value }) =>
+        isScalar(key) && key.value === 'if' && isScalar(value) ? [{ key, value }] : [],
+      ),
+    );
+  });
+}
+
 /** Every malformed expression and `if:` in one workflow's text. */
 function malformedIn(source: string): Malformed[] {
   let read: ReadWorkflow;
@@ -453,15 +471,13 @@ function malformedIn(source: string): Malformed[] {
   const error = doc.errors[0];
   // A broken parse leaves a partial tree, so its scalars are not what GitHub would read.
   if (error !== undefined) return [yamlProblem(error, lineOf)];
-  const found: Malformed[] = [];
+  const found: Malformed[] = conditions(doc).flatMap(({ key, value }) => {
+    const kind = ifProblem(value);
+    return kind === null ? [] : [{ line: lineOf(key.range?.[0] ?? 0), kind }];
+  });
   visit(doc, {
     Map(_, map) {
       found.push(...duplicateKeys(map, lineOf));
-    },
-    Pair(_, pair) {
-      if (!isScalar(pair.key) || pair.key.value !== 'if' || !isScalar(pair.value)) return;
-      const kind = ifProblem(pair.value);
-      if (kind !== null) found.push({ line: lineOf(pair.key.range?.[0] ?? 0), kind });
     },
     Scalar(_, node) {
       const scalar = scalarText(text, node);

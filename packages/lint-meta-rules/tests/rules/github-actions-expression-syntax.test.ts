@@ -223,11 +223,11 @@ describe('github-actions-expression-syntax', () => {
     expect(violations).toHaveLength(1);
     expect(violations[0]?.line).toBe(5);
     expect(violations[0]?.message ?? '').toContain('a non-empty string is always true');
-    expect(violationsFor("      - if: github.actor == 'y' && ${{ a }}\n")).toHaveLength(1);
+    expect(violationsFor("    steps:\n      - if: github.actor == 'y' && ${{ a }}\n")).toHaveLength(1);
   });
 
   test('reports an unquoted if: that starts with !, which YAML reads as a tag', () => {
-    const violations = violationsFor('      - if: !cancelled()\n');
+    const violations = violationsFor('    steps:\n      - if: !cancelled()\n');
 
     expect(violations).toHaveLength(1);
     expect(violations[0]?.message ?? '').toContain('YAML reads as a tag');
@@ -248,7 +248,7 @@ describe('github-actions-expression-syntax', () => {
   });
 
   test('reads a CRLF workflow like an LF one', () => {
-    expect(violationsFor('      - if: !cancelled()\r\n')).toHaveLength(1);
+    expect(violationsFor('    steps:\r\n      - if: !cancelled()\r\n')).toHaveLength(1);
     expect(violationsFor('    if: ${{ a }} && b\r\n')).toHaveLength(1);
     expect(violationsFor('    if: >-\r\n      ${{ a &&\r\n      b }}\r\n    runs-on: x\r\n')).toEqual([]);
   });
@@ -360,6 +360,15 @@ describe('github-actions-expression-syntax', () => {
     expect(violationsFor('    if: >-\n      ${{ a &&\n      b }}\n')).toEqual([]);
     expect(violationsFor("    if: |\n      github.ref == 'refs/heads/main'\n")).toEqual([]);
     expect(violationsFor("    if: >\n      github.event_name == 'push' &&\n      github.ref == 'x'\n")).toEqual([]);
+  });
+
+  test('reads if: as a condition only at job and step level, not as an action input', () => {
+    const input = ['    steps:', '      - uses: some/action@v1', '        with:', "          if: ${{ a }} && b", ''].join('\n');
+
+    expect(violationsFor(input)).toEqual([]);
+    expect(checkWorkflowExpressionSyntax('w.yml', 'on:\n  if: ${{ a }} && b\n')).toEqual([]);
+    expect(violationsFor('    if: ${{ a }} && b\n')).toHaveLength(1);
+    expect(violationsFor('    steps:\n      - run: echo\n        if: ${{ a }} && b\n')).toHaveLength(1);
   });
 
   test('accepts an if: with a core YAML tag, which YAML resolves', () => {
