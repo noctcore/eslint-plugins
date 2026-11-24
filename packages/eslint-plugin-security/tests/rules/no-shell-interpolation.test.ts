@@ -1186,6 +1186,11 @@ ruleTester.run('no-shell-interpolation reading', noShellInterpolationRule, {
     { code: 'function run(x: string) { if (!/^[a-z]+$/.test(x)) return; exec(`rm -rf /srv/"${x}"`); }', filename: TS },
     // #319: an escaped backslash leaves `>&` a redirect.
     { code: checked('exec(`echo \\\\\\\\>&${t}`);'), filename: TS },
+    // #321: an allowlist of plain words.
+    { code: checked('if (![\'ls\', \'date\'].includes(p)) return; exec(`${p} ${t}`);', 't: string, p: string'), filename: TS },
+    { code: checked('if (![\'git\', \'hg\'].includes(p)) return; exec(`/usr/bin/${p} log ${t}`);', 't: string, p: string'), filename: TS },
+    { code: checked('if (![\'--json\', \'--yaml\'].includes(f)) return; exec(`tool ${f} ${t}`);', 't: string, f: string'), filename: TS },
+    { code: checked('exec(`git -C ${t} checkout ${process.env.BRANCH}`);'), filename: TS, options: [{ trustEnvironment: true }] },
   ],
   invalid: [
     // #313: cmd.exe expands `%VAR%` in a value the regex lets through.
@@ -1220,5 +1225,15 @@ ruleTester.run('no-shell-interpolation reading', noShellInterpolationRule, {
     { code: checked('execSync(`A[a[0]]=x ${t}`);'), filename: TS, errors: error },
     { code: checked('execSync(`A="x y" ${t}`);'), filename: TS, errors: error },
     { code: checked('execSync(`A=\'x y\' B=1 ${t}`);'), filename: TS, errors: error },
+    // #321: an allowlisted value read as the shell text it holds.
+    { code: checked('if (e !== \'=\') return; execSync(`A${e}1 ${t}`);', 't: string, e: string'), filename: TS, errors: error },
+    { code: checked('if (![\'A=1\'].includes(kv)) return; execSync(`${kv} ${t}`);', 't: string, kv: string'), filename: TS, errors: error },
+    { code: checked('if (![\'sudo\', \'ls\'].includes(p)) return; exec(`${p} ${t}`);', 't: string, p: string'), filename: TS, errors: error },
+    { code: checked('if (!new Set([\'env\']).has(p)) return; exec(`${p} ${t}`);', 't: string, p: string'), filename: TS, errors: error },
+    { code: checked('if (![\';\', \'&&\'].includes(s)) return; exec(`ls ${s} ${t}`);', 't: string, s: string'), filename: TS, errors: error },
+    { code: checked('if (p !== \'sudo ls\') return; exec(`${p} ${t}`);', 't: string, p: string'), filename: TS, errors: error },
+    { code: 'function run(base: string, x: string) { if (![\'/srv/\', \'/tmp/\'].includes(base)) return; if (!/^[a-z.]+$/.test(x)) return; exec(`rm -rf ${base}${x}`); }', filename: TS, errors: error },
+    { code: checked('exec(`${process.env.TOOL} ${t}`);'), filename: TS, options: [{ trustEnvironment: true }], errors: error },
+    { code: checked('exec(`git -C ${process.env.REPO_DIR} log ${t}`);'), filename: TS, options: [{ trustEnvironment: true }], errors: error },
   ],
 });
