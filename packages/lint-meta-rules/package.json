@@ -114,7 +114,8 @@
     "@noctcore/eslint-plugin-contracts": "^1.2.0",
     "@noctcore/eslint-plugin-prisma": "^1.0.0",
     "@noctcore/harness": "^0.6.0",
-    "@typescript-eslint/utils": "^8.72.1"
+    "@typescript-eslint/utils": "^8.72.1",
+    "yaml": "^2.9.1"
   },
   "peerDependencies": {
     "@typescript-eslint/parser": "^8.0.0",
