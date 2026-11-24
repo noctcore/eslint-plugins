@@ -122,7 +122,7 @@
       "after": "FP"
     },
     "GHSA-79wm-x847-7cvg#security/no-shell-interpolation": {
-      "before": "FN",
+      "before": "TP",
       "after": "TN"
     },
     "GHSA-7mfx-xg57-53c9#security/require-path-containment": {
@@ -396,13 +396,13 @@
       "template-engine": 6
     },
     "total": {
-      "tp": 17,
-      "fn": 20,
+      "tp": 18,
+      "fn": 19,
       "fp": 9,
       "tn": 28,
-      "detection": 0.4595,
+      "detection": 0.4865,
       "falseAlarm": 0.2432,
-      "j": 0.2163,
+      "j": 0.2433,
       "advisories": 83,
       "outOfScope": 46,
       "outOfScopeDetected": 3,
@@ -439,13 +439,13 @@
         "unavailable": 0
       },
       "CWE-78": {
-        "tp": 3,
-        "fn": 6,
+        "tp": 4,
+        "fn": 5,
         "fp": 0,
         "tn": 9,
-        "detection": 0.3333,
+        "detection": 0.4444,
         "falseAlarm": 0,
-        "j": 0.3333,
+        "j": 0.4444,
         "advisories": 18,
         "outOfScope": 9,
         "outOfScopeDetected": 0,
@@ -483,13 +483,13 @@
     },
     "rules": {
       "security/no-shell-interpolation": {
-        "tp": 3,
-        "fn": 6,
+        "tp": 4,
+        "fn": 5,
         "fp": 0,
         "tn": 9,
-        "detection": 0.3333,
+        "detection": 0.4444,
         "falseAlarm": 0,
-        "j": 0.3333,
+        "j": 0.4444,
         "advisories": 18,
         "outOfScope": 9,
         "outOfScopeDetected": 0,
