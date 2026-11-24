@@ -1,6 +1,8 @@
 import type { IMetaRule, IViolation } from '@noctcore/harness';
 
-import { DEFAULT_WORKFLOW_GLOBS, globFiles, unquote } from './shared';
+import { isScalar, LineCounter, parseDocument, visit, type Scalar } from 'yaml';
+
+import { DEFAULT_WORKFLOW_GLOBS, globFiles } from './shared';
 
 /** Options for {@link createGithubActionsExpressionSyntaxRule}. */
 export interface GithubActionsExpressionSyntaxOptions {
@@ -16,22 +18,12 @@ const OPENER = '${{';
 const CLOSER = '}}';
 const OPENER_LENGTH = OPENER.length;
 
-/** Indent, an optional `- `, an optional `key:` and the rest of the line. */
-const HEADER = /^(\s*)(-\s+)?(?:(?:"[^"]+"|'[^']+'|[\w.-]+):(?:\s+|$))?(.*)$/u;
-const KEYED = /^\s*(?:-\s+)?(?:"[^"]+"|'[^']+'|[\w.-]+):(?:\s|$)/u;
-
-interface Segment {
-  /** 1-indexed line of the first line of the segment. */
-  readonly startLine: number;
-  readonly lines: readonly string[];
-}
-
 interface Malformed {
   readonly line: number;
   readonly kind: 'brace' | 'unclosed' | 'string' | 'grammar' | 'if-mixed' | 'if-tag';
   /** The expression and what is wrong with it, for `grammar`. */
   readonly detail?: string;
-  /** For `unclosed` and `string`: a YAML comment cut the rest of a line off the expression. */
+  /** For `unclosed` and `string`: a ` #` comment cut the plain scalar short, and with it the expression. */
   readonly cutByComment?: boolean;
 }
 
@@ -148,199 +140,146 @@ function grammarProblem(body: string): string | null {
   return wantOperand ? missingOperand(prev) : null;
 }
 
-const IF_KEY = /^\s*(?:-\s+)?if:[ \t]+(.+)$/u;
+/** Tags YAML itself resolves (`!!str`, `!!bool`); any other tag on an `if:` value is a typo for a negation. */
+const CORE_TAG_PREFIX = 'tag:yaml.org,2002:';
 
 /**
- * A single-line `if:` value that starts with `!` (a YAML tag), or that mixes a
- * `${{ }}` with other text (a string, so always true). Single-line values only;
- * a block or wrapped `if:` is not checked for mixing.
+ * An `if:` value that carries a non-core YAML tag (an unquoted `if: !cancelled()`),
+ * or a string value that mixes a `${{ }}` with other text (so always true).
+ * Reads the parsed value, so a quoted, block or wrapped `if:` is checked alike.
  */
-function ifProblem(line: string): Malformed['kind'] | null {
-  const raw = IF_KEY.exec(line)?.[1];
-  if (raw === undefined) return null;
-  const value = raw.trim();
-  if (value.startsWith('!')) return 'if-tag';
-  const unquoted = value.startsWith("'") ? unquote(value).replaceAll("''", "'") : unquote(value);
-  const first = unquoted.indexOf(OPENER);
+function ifProblem(node: Scalar): Malformed['kind'] | null {
+  if (node.tag !== undefined && !node.tag.startsWith(CORE_TAG_PREFIX)) return 'if-tag';
+  if (typeof node.value !== 'string') return null;
+  const value = node.value.trim();
+  const first = value.indexOf(OPENER);
   if (first === -1) return null;
   if (first !== 0) return 'if-mixed';
-  const { close } = scanExpression(unquoted, OPENER_LENGTH);
-  return close !== -1 && close + CLOSER.length !== unquoted.length ? 'if-mixed' : null;
+  const { close } = scanExpression(value, OPENER_LENGTH);
+  return close !== -1 && close + CLOSER.length !== value.length ? 'if-mixed' : null;
 }
 
-function indentOf(line: string): number {
-  return /^\s*/u.exec(line)?.[0].length ?? 0;
+/** The text GitHub reads from one scalar, with the source offset of each of its characters. */
+interface ScalarText {
+  readonly text: string;
+  readonly offsetAt: (index: number) => number;
 }
 
-/** The column a scalar's continuation lines must be indented past, or null when the line holds no scalar. */
-function scalarKeyColumn(line: string): number | null {
-  const match = HEADER.exec(line);
-  if (match === null) return null;
-  const indent = (match[1] ?? '').length;
-  const dash = match[2];
-  const rest = (match[3] ?? '').trim();
-  if (rest === '' || rest.startsWith('#')) return null;
-  const keyed = KEYED.test(line);
-  return dash !== undefined && keyed ? indent + dash.length : indent;
+/** A run of source taken as is: plain and block scalars have no escapes. */
+function sourceText(source: string, from: number, to: number): ScalarText {
+  return { text: source.slice(from, to), offsetAt: (index) => from + index };
 }
+
+const DOUBLE_ESCAPES: Readonly<Record<string, string>> = {
+  '0': '\0',
+  a: '\x07',
+  b: '\b',
+  t: '\t',
+  '\t': '\t',
+  n: '\n',
+  v: '\v',
+  f: '\f',
+  r: '\r',
+  e: '\x1B',
+  ' ': ' ',
+  '"': '"',
+  '/': '/',
+  '\\': '\\',
+  N: '\x85',
+  _: '\xA0',
+  L: '\u2028',
+  P: '\u2029',
+};
+const HEX_ESCAPE_LENGTH: Readonly<Record<string, number>> = { x: 2, u: 4, U: 8 };
+const MAX_CODE_POINT = 0x10ffff;
 
 /**
- * The key column of a `key:` line with no inline value whose first following
- * non-blank line is a plain scalar (not a key, a list item or a comment), or
- * null. The scalar then belongs to the key, as in `if:` over `${{ a &&`.
+ * A quoted scalar's body read the way GitHub gets it: `''` is one quote in a
+ * single-quoted scalar, and a double-quoted scalar's escapes are decoded (an
+ * escaped line break joins the lines). Line breaks are kept rather than
+ * folded into spaces: both are whitespace to an expression, and keeping them
+ * keeps every character on its source line.
  */
-function valueOnNextLineColumn(lines: readonly string[], index: number): number | null {
-  const line = lines[index] ?? '';
-  if (!KEYED.test(line)) return null;
-  const column = /^\s*-\s+/u.exec(line)?.[0].length ?? indentOf(line);
-  const next = lines.slice(index + 1).find((candidate) => candidate.trim() !== '');
-  if (next === undefined || indentOf(next) <= column) return null;
-  const trimmed = next.trim();
-  if (trimmed.startsWith('-') || trimmed.startsWith('#') || KEYED.test(next)) return null;
-  return column;
-}
-
-type Lexed = 'node' | 'plain' | 'after';
-
-/** Where a YAML comment starts on `line`, carrying an open quoted scalar across lines in `quote`. */
-interface CommentScan {
-  /** Offset of the `#` that starts a comment, or -1. */
-  readonly comment: number;
-  /** The quote of a quoted scalar still open at the end of the line, or null. */
-  readonly quote: "'" | '"' | null;
-  /** The line opens a block scalar (`|` or `>` where a value starts). */
-  readonly block: boolean;
-}
-
-/**
- * Find the comment on one line outside block scalars. A `#` starts a comment
- * at the start of the line or after whitespace, never inside a single- or
- * double-quoted scalar. A quote only opens a quoted scalar where a value
- * starts; in a plain scalar it is text, so `if: ${{ x == 'a #b' }}` has a
- * comment from ` #`.
- */
-function scanComment(line: string, open: "'" | '"' | null): CommentScan {
-  let quote = open;
-  let state: Lexed = quote === null ? 'node' : 'after';
-  let flow = 0;
-  for (let index = 0; index < line.length; index += 1) {
-    const char = line[index] ?? '';
-    if (quote === "'") {
-      if (char === "'") {
-        if (line[index + 1] === "'") index += 1;
-        else quote = null;
-      }
+function quotedText(source: string, from: number, to: number, double: boolean): ScalarText {
+  let text = '';
+  const offsets: number[] = [];
+  const push = (chars: string, offset: number): void => {
+    text += chars;
+    for (let step = 0; step < chars.length; step += 1) offsets.push(offset);
+  };
+  for (let index = from; index < to; index += 1) {
+    const char = source[index] ?? '';
+    if (!double) {
+      push(char, index);
+      if (char === "'" && source[index + 1] === "'") index += 1;
       continue;
     }
-    if (quote === '"') {
-      if (char === '\\') index += 1;
-      else if (char === '"') quote = null;
+    if (char !== '\\') {
+      push(char, index);
       continue;
     }
-    const spaced = index === 0 || /\s/u.test(line[index - 1] ?? '');
-    if (char === '#' && spaced) return { comment: index, quote: null, block: false };
-    if (/\s/u.test(char)) continue;
-    const ends = (line[index + 1] ?? ' ').trim() === '';
-    if (char === ':' && ends && state !== 'node') {
-      state = 'node';
-    } else if (flow > 0 && (char === ',' || char === ']' || char === '}')) {
-      if (char !== ',') flow -= 1;
-      state = char === ',' ? 'node' : 'after';
-    } else if (state !== 'node') {
-      state = state === 'after' ? 'plain' : state;
-    } else if (char === "'" || char === '"') {
-      quote = char;
-      state = 'after';
-    } else if (char === '[' || char === '{') {
-      flow += 1;
-    } else if (char === '-' && ends) {
-      // A list item: a node still comes next.
-    } else if ((char === '|' || char === '>') && flow === 0) {
-      const rest = line.slice(index + 1);
-      const header = /^[-+\d]*(?=\s|$)/u.exec(rest);
-      if (header !== null) {
-        const after = index + 1 + header[0].length;
-        const hash = line.indexOf('#', after);
-        const comment = hash !== -1 && /^\s*$/u.test(line.slice(after, hash)) && hash > after ? hash : -1;
-        return { comment, quote: null, block: true };
-      }
-      state = 'plain';
+    const escape = source[index + 1] ?? '';
+    if (escape === '\n' || escape === '\r') {
+      let next = index + 1;
+      if (source[next] === '\r') next += 1;
+      if (source[next] === '\n') next += 1;
+      while (source[next] === ' ' || source[next] === '\t') next += 1;
+      index = next - 1;
+      continue;
+    }
+    const hexLength = HEX_ESCAPE_LENGTH[escape];
+    const code = hexLength === undefined ? Number.NaN : Number.parseInt(source.slice(index + 2, index + 2 + hexLength), 16);
+    if (hexLength !== undefined && code <= MAX_CODE_POINT) {
+      push(String.fromCodePoint(code), index);
+      index += 1 + hexLength;
     } else {
-      state = 'plain';
+      push(DOUBLE_ESCAPES[escape] ?? escape, index);
+      index += 1;
     }
   }
-  return { comment: -1, quote, block: false };
+  return { text, offsetAt: (index) => offsets[index] ?? to };
 }
 
-/**
- * The workflow's lines with every YAML comment cut off: whole-line comments
- * and trailing ` #` comments, outside quoted scalars. GitHub parses the YAML
- * first and drops comments, so a `${{` in one is never read. A block scalar
- * (`|`, `>`) keeps its `#` text: that is literal text GitHub evaluates.
- */
-function withoutYamlComments(lines: readonly string[]): { lines: string[]; cut: Set<number> } {
-  const kept: string[] = [];
-  const cut = new Set<number>();
-  let quote: "'" | '"' | null = null;
-  let blockColumn: number | null = null;
-  for (const line of lines) {
-    if (blockColumn !== null && (line.trim() === '' || indentOf(line) > blockColumn)) {
-      kept.push(line);
-      continue;
+/** The text of a scalar GitHub reads, or null for a node with no source range. */
+function scalarText(source: string, node: Scalar): ScalarText | null {
+  const range = node.range;
+  if (range === null || range === undefined) return null;
+  const [start, end] = range;
+  switch (node.type) {
+    case 'BLOCK_LITERAL':
+    case 'BLOCK_FOLDED': {
+      // The range starts at the `|` or `>` header, whose line (and its comment) is not content.
+      const newline = source.indexOf('\n', start);
+      return newline === -1 || newline >= end ? null : sourceText(source, newline + 1, end);
     }
-    blockColumn = null;
-    const scan = scanComment(line, quote);
-    quote = scan.quote;
-    if (scan.comment === -1) {
-      kept.push(line);
-    } else {
-      cut.add(kept.length + 1);
-      kept.push(line.slice(0, scan.comment).trimEnd());
-    }
-    if (scan.block) blockColumn = scalarKeyColumn(line) ?? indentOf(line);
+    case 'QUOTE_SINGLE':
+      return quotedText(source, start + 1, end - 1, false);
+    case 'QUOTE_DOUBLE':
+      return quotedText(source, start + 1, end - 1, true);
+    default:
+      return sourceText(source, start, end);
   }
-  return { lines: kept, cut };
 }
 
-/**
- * Group lines into the units GitHub lexes together: a scalar's header plus the
- * blank or deeper lines that continue it (block, plain and quoted scalars),
- * and every other line on its own. Comments are already gone (see
- * {@link withoutYamlComments}), because GitHub parses the YAML first and never
- * sees them.
- */
-function scalarSegments(lines: readonly string[]): Segment[] {
-  const segments: Segment[] = [];
-  let index = 0;
-  while (index < lines.length) {
-    const line = lines[index] ?? '';
-    const column = scalarKeyColumn(line) ?? valueOnNextLineColumn(lines, index);
-    let end = index + 1;
-    if (column !== null) {
-      while (end < lines.length) {
-        const next = lines[end] ?? '';
-        if (next.trim() !== '' && indentOf(next) <= column) break;
-        end += 1;
-      }
-    }
-    segments.push({ startLine: index + 1, lines: lines.slice(index, end) });
-    index = end;
-  }
-  return segments;
+/** A comment right after a plain scalar, on the scalar's last line. */
+const COMMENT_AFTER = /[ \t]+#/uy;
+
+/** Whether a ` #` comment cut the plain scalar `node` short where it ends. */
+function endsAtComment(source: string, node: Scalar): boolean {
+  const end = node.range?.[1];
+  if (node.type !== 'PLAIN' || end === undefined) return false;
+  COMMENT_AFTER.lastIndex = end;
+  return COMMENT_AFTER.test(source);
 }
 
-/** Every malformed expression in a segment, and a malformed `if:` on its first line. */
-function malformedOpeners(segment: Segment, cut: ReadonlySet<number>): Malformed[] {
-  const joined = segment.lines.join('\n');
-  // A single-quoted YAML scalar writes a quote as `''`; GitHub sees one quote. No newline moves, so lines stay put.
-  const singleQuoted = (HEADER.exec(segment.lines[0] ?? '')?.[3] ?? '').startsWith("'");
-  const text = singleQuoted ? joined.replaceAll("''", "'") : joined;
-  const lineAt = (offset: number): number =>
-    segment.startLine + (text.slice(0, offset).match(/\n/gu)?.length ?? 0);
+/** Every malformed expression in one scalar's text. */
+function malformedOpeners(
+  { text, offsetAt }: ScalarText,
+  cutAtEnd: boolean,
+  lineOf: (offset: number) => number,
+): Malformed[] {
+  const lineAt = (index: number): number => lineOf(offsetAt(index));
   const found: Malformed[] = [];
-  const ifKind = ifProblem(segment.lines[0] ?? '');
-  if (ifKind !== null) found.push({ line: segment.startLine, kind: ifKind });
-
   let cursor = text.indexOf(OPENER);
   while (cursor !== -1) {
     const opener = cursor;
@@ -351,11 +290,10 @@ function malformedOpeners(segment: Segment, cut: ReadonlySet<number>): Malformed
     }
     const { close, next, inString } = scanExpression(text, opener + OPENER_LENGTH);
     if (close === -1) {
-      const line = lineAt(opener);
-      const last = next === -1 ? segment.startLine + segment.lines.length - 1 : lineAt(next);
-      const cutByComment = Array.from({ length: last - line + 1 }, (_, step) => line + step).some((at) => cut.has(at));
+      // Only an expression that runs to a scalar's end can have lost its rest to a comment.
+      const cutByComment = cutAtEnd && next === -1;
       // A comment cut means GitHub never sees the rest of the expression: it is unclosed, whatever string it holds.
-      found.push({ line, kind: inString && !cutByComment ? 'string' : 'unclosed', cutByComment });
+      found.push({ line: lineAt(opener), kind: inString && !cutByComment ? 'string' : 'unclosed', cutByComment });
       cursor = next;
       continue;
     }
@@ -367,6 +305,26 @@ function malformedOpeners(segment: Segment, cut: ReadonlySet<number>): Malformed
     }
     cursor = text.indexOf(OPENER, close + CLOSER.length);
   }
+  return found;
+}
+
+/** Every malformed expression and `if:` in one workflow's text. */
+function malformedIn(source: string): Malformed[] {
+  const counter = new LineCounter();
+  const lineOf = (offset: number): number => counter.linePos(offset).line;
+  const doc = parseDocument(source, { lineCounter: counter, prettyErrors: false });
+  const found: Malformed[] = [];
+  visit(doc, {
+    Pair(_, pair) {
+      if (!isScalar(pair.key) || pair.key.value !== 'if' || !isScalar(pair.value)) return;
+      const kind = ifProblem(pair.value);
+      if (kind !== null) found.push({ line: lineOf(pair.key.range?.[0] ?? 0), kind });
+    },
+    Scalar(_, node) {
+      const scalar = scalarText(source, node);
+      if (scalar !== null) found.push(...malformedOpeners(scalar, endsAtComment(source, node), lineOf));
+    },
+  });
   return found;
 }
 
@@ -395,11 +353,8 @@ function messageFor({ line, kind, detail, cutByComment }: Malformed): string {
 
 /** Check one workflow's text. */
 export function checkWorkflowExpressionSyntax(file: string, text: string): IViolation[] {
-  const { lines, cut } = withoutYamlComments(text.split(/\r?\n/u));
-  return scalarSegments(lines).flatMap((segment) =>
-    malformedOpeners(segment, cut).map(
-      (malformed): IViolation => ({ file, rule: RULE_ID, line: malformed.line, message: messageFor(malformed) }),
-    ),
+  return malformedIn(text).map(
+    (malformed): IViolation => ({ file, rule: RULE_ID, line: malformed.line, message: messageFor(malformed) }),
   );
 }
 

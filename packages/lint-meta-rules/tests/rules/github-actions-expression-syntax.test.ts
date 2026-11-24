@@ -257,6 +257,98 @@ describe('github-actions-expression-syntax', () => {
     expect(violationsFor('      - run: |\n          if: ${{ a }} && b\n')).toEqual([]);
   });
 
+  test('ends a block scalar before a trailing comment indented between its key and its content', () => {
+    const body = [
+      '    steps:',
+      '      - run: |',
+      '          echo ok',
+      '         # ${{ matrix.os == }} and ${{ }}',
+      '        shell: bash',
+      '',
+    ].join('\n');
+
+    expect(violationsFor(body)).toEqual([]);
+  });
+
+  test('reads a block scalar after an anchor or a tag as text, # lines included', () => {
+    for (const props of ['&s', '!!str']) {
+      const body = [
+        '    steps:',
+        `      - run: ${props} |`,
+        "          echo \"${{ format('{0} #', github.sha) }}\"",
+        "          # ${{ format('{0} #', github.sha) }}",
+        '        shell: bash',
+        '',
+      ].join('\n');
+
+      expect(violationsFor(body)).toEqual([]);
+    }
+  });
+
+  test("does not open a quoted scalar at a plain scalar's continuation line that starts with a quote", () => {
+    const body = ['    steps:', '      - run: echo one', "          'two", '      - run: echo ok # ${{ }}', ''].join(
+      '\n',
+    );
+
+    expect(violationsFor(body)).toEqual([]);
+  });
+
+  test('keeps a # inside a quoted item of a flow list that spans lines', () => {
+    const body = ['    branches: [a,', "      b, \"${{ format('a #b', x) }}\"]", ''].join('\n');
+
+    expect(violationsFor(body)).toEqual([]);
+  });
+
+  test('reads a # after a non-breaking space as text in a plain value, not as a comment', () => {
+    expect(violationsFor("    if: ${{ github.ref == 'a #b' }}\n")).toEqual([]);
+  });
+
+  test('gives the quote hint only when the comment cut that expression short', () => {
+    const cut = violationsFor('    if: ${{ always() # keep going }}\n');
+
+    expect(cut).toHaveLength(1);
+    expect(cut[0]?.message ?? '').toContain('` #` starts a comment');
+
+    const unrelated = violationsFor('      - run: echo ${{ a ${{ b }} # note\n');
+
+    expect(unrelated).toHaveLength(1);
+    expect(unrelated[0]?.message ?? '').toContain('has no closing');
+    expect(unrelated[0]?.message ?? '').not.toContain('` #` starts a comment');
+  });
+
+  test('reads a double-quoted value with its escapes decoded, as GitHub gets it', () => {
+    expect(violationsFor('      - run: "echo \\"${{ format(\'a\\"b\', x) }}\\""\n')).toEqual([]);
+    expect(violationsFor('      - run: "${{ a \\x3D b }}"\n')[0]?.message ?? '').toContain('uses `=`');
+    expect(violationsFor('      - run: "${{ \\x27a }}"\n')[0]?.message ?? '').toContain('a string inside');
+    expect(violationsFor('      - run: "echo $\\\n          {{ x"\n')).toHaveLength(1);
+  });
+
+  test('reports at the source line inside a quoted value that wraps over lines', () => {
+    const violations = violationsFor('      - run: "echo ok\n          ${{ a = b }}"\n');
+
+    expect(violations).toHaveLength(1);
+    expect(violations[0]?.line).toBe(6);
+  });
+
+  test('checks an if: that wraps over lines or sits in a block scalar for mixed text', () => {
+    const wrapped = violationsFor("    if: ${{ github.ref == 'x' }}\n      && github.actor == 'y'\n");
+
+    expect(wrapped).toHaveLength(1);
+    expect(wrapped[0]?.line).toBe(5);
+    expect(wrapped[0]?.message ?? '').toContain('always true');
+    expect(violationsFor('    if: >-\n      ${{ a }} &&\n      b\n')[0]?.message ?? '').toContain('always true');
+    expect(violationsFor('    if: |\n      ${{ a &&\n      b }}\n')).toEqual([]);
+  });
+
+  test('accepts an if: with a core YAML tag, which YAML resolves', () => {
+    expect(violationsFor('    if: !!str ${{ always() }}\n')).toEqual([]);
+  });
+
+  test('reads an empty or comment-only workflow without reporting', () => {
+    expect(checkWorkflowExpressionSyntax('w.yml', '')).toEqual([]);
+    expect(checkWorkflowExpressionSyntax('w.yml', '# nothing yet\n')).toEqual([]);
+  });
+
   test('honors workflowGlobs', () => {
     const custom = createGithubActionsExpressionSyntaxRule({ workflowGlobs: ['ci/*.yml'] });
     const ctx = createFakeCtx({
