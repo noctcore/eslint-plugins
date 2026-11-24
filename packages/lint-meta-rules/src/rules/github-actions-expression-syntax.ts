@@ -158,7 +158,7 @@ function ifProblem(line: string): Malformed['kind'] | null {
   if (raw === undefined) return null;
   const value = stripYamlComment(raw).trim();
   if (value.startsWith('!')) return 'if-tag';
-  const unquoted = unquote(value);
+  const unquoted = value.startsWith("'") ? unquote(value).replaceAll("''", "'") : unquote(value);
   const first = unquoted.indexOf(OPENER);
   if (first === -1) return null;
   if (first !== 0) return 'if-mixed';
@@ -226,7 +226,10 @@ function scalarSegments(lines: readonly string[]): Segment[] {
 
 /** Every malformed expression in a segment, and a malformed `if:` on its first line. */
 function malformedOpeners(segment: Segment): Malformed[] {
-  const text = segment.lines.join('\n');
+  const joined = segment.lines.join('\n');
+  // A single-quoted YAML scalar writes a quote as `''`; GitHub sees one quote. No newline moves, so lines stay put.
+  const singleQuoted = (HEADER.exec(segment.lines[0] ?? '')?.[3] ?? '').startsWith("'");
+  const text = singleQuoted ? joined.replaceAll("''", "'") : joined;
   const lineAt = (offset: number): number =>
     segment.startLine + (text.slice(0, offset).match(/\n/gu)?.length ?? 0);
   const found: Malformed[] = [];
@@ -280,7 +283,7 @@ function messageFor({ line, kind, detail }: Malformed): string {
 
 /** Check one workflow's text. */
 export function checkWorkflowExpressionSyntax(file: string, text: string): IViolation[] {
-  return scalarSegments(text.split('\n')).flatMap((segment) =>
+  return scalarSegments(text.split(/\r?\n/u)).flatMap((segment) =>
     malformedOpeners(segment).map(
       (malformed): IViolation => ({ file, rule: RULE_ID, line: malformed.line, message: messageFor(malformed) }),
     ),

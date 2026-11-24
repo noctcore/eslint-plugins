@@ -211,6 +211,19 @@ describe('github-actions-expression-syntax', () => {
     expect(violationsFor('    if: ${{ always() }}\n')).toEqual([]);
   });
 
+  test("reads '' in a single-quoted YAML value as the one quote GitHub sees", () => {
+    expect(violationsFor("    if: '${{ !cancelled() && github.ref == ''refs/heads/main'' }}'\n")).toEqual([]);
+    expect(violationsFor("      - run: 'echo ${{ github.ref == ''x'' }}'\n")).toEqual([]);
+    expect(violationsFor("    if: '${{ a = ''x'' }}'\n")[0]?.message ?? '').toContain('uses `=`');
+    expect(violationsFor("    if: '${{ a }} && b == ''x'''\n")[0]?.message ?? '').toContain('always true');
+  });
+
+  test('reads a CRLF workflow like an LF one', () => {
+    expect(violationsFor('      - if: !cancelled()\r\n')).toHaveLength(1);
+    expect(violationsFor('    if: ${{ a }} && b\r\n')).toHaveLength(1);
+    expect(violationsFor('    if: >-\r\n      ${{ a &&\r\n      b }}\r\n    runs-on: x\r\n')).toEqual([]);
+  });
+
   test('does not read an if: line inside a block scalar as a key', () => {
     expect(violationsFor('      - run: |\n          if: ${{ a }} && b\n')).toEqual([]);
   });
