@@ -37,6 +37,7 @@ import {
   type UrlTrustOptions,
   urlArgumentOf,
 } from '../url-origin';
+import { callArguments, holdsAlongFlow, importedBinding, withArguments } from '../value-flow';
 
 const RULE_NAME = 'no-user-controlled-fetch-url';
 
@@ -142,12 +143,23 @@ const SOCKET_KEYS: ReadonlyMap<string, KeyCheck> = new Map([
 /** The axios call forms: where the URL and the config sit. */
 type AxiosForm = 'call' | 'request' | 'create' | 'method' | 'body-method';
 
-function isAxiosCreate(node: TSESTree.Node): boolean {
+/** True for `axios` itself: the name, or the module's default export or namespace under another name. */
+function isAxiosName(node: TSESTree.Node, sourceCode: Readonly<TSESLint.SourceCode>): boolean {
+  if (node.type !== AST_NODE_TYPES.Identifier) {
+    return false;
+  }
+  if (node.name === 'axios') {
+    return true;
+  }
+  const binding = importedBinding(node, sourceCode);
+  return binding?.module === 'axios' && (binding.imported === 'default' || binding.imported === '*');
+}
+
+function isAxiosCreate(node: TSESTree.Node, sourceCode: Readonly<TSESLint.SourceCode>): boolean {
   return (
     node.type === AST_NODE_TYPES.MemberExpression &&
     !node.computed &&
-    node.object.type === AST_NODE_TYPES.Identifier &&
-    node.object.name === 'axios' &&
+    isAxiosName(node.object, sourceCode) &&
     node.property.type === AST_NODE_TYPES.Identifier &&
     node.property.name === 'create'
   );
@@ -167,7 +179,7 @@ function isAxiosInstance(raw: TSESTree.Node, sourceCode: Readonly<TSESLint.Sourc
     def?.type === 'Variable' &&
     def.parent.kind === 'const' &&
     init?.type === AST_NODE_TYPES.CallExpression &&
-    isAxiosCreate(init.callee)
+    isAxiosCreate(init.callee, sourceCode)
   );
 }
 
@@ -272,13 +284,13 @@ export const noUserControlledFetchUrlRule = createRule<RuleOptions, MessageIds>(
         return undefined;
       }
       const callee = node.callee;
-      if (isAxiosCreate(callee)) {
+      if (isAxiosCreate(callee, sourceCode)) {
         return 'create';
       }
       let receiverIsAxios = false;
       let method: string | undefined;
       if (callee.type === AST_NODE_TYPES.Identifier) {
-        receiverIsAxios = callee.name === 'axios' || isAxiosInstance(callee, sourceCode);
+        receiverIsAxios = isAxiosName(callee, sourceCode) || isAxiosInstance(callee, sourceCode);
       } else if (
         callee.type === AST_NODE_TYPES.MemberExpression &&
         !callee.computed &&
@@ -286,8 +298,7 @@ export const noUserControlledFetchUrlRule = createRule<RuleOptions, MessageIds>(
       ) {
         method = callee.property.name;
         receiverIsAxios =
-          (callee.object.type === AST_NODE_TYPES.Identifier && callee.object.name === 'axios') ||
-          isAxiosInstance(callee.object, sourceCode);
+          isAxiosName(callee.object, sourceCode) || isAxiosInstance(callee.object, sourceCode);
       }
       if (!receiverIsAxios) {
         return undefined;
@@ -343,7 +354,10 @@ export const noUserControlledFetchUrlRule = createRule<RuleOptions, MessageIds>(
 
     function checkUrl(node: TSESTree.Expression, sink: TSESTree.Node): void {
       const target = requestInput(node, sourceCode) ?? node;
-      if (hasFixedOrigin(target, trust, sourceCode) || isHostPinned(target, sink, sourceCode)) {
+      if (
+        hasFixedOrigin(target, trust, sourceCode) ||
+        holdsAlongFlow(target, sink, sourceCode, (value, at) => isHostPinned(value, at, sourceCode))
+      ) {
         return;
       }
       context.report({
@@ -354,7 +368,10 @@ export const noUserControlledFetchUrlRule = createRule<RuleOptions, MessageIds>(
     }
 
     function checkHost(node: TSESTree.Node, sink: TSESTree.Node): void {
-      if (isFixedValue(node, sourceCode) || isHostPinned(node, sink, sourceCode)) {
+      if (
+        isFixedValue(node, sourceCode) ||
+        holdsAlongFlow(node, sink, sourceCode, (value, at) => isHostPinned(value, at, sourceCode))
+      ) {
         return;
       }
       context.report({
@@ -443,7 +460,7 @@ export const noUserControlledFetchUrlRule = createRule<RuleOptions, MessageIds>(
     }
 
     function checkSocket(node: TSESTree.CallExpression): void {
-      const [first, second, ...rest] = node.arguments;
+      const [first, second, ...rest] = callArguments(node.arguments, sourceCode);
       if (first === undefined || first.type === AST_NODE_TYPES.SpreadElement) {
         return;
       }
@@ -473,7 +490,7 @@ export const noUserControlledFetchUrlRule = createRule<RuleOptions, MessageIds>(
     }
 
     function checkNodeClient(node: TSESTree.CallExpression): void {
-      const [first, second] = node.arguments;
+      const [first, second] = callArguments(node.arguments, sourceCode);
       if (first === undefined || first.type === AST_NODE_TYPES.SpreadElement) {
         return;
       }
@@ -489,7 +506,7 @@ export const noUserControlledFetchUrlRule = createRule<RuleOptions, MessageIds>(
     }
 
     function checkAxios(node: TSESTree.CallExpression, form: AxiosForm): void {
-      const [first, second, third] = node.arguments;
+      const [first, second, third] = callArguments(node.arguments, sourceCode);
       const urlArgument = first?.type === AST_NODE_TYPES.SpreadElement ? undefined : first;
       if (form === 'create') {
         // The config is the only argument and every instance request starts from it,
@@ -527,10 +544,11 @@ export const noUserControlledFetchUrlRule = createRule<RuleOptions, MessageIds>(
 
     function checkOther(node: TSESTree.CallExpression, spec: UrlCalleeSpec): void {
       const index = spec.urlArgument ?? 0;
-      const argument = index === 'last' ? node.arguments.at(-1) : node.arguments[index];
+      const args = callArguments(node.arguments, sourceCode);
+      const argument = index === 'last' ? args.at(-1) : args[index];
       const object = read(argument);
       if (object === undefined) {
-        const url = urlArgumentOf(node, spec);
+        const url = urlArgumentOf(withArguments(node, sourceCode), spec);
         if (url !== undefined) {
           checkUrl(url, node);
         }
@@ -577,10 +595,7 @@ export const noUserControlledFetchUrlRule = createRule<RuleOptions, MessageIds>(
           return;
         }
         const receiver = left.object.object;
-        if (
-          (receiver.type === AST_NODE_TYPES.Identifier && receiver.name === 'axios') ||
-          isAxiosInstance(receiver, sourceCode)
-        ) {
+        if (isAxiosName(receiver, sourceCode) || isAxiosInstance(receiver, sourceCode)) {
           checkUrl(node.right, node);
         }
       },
