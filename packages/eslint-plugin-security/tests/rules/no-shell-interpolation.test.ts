@@ -1181,6 +1181,8 @@ ruleTester.run('no-shell-interpolation reading', noShellInterpolationRule, {
     { code: 'function run(x: string) { if (!/^[a-z]+(\\/[a-z]+)*$/.test(x)) return; exec(`rm -rf /srv/${x}`); }', filename: TS },
     { code: 'function run(x: string) { if (!/^[a-z]+\\.txt$/.test(x)) return; exec(`rm -f /srv/${x}`); }', filename: TS },
     { code: 'function run(x: string) { if (!/^[a-z]+$/.test(x)) return; exec(`rm -rf /srv/"${x}"`); }', filename: TS },
+    // #319: an escaped backslash leaves `>&` a redirect.
+    { code: checked('exec(`echo \\\\\\\\>&${t}`);'), filename: TS },
   ],
   invalid: [
     // #313: cmd.exe expands `%VAR%` in a value the regex lets through.
@@ -1199,5 +1201,8 @@ ruleTester.run('no-shell-interpolation reading', noShellInterpolationRule, {
     { code: 'function run(x: string) { if (!/^[a-z.]+$/.test(x)) return; exec(`rm -rf \'/srv/\'${x}`); }', filename: TS, errors: error },
     { code: 'function run(a: string, b: string) { if (!/^[a-z]+\\/?$/.test(a)) return; if (!/^[a-z.]+$/.test(b)) return; exec(`rm -rf /srv/${a}${b}`); }', filename: TS, errors: error },
     { code: 'function run(x: string) { if (!/^[a-z/]+$/.test(x)) return; exec(`rm -rf /srv/${x}`); }', filename: TS, errors: error },
+    // #319: an escaped `>` before `&` leaves `&` a separator.
+    { code: checked('exec(`echo \\\\>&${t}`);'), filename: TS, errors: error },
+    { code: checked('exec(`echo \\\\\\\\\\\\>&${t}`);'), filename: TS, errors: error },
   ],
 });
