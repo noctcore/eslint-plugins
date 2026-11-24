@@ -1204,5 +1204,11 @@ ruleTester.run('no-shell-interpolation reading', noShellInterpolationRule, {
     // #319: an escaped `>` before `&` leaves `&` a separator.
     { code: checked('exec(`echo \\\\>&${t}`);'), filename: TS, errors: error },
     { code: checked('exec(`echo \\\\\\\\\\\\>&${t}`);'), filename: TS, errors: error },
+    // #320: bash subscript and quoted assignments before the program.
+    { code: checked('execSync(`A[ 0 ]=x ${t}`);'), filename: TS, errors: error },
+    { code: checked('execSync(`A["x y"]=1 ${t}`);'), filename: TS, errors: error },
+    { code: checked('execSync(`A[a[0]]=x ${t}`);'), filename: TS, errors: error },
+    { code: checked('execSync(`A="x y" ${t}`);'), filename: TS, errors: error },
+    { code: checked('execSync(`A=\'x y\' B=1 ${t}`);'), filename: TS, errors: error },
   ],
 });
