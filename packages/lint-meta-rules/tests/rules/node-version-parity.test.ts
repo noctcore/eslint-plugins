@@ -192,6 +192,54 @@ describe('node-version-parity, options', () => {
     assert.deepEqual(run({ '.github/workflows/ci.yml': matrix }), []);
   });
 
+  it('requireVersionFile reports a deleted version file', () => {
+    const tree = {
+      ...TREE,
+      '.github/workflows/ci.yml': WORKFLOW.replace('node-version-file: .nvmrc', "node-version: '20'"),
+      'apps/api/Dockerfile': 'FROM node:20-slim\n',
+    };
+    delete tree['.nvmrc'];
+    const rule = createNodeVersionParityRule({ requireVersionFile: true });
+    const found = messages(runSync(rule, createFixture(tree).context()));
+    assert.equal(found.length, 1);
+    assert.match(found[0] ?? '', /\.nvmrc is missing/u);
+    assert.deepEqual(messages(runSync(nodeVersionParityRule, createFixture(tree).context())), []);
+  });
+
+  it('reportUnresolvableFrom reports a variable FROM that does not mention node', () => {
+    const rule = createNodeVersionParityRule({ reportUnresolvableFrom: true });
+    const dockerfile = 'ARG BASE=node:20-slim\nFROM $BASE\nFROM ${BASE} AS runner\nFROM deps AS final\n';
+    const found = messages(runSync(rule, createFixture({ ...TREE, 'apps/api/Dockerfile': dockerfile }).context()));
+    assert.equal(found.length, 2);
+    assert.match(found[0] ?? '', /apps\/api\/Dockerfile:2 builds FROM \$BASE, which this rule cannot resolve/u);
+    assert.match(found[1] ?? '', /apps\/api\/Dockerfile:3 builds FROM \$\{BASE\}, which this rule cannot resolve/u);
+    assert.deepEqual(run({ 'apps/api/Dockerfile': dockerfile }), []);
+  });
+
+  it('allowExpressionNodeVersion: false reports a node-version from an expression', () => {
+    const rule = createNodeVersionParityRule({ allowExpressionNodeVersion: false });
+    const workflow = WORKFLOW.replace('node-version-file: .nvmrc', 'node-version: ${{ vars.NODE_VERSION }}');
+    const found = messages(runSync(rule, createFixture({ ...TREE, '.github/workflows/ci.yml': workflow }).context()));
+    assert.equal(found.length, 1);
+    assert.match(
+      found[0] ?? '',
+      /takes node-version from \$\{\{ vars\.NODE_VERSION \}\}, which hides the Node major\. Use node-version-file: \.nvmrc/u,
+    );
+    assert.deepEqual(run({ '.github/workflows/ci.yml': workflow }), []);
+  });
+
+  it('allowExpressionNodeVersion: false reports a node-version from a matrix', () => {
+    const rule = createNodeVersionParityRule({ allowExpressionNodeVersion: false });
+    const workflow = WORKFLOW.replace(
+      '    runs-on: ubuntu-latest',
+      '    runs-on: ubuntu-latest\n    strategy:\n      matrix:\n        node: [22, 24]',
+    ).replace('node-version-file: .nvmrc', 'node-version: ${{ matrix.node }}');
+    const found = messages(runSync(rule, createFixture({ ...TREE, '.github/workflows/ci.yml': workflow }).context()));
+    assert.equal(found.length, 1);
+    assert.match(found[0] ?? '', /takes node-version from \$\{\{ matrix\.node \}\}, which hides the Node major/u);
+    assert.deepEqual(run({ '.github/workflows/ci.yml': workflow }), []);
+  });
+
   it('compares with another version file, and can skip engines', () => {
     const rule = createNodeVersionParityRule({ versionFile: '.node-version', checkEngines: false });
     const fixture = createFixture({

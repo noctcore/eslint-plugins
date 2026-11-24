@@ -22,6 +22,12 @@ export interface NodeVersionParityOptions {
   readonly workflowGlobs?: readonly string[];
   /** Dockerfiles to scan for a node base image. Default `Dockerfile`, `Dockerfile.*`, `*.Dockerfile` at any depth. */
   readonly dockerfileGlobs?: readonly string[];
+  /** Report a missing version file instead of staying dormant. Default `false`. */
+  readonly requireVersionFile?: boolean;
+  /** Report a variable `FROM` that does not mention node (`FROM $BASE`) too. Default `false`. */
+  readonly reportUnresolvableFrom?: boolean;
+  /** Leave a setup-node `node-version` written as an expression alone. Default `true`. */
+  readonly allowExpressionNodeVersion?: boolean;
   /** Whether a violation fails CI. Default `true`. */
   readonly ciCritical?: boolean;
 }
@@ -80,6 +86,9 @@ export function createNodeVersionParityRule(options: NodeVersionParityOptions = 
   const checkEngines = options.checkEngines ?? true;
   const workflowGlobs = options.workflowGlobs ?? DEFAULT_WORKFLOW_GLOBS;
   const dockerfileGlobs = options.dockerfileGlobs ?? DEFAULT_DOCKERFILE_GLOBS;
+  const requireVersionFile = options.requireVersionFile ?? false;
+  const reportUnresolvableFrom = options.reportUnresolvableFrom ?? false;
+  const allowExpressionNodeVersion = options.allowExpressionNodeVersion ?? true;
   const ciCritical = options.ciCritical ?? true;
 
   const violation = (file: string, message: string): IViolation => ({ file, rule: RULE_ID, message });
@@ -147,7 +156,16 @@ export function createNodeVersionParityRule(options: NodeVersionParityOptions = 
               `${where} names neither node-version-file: ${versionFile} nor a node-version, so it installs whatever Node the runner image has.`,
             ),
           );
-        } else if (literal !== undefined && !literal.includes('${{')) {
+        } else if (literal?.includes('${{') === true) {
+          if (!allowExpressionNodeVersion) {
+            found.push(
+              violation(
+                rel,
+                `${where} takes node-version from ${literal}, which hides the Node major. Use node-version-file: ${versionFile}.`,
+              ),
+            );
+          }
+        } else if (literal !== undefined) {
           const version = parseNodeVersion(literal.replace(/\.x$/u, ''));
           if (version?.[0] !== major) {
             found.push(
@@ -173,8 +191,8 @@ export function createNodeVersionParityRule(options: NodeVersionParityOptions = 
         const base = /^\s*FROM\s+(?:--platform=\S+\s+)?(\S+)/iu.exec(line)?.[1];
         // `node:${NODE_VERSION}-slim` or `${NODE_IMAGE}` hides the major; a
         // variable base that does not mention node (`FROM ${BASE}`) may be any
-        // image and is left alone.
-        if (base !== undefined && base.includes('$') && /node/iu.test(base)) {
+        // image and is left alone unless reportUnresolvableFrom is set.
+        if (base !== undefined && base.includes('$') && (reportUnresolvableFrom || /node/iu.test(base))) {
           found.push(
             violation(
               rel,
@@ -216,7 +234,12 @@ export function createNodeVersionParityRule(options: NodeVersionParityOptions = 
     run(ctx) {
       const raw = ctx.read(versionFile);
       // No version file: the repo has not chosen this convention, so there is nothing to compare with.
-      if (raw === null) return [];
+      // requireVersionFile is for a repo that has chosen it, where a deleted file is the drift.
+      if (raw === null) {
+        return requireVersionFile
+          ? [violation(versionFile, `${versionFile} is missing, so no Node major is pinned and nothing can be compared with it.`)]
+          : [];
+      }
       const text = raw.trim();
       const pinned = parseNodeVersion(text);
       if (pinned === null) {
