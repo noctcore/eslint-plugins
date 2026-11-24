@@ -48,6 +48,7 @@ same file (followed transitively). `let`, parameters, imports and anything compu
 | all text | ok |
 | relative text first (`/api/`, `api/`) | ok |
 | `/` alone, then a runtime part | flag: `p = "/evil.com"` makes `//evil.com` |
+| only scheme characters (`h`, `java`), then a runtime part | flag: `p = "ttps://evil.com"` makes a full URL |
 | `scheme://host` or `//host` first, closed by `/`, `?` or `#` | ok |
 | `scheme://host` first, not closed | flag: userinfo trick |
 | a `trustedOrigins` match first, then text containing `/`, `?`, `#`, or a sanitizer / trusted path | ok |
