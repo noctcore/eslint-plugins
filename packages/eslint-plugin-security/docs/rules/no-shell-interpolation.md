@@ -176,7 +176,8 @@ A value in a word that runs as a program is proven only by a literal allowlist, 
 An in-file `const` bound to a string (`const P = 'sudo'`, `const SEP = ';'`) is read as its text.
 This is a list: a command not on it that runs its arguments is not seen. Bash's `&>file` is read
 as `&` and then a redirect, the way `/bin/sh` reads it where it is dash (Debian, Ubuntu): there
-`` `ls &>/dev/null ${x}` `` runs `x` as a program. `2>&1` and `>&2` stay redirects. Quotes do not
+`` `ls &>/dev/null ${x}` `` runs `x` as a program. `2>&1` and `>&2` stay redirects, but an escaped
+`>` before `&` does not make one (`` `echo \>&${x}` `` runs `echo` in the background, then `x`). Quotes do not
 hide separators here, so `` `echo "a; ${x}"` `` reads `x` as a program, which only reports more.
 
 ```ts bad

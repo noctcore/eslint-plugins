@@ -217,9 +217,17 @@ export function classifyShellParts(segments: readonly (string | TSESTree.Node)[]
     if (char === '&') {
       // `2>&1` and `<&0` are redirects, not a background `&`. `&>file` is
       // read as dash reads it: `&`, then a redirect before the next program
-      // (in bash this only reports more).
+      // (in bash this only reports more). An odd run of backslashes before
+      // the `>` escapes it (`echo \>&x` is `echo '>' &`, then `x`).
       const before = items[index - 1];
-      return before !== '>' && before !== '<';
+      if (before !== '>' && before !== '<') {
+        return true;
+      }
+      let slashes = 0;
+      while (items[index - 2 - slashes] === '\\') {
+        slashes += 1;
+      }
+      return slashes % 2 === 1;
     }
     return SEPARATORS.includes(char);
   };
