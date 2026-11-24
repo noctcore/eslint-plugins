@@ -289,36 +289,85 @@ function isContainer(node: TSESTree.Node): node is ContainerLiteral {
   return node.type === AST_NODE_TYPES.ObjectExpression || node.type === AST_NODE_TYPES.ArrayExpression;
 }
 
+/** Keys that change what an object is (`__proto__`) or reach code through it (`constructor`, `prototype`). */
+const SPECIAL_KEYS: ReadonlySet<string> = new Set(['__proto__', 'constructor', 'prototype']);
+
+/** Keys a coercion calls with `this` set to the object: `${o}`, `o + ''`, `+o`, `JSON.stringify(o)`. */
+const COERCION_KEYS: ReadonlySet<string> = new Set(['toString', 'valueOf', 'toJSON', 'toLocaleString']);
+
+/** True for a literal that is a primitive: a string, number, boolean, null or bigint (not a regex). */
+function isPrimitiveLiteral(node: TSESTree.Node): boolean {
+  return node.type === AST_NODE_TYPES.Literal && !('regex' in node && node.regex !== undefined);
+}
+
+/** True when an identifier names a local function or class (`function f`, `class K`, `const f = () => ...`). */
+function namesFunction(node: TSESTree.Identifier, sourceCode: SourceCode): boolean {
+  const variable = variableOf(node, sourceCode);
+  if (variable === null) {
+    return false;
+  }
+  return variable.defs.some((def) => {
+    if (def.type === 'FunctionName' || def.type === 'ClassName') {
+      return true;
+    }
+    const init = def.type === 'Variable' ? def.node.init : null;
+    const inner = init === null ? null : peelTypeWrappers(init);
+    return (
+      inner?.type === AST_NODE_TYPES.FunctionExpression ||
+      inner?.type === AST_NODE_TYPES.ArrowFunctionExpression ||
+      inner?.type === AST_NODE_TYPES.ClassExpression
+    );
+  });
+}
+
 /**
- * True when a literal holds only plain data, at any depth: properties with
- * fixed keys and plain values, elements with no hole or spread, and no
- * method, getter, setter, function or class value that could change the
- * object (`this.secure = false`) when called or read.
+ * True when a literal holds only plain data, at any depth, so no code can run
+ * with `this` set to it when it is read, spread or coerced:
+ *
+ *   - object properties with fixed keys, none of them `__proto__`,
+ *     `constructor` or `prototype`, and no method, getter or setter;
+ *   - under a key a coercion calls (`toString`, `valueOf`, `toJSON`,
+ *     `toLocaleString`), only a primitive literal;
+ *   - array elements with no hole or spread;
+ *   - leaves that are primitive literals, nested plain literals, or other
+ *     expressions that are not a function, a class, or a name bound to one.
  */
-function isPlainData(node: TSESTree.Node, depth = 0): boolean {
+function isPlainData(node: TSESTree.Node, sourceCode: SourceCode, depth = 0): boolean {
   const inner = peelTypeWrappers(node);
   if (depth > MAX_FLOW_DEPTH) {
     return false;
   }
   switch (inner.type) {
     case AST_NODE_TYPES.ObjectExpression:
-      return inner.properties.every(
-        (property) =>
-          property.type === AST_NODE_TYPES.Property &&
-          property.kind === 'init' &&
-          !property.method &&
-          propertyKey(property) !== null &&
-          property.value.type !== AST_NODE_TYPES.AssignmentPattern &&
-          isPlainData(property.value, depth + 1),
-      );
+      return inner.properties.every((property) => {
+        if (
+          property.type !== AST_NODE_TYPES.Property ||
+          property.kind !== 'init' ||
+          property.method ||
+          property.value.type === AST_NODE_TYPES.AssignmentPattern
+        ) {
+          return false;
+        }
+        const key = propertyKey(property);
+        if (key === null || SPECIAL_KEYS.has(key)) {
+          return false;
+        }
+        if (COERCION_KEYS.has(key)) {
+          return isPrimitiveLiteral(peelTypeWrappers(property.value));
+        }
+        return isPlainData(property.value, sourceCode, depth + 1);
+      });
     case AST_NODE_TYPES.ArrayExpression:
       return inner.elements.every(
-        (element) => element !== null && element.type !== AST_NODE_TYPES.SpreadElement && isPlainData(element, depth + 1),
+        (element) =>
+          element !== null && element.type !== AST_NODE_TYPES.SpreadElement && isPlainData(element, sourceCode, depth + 1),
       );
     case AST_NODE_TYPES.FunctionExpression:
     case AST_NODE_TYPES.ArrowFunctionExpression:
     case AST_NODE_TYPES.ClassExpression:
       return false;
+    case AST_NODE_TYPES.Identifier:
+      return !namesFunction(inner, sourceCode);
     default:
       return true;
   }
@@ -379,10 +428,21 @@ function readOnlyUse(
     case AST_NODE_TYPES.SpreadElement:
       return parent.parent.type === AST_NODE_TYPES.ObjectExpression;
     case AST_NODE_TYPES.TemplateLiteral:
+      // A tag receives the value itself: ``tag`${x}` `` hands `x` to user code.
+      return parent.parent.type !== AST_NODE_TYPES.TaggedTemplateExpression;
     case AST_NODE_TYPES.BinaryExpression:
-      return true;
+      // On an object, `instanceof` runs `Symbol.hasInstance` and coercing
+      // operators run `toString` / `valueOf`; identity and `in` run nothing.
+      return (
+        !container ||
+        parent.operator === '===' ||
+        parent.operator === '!==' ||
+        (parent.operator === 'in' && parent.right === current)
+      );
     case AST_NODE_TYPES.UnaryExpression:
-      return parent.operator !== 'delete';
+      return container
+        ? parent.operator === 'typeof' || parent.operator === '!' || parent.operator === 'void'
+        : parent.operator !== 'delete';
     case AST_NODE_TYPES.IfStatement:
     case AST_NODE_TYPES.WhileStatement:
     case AST_NODE_TYPES.DoWhileStatement:
@@ -448,7 +508,7 @@ function readOnlyUse(
  * `x[0]`, `x.a.b`) or a copy, each in a read-only place (`readOnlyUse`).
  */
 function referencesReadOnly(variable: Variable, literal: ContainerLiteral, sourceCode: SourceCode, depth: number): boolean {
-  if (isExported(variable) || !isPlainData(literal)) {
+  if (isExported(variable) || !isPlainData(literal, sourceCode)) {
     return false;
   }
   return variable.references.every((reference) => {
@@ -462,7 +522,7 @@ function referencesReadOnly(variable: Variable, literal: ContainerLiteral, sourc
     let end: TSESTree.Node = reference.identifier;
     for (let parent = end.parent; parent?.type === AST_NODE_TYPES.MemberExpression && parent.object === end; parent = end.parent) {
       const key = parent.optional ? null : memberKey(parent);
-      if (key === null) {
+      if (key === null || SPECIAL_KEYS.has(key)) {
         return false;
       }
       path.push(key);
@@ -531,7 +591,7 @@ export function objectLiteralOf(
     const literal = containerLiteral(step.node, sourceCode, mode);
     if (literal !== null) {
       // A getter or method can change the object while it is read or spread.
-      return literal.type === AST_NODE_TYPES.ObjectExpression && (mode === 'taint' || isPlainData(literal))
+      return literal.type === AST_NODE_TYPES.ObjectExpression && (mode === 'taint' || isPlainData(literal, sourceCode))
         ? literal
         : null;
     }
@@ -556,13 +616,17 @@ export function objectLiteralOf(
 /**
  * The value a literal holds under `key`: the last plain property of that name
  * in an object (null when a spread after it, a getter or a computed key may
- * set it instead), or the element at that index of an array with no spread or
- * hole before it.
+ * set it instead, and for `__proto__`, `constructor` and `prototype`), or the
+ * element at that index of an array with no spread or hole before it.
  */
 function literalEntry(
   literal: TSESTree.ObjectExpression | TSESTree.ArrayExpression,
   key: string,
 ): TSESTree.Node | null {
+  // `{ __proto__: p }` sets the prototype, not an own key; the others reach code.
+  if (SPECIAL_KEYS.has(key)) {
+    return null;
+  }
   if (literal.type === AST_NODE_TYPES.ArrayExpression) {
     if (!/^(0|[1-9]\d*)$/u.test(key)) {
       return null;
