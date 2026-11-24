@@ -1177,6 +1177,10 @@ ruleTester.run('no-shell-interpolation reading', noShellInterpolationRule, {
     // #314: a `+` admitted only after the first character, or glued to text before it.
     { code: 'function run(x: string) { if (!/^[a-z][\\w.+]*$/.test(x)) return; exec(`dig ${x} example.com`); }', filename: TS },
     { code: 'function run(x: string) { if (!/^[\\w+]+$/.test(x)) return; exec(`tool --tag=${x}`); }', filename: TS },
+    // #318: a path segment regex with `/` between words but no `.`, or `.` but no `/`.
+    { code: 'function run(x: string) { if (!/^[a-z]+(\\/[a-z]+)*$/.test(x)) return; exec(`rm -rf /srv/${x}`); }', filename: TS },
+    { code: 'function run(x: string) { if (!/^[a-z]+\\.txt$/.test(x)) return; exec(`rm -f /srv/${x}`); }', filename: TS },
+    { code: 'function run(x: string) { if (!/^[a-z]+$/.test(x)) return; exec(`rm -rf /srv/"${x}"`); }', filename: TS },
   ],
   invalid: [
     // #313: cmd.exe expands `%VAR%` in a value the regex lets through.
@@ -1188,5 +1192,12 @@ ruleTester.run('no-shell-interpolation reading', noShellInterpolationRule, {
     { code: 'function run(name: string) { if (!/^[\\w.+]+$/.test(name)) return; exec(`dig ${name} example.com`); }', filename: TS, errors: error },
     { code: 'function run(x: string) { if (!/^[+a-z0-9]+$/.test(x)) return; exec(`sort ${x} file`); }', filename: TS, errors: error },
     { code: 'function run(x: string) { if (!/^\\+?[a-z]+$/.test(x)) return; exec(`set ${x}`); }', filename: TS, errors: error },
+    // #318: a path segment that holds `/` and `.`, or sits in quotes or after another value.
+    { code: 'function run(x: string) { if (!/^[a-z./]+[a-z]$/.test(x)) return; exec(`rm -rf /srv/${x}`); }', filename: TS, errors: error },
+    { code: 'function run(x: string) { if (!/^[a-z]+(\\/\\.\\.)?$/.test(x)) return; exec(`rm -rf /srv/${x}`); }', filename: TS, errors: error },
+    { code: 'function run(x: string) { if (!/^[a-z.]+$/.test(x)) return; exec(`rm -rf /srv/"${x}"`); }', filename: TS, errors: error },
+    { code: 'function run(x: string) { if (!/^[a-z.]+$/.test(x)) return; exec(`rm -rf \'/srv/\'${x}`); }', filename: TS, errors: error },
+    { code: 'function run(a: string, b: string) { if (!/^[a-z]+\\/?$/.test(a)) return; if (!/^[a-z.]+$/.test(b)) return; exec(`rm -rf /srv/${a}${b}`); }', filename: TS, errors: error },
+    { code: 'function run(x: string) { if (!/^[a-z/]+$/.test(x)) return; exec(`rm -rf /srv/${x}`); }', filename: TS, errors: error },
   ],
 });
