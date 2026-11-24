@@ -116,11 +116,11 @@ the rule can read:
   every character is shell-inert: no `.`, no `\s`, no negated class, none of
   ``;&|$`()<>{}[]*?!~%'"\^``, and no whitespace or line break (a space splits the value into
   several arguments). `%` is there for Windows, where Node runs the command through `cmd.exe`,
-  which expands `%VAR%` anywhere in a word. A regex that admits `-` or `#` must pin the first
+  which expands `%VAR%` anywhere in a word. A regex that admits `-`, `+` or `#` must pin the first
   character to something else (`^[a-z][a-z0-9-]*$`): a leading `-` turns the value into an option
-  (argument injection, CWE-88) and a leading `#` comments out the rest. A value glued to text
-  before it in the same word (`` `git log --author=${author}` ``) cannot start an option, so there
-  `-` and `#` may lead.
+  (argument injection, CWE-88), so does a leading `+` for some tools (`dig +short`, `set +x`), and
+  a leading `#` comments out the rest. A value glued to text before it in the same word
+  (`` `git log --author=${author}` ``) cannot start an option, so there `-`, `+` and `#` may lead.
   Text ending in `-` or `+` does not count as inside a word: `` `tool -${x}` `` with
   `x = '-output=f'` is a long option. The regex must not accept the empty string (`^[a-z]*$`,
   `^([a-z]+)?$`): an empty value drops out of the command, so `` `rm -rf /srv/${x}` `` removes

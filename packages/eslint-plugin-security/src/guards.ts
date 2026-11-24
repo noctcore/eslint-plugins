@@ -36,15 +36,16 @@ import { type FlowStep, flowStep, flowSteps, isImmediateCallback, stringPieces, 
 
 /**
  * Characters a shell value must not start with: a leading `-` turns the value
- * into an option (argument injection, CWE-88) and a leading `#` comments out
- * the rest of the line.
+ * into an option (argument injection, CWE-88), and so does a leading `+` for
+ * some tools (`dig +short`, `set +x`, `sort +1`, `more +/pattern`); a leading
+ * `#` comments out the rest of the line.
  */
-const SHELL_LEADING = '-#';
+const SHELL_LEADING = '-+#';
 
 /**
  * Where a value lands, which decides the characters a regex may admit.
  * `shell-word` is a shell value glued to text before it in the same word
- * (`--author=${x}`), where a leading `-` or `#` is not an option or a comment.
+ * (`--author=${x}`), where a leading `-`, `+` or `#` is not an option or a comment.
  * `shell-path` is a shell word glued right after a `/` (`/srv/${x}`), a path
  * segment that must not be `.` or `..` either.
  * `command` is a shell value in the program-name position, which no regex or
@@ -69,7 +70,7 @@ const UNSAFE_CHARACTERS: Readonly<Record<GuardContext, string>> = {
   // On Windows, Node runs the command through `cmd.exe`, which expands
   // `%VAR%` anywhere in a word (and `!VAR!` with delayed expansion) before
   // it reads `&` or `|`, and takes `^` as its escape.
-  // A leading `-` or `#` is refused apart (see `SHELL_LEADING`).
+  // A leading `-`, `+` or `#` is refused apart (see `SHELL_LEADING`).
   shell: SHELL_UNSAFE,
   'shell-word': SHELL_UNSAFE,
   'shell-path': SHELL_UNSAFE,
