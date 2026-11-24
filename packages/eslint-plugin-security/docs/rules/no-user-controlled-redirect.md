@@ -72,13 +72,15 @@ A redirect is also a `Location` header plus a 3xx status. On a receiver named in
 Outside Express and Fastify, `Response.redirect(url)` (in the default `redirectCallees`) and the
 `headers` of `new Response(body, init)`, `new NextResponse(body, init)`, `Response.json(data, init)`
 and `NextResponse.json(data, init)` are read the same way, with the `headers` key quoted or
-computed too. So is `r.headers.set('Location', url)` (or `append`) on a Fetch response: `r` comes
+computed too. So is `r.headers.set('Location', url)` (or `append`) on a Fetch response, also after
+`const h = r.headers` or `const { headers } = r`: `r` comes
 from one of those constructors, from a static call on `Response` or `NextResponse`
 (`NextResponse.next()`), or is a receiver in `responseObjects`.
 
 SvelteKit's `redirect(status, location)` puts the target second. The default `redirect` sink reads
 argument 1 when argument 0 is a number literal (`redirect(302, url)`) or when `redirect` is imported
-from `@sveltejs/kit`, under any name; `redirect(url)` is read at argument 0.
+from `@sveltejs/kit`, under any name or through a namespace import (`kit.redirect(303, url)`);
+`redirect(url)` is read at argument 0.
 
 A sink after calls that return the response is still on the response:
 `res.status(302).set('Location', url)`, `reply.code(302).header('Location', url)` and
@@ -330,10 +332,9 @@ module, a receiver under another name (`const r = res`), a destructured method
 - `Object.defineProperties`, a getter's `return` nested in a block, and an index write that puts
   the name and the value in separate slots (`hd[0] = 'Location'; hd[1] = url`);
 - `r.headers.set(...)` on a response the rule cannot trace to a `Response` or `NextResponse` call
-  (a parameter, a helper's result) unless its name is in `responseObjects`, and the init of other
-  static calls (`NextResponse.next({ headers })`, `NextResponse.rewrite(url, init)`);
-- a status-first call through a namespace import (`kit.redirect(303, url)`) whose argument 0 is not
-  a number literal, unless configured with `urlArgument: 1`.
+  (a parameter, a helper's result) unless its name is in `responseObjects`, `r.headers` carried in an
+  array or object before the call (`[r.headers][0].set(...)`), and the init of other static calls
+  (`NextResponse.next({ headers })`, `NextResponse.rewrite(url, init)`).
 
 ## When not to use it
 
