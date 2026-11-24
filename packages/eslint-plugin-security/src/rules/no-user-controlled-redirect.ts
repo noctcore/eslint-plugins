@@ -41,7 +41,7 @@ import {
   urlArgumentOf,
 } from '../url-origin';
 import { squash, unwrapExpression } from '../utils';
-import { callArguments, flowStep, handlerRole, withArguments } from '../value-flow';
+import { callArguments, flowStep, handlerRole, importedBinding, withArguments } from '../value-flow';
 
 const RULE_NAME = 'no-user-controlled-redirect';
 
@@ -261,6 +261,30 @@ function matchRedirectCallee(
           spec.name === parts.method &&
           parts.receivers.includes(squash(spec.object)),
       );
+}
+
+/**
+ * The spec with the URL moved to argument 1 for a status-first call:
+ * SvelteKit's `redirect(status, location)`, known by its import from
+ * `@sveltejs/kit`, or any call whose argument 0 is a number literal (a status
+ * code is never the target). Specs that name another argument are left alone.
+ */
+function statusFirst(
+  node: TSESTree.CallExpression,
+  spec: UrlCalleeSpec,
+  sourceCode: Readonly<TSESLint.SourceCode>,
+): UrlCalleeSpec {
+  if (spec.urlArgument !== undefined && spec.urlArgument !== 0) {
+    return spec;
+  }
+  const first = node.arguments[0];
+  const inner =
+    first === undefined || first.type === AST_NODE_TYPES.SpreadElement ? undefined : unwrapExpression(first);
+  const status = inner?.type === AST_NODE_TYPES.Literal && typeof inner.value === 'number';
+  const fromKit =
+    node.callee.type === AST_NODE_TYPES.Identifier &&
+    importedBinding(node.callee, sourceCode)?.module === '@sveltejs/kit';
+  return status || fromKit ? { ...spec, urlArgument: 1 } : spec;
 }
 
 /** True when a header name is, or may be, `Location` in any case. */
@@ -664,7 +688,8 @@ export const noUserControlledRedirectRule = createRule<RuleOptions, MessageIds>(
           check(locationHeaderValues(node, responseObjects, sourceCode), HEADER_PIN);
           return;
         }
-        const urlArg = urlArgumentOf(withArguments(node, sourceCode), spec);
+        const call = withArguments(node, sourceCode);
+        const urlArg = urlArgumentOf(call, statusFirst(call, spec, sourceCode));
         const onResponse = spec.object !== undefined && responseObjects.has(squash(spec.object));
         check(urlArg === undefined ? [] : [urlArg], onResponse ? HEADER_PIN : SCRIPT_PIN);
       },
