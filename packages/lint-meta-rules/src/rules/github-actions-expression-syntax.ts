@@ -1,6 +1,16 @@
 import type { IMetaRule, IViolation } from '@noctcore/harness';
 
-import { isScalar, LineCounter, parseDocument, visit, type Document, type Scalar, type YAMLError } from 'yaml';
+import {
+  isScalar,
+  Lexer,
+  LineCounter,
+  parseDocument,
+  visit,
+  type Document,
+  type Scalar,
+  type YAMLError,
+  type YAMLMap,
+} from 'yaml';
 
 import { DEFAULT_WORKFLOW_GLOBS, globFiles } from './shared';
 
@@ -21,7 +31,7 @@ const OPENER_LENGTH = OPENER.length;
 interface Malformed {
   readonly line: number;
   readonly kind: 'brace' | 'unclosed' | 'string' | 'grammar' | 'if-mixed' | 'if-newline' | 'if-padded' | 'if-tag' | 'yaml';
-  /** The expression and what is wrong with it, for `grammar`; the parser's message, for `yaml`. */
+  /** The expression and what is wrong with it, for `grammar`; what keeps GitHub from loading the workflow, for `yaml`. */
   readonly detail?: string;
   /** For `unclosed` and `string`: a ` #` comment cut the plain scalar short, and with it the expression. */
   readonly cutByComment?: boolean;
@@ -314,42 +324,156 @@ function malformedOpeners(
   return found;
 }
 
-/** The first YAML error in a workflow, as GitHub rejects a workflow it cannot parse. */
+/** The first YAML error left after {@link readWorkflow}: GitHub cannot load such a workflow either. */
 function yamlProblem(error: YAMLError, lineOf: (offset: number) => number): Malformed {
-  const detail = error.code === 'MULTIPLE_DOCS' ? 'it holds more than one YAML document' : error.message;
-  return { line: lineOf(error.pos[0]), kind: 'yaml', detail: detail.replace(/\.$/u, '') };
+  const detail =
+    error.code === 'MULTIPLE_DOCS'
+      ? 'the workflow holds more than one YAML document'
+      : `the workflow is not valid YAML: ${error.message.replace(/\.$/u, '')}`;
+  return { line: lineOf(error.pos[0]), kind: 'yaml', detail };
+}
+
+/** Lexer tokens that are markers, not source text: document start, flow error end, scalar. */
+const FLOW_ERROR_END = '\x18';
+const MARKER_TOKENS = new Set(['\x02', FLOW_ERROR_END, '\x1F']);
+const COMPLETE_QUOTED: Readonly<Record<string, RegExp>> = {
+  '"': /^"(?:[^"\\]|\\[\s\S])*"$/u,
+  "'": /^'(?:[^']|'')*'$/u,
+};
+/** Each repair indents one line or spaces one comment, so this bounds the work on a broken file. */
+const MAX_REPAIRS = 200;
+
+/** `text` with the line at `offset` indented to at least `indent` columns, or null when it already is. */
+function indentLineTo(text: string, offset: number, indent: number): string | null {
+  const lineStart = text.lastIndexOf('\n', offset - 1) + 1;
+  const current = /^ */u.exec(text.slice(lineStart))?.[0].length ?? 0;
+  if (current >= indent) return null;
+  return `${text.slice(0, lineStart)}${' '.repeat(indent - current)}${text.slice(lineStart)}`;
+}
+
+/**
+ * `text` with the first under-indented continuation of a flow collection or a
+ * quoted scalar indented past its opener, or null when there is none. GitHub's
+ * reader only needs such a line to stay inside its `[`, `{` or quote; yaml
+ * also wants it indented past the parent key, and ends the collection or
+ * scalar early otherwise. Extra indentation there is folded away, so neither
+ * the parsed values nor any line number change. A collection or quote still
+ * open at the end of the file is left alone: it is really unclosed.
+ */
+function indentContinuation(text: string): string | null {
+  const openers: number[] = [];
+  let quoteColumn: number | null = null;
+  let offset = 0;
+  for (const token of new Lexer().lex(text)) {
+    if (MARKER_TOKENS.has(token)) {
+      if (token === FLOW_ERROR_END && openers.length > 0 && text.slice(offset).trim() !== '') {
+        return indentLineTo(text, offset, (openers[0] ?? 0) + 1);
+      }
+      if (token === FLOW_ERROR_END) openers.length = 0;
+      continue;
+    }
+    const column = offset - (text.lastIndexOf('\n', offset - 1) + 1);
+    if (quoteColumn !== null && token.trim() !== '') return indentLineTo(text, offset, quoteColumn + 1);
+    if (token === '[' || token === '{') openers.push(column);
+    else if (token === ']' || token === '}') openers.pop();
+    const pattern = COMPLETE_QUOTED[token[0] ?? ''];
+    if (pattern !== undefined && !pattern.test(token)) quoteColumn = column;
+    offset += token.length;
+  }
+  return null;
+}
+
+/** One repair of a shape GitHub's reader accepts and yaml rejects, or null when none applies. */
+function repairOnce(text: string, errors: readonly YAMLError[]): string | null {
+  const indented = indentContinuation(text);
+  if (indented !== null) return indented;
+  // `[x,#c`: GitHub's reader takes a `#` right after a flow indicator as a comment.
+  const comment = errors.find((error) => error.code === 'MISSING_CHAR' && error.message.startsWith('Comments must'));
+  if (comment === undefined) return null;
+  return `${text.slice(0, comment.pos[0])} ${text.slice(comment.pos[0])}`;
+}
+
+interface ReadWorkflow {
+  readonly doc: Document.Parsed;
+  /** The text the document was parsed from: the source, or a repair of it with the same lines. */
+  readonly text: string;
+  readonly lineOf: (offset: number) => number;
+}
+
+/**
+ * Parse a workflow as close as yaml gets to GitHub's reader: not strict (a
+ * `|# note` header, `"x"#c`, long or multi-line implicit keys are accepted),
+ * duplicate keys left to {@link duplicateKeys}, and the indentation that only
+ * yaml rejects repaired first (see {@link indentContinuation}).
+ */
+function readWorkflow(source: string): ReadWorkflow {
+  let text = source;
+  for (let round = 0; ; round += 1) {
+    const counter = new LineCounter();
+    const doc = parseDocument(text, { lineCounter: counter, prettyErrors: false, strict: false, uniqueKeys: false });
+    const repaired = doc.errors.length === 0 || round === MAX_REPAIRS ? null : repairOnce(text, doc.errors);
+    if (repaired === null) return { doc, text, lineOf: (offset) => counter.linePos(offset).line };
+    text = repaired;
+  }
+}
+
+/** Keys that repeat another key of their mapping. GitHub compares keys without case, so `On` repeats `on`. */
+function duplicateKeys(map: YAMLMap, lineOf: (offset: number) => number): Malformed[] {
+  const seen = new Map<string, Scalar>();
+  const found: Malformed[] = [];
+  for (const { key } of map.items) {
+    if (!isScalar(key)) continue;
+    const name = String(key.value).toLowerCase();
+    const first = seen.get(name);
+    if (first === undefined) {
+      seen.set(name, key);
+      continue;
+    }
+    const where = `line ${String(lineOf(first.range?.[0] ?? 0))}`;
+    found.push({
+      line: lineOf(key.range?.[0] ?? 0),
+      kind: 'yaml',
+      detail: `the key \`${String(key.value)}\` repeats \`${String(first.value)}\` from ${where}, and GitHub compares keys without case`,
+    });
+  }
+  return found;
 }
 
 /** Every malformed expression and `if:` in one workflow's text. */
 function malformedIn(source: string): Malformed[] {
-  const counter = new LineCounter();
-  const lineOf = (offset: number): number => counter.linePos(offset).line;
-  let doc: Document.Parsed;
+  let read: ReadWorkflow;
   try {
-    doc = parseDocument(source, { lineCounter: counter, prettyErrors: false });
+    read = readWorkflow(source);
   } catch (thrown) {
     // The parser collects errors rather than throwing; this is a guard, so one odd file never stops the run.
-    return [{ line: 1, kind: 'yaml', detail: thrown instanceof Error ? thrown.message : String(thrown) }];
+    const detail = `the workflow could not be read: ${thrown instanceof Error ? thrown.message : String(thrown)}`;
+    return [{ line: 1, kind: 'yaml', detail }];
   }
+  const { doc, text, lineOf } = read;
   const error = doc.errors[0];
   // A broken parse leaves a partial tree, so its scalars are not what GitHub would read.
   if (error !== undefined) return [yamlProblem(error, lineOf)];
   const found: Malformed[] = [];
   visit(doc, {
+    Map(_, map) {
+      found.push(...duplicateKeys(map, lineOf));
+    },
     Pair(_, pair) {
       if (!isScalar(pair.key) || pair.key.value !== 'if' || !isScalar(pair.value)) return;
       const kind = ifProblem(pair.value);
       if (kind !== null) found.push({ line: lineOf(pair.key.range?.[0] ?? 0), kind });
     },
     Scalar(_, node) {
-      const scalar = scalarText(source, node);
-      if (scalar !== null) found.push(...malformedOpeners(scalar, endsAtComment(source, node), lineOf));
+      const scalar = scalarText(text, node);
+      if (scalar !== null) found.push(...malformedOpeners(scalar, endsAtComment(text, node), lineOf));
     },
   });
   return found;
 }
 
 const REJECTS = 'GitHub rejects the whole workflow before any job runs, so its required checks never report.';
+
+const LOAD_FAILS = 'GitHub fails to load a workflow like this, so none of its jobs run.';
 
 const COMMENT_CUT =
   ' In a plain YAML value, ` #` starts a comment, so the rest of the line never reaches GitHub. Quote the value to keep the `#`.';
@@ -374,7 +498,7 @@ function messageFor({ line, kind, detail, cutByComment }: Malformed): string {
     case 'if-tag':
       return `${at} \`if:\` starts with \`!\`, which YAML reads as a tag, not a negation. Quote the value or wrap it in \`\${{ }}\`.`;
     case 'yaml':
-      return `${at} the workflow is not valid YAML: ${detail ?? ''}. ${REJECTS}`;
+      return `${at} ${detail ?? ''}. ${LOAD_FAILS}`;
   }
 }
 

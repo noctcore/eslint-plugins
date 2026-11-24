@@ -366,17 +366,61 @@ describe('github-actions-expression-syntax', () => {
     expect(violationsFor('    if: !!str ${{ always() }}\n')).toEqual([]);
   });
 
-  test('reports a workflow that is not valid YAML, which GitHub rejects', () => {
+  test('reports a duplicate key, comparing keys without case as GitHub does', () => {
     const duplicate = violationsFor('    runs-on: ubuntu-24.04\n    runs-on: ubuntu-22.04\n');
 
     expect(duplicate).toHaveLength(1);
     expect(duplicate[0]?.line).toBe(6);
-    expect(duplicate[0]?.message ?? '').toMatch(/^line 6: the workflow is not valid YAML: Map keys must be unique\. /u);
-    expect(duplicate[0]?.message ?? '').toContain('GitHub rejects the whole workflow');
-    expect(violationsFor('    steps: [a\n')[0]?.message ?? '').toContain('not valid YAML');
-    expect(checkWorkflowExpressionSyntax('w.yml', 'a: 1\n---\nb: 2\n')[0]?.message ?? '').toContain(
-      'more than one YAML document',
-    );
+    expect(duplicate[0]?.message ?? '').toMatch(/^line 6: the key `runs-on` repeats `runs-on` from line 5, /u);
+    expect(duplicate[0]?.message ?? '').toContain('GitHub fails to load a workflow like this');
+
+    const cased = checkWorkflowExpressionSyntax('w.yml', 'on: push\nOn: pull_request\njobs: {}\n');
+
+    expect(cased).toHaveLength(1);
+    expect(cased[0]?.line).toBe(2);
+    expect(cased[0]?.message ?? '').toContain('the key `On` repeats `on` from line 1');
+  });
+
+  test.each([
+    ['more than one document', 'a: 1\n---\nb: 2\n', 'more than one YAML document'],
+    ['an unclosed double quote', 'a: "x\n', 'Missing closing "quote'],
+    ['an unclosed single quote', "a: 'x\nb: 1\n", "Missing closing 'quote"],
+    ['an unclosed flow sequence', 'a: [b\nc: 1\n', 'end with a ]'],
+    ['an unclosed flow map', 'a: {b: 1\n', 'end with a }'],
+    ['a tab as indentation', 'a:\n\t- b\n', 'Tabs are not allowed'],
+  ])('reports a workflow with %s, which GitHub cannot load', (_, text, detail) => {
+    const violations = checkWorkflowExpressionSyntax('w.yml', text);
+
+    expect(violations).toHaveLength(1);
+    expect(violations[0]?.message ?? '').toContain(detail);
+    expect(violations[0]?.message ?? '').toContain('GitHub fails to load a workflow like this');
+  });
+
+  test.each([
+    ['a block header with a comment and no space', 'a:\n  run: |# note\n    echo ok\n'],
+    ['a quoted value followed by a comment with no space', 'key: "x"#c\n'],
+    ['a multi-line implicit key in a flow sequence', 'a: [ b\n  c: d ]\n'],
+    ['an implicit key over 1024 characters', `${'k'.repeat(1100)}: 1\n`],
+    ['a flow map continued below its parent key', 'jobs:\n  env: {A: 1,\n B: 2}\n'],
+    ['a flow sequence continued at its key column', 'on:\n  push:\n    branches: [main,\n    dev]\n'],
+    ['a closing bracket dedented past its parent', 'on:\n  push:\n    branches: [main,\n      dev\n  ]\n'],
+    ['a quoted value continued below its key', "jobs:\n  b:\n    run: 'echo\n  ok'\n"],
+    ['a comment right after a flow comma', 'a: [x,#c\n  y]\n'],
+  ])('accepts %s, which GitHub reads', (_, text) => {
+    expect(checkWorkflowExpressionSyntax('w.yml', text)).toEqual([]);
+  });
+
+  test('still checks expressions in a workflow whose flow or quoted indentation only yaml rejects', () => {
+    const quoted = checkWorkflowExpressionSyntax('w.yml', 'jobs:\n  b:\n    run: "echo\n  ${{ a = b }}"\n');
+
+    expect(quoted).toHaveLength(1);
+    expect(quoted[0]?.line).toBe(4);
+    expect(quoted[0]?.message ?? '').toContain('uses `=`');
+
+    const flow = checkWorkflowExpressionSyntax('w.yml', 'jobs:\n  env: {A: 1,\n B: "${{ }}"}\n');
+
+    expect(flow).toHaveLength(1);
+    expect(flow[0]?.line).toBe(3);
   });
 
   test('reads an empty or comment-only workflow without reporting', () => {
