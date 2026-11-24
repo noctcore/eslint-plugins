@@ -286,9 +286,10 @@ export function status() {
 
 ### What the rule does not see
 
-A value from a literal allowlist is taken as the author wrote it: an allowlist that holds a wrapper
-(`sudo`) or a separator lets the words after it be read as arguments. A wrapper command that is not
-on the list above is not seen.
+A wrapper command that is not on the list above is not seen, and neither is the `sh -c` form
+without a `shell` option (`spawn('sh', ['-c', cmd])`). A value a regex proves can still spell a
+`find` action or a package runner's subcommand (`find . -${x}` or `npm ${x} ${t}` with
+`x = 'exec'`): such a word is not read as one.
 
 A checked array changed in place after the check (`parts.push(y)`, `parts[0] = y`) cancels the
 check. Handing it to a function, or storing it in an array or object, after the check also cancels
