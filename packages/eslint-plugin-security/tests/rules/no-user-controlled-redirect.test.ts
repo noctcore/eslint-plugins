@@ -789,6 +789,10 @@ ruleTester.run('no-user-controlled-redirect: status-first redirect', noUserContr
       code: "import { redirect } from '@sveltejs/kit'; export function load() { redirect(303, '/login'); }",
       filename: TS,
     },
+    {
+      code: "import * as kit from '@sveltejs/kit'; export function load() { kit.redirect(303, '/login'); }",
+      filename: TS,
+    },
   ],
   invalid: [
     // SvelteKit `redirect(status, location)`.
@@ -803,6 +807,17 @@ ruleTester.run('no-user-controlled-redirect: status-first redirect', noUserContr
       code: "import { redirect as go } from '@sveltejs/kit'; export function load({ url }) { go(303, url.searchParams.get('next')); }",
       filename: TS,
       errors: [{ ...error, data: { url: "url.searchParams.get('next')" } }],
+    },
+    // A namespace import of SvelteKit.
+    {
+      code: "import * as kit from '@sveltejs/kit'; export function load() { kit.redirect(303, target); }",
+      filename: TS,
+      errors: [{ ...error, data: { url: 'target' } }],
+    },
+    {
+      code: "import * as kit from '@sveltejs/kit'; export function load() { kit.redirect(status, target); }",
+      filename: TS,
+      errors: [{ ...error, data: { url: 'target' } }],
     },
     // The one-argument form is still read at argument 0.
     { code: 'redirect(target);', filename: TS, errors: [error] },
@@ -822,6 +837,10 @@ ruleTester.run('no-user-controlled-redirect: headers holders', noUserControlledR
     },
     {
       code: "function GET() { const r = NextResponse.next(); r.headers.set('Content-Type', type); return r; }",
+      filename: TS,
+    },
+    {
+      code: "function GET() { const { headers } = new Response(null, { status: 302 }); headers.set('Content-Type', type); }",
       filename: TS,
     },
     // A Headers object that never reaches a response.
@@ -866,6 +885,17 @@ ruleTester.run('no-user-controlled-redirect: headers holders', noUserControlledR
     },
     {
       code: "const r = Response.json({}); r.headers.append('Location', target);",
+      filename: TS,
+      errors: [error],
+    },
+    // The headers of a Fetch response, moved off it first.
+    {
+      code: "function GET() { const r = new Response(null, { status: 302 }); const h = r.headers; h.set('Location', target); return r; }",
+      filename: TS,
+      errors: [error],
+    },
+    {
+      code: "function GET() { const r = new Response(null, { status: 302 }); const { headers } = r; headers.set('Location', target); return r; }",
       filename: TS,
       errors: [error],
     },
