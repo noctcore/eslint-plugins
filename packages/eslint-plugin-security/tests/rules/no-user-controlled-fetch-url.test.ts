@@ -162,6 +162,41 @@ ruleTester.run('no-user-controlled-fetch-url', noUserControlledFetchUrlRule, {
     { code: "export const HOST = 'api.example.com'; https.get({ hostname: HOST, path: '/x' });", filename: TS },
     // axios through an alias or a type wrapper, with a fixed URL.
     { code: "const ax = axios; ax.get('https://api.example.com/x'); (axios as any).post('/x', body);", filename: TS },
+    // Opt-in: values the person running the program picks, and their properties.
+    {
+      code: 'fetch(new URL(`r/${name}.json`, config.registryUrl));',
+      filename: TS,
+      options: [{ trustedSources: ['config.registryUrl'] }],
+    },
+    {
+      code: "fetch(`${config.registryUrl}/r/${name}.json`); fetch(config?.mirrors[0]); fetch(config['registryUrl']);",
+      filename: TS,
+      options: [{ trustedSources: ['config'] }],
+    },
+    {
+      code: 'const base = argv.registry; fetch(base); https.get({ hostname: argv.host, path: `/r/${name}` });',
+      filename: TS,
+      options: [{ trustedSources: ['argv'] }],
+    },
+    {
+      code: "axios.create({ baseURL: options.registry }); axios.get('/r', { baseURL: options.registry });",
+      filename: TS,
+      options: [{ trustedSources: ['options.registry'] }],
+    },
+    // Opt-in: a loopback host written in full, then a port that is a number.
+    {
+      code: [
+        'fetch(`http://127.0.0.1:${Number(port)}/health`);',
+        'fetch(`http://localhost:${Number(process.env.PORT)}`);',
+        'fetch(`http://[::1]:${+port}?q=${q}`);',
+        "fetch('http://LOCALHOST:' + parseInt(port, 10) + '/x/' + id);",
+        'fetch(new URL(`/api/${id}`, `https://127.0.0.1:${Number.parseInt(port)}`));',
+        'fetch(`ws://localhost:${base + 1 - 1}#x`);',
+        'const p = Number(port); fetch(`http://localhost:${p}/x`);',
+      ].join('\n'),
+      filename: TS,
+      options: [{ allowLoopback: true }],
+    },
     // A host regex over a public suffix with one more literal label pinned.
     {
       code: "async function h(src: string) { if (!/^[a-z0-9-]+\\.assets\\.github\\.io$/.test(new URL(src).hostname)) return; await fetch(src); }",
@@ -459,6 +494,63 @@ ruleTester.run('no-user-controlled-fetch-url', noUserControlledFetchUrlRule, {
       code: "const api = axios.create({ baseURL: 'https://api.example.com' }); const client = api; client.get(req.query.u);",
       filename: TS,
       errors: [error],
+    },
+    // Both opt-ins are off by default.
+    { code: 'fetch(new URL(`r/${name}.json`, config.registryUrl));', filename: TS, errors: [error] },
+    { code: 'fetch(`http://127.0.0.1:${port}/health`);', filename: TS, errors: [error] },
+    { code: 'fetch(`http://localhost:${Number(port)}/health`);', filename: TS, errors: [error] },
+    // A trusted source is an origin: what follows it must still close the authority.
+    {
+      code: 'fetch(`${config.registryUrl}${path}`);',
+      filename: TS,
+      options: [{ trustedSources: ['config.registryUrl'] }],
+      errors: [error],
+    },
+    {
+      code: 'fetch(new URL(path, config.registryUrl));',
+      filename: TS,
+      options: [{ trustedSources: ['config.registryUrl'] }],
+      errors: [error],
+    },
+    // Only the entry and properties read off it, by name or literal key.
+    {
+      code: 'fetch(config.mirrors[req.query.i]); fetch(configs.registryUrl); fetch(getConfig().registryUrl); fetch(config.registryUrl.replace(a, b));',
+      filename: TS,
+      options: [{ trustedSources: ['config'] }],
+      errors: [error, error, error, error],
+    },
+    {
+      code: 'fetch(config.registry);',
+      filename: TS,
+      options: [{ trustedSources: ['config.registryUrl'] }],
+      errors: [error],
+    },
+    {
+      code: 'https.get({ hostname: req.query.h }); https.get({ hostname: config[key] });',
+      filename: TS,
+      options: [{ trustedSources: ['config'] }],
+      errors: [host, host],
+    },
+    // A runtime value is never trusted for looking like loopback.
+    {
+      code: [
+        'fetch(target);',
+        "const t = 'http://localhost:' + port; fetch(t);",
+        'fetch(`http://${host}:${Number(port)}/x`);',
+        'fetch(`http://localhost:${port}/x`);',
+        'fetch(`http://localhost:${String(port)}/x`);',
+        'fetch(`http://localhost:${a + b}/x`);',
+        'fetch(`http://localhost:${Number(port)}${path}`);',
+        'fetch(`http://localhost:${Number(port)}@evil.com/x`);',
+        'fetch(`http://localhost.evil.com:${Number(port)}/x`);',
+        'fetch(`http://127.0.0.2:${Number(port)}/x`);',
+        'fetch(`http://localhost${Number(port)}/x`);',
+        'fetch(`http://user@localhost:${Number(port)}/x`);',
+        'function f(Number) { return fetch(`http://localhost:${Number(port)}/x`); }',
+      ].join('\n'),
+      filename: TS,
+      options: [{ allowLoopback: true }],
+      errors: Array.from({ length: 13 }, () => error),
     },
     // A host regex over a public suffix: anyone can register a name under it.
     ...['vercel\\.app', 'github\\.io', 'netlify\\.app', 'pages\\.dev', 'co\\.uk'].map((suffix) => ({
