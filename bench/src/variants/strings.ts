@@ -7,6 +7,12 @@
  * A template's lines stay lines (`'<p>\n' +` then the next piece on the next
  * line), so a multi-line HTML template keeps its shape. A `+` chain becomes
  * one line. Pieces that contain a comment are left alone, so no label moves.
+ *
+ * A join renders `null` and `undefined` differently from the other forms, so
+ * it rewrites only strings whose every piece is provably a string. Template,
+ * `+` and `.concat()` differ only for an object with its own `valueOf` or
+ * `Symbol.toPrimitive` (`+` asks for the default primitive, the others for a
+ * string), which request data never is, so those apply everywhere.
  */
 import type { TSESTree } from '@typescript-eslint/utils';
 
@@ -157,8 +163,65 @@ function targets(p: Parsed, from: ReadonlySet<'template' | 'chain'>): Node[] {
   return out;
 }
 
+function piecesOf(p: Parsed, node: Node): Piece[] {
+  return node.type === 'TemplateLiteral' ? templatePieces(node) : chainPieces(p, chainOperands(node as TSESTree.BinaryExpression));
+}
+
+/** Globals that always return a string, when the file does not bind the name itself. */
+const STRING_RESULT_GLOBALS = new Set(['String', 'encodeURIComponent', 'encodeURI']);
+
+/**
+ * Whether the expression is a string whatever it reads, judged from the code
+ * alone: a string or template literal, `typeof`, a `+` with a string operand,
+ * `String(...)` and the URI encoders, or a `const` initialised with one of
+ * those. A type annotation proves nothing here: request data typed `string`
+ * is `undefined` when the field is absent.
+ */
+function isProvablyString(p: Parsed, node: Node, depth = 0): boolean {
+  if (depth > 8) return false;
+  switch (node.type) {
+    case 'Literal':
+      return typeof node.value === 'string';
+    case 'TemplateLiteral':
+      return true;
+    case 'UnaryExpression':
+      return node.operator === 'typeof';
+    case 'BinaryExpression':
+      return node.operator === '+' && (isProvablyString(p, node.left, depth + 1) || isProvablyString(p, node.right, depth + 1));
+    case 'CallExpression': {
+      if (node.optional || node.callee.type !== 'Identifier' || !STRING_RESULT_GLOBALS.has(node.callee.name)) return false;
+      // Unresolved, or the parser's own lib declaration of the global: the file does not bind it.
+      const variable = p.references.get(node.callee)?.resolved ?? null;
+      return variable === null || (variable.scope.type === 'global' && variable.defs.length === 0);
+    }
+    case 'Identifier': {
+      const defs = p.references.get(node)?.resolved?.defs ?? [];
+      const def = defs.length === 1 ? defs[0] : undefined;
+      return (
+        def?.type === 'Variable' &&
+        def.parent.kind === 'const' &&
+        def.node.id === def.name &&
+        def.node.init !== null &&
+        isProvablyString(p, def.node.init, depth + 1)
+      );
+    }
+    default:
+      return false;
+  }
+}
+
+/**
+ * Whether the form builds the same string as the source from these pieces.
+ * A join prints `null` and `undefined` as an empty string where a template or
+ * `+` prints `null` and `undefined`, so it applies only when every piece is
+ * provably a string.
+ */
+function keepsMeaning(p: Parsed, node: Node, form: Form): boolean {
+  return form !== 'join' || piecesOf(p, node).every((piece) => piece.kind === 'text' || isProvablyString(p, piece.node));
+}
+
 function rewrite(p: Parsed, node: Node, form: Form): Edit {
-  const pieces = node.type === 'TemplateLiteral' ? templatePieces(node) : chainPieces(p, chainOperands(node as TSESTree.BinaryExpression));
+  const pieces = piecesOf(p, node);
   let text = emit(p, pieces, form);
   const parent = parentOf(p, node);
   const bare =
@@ -173,7 +236,7 @@ function rewrite(p: Parsed, node: Node, form: Form): Edit {
 }
 
 function stringTransform(name: string, form: Form, from: ReadonlySet<'template' | 'chain'>, summary: string): Transform {
-  return { name, summary, plan: ({ p }) => targets(p, from).map((node) => rewrite(p, node, form)) };
+  return { name, summary, plan: ({ p }) => targets(p, from).filter((node) => keepsMeaning(p, node, form)).map((node) => rewrite(p, node, form)) };
 }
 
 export const stringConcat = stringTransform(

@@ -132,7 +132,7 @@ exactly its case's labels, or the run fails. A variant's id is `<case file>~<tra
 | `string-concat` | template literals become `+` chains, line by line |
 | `string-template` | `+` chains that start as string concatenation become template literals |
 | `string-concat-method` | templates and `+` chains become `'...'.concat(...)` |
-| `string-join` | templates and `+` chains become `['...', x].join('')` |
+| `string-join` | templates and `+` chains whose every piece is provably a string become `['...', x].join('')` |
 | `promise-await` | the sink value is awaited through `Promise.resolve` first (async functions only) |
 | `promise-then` | the sink statement runs in a `.then` callback that receives the value (async functions only) |
 | `callback` | the sink statement runs in a callback that receives the value: `[url].forEach((relay) => { ... })` |
@@ -153,9 +153,12 @@ rewrite that needs a new statement puts it on its own line before the statement 
 and its label move down together and the label still states where the problem is.
 
 Assumptions worth knowing when reading a flip: module interop is taken as the usual one (`import x from 'm'`
-reads what `require('m')` returns); `[a, b].join('')` renders `null` and `undefined` as empty strings where a
-template prints them, which changes no verdict in this corpus; `promise-then` and `promise-await` add a
-microtask before the sink.
+reads what `require('m')` returns); `promise-then` and `promise-await` add a microtask before the sink.
+`[a, b].join('')` renders `null` and `undefined` as empty strings where a template prints them, so
+`string-join` applies only when every piece is provably a string (a literal, a template, `typeof`, `String(x)`,
+`encodeURIComponent(x)`, a `+` with a string operand, or a `const` holding one); a `string` type annotation is
+not proof, since absent request data is `undefined` whatever its type says. Templates, `+` and `.concat()`
+differ only for an object with its own `valueOf` or `Symbol.toPrimitive`, which request data never is.
 
 **Scoring.** A variant is linted and classified exactly like its case, but a safe variant is a negative only for
 the rules of its own category (other categories' rules already get every safe case). The report adds a

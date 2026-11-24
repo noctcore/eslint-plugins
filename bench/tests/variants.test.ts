@@ -21,7 +21,7 @@ import { cjsToEsm, importAlias, importNamespace, nodePrefix } from '../src/varia
 import { renameLocals, renameParams } from '../src/variants/names';
 import { scoreVariants } from '../src/variants/score';
 import { sinkLines } from '../src/variants/sinks';
-import { stringConcat, stringJoin, stringTemplate } from '../src/variants/strings';
+import { stringConcat, stringConcatMethod, stringJoin, stringTemplate } from '../src/variants/strings';
 import type { Transform } from '../src/variants/transform';
 import { header, SHELL_CATEGORY, writeCorpus } from './helpers';
 
@@ -164,7 +164,29 @@ describe('transforms', () => {
     );
     expect(body(rewrite(vuln, stringConcat))).toContain("  exec('ls ' + a + '\\n' +\n'  --x ' + b); // expect");
     expect(body(rewrite(vuln, stringTemplate))).toContain('  exec(`cat ${a}`); // expect');
-    expect(body(rewrite(vuln, stringJoin))).toContain("  exec(['cat ', a].join('')); // expect");
+    expect(rewrite(vuln, stringJoin)).toBeNull();
+  });
+
+  it('joins only strings whose every piece is provably a string, since a join prints null and undefined as empty', () => {
+    const proven = demoPair(
+      "import { exec } from 'node:child_process';\nconst BASE = '/srv/' + 'data';\nfunction run(a) {\n  exec('cat ' + String(a) + BASE + typeof a + encodeURIComponent(a) + `x${a}`); // expect: security/no-shell-interpolation\n}\n",
+      '',
+    );
+    expect(body(rewrite(proven.vuln, stringJoin))).toContain(
+      "  exec(['cat ', String(a), BASE, typeof a, encodeURIComponent(a), `x${a}`].join('')); // expect",
+    );
+    const unproven = [
+      "exec('cat ' + req.query.file); // expect: security/no-shell-interpolation",
+      'exec(`cat ${req.query.file}`); // expect: security/no-shell-interpolation',
+      "let base = '/srv';\nexec('cat ' + base); // expect: security/no-shell-interpolation",
+      "const String = (v) => v;\nexec('cat ' + String(req.query.file)); // expect: security/no-shell-interpolation",
+      "exec('cat ' + JSON.stringify(req.query.file)); // expect: security/no-shell-interpolation",
+    ];
+    for (const line of unproven) {
+      const { vuln } = demoPair(`import { exec } from 'node:child_process';\nfunction run(req) {\n${line}\n}\n`, '');
+      expect(rewrite(vuln, stringJoin), line).toBeNull();
+      expect(rewrite(vuln, stringConcatMethod), line).not.toBeNull();
+    }
   });
 
   it('leaves a `+` that may add numbers alone', () => {
