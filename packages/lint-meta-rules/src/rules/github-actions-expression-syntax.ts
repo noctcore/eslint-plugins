@@ -441,7 +441,8 @@ function duplicateKeys(map: YAMLMap, lineOf: (offset: number) => number): Malfor
   const seen = new Map<string, Scalar>();
   const found: Malformed[] = [];
   for (const { key } of map.items) {
-    if (!isScalar(key)) continue;
+    // GitHub reads a key holding `${{` as an expression and skips it in its duplicate check.
+    if (!isScalar(key) || String(key.value).includes(OPENER)) continue;
     const name = String(key.value).toLowerCase();
     const first = seen.get(name);
     if (first === undefined) {

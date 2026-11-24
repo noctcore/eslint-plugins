@@ -413,6 +413,12 @@ describe('github-actions-expression-syntax', () => {
     expect(cased[0]?.message ?? '').toContain('the key `On` repeats `on` from line 1');
   });
 
+  test('skips keys holding an expression in the duplicate check, as GitHub does', () => {
+    const body = ['    env:', '      ${{ matrix.key }}: 1', '      ${{ matrix.key }}: 2', ''].join('\n');
+
+    expect(violationsFor(body)).toEqual([]);
+  });
+
   test.each([
     ['more than one document', 'a: 1\n---\nb: 2\n', 'more than one YAML document'],
     ['an unclosed double quote', 'a: "x\n', 'Missing closing "quote'],
