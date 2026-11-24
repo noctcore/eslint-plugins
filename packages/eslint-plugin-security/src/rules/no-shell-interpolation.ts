@@ -36,8 +36,10 @@ type MessageIds = 'shellInterpolation';
  *  - `spawn` / `spawnSync` / `execFile` / `execFileSync`: same dynamic first arg,
  *    but ONLY when an options object literal passes a `shell` value other than
  *    `false` (`true`, a shell path, or a runtime value such as
- *    `process.platform === 'win32'`, which is a shell on some machines). The
- *    array-args, no-shell forms are safe and left entirely alone.
+ *    `process.platform === 'win32'`, which is a shell on some machines). With
+ *    a shell, Node joins the args array into the command, so its elements are
+ *    read as command text too. The array-args, no-shell forms are safe and
+ *    left entirely alone.
  *  - A binding made with `promisify(exec)` (or `util.promisify(cp.exec)`) is
  *    followed through scope and checked like the runner it wraps.
  *  - A runtime part the function already proved harmless is accepted (see
@@ -354,6 +356,44 @@ function argsRequestShell(args: readonly TSESTree.Node[]): boolean {
   );
 }
 
+/**
+ * The args array of `spawn` / `execFile` with a shell, as command text: Node
+ * joins `[file, ...args]` with spaces into the string the shell reads. Each
+ * element of an inline array is read in place; any other args value (a
+ * binding, a call) or a spread element is one runtime value. Null when the
+ * call passes no args array.
+ */
+function shellArgSegments(
+  args: readonly TSESTree.CallExpressionArgument[],
+  sourceCode: Readonly<TSESLint.SourceCode>,
+): { readonly node: TSESTree.Node; readonly segments: (string | TSESTree.Node)[] } | null {
+  const list = args[1];
+  if (list === undefined || list.type === AST_NODE_TYPES.SpreadElement) {
+    return list === undefined ? null : { node: list, segments: [' ', list.argument] };
+  }
+  const value = unwrapTypeWrappers(list);
+  if (
+    value.type === AST_NODE_TYPES.ObjectExpression ||
+    (value.type === AST_NODE_TYPES.Literal && value.value === null) ||
+    (value.type === AST_NODE_TYPES.Identifier && value.name === 'undefined')
+  ) {
+    return null;
+  }
+  if (value.type !== AST_NODE_TYPES.ArrayExpression) {
+    return { node: list, segments: [' ', value] };
+  }
+  const segments: (string | TSESTree.Node)[] = [];
+  for (const element of value.elements) {
+    segments.push(' ');
+    if (element?.type === AST_NODE_TYPES.SpreadElement) {
+      segments.push(element.argument);
+    } else if (element !== null) {
+      segments.push(...commandSegments(element, sourceCode));
+    }
+  }
+  return { node: list, segments };
+}
+
 /** True when `callee` is `promisify` or `<x>.promisify` (`util.promisify`). */
 function isPromisify(callee: TSESTree.Node, sourceCode: Readonly<TSESLint.SourceCode>): boolean {
   const info = resolvedCalleeInfo(callee, sourceCode);
@@ -464,7 +504,13 @@ export const noShellInterpolationRule = createRule<RuleOptions, MessageIds>({
         if (!runsShell) {
           return;
         }
-        if (!isDynamicCommandString(command, context.sourceCode)) {
+        const shellArgs = CONDITIONAL_SHELL.has(info.name)
+          ? shellArgSegments(args, context.sourceCode)
+          : null;
+        const dynamicCommand = isDynamicCommandString(command, context.sourceCode);
+        const dynamicArgs =
+          shellArgs !== null && shellArgs.segments.some((segment) => typeof segment !== 'string');
+        if (!dynamicCommand && !dynamicArgs) {
           return;
         }
         // Every runtime part already proven harmless: checked against an
@@ -485,7 +531,10 @@ export const noShellInterpolationRule = createRule<RuleOptions, MessageIds>({
           }
           return known;
         };
-        const segments = commandSegments(command, context.sourceCode);
+        const segments = [
+          ...commandSegments(command, context.sourceCode),
+          ...(shellArgs?.segments ?? []),
+        ];
         const provenSafe = commandReadings(
           segments,
           node,
@@ -500,7 +549,7 @@ export const noShellInterpolationRule = createRule<RuleOptions, MessageIds>({
           return;
         }
         context.report({
-          node: command,
+          node: dynamicCommand || shellArgs === null ? command : shellArgs.node,
           messageId: 'shellInterpolation',
           data: { callee: direct.name },
         });

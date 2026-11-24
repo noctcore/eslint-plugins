@@ -31,11 +31,16 @@ Precision is the whole point — this rule fires **only** on the genuinely dange
   expressions, or a `+` concatenation with a dynamic part.
 - **`spawn` / `spawnSync` / `execFile` / `execFileSync`**: the same dynamic first argument, but **only**
   when an options object literal passes a `shell` value other than `false`: `true`, a shell path
-  string, or any value decided at run time.
+  string, or any value decided at run time. With a shell, Node joins the program and the args
+  array with spaces into the command string, so a dynamic element of the args array is checked the
+  same way, read where it lands (`spawn('sudo', [tool], { shell: true })` runs `tool` as a
+  program). An args value that is not an inline array (a binding, a call, a spread) is reported.
 
 ```ts bad
 // shell:true re-parses the interpolated command
 spawn(`cmd ${x}`, { shell: true });
+// and the args array, joined into it
+spawn('ls', [req.query.dir], { shell: true });
 ```
 
 A shell chosen at run time is a shell on some machine. This call is an injection sink on Windows
