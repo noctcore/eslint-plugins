@@ -416,6 +416,57 @@ export const promiseThen: Transform = {
     }),
 };
 
+/** The statements of the list a statement sits in, or null when its parent is not a statement list. */
+function siblingsOf(p: Parsed, statement: Node): readonly Node[] | null {
+  const parent = parentOf(p, statement);
+  if (parent === null) return null;
+  if (parent.type === 'Program' || parent.type === 'BlockStatement' || parent.type === 'StaticBlock' || parent.type === 'TSModuleBlock') return parent.body;
+  return parent.type === 'SwitchCase' ? parent.consequent : null;
+}
+
+/** Whether a statement ends in a block or a body, so the next line starts a new statement whatever its first token. */
+function endsInBlock(statement: Node): boolean {
+  switch (statement.type) {
+    case 'BlockStatement':
+    case 'EmptyStatement':
+    case 'FunctionDeclaration':
+    case 'ClassDeclaration':
+    case 'SwitchStatement':
+    case 'TryStatement':
+    case 'StaticBlock':
+    case 'TSInterfaceDeclaration':
+    case 'TSEnumDeclaration':
+    case 'TSModuleDeclaration':
+      return true;
+    case 'IfStatement':
+      return endsInBlock(statement.alternate ?? statement.consequent);
+    case 'ForStatement':
+    case 'ForInStatement':
+    case 'ForOfStatement':
+    case 'WhileStatement':
+    case 'WithStatement':
+    case 'LabeledStatement':
+      return endsInBlock(statement.body);
+    case 'ExportNamedDeclaration':
+    case 'ExportDefaultDeclaration':
+      return statement.declaration !== null && endsInBlock(statement.declaration);
+    default:
+      return false;
+  }
+}
+
+/**
+ * Whether a statement that starts with `[` or `(` would be read as part of the
+ * statement before it: that one ends without a semicolon (semicolon-free
+ * code) and not in a block, so `foo()` then `[x].forEach(...)` parses as
+ * `foo()[x].forEach(...)`.
+ */
+function continuesPrevious(p: Parsed, statement: Node): boolean {
+  const siblings = siblingsOf(p, statement) ?? [];
+  const previous = siblings[siblings.indexOf(statement) - 1];
+  return previous !== undefined && !textOf(p, previous).endsWith(';') && !endsInBlock(previous);
+}
+
 export const callback: Transform = {
   name: 'callback',
   summary: 'the sink statement runs in a callback that receives the value: `[url].forEach((relay) => { ... })`',
@@ -431,7 +482,9 @@ export const callback: Transform = {
       const replaced = replaceNode(p, leaf.node, name);
       let edits: Edit[] | null = null;
       if (statement.type === 'ExpressionStatement') {
-        edits = [insertAt(statement.range[0], head), replaced, insertAt(statement.range[1], ' });')];
+        // In semicolon-free code a leading `;` keeps the previous line from taking the array as an index.
+        const guard = continuesPrevious(p, statement) ? ';' : '';
+        edits = [insertAt(statement.range[0], `${guard}${head}`), replaced, insertAt(statement.range[1], ' });')];
       } else if (statement.type === 'VariableDeclaration' && statement.kind !== 'var' && statement.declarations.length === 1) {
         const declarator = statement.declarations[0];
         const init = declarator?.init ?? null;

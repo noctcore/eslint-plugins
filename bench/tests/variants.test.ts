@@ -197,6 +197,23 @@ describe('transforms', () => {
     expect(rewrite(vuln, promiseThen)).toBeNull();
   });
 
+  it('starts the callback with a semicolon when the previous statement ends without one', () => {
+    const wrapped = (before: string): string => {
+      const { vuln } = demoPair(
+        `import { exec } from 'node:child_process'\nfunction run(cmd) {\n  ${before}\n  exec(cmd) // expect: security/no-shell-interpolation\n}\n`,
+        '',
+      );
+      return body(rewrite(vuln, callback));
+    };
+    const line = '[cmd].forEach((relay) => { exec(relay) }); // expect';
+    expect(wrapped("console.log('start')")).toContain(`  ;${line}`);
+    expect(wrapped('if (!cmd) console.log(cmd)')).toContain(`  ;${line}`);
+    expect(wrapped('const ready = true')).toContain(`  ;${line}`);
+    expect(wrapped("console.log('start');")).toContain(`\n  ${line}`);
+    expect(wrapped('if (!cmd) {\n    return\n  }')).toContain(`\n  ${line}`);
+    expect(wrapped('function noop() {}')).toContain(`\n  ${line}`);
+  });
+
   it('rewrites string building between template, concatenation and join, keeping a template\'s lines', () => {
     const { vuln } = demoPair(
       "import { exec } from 'node:child_process';\nfunction run(a, b) {\n  exec(`ls ${a}\n  --x ${b}`); // expect: security/no-shell-interpolation\n  exec('cat ' + a); // expect: security/no-shell-interpolation\n}\n",

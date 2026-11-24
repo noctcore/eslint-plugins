@@ -135,7 +135,7 @@ exactly its case's labels, or the run fails. A variant's id is `<case file>~<tra
 | `string-join` | templates and `+` chains whose every piece is provably a string become `['...', x].join('')` |
 | `promise-await` | the sink value is awaited through `Promise.resolve` first (async functions only) |
 | `promise-then` | the sink statement runs in a `.then` callback that receives the value (async functions only) |
-| `callback` | the sink statement runs in a callback that receives the value: `[url].forEach((relay) => { ... })` |
+| `callback` | the sink statement runs in a callback that receives the value: `[url].forEach((relay) => { ... })`, led by `;` after a line without one |
 | `arrow-to-function` | arrow functions that do not read `this` or `arguments` become function expressions |
 | `function-to-arrow` | anonymous function expressions that do not read `this` or `arguments` become arrows |
 | `ts-annotations` | TypeScript only: unannotated variables and parameters get annotations |
