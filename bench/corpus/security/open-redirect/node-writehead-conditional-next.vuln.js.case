@@ -1,0 +1,11 @@
+// @bench category=open-redirect cwe=CWE-601 framework=node pair=node-writehead-conditional-next title="writeHead picks a Location holder only when a next value was sent"
+const http = require('node:http');
+
+function handler(req, res) {
+  const url = new URL(req.url, 'http://localhost');
+  const next = url.searchParams.get('next') || '';
+  res.writeHead(next ? 302 : 200, next ? { Location: next } : { 'Content-Type': 'text/plain' }); // expect: security/no-user-controlled-redirect
+  res.end(next ? '' : 'saved');
+}
+
+http.createServer(handler).listen(3000);

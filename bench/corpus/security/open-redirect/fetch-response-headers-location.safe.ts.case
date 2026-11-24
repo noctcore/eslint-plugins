@@ -1,0 +1,16 @@
+// @bench category=open-redirect cwe=CWE-601 framework=node pair=fetch-response-headers-location title="worker only sets a same-site path as the Location of a new Response"
+// ok
+const LOCAL = /^\/(?!\/|\\)[!-~]*$/;
+
+export default {
+  async fetch(request: Request): Promise<Response> {
+    const url = new URL(request.url);
+    const next = url.searchParams.get('next') ?? '/';
+    const ok = LOCAL.test(next);
+    const target = ok ? next : '/';
+    const response = new Response(null, { status: 302 });
+    response.headers.set('Location', target);
+    response.headers.set('Cache-Control', 'no-store');
+    return response;
+  },
+};
