@@ -779,3 +779,32 @@ ruleTester.run('no-user-controlled-redirect: scheme-shaped prefixes', noUserCont
     },
   ],
 });
+
+// SvelteKit `redirect(status, location)` reads the location, not the status.
+ruleTester.run('no-user-controlled-redirect: status-first redirect', noUserControlledRedirectRule, {
+  valid: [
+    // Status first, then a fixed path.
+    { code: "redirect(302, '/home');", filename: TS },
+    {
+      code: "import { redirect } from '@sveltejs/kit'; export function load() { redirect(303, '/login'); }",
+      filename: TS,
+    },
+  ],
+  invalid: [
+    // SvelteKit `redirect(status, location)`.
+    { code: 'redirect(302, next);', filename: TS, errors: [{ ...error, data: { url: 'next' } }] },
+    { code: 'throw redirect(307, target);', filename: TS, errors: [{ ...error, data: { url: 'target' } }] },
+    {
+      code: "import { redirect } from '@sveltejs/kit'; export function load({ url }) { redirect(status, url.searchParams.get('next')); }",
+      filename: TS,
+      errors: [{ ...error, data: { url: "url.searchParams.get('next')" } }],
+    },
+    {
+      code: "import { redirect as go } from '@sveltejs/kit'; export function load({ url }) { go(303, url.searchParams.get('next')); }",
+      filename: TS,
+      errors: [{ ...error, data: { url: "url.searchParams.get('next')" } }],
+    },
+    // The one-argument form is still read at argument 0.
+    { code: 'redirect(target);', filename: TS, errors: [error] },
+  ],
+});
