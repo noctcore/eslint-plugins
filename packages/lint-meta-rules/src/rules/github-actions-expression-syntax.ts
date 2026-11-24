@@ -152,8 +152,8 @@ const IF_KEY = /^\s*(?:-\s+)?if:[ \t]+(.+)$/u;
 
 /**
  * A single-line `if:` value that starts with `!` (a YAML tag), or that mixes a
- * `${{ }}` with other text (a string, so always true).
- * ponytail: single-line values only; a block or wrapped `if:` is not checked for mixing.
+ * `${{ }}` with other text (a string, so always true). Single-line values only;
+ * a block or wrapped `if:` is not checked for mixing.
  */
 function ifProblem(line: string): Malformed['kind'] | null {
   const raw = IF_KEY.exec(line)?.[1];
