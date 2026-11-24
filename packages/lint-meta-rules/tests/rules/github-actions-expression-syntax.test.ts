@@ -458,6 +458,23 @@ describe('github-actions-expression-syntax', () => {
     expect(checkWorkflowExpressionSyntax('w.yml', text)).toEqual([]);
   });
 
+  test.each([
+    ['a --- line in a double-quoted value', '    steps:\n      - run: "echo\n---\n  done"\n', 7],
+    ['a ... line in a double-quoted value', '    steps:\n      - run: "a\n... more ${{ a }}"\n', 7],
+    ['a ... line in a single-quoted value', "    steps:\n      - run: 'a\n...\n  b'\n", 7],
+    ['a --- line in a flow sequence', '    branches: [push,\n---\n  pull_request]\n', 6],
+    ['a --- x line in a flow sequence', '    branches: [push,\n--- x]\n', 6],
+    ['a ... line in a flow sequence', '    branches: [push,\n...\n  pull_request]\n', 6],
+    ['a ... x line in a flow map', '    env: {A: 1,\n... x}\n', 6],
+  ])('reports %s as a document marker, never repairing it away', (_, body, line) => {
+    const violations = violationsFor(body);
+
+    expect(violations).toHaveLength(1);
+    expect(violations[0]?.line).toBe(line);
+    expect(violations[0]?.message ?? '').toContain('is a YAML document marker');
+    expect(violations[0]?.message ?? '').toContain('GitHub fails to load a workflow like this');
+  });
+
   test('still checks expressions in a workflow whose flow or quoted indentation only yaml rejects', () => {
     const quoted = checkWorkflowExpressionSyntax('w.yml', 'jobs:\n  b:\n    run: "echo\n  ${{ a = b }}"\n');
 

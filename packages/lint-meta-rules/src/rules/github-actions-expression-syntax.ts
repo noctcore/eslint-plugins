@@ -359,15 +359,27 @@ const COMPLETE_QUOTED: Readonly<Record<string, RegExp>> = {
   '"': /^"(?:[^"\\]|\\[\s\S])*"$/u,
   "'": /^'(?:[^']|'')*'$/u,
 };
+/** A `---` or `...` document marker, at the start of a line. */
+const DOCUMENT_MARKER = /^(?:---|\.\.\.)(?:\s|$)/u;
 /** Each repair indents one line or spaces one comment, so this bounds the work on a broken file. */
 const MAX_REPAIRS = 200;
 
-/** `text` with the line at `offset` indented to at least `indent` columns, or null when it already is. */
-function indentLineTo(text: string, offset: number, indent: number): string | null {
+/** A repaired text, the line of a document marker that must not be repaired, or null when nothing applies. */
+type Repair = { readonly text: string } | { readonly markerLine: number } | null;
+
+/**
+ * `text` with the line at `offset` indented to at least `indent` columns, or
+ * null when it already is. A document marker at the start of that line is
+ * returned instead: GitHub rejects it inside a flow collection or quoted
+ * scalar, so it is never repaired away.
+ */
+function indentLineTo(text: string, offset: number, indent: number): Repair {
   const lineStart = text.lastIndexOf('\n', offset - 1) + 1;
+  // Repairs only add spaces, so counting lines in the repaired text gives the source line.
+  if (DOCUMENT_MARKER.test(text.slice(lineStart))) return { markerLine: text.slice(0, lineStart).split('\n').length };
   const current = /^ */u.exec(text.slice(lineStart))?.[0].length ?? 0;
   if (current >= indent) return null;
-  return `${text.slice(0, lineStart)}${' '.repeat(indent - current)}${text.slice(lineStart)}`;
+  return { text: `${text.slice(0, lineStart)}${' '.repeat(indent - current)}${text.slice(lineStart)}` };
 }
 
 /**
@@ -379,7 +391,7 @@ function indentLineTo(text: string, offset: number, indent: number): string | nu
  * the parsed values nor any line number change. A collection or quote still
  * open at the end of the file is left alone: it is really unclosed.
  */
-function indentContinuation(text: string): string | null {
+function indentContinuation(text: string): Repair {
   const openers: number[] = [];
   let quoteColumn: number | null = null;
   let offset = 0;
@@ -403,13 +415,13 @@ function indentContinuation(text: string): string | null {
 }
 
 /** One repair of a shape GitHub's reader accepts and yaml rejects, or null when none applies. */
-function repairOnce(text: string, errors: readonly YAMLError[]): string | null {
+function repairOnce(text: string, errors: readonly YAMLError[]): Repair {
   const indented = indentContinuation(text);
   if (indented !== null) return indented;
   // `[x,#c`: GitHub's reader takes a `#` right after a flow indicator as a comment.
   const comment = errors.find((error) => error.code === 'MISSING_CHAR' && error.message.startsWith('Comments must'));
   if (comment === undefined) return null;
-  return `${text.slice(0, comment.pos[0])} ${text.slice(comment.pos[0])}`;
+  return { text: `${text.slice(0, comment.pos[0])} ${text.slice(comment.pos[0])}` };
 }
 
 interface ReadWorkflow {
@@ -417,6 +429,8 @@ interface ReadWorkflow {
   /** The text the document was parsed from: the source, or a repair of it with the same lines. */
   readonly text: string;
   readonly lineOf: (offset: number) => number;
+  /** Line of a document marker inside a flow collection or quoted scalar, which GitHub rejects. */
+  readonly markerLine?: number;
 }
 
 /**
@@ -430,9 +444,11 @@ function readWorkflow(source: string): ReadWorkflow {
   for (let round = 0; ; round += 1) {
     const counter = new LineCounter();
     const doc = parseDocument(text, { lineCounter: counter, prettyErrors: false, strict: false, uniqueKeys: false });
-    const repaired = doc.errors.length === 0 || round === MAX_REPAIRS ? null : repairOnce(text, doc.errors);
-    if (repaired === null) return { doc, text, lineOf: (offset) => counter.linePos(offset).line };
-    text = repaired;
+    const read: ReadWorkflow = { doc, text, lineOf: (offset) => counter.linePos(offset).line };
+    const repair = doc.errors.length === 0 || round === MAX_REPAIRS ? null : repairOnce(text, doc.errors);
+    if (repair === null) return read;
+    if ('markerLine' in repair) return { ...read, markerLine: repair.markerLine };
+    text = repair.text;
   }
 }
 
@@ -485,7 +501,12 @@ function malformedIn(source: string): Malformed[] {
     const detail = `the workflow could not be read: ${thrown instanceof Error ? thrown.message : String(thrown)}`;
     return [{ line: 1, kind: 'yaml', detail }];
   }
-  const { doc, text, lineOf } = read;
+  const { doc, text, lineOf, markerLine } = read;
+  if (markerLine !== undefined) {
+    const detail =
+      'a `---` or `...` at the start of a line is a YAML document marker, and here it sits inside a quoted value or a `[ ]` / `{ }` collection';
+    return [{ line: markerLine, kind: 'yaml', detail }];
+  }
   const error = doc.errors[0];
   // A broken parse leaves a partial tree, so its scalars are not what GitHub would read.
   if (error !== undefined) return [yamlProblem(error, lineOf)];
