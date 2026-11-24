@@ -14,7 +14,8 @@ import type { TSESTree } from '@typescript-eslint/utils';
  * options included (`sudo -u deploy ${tool}`, `timeout 30 ${tool}`). Wrappers
  * match by basename and with quotes and backslashes stripped (`/usr/bin/env`,
  * `'sudo'`). `find ... -exec` and `pnpm dlx` / `npm exec` / `yarn dlx` /
- * `bun x` start a wrapped run too.
+ * `bun x` start a wrapped run too, and so does a program word that holds a
+ * shell parameter (`$SHELL`, `${SUDO:-sudo}`), which can name any program.
  *
  * The wrapper list is a list: a command it does not name that runs its
  * arguments is not seen. Quotes do not hide separators here, so
@@ -217,7 +218,9 @@ export function classifyShellParts(segments: readonly (string | TSESTree.Node)[]
       } else if (text.includes(VALUE_MARK)) {
         mode = 'args';
         program = null;
-      } else if (WRAPPER_COMMANDS.has(commandName(text))) {
+      } else if (text.includes('$') || WRAPPER_COMMANDS.has(commandName(text))) {
+        // A shell parameter (`$SHELL`, `${SUDO:-sudo}`, bash's `$'env'`) can
+        // name any program, a wrapper included.
         mode = 'wrapped';
       } else {
         program = commandName(text);

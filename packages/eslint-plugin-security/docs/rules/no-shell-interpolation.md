@@ -172,7 +172,8 @@ A value in a word that runs as a program is proven only by a literal allowlist, 
   the shells `sh`, `bash`, `zsh`, `dash`, `ksh`, `fish` and `busybox`, and the package runners
   `npx`, `bunx`, `uvx`, `pipx`, `npm exec`, `pnpm dlx` / `exec`, `yarn dlx` / `exec` and
   `bun x`, plus `find ... -exec` / `-execdir` / `-ok` / `-okdir`. They match by basename and with
-  quotes stripped (`/usr/bin/env`, `'sudo'`).
+  quotes stripped (`/usr/bin/env`, `'sudo'`). A program word that holds a shell parameter
+  (`$SHELL`, `"$SHELL"`, `${SUDO:-sudo}`, bash's `$'env'`) counts as a wrapper too: it can name any program.
 
 An in-file `const` bound to a string (`const P = 'sudo'`, `const SEP = ';'`) is read as its text.
 This is a list: a command not on it that runs its arguments is not seen. Bash's `&>file` is read
