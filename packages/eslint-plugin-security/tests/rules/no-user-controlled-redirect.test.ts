@@ -757,3 +757,25 @@ ruleTester.run('no-user-controlled-redirect', noUserControlledRedirectRule, {
     { code: raw`res.redirect('/\t\\' + req.query.next);`, filename: TS, errors: [error] },
   ],
 });
+
+// Relative prefixes that can still grow into a scheme.
+ruleTester.run('no-user-controlled-redirect: scheme-shaped prefixes', noUserControlledRedirectRule, {
+  valid: [
+    // A relative prefix that does pin the origin.
+    { code: 'res.redirect(`home/${x}`);', filename: TS },
+    { code: 'res.redirect(`page.html?${x}`);', filename: TS },
+    { code: 'res.redirect(`/home${x}`);', filename: TS },
+  ],
+  invalid: [
+    // A relative prefix that can still grow into a scheme.
+    { code: 'res.redirect(`h${x}`);', filename: TS, errors: [error] },
+    { code: 'res.redirect(`java${x}`);', filename: TS, errors: [error] },
+    { code: "res.redirect('h' + x);", filename: TS, errors: [error] },
+    {
+      code: 'NextResponse.redirect(new URL(`h${x}`, request.url));',
+      filename: TS,
+      options: [{ trustedOrigins: ['request.url'] }],
+      errors: [error],
+    },
+  ],
+});
