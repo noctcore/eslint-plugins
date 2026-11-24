@@ -29,7 +29,11 @@ import { AST_NODE_TYPES, ASTUtils, type TSESLint, type TSESTree } from '@typescr
  *     in a read-only place (see `readOnlyUse`);
  *   - a `let` written once counts only when that write runs unconditionally
  *     before the read, earlier in the same statement list;
- *   - a callback value counts only for a callback with exactly one parameter.
+ *   - a callback value counts only for a callback with exactly one parameter;
+ *   - a move that lands on a binding written again after its declaration
+ *     (`const box = [u]; u = other`) moves the sink to where the value was
+ *     taken, so a check on `u` before the sink does not count for `box[0]`;
+ *   - no binding or container is relied on where an `eval` can reach it.
  *
  * Anything else ends the walk, and the rule keeps what it decided before. A
  * `'taint'` walk feeds checks that turn no report into a report, and keeps the
@@ -146,6 +150,44 @@ function readsArguments(fn: TSESTree.Node, sourceCode: SourceCode): boolean {
 /** True when nothing assigns the variable after its declaration. */
 function neverReassigned(variable: Variable): boolean {
   return variable.references.every((reference) => !reference.isWrite() || reference.init === true);
+}
+
+type Scope = TSESLint.Scope.Scope;
+
+const EVAL_SCOPES = new WeakMap<Scope, boolean>();
+
+/**
+ * True when code in `scope` or a scope inside it names the global `eval`
+ * (`eval('C.httpOnly = false')`, `(0, eval)(code)`): that code can write any
+ * binding it sees without a reference the scope manager can show.
+ */
+function namesEval(scope: Scope): boolean {
+  const known = EVAL_SCOPES.get(scope);
+  if (known !== undefined) {
+    return known;
+  }
+  const found =
+    scope.references.some(
+      (reference) =>
+        reference.identifier.type === AST_NODE_TYPES.Identifier &&
+        reference.identifier.name === 'eval' &&
+        (reference.resolved === null || reference.resolved.defs.length === 0),
+    ) || scope.childScopes.some((child) => namesEval(child));
+  EVAL_SCOPES.set(scope, found);
+  return found;
+}
+
+/** True when an `eval` that can see the binding may write it or what it holds (see `namesEval`). */
+function evalReaches(variable: Variable): boolean {
+  return namesEval(variable.scope);
+}
+
+/**
+ * True when a binding may hold another value later than where it was read:
+ * written after its declaration, declared twice, or in reach of an `eval`.
+ */
+function mayChange(variable: Variable): boolean {
+  return variable.defs.length !== 1 || !neverReassigned(variable) || evalReaches(variable);
 }
 
 /**
@@ -508,7 +550,7 @@ function readOnlyUse(
  * `x[0]`, `x.a.b`) or a copy, each in a read-only place (`readOnlyUse`).
  */
 function referencesReadOnly(variable: Variable, literal: ContainerLiteral, sourceCode: SourceCode, depth: number): boolean {
-  if (isExported(variable) || !isPlainData(literal, sourceCode)) {
+  if (isExported(variable) || evalReaches(variable) || !isPlainData(literal, sourceCode)) {
     return false;
   }
   return variable.references.every((reference) => {
@@ -604,6 +646,7 @@ export function objectLiteralOf(
       if (
         variable === null ||
         isExported(variable) ||
+        (mode === 'proof' && evalReaches(variable)) ||
         variable.references.filter((reference) => reference.isRead()).length !== 1
       ) {
         return null;
@@ -991,14 +1034,55 @@ function writeDominates(assignment: TSESTree.AssignmentExpression, read: TSESTre
 }
 
 /**
+ * The binding an expression reads its value from: `u` for `u`, `u.pathname`
+ * or `u!`. Null for anything else.
+ */
+function rootVariable(node: TSESTree.Node, sourceCode: SourceCode): Variable | null {
+  let current = peelTypeWrappers(node);
+  while (current.type === AST_NODE_TYPES.MemberExpression || current.type === AST_NODE_TYPES.ChainExpression) {
+    current = peelTypeWrappers(current.type === AST_NODE_TYPES.MemberExpression ? current.object : current.expression);
+  }
+  return current.type === AST_NODE_TYPES.Identifier ? variableOf(current, sourceCode) : null;
+}
+
+/**
  * One exact move back from `node`, or null when the value is not followed
  * further. `mode` picks the proof or taint rules (see the header).
+ *
+ * A proof move that lands on a binding which may hold another value by the
+ * sink (`u` in `const box = [u]`, then `u = other`) also moves the sink to
+ * where the value was taken: a check on `u` before the sink says nothing
+ * about the `u` that `box[0]` captured.
  */
 export function flowStep(
   node: TSESTree.Node,
   sink: TSESTree.Node,
   sourceCode: SourceCode,
   mode: FlowMode = 'proof',
+): FlowStep | null {
+  const step = moveBack(node, sink, sourceCode, mode);
+  if (step === null || mode === 'taint' || step.sink !== sink || isTypeWrapper(node)) {
+    return step;
+  }
+  return { node: step.node, sink: takenAt(step.node, sink, sourceCode) };
+}
+
+/**
+ * Where a proof about a value taken at `node` must hold: `node` itself when
+ * the binding it reads may hold another value later (`u` in `const v = u`,
+ * then `u = other`), else `sink`.
+ */
+export function takenAt(node: TSESTree.Node, sink: TSESTree.Node, sourceCode: SourceCode): TSESTree.Node {
+  const variable = rootVariable(node, sourceCode);
+  return variable !== null && mayChange(variable) ? node : sink;
+}
+
+/** {@link flowStep} before the sink is moved for a binding that may change. */
+function moveBack(
+  node: TSESTree.Node,
+  sink: TSESTree.Node,
+  sourceCode: SourceCode,
+  mode: FlowMode,
 ): FlowStep | null {
   if (isTypeWrapper(node)) {
     return { node: peelTypeWrappers(node), sink };
@@ -1040,6 +1124,10 @@ export function flowStep(
         return mode === 'proof' && isContainer(peelTypeWrappers(init)) && trustedLiteral(variable, sourceCode) === null
           ? null
           : { node: init, sink };
+      }
+      // An `eval` in reach may write the binding where no reference shows it.
+      if (mode === 'proof' && evalReaches(variable)) {
+        return null;
       }
       const destructured = destructuredValue(variable, sourceCode, mode);
       if (destructured !== null) {

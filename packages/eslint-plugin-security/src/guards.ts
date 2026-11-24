@@ -1,6 +1,6 @@
 import { AST_NODE_TYPES, ASTUtils, type TSESLint, type TSESTree } from '@typescript-eslint/utils';
 
-import { flowStep, flowSteps, isImmediateCallback, stringPieces } from './value-flow';
+import { type FlowStep, flowStep, flowSteps, isImmediateCallback, stringPieces, takenAt } from './value-flow';
 
 /*
  * Proof that a runtime value is harmless at a sink, read from the code around
@@ -2847,8 +2847,9 @@ function hostPinned(
       return true;
     }
   }
+  // `const v = u`: a check on `u` counts where `v` took it when `u` changes later.
   const init = constInit(variable);
-  return init !== null && hostPinned(init, sink, sourceCode, fields, depth + 1);
+  return init !== null && hostPinned(init, takenAt(init, sink, sourceCode), sourceCode, fields, depth + 1);
 }
 
 // ---------------------------------------------------------------------------
@@ -3157,7 +3158,7 @@ export function isSameSitePath(
     return true;
   }
   const init = constInit(variable);
-  return init !== null && init !== node && isSameSitePath(init, sink, sourceCode);
+  return init !== null && init !== node && isSameSitePath(init, takenAt(init, sink, sourceCode), sourceCode);
 }
 
 /** True when every use of a `const` table only reads it: `T[k]`, `T.k`, `T.get(k)`, `k in T`, `Object.hasOwn(T, k)`. */
@@ -3647,14 +3648,21 @@ export function isSameOriginUrlPath(
   if (first === undefined || typeof first === 'string') {
     return false;
   }
-  // Each part is read where it came from (`const p = u.pathname`, `forward(u.search)`).
-  const along = (part: TSESTree.Node): TSESTree.Node[] =>
-    flowSteps(part, sink, sourceCode).map((step) => unwrap(step.node));
-  return along(first).some(
-    (field) =>
+  // Each part is read where it came from (`const p = u.pathname`, `forward(u.search)`),
+  // and judged where that step says: where `u` was read when it changes later.
+  const along = (part: TSESTree.Node): FlowStep[] => flowSteps(part, sink, sourceCode);
+  return along(first).some((step) => {
+    const field = unwrap(step.node);
+    // The other parts count only when read at the same place as the path.
+    const sameRead = (part: TSESTree.Node): TSESTree.Node[] =>
+      along(part)
+        .filter((other) => other.sink === step.sink)
+        .map((other) => unwrap(other.node));
+    return (
       field.type === AST_NODE_TYPES.MemberExpression &&
-      sameOriginPathFrom(field, segments.slice(1), along, sink, sourceCode),
-  );
+      sameOriginPathFrom(field, segments.slice(1), sameRead, step.sink, sourceCode)
+    );
+  });
 }
 
 /** {@link isSameOriginUrlPath} for one reading of the first part, `u.pathname`. */
