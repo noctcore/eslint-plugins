@@ -1,5 +1,7 @@
 import { AST_NODE_TYPES, ASTUtils, type TSESLint, type TSESTree } from '@typescript-eslint/utils';
 
+import { flowStep, flowSteps, isImmediateCallback, stringPieces } from './value-flow';
+
 /*
  * Proof that a runtime value is harmless at a sink, read from the code around
  * the sink. Shared by the injection rules (shell, path, HTML) and the URL rules
@@ -718,13 +720,16 @@ function subjectVariable(node: TSESTree.Node, sourceCode: SourceCode): Variable 
  *
  * `sink`, when given, is the call that uses the value: handing the binding to
  * it as a direct argument (`fetch(u)`) is the use itself, not a change made
- * before it, since the arguments are read before the callee runs.
+ * before it, since the arguments are read before the callee runs. With
+ * `sourceCode`, an argument that holds the binding through exact moves
+ * counts the same (see `isSinkArgument`).
  */
 function writtenOnlyBefore(
   variable: Variable,
   position: number,
   scope: Scope | null,
   sink?: TSESTree.Node,
+  sourceCode?: SourceCode,
 ): boolean {
   const home = variable.scope.variableScope;
   // A global the config declares writable has no declaration in the file:
@@ -743,7 +748,7 @@ function writtenOnlyBefore(
       variable.references.every(
         (reference) =>
           (!reference.isWrite() || (reference.init === true && declaredOnce)) &&
-          (isSinkArgument(reference, sink) || contentChanges(reference)?.length === 0),
+          (isSinkArgument(reference, sink, sourceCode) || contentChanges(reference)?.length === 0),
       )
     );
   }
@@ -756,7 +761,7 @@ function writtenOnlyBefore(
     if (reference.isWrite() && !before(reference)) {
       return false;
     }
-    if (isSinkArgument(reference, sink)) {
+    if (isSinkArgument(reference, sink, sourceCode)) {
       return true;
     }
     const changes = contentChanges(reference);
@@ -764,17 +769,66 @@ function writtenOnlyBefore(
   });
 }
 
-/** True when the reference is read as a direct argument of the sink call. */
-function isSinkArgument(reference: Reference, sink: TSESTree.Node | undefined): boolean {
-  const parent = reference.identifier.parent;
-  return (
-    sink !== undefined &&
-    !reference.isWrite() &&
-    parent === sink &&
-    (parent.type === AST_NODE_TYPES.CallExpression ||
-      parent.type === AST_NODE_TYPES.NewExpression) &&
-    parent.callee !== reference.identifier
-  );
+/**
+ * True when the reference is read as a direct argument of the sink call, or
+ * as an element of an array literal spread into it (`fetch(...[u])`). With
+ * `sourceCode`, also when an argument of the sink holds it through exact
+ * moves (`fetch(forward(u))`, `holder.value`, a callback's value; see
+ * `./value-flow`) and each binding on the way is read only there, so the
+ * value reaches nothing else that could change it.
+ */
+function isSinkArgument(
+  reference: Reference,
+  sink: TSESTree.Node | undefined,
+  sourceCode?: SourceCode,
+): boolean {
+  const direct = reference.identifier.parent;
+  const parent =
+    direct?.type === AST_NODE_TYPES.ArrayExpression &&
+    direct.parent.type === AST_NODE_TYPES.SpreadElement &&
+    direct.parent.argument === direct
+      ? direct.parent.parent
+      : direct;
+  if (
+    sink === undefined ||
+    reference.isWrite() ||
+    (sink.type !== AST_NODE_TYPES.CallExpression && sink.type !== AST_NODE_TYPES.NewExpression)
+  ) {
+    return false;
+  }
+  if (parent === sink && sink.callee !== reference.identifier) {
+    return true;
+  }
+  if (sourceCode === undefined) {
+    return false;
+  }
+  return sink.arguments.some((arg) => {
+    for (const step of flowSteps(arg, sink, sourceCode)) {
+      if (step.node === reference.identifier) {
+        return true;
+      }
+      if (!readOnlyHere(step.node, sourceCode)) {
+        return false;
+      }
+    }
+    return false;
+  });
+}
+
+/**
+ * True when the binding a carrier expression reads (`relay`, `holder` in
+ * `holder.value`) is read at this one place and nowhere else.
+ */
+function readOnlyHere(node: TSESTree.Node, sourceCode: SourceCode): boolean {
+  let current = unwrap(node);
+  while (current.type === AST_NODE_TYPES.MemberExpression) {
+    current = unwrap(current.object);
+  }
+  if (current.type !== AST_NODE_TYPES.Identifier) {
+    return true;
+  }
+  const variable = variableOf(current, sourceCode);
+  return variable !== null && variable.references.filter((reference) => reference.isRead()).length === 1;
 }
 
 /**
@@ -1445,8 +1499,9 @@ function enclosingFunction(node: TSESTree.Node): TSESTree.Node | null {
 }
 
 /**
- * A guard test read through `!` and through a `const` boolean declared in the
- * same function (`const ok = A && B; if (!ok) return`): the test it stands for,
+ * A guard test read through `!`, through a `const` boolean declared in the
+ * same function (`const ok = A && B; if (!ok) return`) and through exact
+ * moves written earlier in that function (`./value-flow`): the test it stands for,
  * whether it is negated, and where the check really ran. Null when the test is
  * already plain.
  */
@@ -1467,14 +1522,26 @@ function expandTest(
       changed = true;
       continue;
     }
-    if (current.type !== AST_NODE_TYPES.Identifier) {
-      break;
-    }
-    const variable = variableOf(current, sourceCode);
+    const variable = current.type === AST_NODE_TYPES.Identifier ? variableOf(current, sourceCode) : null;
     const init = variable === null ? null : constInit(variable);
+    if (init === null) {
+      // The boolean it holds exactly, written earlier in the same function
+      // (`const holder = { value: ok }; if (!holder.value) return`).
+      const step = flowStep(current, at, sourceCode);
+      if (
+        step === null ||
+        step.node.range[0] > at.range[0] ||
+        enclosingFunction(step.node) !== enclosingFunction(at)
+      ) {
+        break;
+      }
+      current = unwrap(step.node) as TSESTree.Expression;
+      position = Math.min(position, step.node.range[0]);
+      changed = true;
+      continue;
+    }
     if (
       variable === null ||
-      init === null ||
       isImportBinding(variable) ||
       enclosingFunction(init) !== enclosingFunction(at) ||
       init.range[0] > at.range[0]
@@ -1526,8 +1593,11 @@ function guardedBefore(
       parent.type === AST_NODE_TYPES.ArrowFunctionExpression
     ) {
       // A function can run before the checks that surround its definition
-      // (a hoisted declaration, a callback stored and called later).
-      return false;
+      // (a hoisted declaration, a callback stored and called later), unless it
+      // runs right where it is passed (`[x].forEach((v) => ...)`).
+      if (sourceCode === undefined || !isImmediateCallback(parent, sourceCode)) {
+        return false;
+      }
     }
     if (
       parent.type === AST_NODE_TYPES.BlockStatement ||
@@ -2468,24 +2538,23 @@ function provenSafe(
   ) {
     return true;
   }
-  if (node.type !== AST_NODE_TYPES.Identifier) {
-    return false;
+  if (node.type === AST_NODE_TYPES.Identifier) {
+    const variable = variableOf(node, sourceCode);
+    if (variable === null) {
+      return false;
+    }
+    if (
+      isConfinedDestructuredField(variable, judge, sourceCode) ||
+      variableGuarded(variable, node.range[0], sink, judge, sourceCode) ||
+      isConfinedValidateValue(variable, sink, judge, sourceCode)
+    ) {
+      return true;
+    }
   }
-  const variable = variableOf(node, sourceCode);
-  if (variable === null) {
-    return false;
-  }
-  if (isConfinedDestructuredField(variable, judge, sourceCode)) {
-    return true;
-  }
-  if (
-    variableGuarded(variable, node.range[0], sink, judge, sourceCode) ||
-    isConfinedValidateValue(variable, sink, judge, sourceCode)
-  ) {
-    return true;
-  }
-  const init = constInit(variable);
-  return init !== null && provenSafe(init, sink, judge, sourceCode, options, depth + 1);
+  // The value it holds exactly: a `const` initializer, a helper's argument,
+  // an object property or array element, a callback's value (`./value-flow`).
+  const next = flowStep(node, sink, sourceCode);
+  return next !== null && provenSafe(next.node, next.sink, judge, sourceCode, options, depth + 1);
 }
 
 const ENV_PRESERVING_METHODS: ReadonlySet<string> = new Set([
@@ -3324,7 +3393,7 @@ function urlObjectPinned(
       negated
         ? failsUnlessChecked(test, hostOfUrl, regexPinsHost, sourceCode)
         : holdsOnlyIfChecked(test, hostOfUrl, regexPinsHost, sourceCode),
-    (position, scope) => writtenOnlyBefore(variable, position, scope, sink),
+    (position, scope) => writtenOnlyBefore(variable, position, scope, sink, sourceCode),
     sourceCode,
   );
 }
@@ -3367,6 +3436,15 @@ function stringSegments(node: TSESTree.Node, sourceCode: SourceCode): (string | 
     } else if (inner.type === AST_NODE_TYPES.BinaryExpression && inner.operator === '+') {
       collect(inner.left);
       collect(inner.right);
+    } else if (stringPieces(inner, sourceCode) !== null) {
+      // `'https://app.example.com'.concat(path)`, `[a, b].join('')`.
+      for (const piece of stringPieces(inner, sourceCode) ?? []) {
+        if (typeof piece === 'string') {
+          push(piece);
+        } else {
+          collect(piece);
+        }
+      }
     } else {
       const resolved = resolveConst(inner, sourceCode);
       if (resolved.type === AST_NODE_TYPES.Literal && typeof resolved.value === 'string') {
@@ -3410,7 +3488,7 @@ export function isAllowlistedTarget(
   return (
     first !== undefined &&
     typeof first !== 'string' &&
-    isAllowlisted(first, sink, sourceCode) &&
+    flowSteps(first, sink, sourceCode).some((step) => isAllowlisted(step.node, step.sink, sourceCode)) &&
     (second === undefined || (typeof second === 'string' && /^[?#]/u.test(second)))
   );
 }
@@ -3487,7 +3565,9 @@ export function isFixedOriginPath(
   if (ORIGIN_ONLY.test(first)) {
     return typeof second === 'string'
       ? second.startsWith('/')
-      : startsWithSlash(second, second, sourceCode, 0);
+      : flowSteps(second, second, sourceCode).some((step) =>
+          startsWithSlash(step.node, step.sink, sourceCode, 0),
+        );
   }
   return false;
 }
@@ -3567,24 +3647,37 @@ export function isSameOriginUrlPath(
   if (first === undefined || typeof first === 'string') {
     return false;
   }
-  const field = unwrap(first);
-  if (field.type !== AST_NODE_TYPES.MemberExpression) {
-    return false;
-  }
+  // Each part is read where it came from (`const p = u.pathname`, `forward(u.search)`).
+  const along = (part: TSESTree.Node): TSESTree.Node[] =>
+    flowSteps(part, sink, sourceCode).map((step) => unwrap(step.node));
+  return along(first).some(
+    (field) =>
+      field.type === AST_NODE_TYPES.MemberExpression &&
+      sameOriginPathFrom(field, segments.slice(1), along, sink, sourceCode),
+  );
+}
+
+/** {@link isSameOriginUrlPath} for one reading of the first part, `u.pathname`. */
+function sameOriginPathFrom(
+  field: TSESTree.MemberExpression,
+  rest: readonly (string | TSESTree.Node)[],
+  along: (part: TSESTree.Node) => TSESTree.Node[],
+  sink: TSESTree.Node,
+  sourceCode: SourceCode,
+): boolean {
   const url = subjectVariable(field.object, sourceCode);
   if (
     url === null ||
     isImportBinding(url) ||
     !holdsOnlyUrls(url, sourceCode) ||
     !urlField(field, url, 'pathname', sourceCode) ||
-    !segments
-      .slice(1)
-      .every(
-        (segment) =>
-          typeof segment === 'string' ||
-          urlField(segment, url, 'search', sourceCode) ||
-          urlField(segment, url, 'hash', sourceCode),
-      )
+    !rest.every(
+      (segment) =>
+        typeof segment === 'string' ||
+        along(segment).some(
+          (part) => urlField(part, url, 'search', sourceCode) || urlField(part, url, 'hash', sourceCode),
+        ),
+    )
   ) {
     return false;
   }

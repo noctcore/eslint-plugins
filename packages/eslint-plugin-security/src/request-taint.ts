@@ -7,6 +7,7 @@ import {
   isLiteralTableRead,
   isProvenSafeValue,
 } from './guards';
+import { flowStep, handlerRole } from './value-flow';
 
 /*
  * In-function data flow from request-shaped input to a sink, without type
@@ -102,6 +103,12 @@ export interface TaintOptions {
   readonly preservingCalls?: ReadonlySet<string>;
   /** Bindings that are themselves the input followed (a helper's parameter). */
   readonly sourceVariables?: ReadonlySet<Variable>;
+  /**
+   * Also take a handler's request parameter as request-shaped input, whatever
+   * its name: the first parameter of a route handler, a Nest `@Req()` (see
+   * `handlerRole` in `./value-flow`).
+   */
+  readonly handlerRequests?: boolean;
 }
 
 interface Walk {
@@ -151,13 +158,21 @@ function rootIdentifier(node: TSESTree.Node): TSESTree.Identifier | null {
   return current.type === AST_NODE_TYPES.Identifier ? current : null;
 }
 
-function isRequestMember(node: TSESTree.Node, requestObjects: ReadonlySet<string>): boolean {
+/** True when `node` names a request object: by name, or by its place in a handler. */
+function isRequestObject(node: TSESTree.Identifier, walk: Walk): boolean {
+  return (
+    walk.options.requestObjects.has(node.name) ||
+    (walk.options.handlerRequests === true && handlerRole(node, walk.sourceCode) === 'request')
+  );
+}
+
+function isRequestMember(node: TSESTree.Node, walk: Walk): boolean {
   const inner = node.type === AST_NODE_TYPES.ChainExpression ? node.expression : node;
   if (inner.type !== AST_NODE_TYPES.MemberExpression) {
     return false;
   }
   const root = rootIdentifier(inner);
-  return root !== null && requestObjects.has(root.name);
+  return root !== null && isRequestObject(root, walk);
 }
 
 function carried(raw: TSESTree.Node, walk: Walk, depth: number): TSESTree.Node | null {
@@ -176,7 +191,7 @@ function carried(raw: TSESTree.Node, walk: Walk, depth: number): TSESTree.Node |
     return null;
   };
 
-  if (isRequestMember(raw, walk.options.requestObjects)) {
+  if (isRequestMember(raw, walk)) {
     // `if (!NAMES.includes(req.params.name)) return` leaves an author's literal.
     return isAllowlistedMember(raw, walk.sink, walk.sourceCode) ? null : raw;
   }
@@ -192,6 +207,20 @@ function carried(raw: TSESTree.Node, walk: Walk, depth: number): TSESTree.Node |
     return null;
   }
   const node = raw;
+  // An exact move keeps the text: `forward(x)`, `holder.value`, `items[0]`
+  // and `await Promise.resolve(x)` are `x`, so its proofs still hold.
+  // A configured sanitizer keeps its meaning even when this file defines it.
+  if (
+    (node.type === AST_NODE_TYPES.CallExpression &&
+      !walk.options.sanitizers.has(squash(walk.sourceCode.getText(peelTypes(node.callee))))) ||
+    node.type === AST_NODE_TYPES.MemberExpression ||
+    node.type === AST_NODE_TYPES.AwaitExpression
+  ) {
+    const step = flowStep(node, walk.sink, walk.sourceCode);
+    if (step !== null) {
+      return next(step.node);
+    }
+  }
   switch (node.type) {
     case AST_NODE_TYPES.Identifier:
       return carriedByVariable(node, walk, depth);
@@ -412,7 +441,7 @@ function carriedByVariable(
   walk: Walk,
   depth: number,
 ): TSESTree.Node | null {
-  if (walk.options.requestObjects.has(node.name)) {
+  if (isRequestObject(node, walk)) {
     // The request object itself, reached through `const { query } = req`.
     return node;
   }
@@ -428,6 +457,18 @@ function carriedByVariable(
   }
   if (walk.options.sourceVariables?.has(variable) === true || isRequestFieldParameter(variable)) {
     return node;
+  }
+  // A callback's parameter holds the value it was handed: `v` in `[x].forEach((v) => ...)`.
+  if (variable.defs[0]?.type === 'Parameter') {
+    const step = flowStep(node, walk.sink, walk.sourceCode);
+    if (step !== null) {
+      walk.seen.add(variable);
+      try {
+        return carried(step.node, walk, depth + 1);
+      } finally {
+        walk.seen.delete(variable);
+      }
+    }
   }
   // `const name = basename(x)` refused as `..` before the sink is one segment
   // that stays in its directory.
