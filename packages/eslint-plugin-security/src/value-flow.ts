@@ -156,41 +156,116 @@ function constDeclarator(variable: Variable): TSESTree.VariableDeclarator | null
 }
 
 /**
- * True when every use of a container binding only reads a fixed key of it
- * (`holder.value`, `items[0]`) or copies it into an object (`{ ...holder }`):
- * no write through a member, no method call (`items.push(x)`), and it is
- * never handed anywhere else, where it could be changed.
+ * True when `node` is assigned to by a destructuring pattern it sits in:
+ * `({ a: holder.x } = src)`, `[holder.x = 'd'] = src`, `[...holder.x] = src`.
  */
-function onlyReadByKey(variable: Variable): boolean {
+function isPatternTarget(node: TSESTree.Node): boolean {
+  let child: TSESTree.Node = node;
+  for (let parent = node.parent; parent != null; child = parent, parent = parent.parent) {
+    switch (parent.type) {
+      case AST_NODE_TYPES.ObjectPattern:
+      case AST_NODE_TYPES.ArrayPattern:
+        return true;
+      case AST_NODE_TYPES.Property:
+        if (parent.value !== child || parent.parent.type !== AST_NODE_TYPES.ObjectPattern) {
+          return false;
+        }
+        break;
+      case AST_NODE_TYPES.AssignmentPattern:
+        if (parent.left !== child) {
+          return false;
+        }
+        break;
+      case AST_NODE_TYPES.RestElement:
+        break;
+      default:
+        return false;
+    }
+  }
+  return false;
+}
+
+/** True when the expression is written or changed where it stands. */
+function isWrittenHere(node: TSESTree.Node): boolean {
+  const use = node.parent;
+  if (use === undefined) {
+    return false;
+  }
+  return (
+    (use.type === AST_NODE_TYPES.AssignmentExpression && use.left === node) ||
+    (use.type === AST_NODE_TYPES.UpdateExpression && use.argument === node) ||
+    (use.type === AST_NODE_TYPES.UnaryExpression && use.operator === 'delete') ||
+    (use.type === AST_NODE_TYPES.CallExpression && use.callee === node) ||
+    (use.type === AST_NODE_TYPES.ChainExpression &&
+      use.parent.type === AST_NODE_TYPES.CallExpression &&
+      use.parent.callee === use) ||
+    ((use.type === AST_NODE_TYPES.ForInStatement || use.type === AST_NODE_TYPES.ForOfStatement) && use.left === node) ||
+    isPatternTarget(node)
+  );
+}
+
+/**
+ * The value a literal holds along a path of fixed keys (`opts.secure` in
+ * `{ opts: { secure: true } }`), through nested object and array literals.
+ * Null when a step is not a plain entry of a literal.
+ */
+function entryAt(literal: TSESTree.ObjectExpression | TSESTree.ArrayExpression, path: readonly string[]): TSESTree.Node | null {
+  let current: TSESTree.Node = literal;
+  for (const key of path) {
+    const inner = peelTypeWrappers(current);
+    if (inner.type !== AST_NODE_TYPES.ObjectExpression && inner.type !== AST_NODE_TYPES.ArrayExpression) {
+      return null;
+    }
+    const next = literalEntry(inner, key);
+    if (next === null) {
+      return null;
+    }
+    current = next;
+  }
+  return current;
+}
+
+/**
+ * True when every use of a container binding only reads a fixed key path of
+ * it (`holder.value`, `items[0]`, `cfg.opts.secure`) or copies it into an
+ * object (`{ ...holder }`, `{ ...cfg.opts }`). It is false on any write at any
+ * depth (`holder.value = x`, `cfg.opts.secure = false`, `delete holder.value`,
+ * `({ a: holder.value } = src)`), a method call (`items.push(x)`), an alias
+ * (`const d = holder`), and the binding handed on whole (`Object.assign(holder, x)`).
+ * A nested object or array of the literal (`cfg.opts`) may only be read
+ * further or copied: aliased or handed to a call it could be changed. When
+ * unsure it is false, so the value is not followed.
+ */
+function onlyReadByKey(variable: Variable, literal: TSESTree.ObjectExpression | TSESTree.ArrayExpression): boolean {
   return variable.references.every((reference) => {
     if (reference.init === true) {
       return true;
     }
-    const member = reference.identifier.parent;
+    const path: string[] = [];
+    let end: TSESTree.Node = reference.identifier;
+    for (let parent = end.parent; parent?.type === AST_NODE_TYPES.MemberExpression && parent.object === end; parent = end.parent) {
+      const key = memberKey(parent);
+      if (key === null) {
+        return false;
+      }
+      path.push(key);
+      end = parent;
+    }
+    const use = end.parent;
     // `{ ...holder }` copies the properties and changes nothing.
-    if (member?.type === AST_NODE_TYPES.SpreadElement && member.parent.type === AST_NODE_TYPES.ObjectExpression) {
+    if (use?.type === AST_NODE_TYPES.SpreadElement && use.parent.type === AST_NODE_TYPES.ObjectExpression) {
       return true;
     }
-    if (
-      member?.type !== AST_NODE_TYPES.MemberExpression ||
-      member.object !== reference.identifier ||
-      memberKey(member) === null
-    ) {
+    if (path.length === 0 || isWrittenHere(end)) {
       return false;
     }
-    const use = member.parent;
-    return !(
-      (use.type === AST_NODE_TYPES.AssignmentExpression && use.left === member) ||
-      (use.type === AST_NODE_TYPES.UpdateExpression && use.argument === member) ||
-      (use.type === AST_NODE_TYPES.UnaryExpression && use.operator === 'delete') ||
-      (use.type === AST_NODE_TYPES.CallExpression && use.callee === member) ||
-      (use.type === AST_NODE_TYPES.ChainExpression &&
-        use.parent.type === AST_NODE_TYPES.CallExpression &&
-        use.parent.callee === use) ||
-      use.type === AST_NODE_TYPES.ArrayPattern ||
-      use.type === AST_NODE_TYPES.ObjectPattern ||
-      use.type === AST_NODE_TYPES.ForInStatement ||
-      use.type === AST_NODE_TYPES.ForOfStatement
+    // A nested container read out whole could be changed by whoever gets it.
+    const entry = entryAt(literal, path);
+    const inner = entry === null ? null : peelTypeWrappers(entry);
+    return (
+      inner !== null &&
+      inner.type !== AST_NODE_TYPES.ObjectExpression &&
+      inner.type !== AST_NODE_TYPES.ArrayExpression
     );
   });
 }
@@ -212,25 +287,37 @@ function containerLiteral(
   }
   const variable = variableOf(inner, sourceCode);
   const declarator = variable === null ? null : constDeclarator(variable);
-  if (variable === null || declarator?.id.type !== AST_NODE_TYPES.Identifier || !onlyReadByKey(variable)) {
+  if (variable === null || declarator?.id.type !== AST_NODE_TYPES.Identifier) {
     return null;
   }
   const init = peelTypeWrappers(declarator.init as TSESTree.Node);
-  return init.type === AST_NODE_TYPES.ObjectExpression || init.type === AST_NODE_TYPES.ArrayExpression
+  return (init.type === AST_NODE_TYPES.ObjectExpression || init.type === AST_NODE_TYPES.ArrayExpression) &&
+    onlyReadByKey(variable, init)
     ? init
     : null;
 }
 
 /**
  * The object literal an expression holds, through exact moves: the literal
- * itself, a `const` bound to one that is only read, a helper's argument, an
- * object property. Null when there is none.
+ * itself, a `const` bound to one that is only read by key, a helper's
+ * argument, an object property, a binding read only here. Null when there is
+ * none, or when some use could have changed the object on the way.
  */
 export function objectLiteralOf(node: TSESTree.Node, sourceCode: SourceCode): TSESTree.ObjectExpression | null {
   for (const step of flowSteps(node, node, sourceCode)) {
     const literal = containerLiteral(step.node, sourceCode);
     if (literal !== null) {
       return literal.type === AST_NODE_TYPES.ObjectExpression ? literal : null;
+    }
+    // Past any other binding (a `let` written once, a callback's value) the
+    // walk goes on only when this is its one read: nothing else can reach
+    // the object through it and change it.
+    const inner = peelTypeWrappers(step.node);
+    if (inner.type === AST_NODE_TYPES.Identifier) {
+      const variable = variableOf(inner, sourceCode);
+      if (variable === null || variable.references.filter((reference) => reference.isRead()).length !== 1) {
+        return null;
+      }
     }
   }
   return null;
@@ -308,7 +395,8 @@ function localFunction(
 /**
  * The index of the parameter a function returns unchanged
  * (`function forward(value) { return value; }`, `(v) => v`), or -1. The
- * parameter must be a plain name never written in the body.
+ * parameter must be a plain name, unique among the parameters, never
+ * written in the body.
  */
 function identityParameter(
   fn: TSESTree.FunctionDeclaration | TSESTree.FunctionExpression | TSESTree.ArrowFunctionExpression,
@@ -331,7 +419,9 @@ function identityParameter(
   const index = fn.params.findIndex(
     (param) => param.type === AST_NODE_TYPES.Identifier && param.name === value.name,
   );
-  if (index === -1) {
+  // `function pick(v, v)`: the last of two same-named parameters wins.
+  const named = fn.params.filter((param) => param.type === AST_NODE_TYPES.Identifier && param.name === value.name);
+  if (index === -1 || named.length !== 1) {
     return -1;
   }
   const variable = sourceCode.getDeclaredVariables(fn).find((candidate) => candidate.name === value.name);
