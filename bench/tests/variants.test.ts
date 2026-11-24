@@ -64,7 +64,8 @@ describe('the variants of the real corpus', () => {
       }
     });
     expect(broken).toEqual([]);
-  });
+    // Re-parses every variant of the corpus (thousands); slow CI runners need more than the default 5 s.
+  }, 60_000);
 
   it('keep every label of their case', () => {
     const byFile = new Map(corpus.categories.flatMap((c) => c.cases).map((c) => [c.file, c]));
