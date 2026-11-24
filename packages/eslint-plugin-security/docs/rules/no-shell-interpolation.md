@@ -159,8 +159,9 @@ A value in a word that runs as a program is proven only by a literal allowlist, 
 
 - the first word of a command: first in the string, or after `;`, `&`, `|`, `(`, `)`, a backtick or
   a line break, after `NAME=value` (whatever the value, `NODE_ENV=${mode}` included, and also when
-  a value forms the name, `${name}=x`), after bash's `NAME+=value` and `NAME[i]=value`, after a
-  redirect (`>out`, `2>/dev/null`, `< in`), or after a reserved word (`!`, `{`, `if`, `then`,
+  a value forms the name, `${name}=x`), after bash's `NAME+=value` and `NAME[i]=value` (an
+  assignment is one word through spaces in its brackets or quotes: `A[ 0 ]=x`, `A["x y"]=1`,
+  `A="x y"`), after a redirect (`>out`, `2>/dev/null`, `< in`), or after a reserved word (`!`, `{`, `if`, `then`,
   `else`, `elif`, `do`, `while`, `until`); a value glued to a path there (`/usr/bin/${tool}`,
   `./${tool}`) counts too;
 - any word after a wrapper, up to the next separator, options included (`sudo -u deploy ${tool}`,

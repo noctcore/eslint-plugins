@@ -98,7 +98,14 @@ const SEPARATORS = ';|()`\n\r';
  * `NAME+=value` and `NAME[i]=value` (`/bin/sh` is bash on macOS, RHEL and
  * Arch). A value in the name is read as a word character, see `isAssignment`.
  */
-const ASSIGNMENT_WORD = /^[A-Za-z_]\w*(?:\[[^\]]*\])?\+?=/u;
+const ASSIGNMENT_WORD = /^[A-Za-z_]\w*(?:\[.*\])?\+?=/u;
+
+/**
+ * The start of a word that may still become an assignment: bash reads
+ * `A[ 0 ]=x`, `A["x y"]=1` and `A="x y"` as one word, so a space inside its
+ * brackets or quotes (or escaped) does not end it.
+ */
+const ASSIGNMENT_START = /^[A-Za-z_\u0000][\w\u0000]*(?:\[|\+?=)/u;
 
 /**
  * A redirect operator, alone (`>`, `2>`) or with its target (`>out`, `2>&1`).
@@ -134,7 +141,9 @@ const VALUE_MARK = '\u0000';
 /**
  * Whether a word may assign a variable. A value in it stands for a word
  * character, so a value that forms the name (`${name}=x`, `A${p}=x`) keeps
- * the word an assignment: that only reports more.
+ * the word an assignment, and the word after it is read as the program. That
+ * moves reports both ways: in `${n}=x -exec ${t}` and `A+=x -exec ${t}`,
+ * `-exec` is the program (not a `find` action), so `t` is an argument there.
  */
 function isAssignment(text: string): boolean {
   return ASSIGNMENT_WORD.test(text.replaceAll(VALUE_MARK, 'v'));
@@ -168,6 +177,19 @@ export function classifyShellParts(segments: readonly (string | TSESTree.Node)[]
   // has anything in it.
   let word = '';
   let started = false;
+  // The quote the scan is inside, and whether the last character was an
+  // escaping backslash. Read only to keep an assignment word whole.
+  let quote = '';
+  let escaped = false;
+
+  /** A space here belongs to an assignment word still being read (see `ASSIGNMENT_START`). */
+  const insideAssignment = (): boolean => {
+    if (mode !== 'command' || !ASSIGNMENT_START.test(word)) {
+      return false;
+    }
+    const depth = word.split('[').length - word.split(']').length;
+    return quote !== '' || escaped || depth > 0;
+  };
 
   const endWord = (): void => {
     if (!started) {
@@ -246,17 +268,27 @@ export function classifyShellParts(segments: readonly (string | TSESTree.Node)[]
       });
       word += VALUE_MARK;
       started = true;
+      escaped = false;
       return;
     }
     if (isSeparator(index)) {
+      escaped = false;
       endWord();
       mode = 'command';
       program = null;
       redirectTarget = false;
-    } else if (item === ' ' || item === '\t') {
+    } else if ((item === ' ' || item === '\t') && !insideAssignment()) {
+      escaped = false;
       endWord();
     } else {
       started = true;
+      if (escaped) {
+        escaped = false;
+      } else if (item === '\\' && quote !== "'") {
+        escaped = true;
+      } else if ((item === "'" || item === '"') && (quote === '' || quote === item)) {
+        quote = quote === '' ? item : '';
+      }
       if (item !== "'" && item !== '"' && item !== '\\') {
         word += item;
       }
