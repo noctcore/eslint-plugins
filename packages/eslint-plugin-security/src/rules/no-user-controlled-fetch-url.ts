@@ -27,9 +27,11 @@ import {
 import {
   calleeSpecSchema,
   hasFixedOrigin,
+  isTrustedSource,
   matchCallee,
   normalizeCallees,
   normalizeTrust,
+  sourceTrustSchemaProperties,
   trustSchemaProperties,
   type UrlCalleeEntry,
   type UrlCalleeSpec,
@@ -295,6 +297,7 @@ const optionSchema: JSONSchema4 = {
         'Calls that open a socket, as written (`net.connect`). The host, port and IPC path must be fixed. Replaces the defaults (`net.connect`, `net.createConnection`, `tls.connect`).',
     },
     ...trustSchemaProperties,
+    ...sourceTrustSchemaProperties,
   },
 };
 
@@ -326,6 +329,8 @@ export const noUserControlledFetchUrlRule = createRule<RuleOptions, MessageIds>(
       trustedOrigins: [],
       sanitizers: [],
       trustedPaths: [],
+      trustedSources: [],
+      allowLoopback: false,
     },
   ],
   create(context, [options]) {
@@ -498,7 +503,12 @@ export const noUserControlledFetchUrlRule = createRule<RuleOptions, MessageIds>(
     function checkHost(node: TSESTree.Node, sink: TSESTree.Node): void {
       if (
         isFixedValue(node, sourceCode) ||
-        holdsAlongFlow(node, sink, sourceCode, (value, at) => isHostPinned(value, at, sourceCode))
+        holdsAlongFlow(
+          node,
+          sink,
+          sourceCode,
+          (value, at) => isTrustedSource(value, trust, sourceCode) || isHostPinned(value, at, sourceCode),
+        )
       ) {
         return;
       }

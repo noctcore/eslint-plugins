@@ -242,6 +242,8 @@ export function probe(input: string) {
 | `trustedOrigins` | `string[]` | `[]` | Expressions (source text) that are a fixed-origin URL. `name()` matches any call to `name`. |
 | `sanitizers` | `string[]` | `[]` | Functions whose result is a safe same-origin path. |
 | `trustedPaths` | `string[]` | `[]` | Expressions (source text) that hold a safe same-origin path, e.g. an imported constant. |
+| `trustedSources` | `string[]` | `[]` | Expressions (source text) whose value the person running the program picks, such as a CLI config or flag. The expression and every property read off it count as a trusted origin, and as a fixed host for `hostname` and `host`. |
+| `allowLoopback` | `boolean` | `false` | Trust a URL whose author-written text names `localhost`, `127.0.0.1` or `[::1]`, followed by a port the rule can see is a number. |
 
 A `CalleeSpec` is `{ name, object?, urlArgument?, urlProperty? }`: `name` is the function or method
 name; `object` the receiver source text (`axios`, `this.http`), omitted for a bare call like
@@ -292,6 +294,63 @@ await fetch(`${getApiBaseUrl()}${input}`);
 A trusted origin does **not** make whatever follows it safe. The userinfo trick works just as well
 against `${getApiBaseUrl()}${input}` as against a literal host; only a `/`, `?`, `#`, a sanitizer or a
 trusted path closes the authority.
+
+### `trustedSources`
+
+In a CLI the person running it picks the base URL, in a config file or a flag, so no requester can
+move it. Name the object it comes from once. An entry covers the expression itself and every
+property read off it by name or literal key (`config` covers `config.registryUrl`,
+`config?.mirrors[0]` and `config['registryUrl']`, not `config[key]` or `getConfig().registryUrl`):
+
+```js
+'noctcore-security/no-user-controlled-fetch-url': ['error', {
+  trustedSources: ['config', 'argv.registry'],
+}],
+```
+
+```ts good options={"trustedSources":["config","argv.registry"]}
+// with the options above
+await fetch(new URL(`r/${name}.json`, config.registryUrl));
+await fetch(`${argv.registry}/r/${name}.json`);
+https.get({ hostname: config.host, path: `/r/${name}` });
+```
+
+```ts bad options={"trustedSources":["config","argv.registry"]} reports=2
+// still flagged: the runtime path can be a whole URL with its own host
+await fetch(new URL(path, config.registryUrl));
+// still flagged: nothing closes the authority after the trusted source
+await fetch(`${config.registryUrl}${path}`);
+```
+
+A trusted source is a trusted origin, nothing more: what follows it must still close the authority.
+Use it only for values a requester cannot reach; naming `req.body` here turns the rule off for it.
+
+### `allowLoopback`
+
+Integration tests often start a server on a random port and call it on loopback. With
+`allowLoopback`, a URL passes when its author-written text is `http://`, `https://`, `ws://` or
+`wss://`, then `localhost`, `127.0.0.1` or `[::1]` and a `:`, then a port the rule can see is a number
+(a number literal, `Number(x)`, `parseInt(x)`, `Number.parseInt(x)`, a `Math` call, unary `+` or `-`,
+or arithmetic other than `+`), then nothing or `/`, `?` or `#`:
+
+```ts good options={"allowLoopback":true}
+// with allowLoopback: true
+await fetch(`http://127.0.0.1:${Number(port)}/health`);
+await fetch(`http://localhost:${+port}/api/${id}`);
+```
+
+```ts bad options={"allowLoopback":true} reports=3
+// still flagged: the rule cannot see that `port` is a number, and `port = "1@evil.com"` moves the host
+await fetch(`http://localhost:${port}/health`);
+// still flagged: nothing closes the authority after the port
+await fetch(`http://localhost:${Number(port)}${path}`);
+// still flagged: a runtime value is never trusted for looking like loopback
+await fetch(target);
+```
+
+When the port comes from `server.address()`, wrap it: `Number(address.port)`. The host must be
+written in the URL text itself; a runtime value that happens to hold `localhost` is still reported.
+The option applies to URLs only, not to `hostname` and `port` request options.
 
 ## When not to use it
 

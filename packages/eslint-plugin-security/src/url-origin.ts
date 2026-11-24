@@ -12,7 +12,7 @@ import {
   type FetchCalleeEntry,
   type FetchCalleeSpec,
 } from '@noctcore/eslint-utils';
-import { AST_NODE_TYPES, type TSESLint, type TSESTree } from '@typescript-eslint/utils';
+import { AST_NODE_TYPES, ASTUtils, type TSESLint, type TSESTree } from '@typescript-eslint/utils';
 import type { JSONSchema4 } from '@typescript-eslint/utils/json-schema';
 
 import { conventionalCallee, flowStep, stringPieces } from './value-flow';
@@ -53,6 +53,20 @@ export interface UrlTrustOptions {
    * an imported path constant the rule cannot see into: `AUTH_CALLBACK_PATH`.
    */
   readonly trustedPaths?: readonly string[];
+  /**
+   * Values the person running the program picks, not a requester, matched by
+   * source text: the expression itself and every property read off it
+   * (`config` covers `config.registryUrl` and `config.mirrors[0]`). Each
+   * counts as a trusted origin, so what follows it must still close the
+   * authority. Read by `no-user-controlled-fetch-url` only.
+   */
+  readonly trustedSources?: readonly string[];
+  /**
+   * Trust a URL whose author-written text names a loopback host
+   * (`localhost`, `127.0.0.1`, `[::1]`) followed by a port the rule can see is
+   * a number. Read by `no-user-controlled-fetch-url` only.
+   */
+  readonly allowLoopback?: boolean;
 }
 
 // The callee vocabulary is shared with the other plugins' fetch rules through
@@ -68,12 +82,29 @@ export const trustSchemaProperties: Record<string, JSONSchema4> = {
   trustedPaths: { type: 'array', items: { type: 'string' }, uniqueItems: true },
 };
 
+export const sourceTrustSchemaProperties: Record<string, JSONSchema4> = {
+  trustedSources: {
+    type: 'array',
+    items: { type: 'string' },
+    uniqueItems: true,
+    description:
+      'Expressions whose value the person running the program picks (a CLI config or flag), as written: the expression and every property read off it count as a trusted origin.',
+  },
+  allowLoopback: {
+    type: 'boolean',
+    description:
+      'Trust a URL whose author-written text names `localhost`, `127.0.0.1` or `[::1]` followed by a port that is a number literal or a numeric expression (`Number(port)`).',
+  },
+};
+
 /** Normalized, lookup-ready form of {@link UrlTrustOptions}. */
 export interface UrlTrust {
   readonly originTexts: ReadonlySet<string>;
   readonly originCallees: ReadonlySet<string>;
   readonly sanitizerCallees: ReadonlySet<string>;
   readonly pathTexts: ReadonlySet<string>;
+  readonly sourceTexts: ReadonlySet<string>;
+  readonly loopback: boolean;
 }
 
 /** Drops all whitespace so `this.shared.appUrl` matches however it is wrapped. */
@@ -99,6 +130,8 @@ export function normalizeTrust(options: UrlTrustOptions): UrlTrust {
       (options.sanitizers ?? []).map((entry) => squash(entry).replace(/\(\)$/u, '')),
     ),
     pathTexts: new Set((options.trustedPaths ?? []).map(squash)),
+    sourceTexts: new Set((options.trustedSources ?? []).map(squash)),
+    loopback: options.allowLoopback === true,
   };
 }
 
@@ -163,6 +196,7 @@ type Part =
   | { readonly kind: 'text'; readonly value: string }
   | { readonly kind: 'origin' }
   | { readonly kind: 'path' }
+  | { readonly kind: 'number' }
   | { readonly kind: 'unknown' };
 
 const MAX_RESOLVE_DEPTH = 8;
@@ -209,14 +243,35 @@ export function hasFixedOrigin(
   }
   switch (head.kind) {
     case 'text':
-      return rest.length === 0 || prefixPinsOrigin(head.value);
+      return rest.length === 0 || prefixPinsOrigin(head.value) || (trust.loopback && loopbackWithPort(head.value, rest));
     case 'origin':
       return authorityClosedBy(rest, true);
     case 'path':
       return authorityClosedBy(rest, false);
+    case 'number':
     case 'unknown':
       return false;
   }
+}
+
+/**
+ * `http://127.0.0.1:${port}/x`: a loopback host written in full, then a port
+ * that is a number, then nothing or text that closes the authority. Every
+ * string a number turns into (`3000`, `-1`, `NaN`, `1e+21`) is a port or an
+ * invalid URL, never `@` or `/`, so the host cannot move. Anything else
+ * after the port could start `@evil.com` and turn the host into userinfo.
+ */
+function loopbackWithPort(rawPrefix: string, rest: readonly Part[]): boolean {
+  const prefix = rawPrefix
+    .replace(/^[\u0000- ]+/u, '')
+    .replace(/[\t\n\r]/gu, '')
+    .replace(/\\/gu, '/');
+  const [port, after] = rest;
+  return (
+    /^(?:https?|wss?):\/\/(?:localhost|127\.0\.0\.1|\[::1\]):$/iu.test(prefix) &&
+    port?.kind === 'number' &&
+    (after === undefined || (after.kind === 'text' && /^[/?#\\]/u.test(after.value)))
+  );
 }
 
 /**
@@ -313,7 +368,7 @@ function trustedRole(
   sourceCode: Readonly<TSESLint.SourceCode>,
 ): Part | undefined {
   const text = squash(sourceCode.getText(node));
-  if (trust.originTexts.has(text)) {
+  if (trust.originTexts.has(text) || readsTrustedSource(node, trust, sourceCode)) {
     return { kind: 'origin' };
   }
   if (trust.pathTexts.has(text)) {
@@ -329,6 +384,93 @@ function trustedRole(
     }
   }
   return undefined;
+}
+
+/** True for a configured trusted source or a property read off one (see {@link UrlTrustOptions.trustedSources}). */
+export function isTrustedSource(
+  node: TSESTree.Node,
+  trust: UrlTrust,
+  sourceCode: Readonly<TSESLint.SourceCode>,
+): boolean {
+  return isExpression(node) && readsTrustedSource(unwrap(node), trust, sourceCode);
+}
+
+function isExpression(node: TSESTree.Node): node is TSESTree.Expression {
+  return node.type !== AST_NODE_TYPES.SpreadElement && node.type !== AST_NODE_TYPES.PrivateIdentifier;
+}
+
+/**
+ * A configured trusted source, or a property read off one by name or literal
+ * key. A key computed at run time could pick a value the entry does not
+ * cover (`config[req.query.k]`), so it does not count.
+ */
+function readsTrustedSource(
+  node: TSESTree.Expression,
+  trust: UrlTrust,
+  sourceCode: Readonly<TSESLint.SourceCode>,
+): boolean {
+  if (trust.sourceTexts.size === 0) {
+    return false;
+  }
+  let current: TSESTree.Expression = node;
+  for (;;) {
+    if (current.type === AST_NODE_TYPES.ChainExpression) {
+      current = current.expression;
+    }
+    if (trust.sourceTexts.has(squash(sourceCode.getText(current)))) {
+      return true;
+    }
+    if (
+      current.type !== AST_NODE_TYPES.MemberExpression ||
+      (current.computed && current.property.type !== AST_NODE_TYPES.Literal)
+    ) {
+      return false;
+    }
+    current = unwrap(current.object);
+  }
+}
+
+/** Globals whose result is always a number. */
+const NUMBER_CALLS = new Set(['Number', 'parseInt', 'parseFloat']);
+const NUMBER_OPERATORS = new Set(['-', '*', '/', '%', '**', '|', '&', '^', '<<', '>>', '>>>']);
+
+/** True for an unshadowed global name read here. */
+function isGlobal(node: TSESTree.Node, sourceCode: Readonly<TSESLint.SourceCode>): node is TSESTree.Identifier {
+  if (node.type !== AST_NODE_TYPES.Identifier) {
+    return false;
+  }
+  const variable = ASTUtils.findVariable(sourceCode.getScope(node), node);
+  return variable === null || variable.defs.length === 0;
+}
+
+/**
+ * Expressions whose value is a number whatever their operands hold:
+ * `Number(x)`, `parseInt(x)`, `Number.parseInt(x)`, `Math.max(...)`, `+x`,
+ * `a - b`. A `+` between two values may join strings, so it does not count.
+ */
+function isNumberExpression(node: TSESTree.Expression, sourceCode: Readonly<TSESLint.SourceCode>): boolean {
+  if (node.type === AST_NODE_TYPES.UnaryExpression) {
+    return node.operator === '+' || node.operator === '-' || node.operator === '~';
+  }
+  if (node.type === AST_NODE_TYPES.BinaryExpression) {
+    return NUMBER_OPERATORS.has(node.operator);
+  }
+  if (node.type !== AST_NODE_TYPES.CallExpression) {
+    return false;
+  }
+  const callee = node.callee;
+  if (callee.type === AST_NODE_TYPES.Identifier) {
+    return NUMBER_CALLS.has(callee.name) && isGlobal(callee, sourceCode);
+  }
+  return (
+    callee.type === AST_NODE_TYPES.MemberExpression &&
+    !callee.computed &&
+    callee.property.type === AST_NODE_TYPES.Identifier &&
+    isGlobal(callee.object, sourceCode) &&
+    ((callee.object.name === 'Math' && callee.property.name !== 'toString') ||
+      (callee.object.name === 'Number' &&
+        (callee.property.name === 'parseInt' || callee.property.name === 'parseFloat')))
+  );
 }
 
 function flatten(
@@ -348,6 +490,9 @@ function flatten(
   }
   const next = (child: TSESTree.Expression): Part[] =>
     flatten(child, trust, sourceCode, depth + 1, seen);
+  if (isNumberExpression(node, sourceCode)) {
+    return [{ kind: 'number' }];
+  }
   const parts = flattenNode(node, sourceCode, seen, next);
   if (parts.length !== 1 || parts[0]?.kind !== 'unknown') {
     return parts;
