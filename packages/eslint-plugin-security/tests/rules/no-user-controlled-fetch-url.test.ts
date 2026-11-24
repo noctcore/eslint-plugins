@@ -18,6 +18,7 @@ ruleTester.run('no-user-controlled-fetch-url', noUserControlledFetchUrlRule, {
     // Relative, same origin: the id can only move the path.
     { code: 'fetch(`/api/todos/${id}`);', filename: TS },
     { code: 'fetch(`api/todos/${id}`);', filename: TS },
+    { code: 'fetch(`api.json?${q}`);', filename: TS },
     // Authority closed by `/`, `?` or `#` before the first interpolation.
     { code: 'fetch(`https://api.example.com/v${n}/todos`);', filename: TS },
     { code: 'fetch(`https://api.example.com?q=${q}`);', filename: TS },
@@ -353,5 +354,9 @@ ruleTester.run('no-user-controlled-fetch-url', noUserControlledFetchUrlRule, {
     { code: 'axios.create(req.body);', filename: TS, errors: [option] },
     { code: 'function mk(cfg) { return axios.create(cfg); }', filename: TS, errors: [option] },
     { code: 'axios.create(c ? { baseURL: x } : {});', filename: TS, errors: [option] },
+    // A relative prefix made only of scheme characters can still grow into a scheme.
+    { code: 'fetch(`h${x}`);', filename: TS, errors: [error] },
+    { code: 'fetch(`java${x}`);', filename: TS, errors: [error] },
+    { code: "fetch('h' + x);", filename: TS, errors: [error] },
   ],
 });

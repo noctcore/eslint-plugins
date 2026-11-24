@@ -41,7 +41,15 @@ import {
   urlArgumentOf,
 } from '../url-origin';
 import { squash, unwrapExpression } from '../utils';
-import { callArguments, flowStep, handlerRole, withArguments } from '../value-flow';
+import {
+  callArguments,
+  flowStep,
+  flowSteps,
+  handlerRole,
+  importedBinding,
+  objectLiteralOf,
+  withArguments,
+} from '../value-flow';
 
 const RULE_NAME = 'no-user-controlled-redirect';
 
@@ -173,12 +181,48 @@ function staticTexts(
     const cooked = inner.quasis[0]?.value.cooked;
     return cooked == null ? [] : [cooked];
   }
+  if (inner.type === AST_NODE_TYPES.TemplateLiteral && depth < MAX_NAME_DEPTH) {
+    const pieces: (string | TSESTree.Node)[] = [];
+    inner.quasis.forEach((quasi, index) => {
+      pieces.push(quasi.value.cooked ?? quasi.value.raw);
+      const expression = inner.expressions[index];
+      if (expression !== undefined) {
+        pieces.push(expression);
+      }
+    });
+    return joinedTexts(pieces, sourceCode, depth);
+  }
+  if (inner.type === AST_NODE_TYPES.BinaryExpression && inner.operator === '+' && depth < MAX_NAME_DEPTH) {
+    return joinedTexts([inner.left, inner.right], sourceCode, depth);
+  }
   if (inner.type === AST_NODE_TYPES.Identifier && depth < MAX_NAME_DEPTH) {
     return (writtenValues(inner, sourceCode) ?? []).flatMap((value) =>
       staticTexts(value, sourceCode, depth + 1),
     );
   }
   return [];
+}
+
+const MAX_JOINED_TEXTS = 16;
+
+/**
+ * Every text a string joined from fixed pieces can hold (`'Loc' + 'ation'`),
+ * or none when a piece is runtime or there are too many to list.
+ */
+function joinedTexts(
+  pieces: readonly (string | TSESTree.Node)[],
+  sourceCode: Readonly<TSESLint.SourceCode>,
+  depth: number,
+): string[] {
+  let texts = [''];
+  for (const piece of pieces) {
+    const options = typeof piece === 'string' ? [piece] : staticTexts(piece, sourceCode, depth + 1);
+    texts = texts.flatMap((text) => options.map((option) => text + option));
+    if (texts.length === 0 || texts.length > MAX_JOINED_TEXTS) {
+      return [];
+    }
+  }
+  return texts;
 }
 
 /** The one text a fixed string holds (see {@link staticTexts}), else undefined. */
@@ -242,6 +286,11 @@ function memberCallParts(
   return { method, receivers };
 }
 
+/** True when `name` is bound to an import from `@sveltejs/kit` (a named or a namespace import). */
+function isKitImport(name: TSESTree.Identifier, sourceCode: Readonly<TSESLint.SourceCode>): boolean {
+  return importedBinding(name, sourceCode)?.module === '@sveltejs/kit';
+}
+
 /** `matchCallee`, also through a chain of response-returning calls on the receiver. */
 function matchRedirectCallee(
   node: TSESTree.CallExpression,
@@ -252,6 +301,17 @@ function matchRedirectCallee(
   if (direct !== undefined) {
     return direct;
   }
+  // `kit.redirect(303, url)` through `import * as kit from '@sveltejs/kit'`
+  // is the bare `redirect` sink.
+  const callee = node.callee;
+  if (
+    callee.type === AST_NODE_TYPES.MemberExpression &&
+    callee.object.type === AST_NODE_TYPES.Identifier &&
+    propertyName(callee, sourceCode) === 'redirect' &&
+    isKitImport(callee.object, sourceCode)
+  ) {
+    return specs.find((spec) => spec.object === undefined && spec.name === 'redirect');
+  }
   const parts = memberCallParts(node, sourceCode);
   return parts === null
     ? undefined
@@ -261,6 +321,31 @@ function matchRedirectCallee(
           spec.name === parts.method &&
           parts.receivers.includes(squash(spec.object)),
       );
+}
+
+/**
+ * The spec with the URL moved to argument 1 for a status-first call:
+ * SvelteKit's `redirect(status, location)`, known by its import from
+ * `@sveltejs/kit`, or any call whose argument 0 is a number literal (a status
+ * code is never the target). Specs that name another argument are left alone.
+ */
+function statusFirst(
+  node: TSESTree.CallExpression,
+  spec: UrlCalleeSpec,
+  sourceCode: Readonly<TSESLint.SourceCode>,
+): UrlCalleeSpec {
+  if (spec.urlArgument !== undefined && spec.urlArgument !== 0) {
+    return spec;
+  }
+  const first = node.arguments[0];
+  const inner =
+    first === undefined || first.type === AST_NODE_TYPES.SpreadElement ? undefined : unwrapExpression(first);
+  const status = inner?.type === AST_NODE_TYPES.Literal && typeof inner.value === 'number';
+  const callee = node.callee;
+  const root =
+    callee.type === AST_NODE_TYPES.MemberExpression ? callee.object : callee;
+  const fromKit = root.type === AST_NODE_TYPES.Identifier && isKitImport(root, sourceCode);
+  return status || fromKit ? { ...spec, urlArgument: 1 } : spec;
 }
 
 /** True when a header name is, or may be, `Location` in any case. */
@@ -337,10 +422,21 @@ function holderLocations(
         if (property.type === AST_NODE_TYPES.SpreadElement) {
           return holderLocations(property.argument, sourceCode, depth + 1);
         }
-        return property.kind === 'init' && isLocationKey(property, sourceCode)
-          ? headerValues(property.value)
-          : [];
+        if (property.kind === 'set' || !isLocationKey(property, sourceCode)) {
+          return [];
+        }
+        return property.kind === 'get' ? returnedValues(property.value) : headerValues(property.value);
       });
+    case AST_NODE_TYPES.ConditionalExpression:
+      return [
+        ...holderLocations(inner.consequent, sourceCode, depth + 1),
+        ...holderLocations(inner.alternate, sourceCode, depth + 1),
+      ];
+    case AST_NODE_TYPES.LogicalExpression:
+      return [
+        ...holderLocations(inner.left, sourceCode, depth + 1),
+        ...holderLocations(inner.right, sourceCode, depth + 1),
+      ];
     case AST_NODE_TYPES.ArrayExpression:
       return arrayLocations(inner.elements, sourceCode, depth);
     case AST_NODE_TYPES.NewExpression:
@@ -350,8 +446,12 @@ function holderLocations(
         : [];
     case AST_NODE_TYPES.CallExpression:
       // `Object.assign({}, base, { Location: url })`
-      return isObjectAssignCallee(inner.callee)
-        ? inner.arguments.flatMap((source) => holderLocations(source, sourceCode, depth + 1))
+      if (isObjectAssignCallee(inner.callee)) {
+        return inner.arguments.flatMap((source) => holderLocations(source, sourceCode, depth + 1));
+      }
+      // `Object.fromEntries([['Location', url]])`
+      return isStaticCall(inner, 'Object', 'fromEntries')
+        ? holderLocations(inner.arguments[0], sourceCode, depth + 1)
         : [];
     case AST_NODE_TYPES.Identifier:
       return [
@@ -385,16 +485,70 @@ function arrayLocations(
   });
 }
 
-/** True for the callee `Object.assign`. */
-function isObjectAssignCallee(callee: TSESTree.Node): boolean {
+/** True for the callee `object.name`: `Object.assign`, `Reflect.set`. */
+function isStaticCallee(callee: TSESTree.Node, object: string, name: string): boolean {
   return (
     callee.type === AST_NODE_TYPES.MemberExpression &&
     !callee.computed &&
     callee.object.type === AST_NODE_TYPES.Identifier &&
-    callee.object.name === 'Object' &&
+    callee.object.name === object &&
     callee.property.type === AST_NODE_TYPES.Identifier &&
-    callee.property.name === 'assign'
+    callee.property.name === name
   );
+}
+
+/** True for a call `object.name(...)`. */
+function isStaticCall(node: TSESTree.Node, object: string, name: string): node is TSESTree.CallExpression {
+  return node.type === AST_NODE_TYPES.CallExpression && isStaticCallee(node.callee, object, name);
+}
+
+/** True for the callee `Object.assign`. */
+function isObjectAssignCallee(callee: TSESTree.Node): boolean {
+  return isStaticCallee(callee, 'Object', 'assign');
+}
+
+/**
+ * The values a getter returns: an arrow's expression body, or each `return`
+ * directly in a function body. A `return` nested in a block is not read.
+ */
+function returnedValues(fn: TSESTree.Node): TSESTree.Expression[] {
+  if (fn.type !== AST_NODE_TYPES.FunctionExpression && fn.type !== AST_NODE_TYPES.ArrowFunctionExpression) {
+    return [];
+  }
+  if (fn.body.type !== AST_NODE_TYPES.BlockStatement) {
+    return headerValues(fn.body);
+  }
+  return fn.body.body.flatMap((statement) =>
+    statement.type === AST_NODE_TYPES.ReturnStatement ? headerValues(statement.argument) : [],
+  );
+}
+
+/** The `Location` values of an `Object.defineProperty` descriptor: its `value`, or what its `get` returns. */
+function descriptorValues(
+  node: TSESTree.Node | undefined,
+  sourceCode: Readonly<TSESLint.SourceCode>,
+): TSESTree.Expression[] {
+  const descriptor = node === undefined ? null : objectLiteralOf(node, sourceCode, 'taint');
+  if (descriptor === null) {
+    return [];
+  }
+  return descriptor.properties.flatMap((property) => {
+    if (property.type !== AST_NODE_TYPES.Property) {
+      return [];
+    }
+    const key = keyName(property, sourceCode);
+    if (key === 'value' && property.kind === 'init') {
+      return headerValues(property.value);
+    }
+    return key === 'get' && property.kind === 'init' ? returnedValues(property.value) : [];
+  });
+}
+
+/** The name of an object key: `headers`, `'headers'`, `['headers']`, `[H]`. */
+function keyName(property: TSESTree.Property, sourceCode: Readonly<TSESLint.SourceCode>): string | undefined {
+  return !property.computed && property.key.type === AST_NODE_TYPES.Identifier
+    ? property.key.name
+    : staticText(property.key, sourceCode);
 }
 
 /** True when `node` is the target of `Object.assign(node, ...)`. */
@@ -407,6 +561,24 @@ function isObjectAssignTarget(node: TSESTree.Node): boolean {
   );
 }
 
+/** The binding `node` is copied into as a whole: `a` in `const a = hd` or `a = hd`. */
+function aliasOf(node: TSESTree.Identifier): TSESTree.Identifier | null {
+  const parent = node.parent;
+  if (
+    parent?.type === AST_NODE_TYPES.VariableDeclarator &&
+    parent.init === node &&
+    parent.id.type === AST_NODE_TYPES.Identifier
+  ) {
+    return parent.id;
+  }
+  return parent?.type === AST_NODE_TYPES.AssignmentExpression &&
+    parent.operator === '=' &&
+    parent.right === node &&
+    parent.left.type === AST_NODE_TYPES.Identifier
+    ? parent.left
+    : null;
+}
+
 /** What the file writes into the headers holder `name` refers to. */
 function holderWrites(
   name: TSESTree.Identifier,
@@ -414,11 +586,32 @@ function holderWrites(
   depth: number,
 ): TSESTree.Expression[] {
   const variable = findVariable(sourceCode.getScope(name), name);
-  if (variable === null) {
+  if (variable === null || depth > MAX_NAME_DEPTH) {
     return [];
   }
   return variable.references.flatMap((reference) => {
     const member = reference.identifier.parent;
+    // An alias writes into the same holder: `const a = hd; a.Location = url`.
+    const alias = reference.identifier.type === AST_NODE_TYPES.Identifier ? aliasOf(reference.identifier) : null;
+    if (alias !== null) {
+      return holderWrites(alias, sourceCode, depth + 1);
+    }
+    if (
+      member?.type === AST_NODE_TYPES.CallExpression &&
+      member.arguments[0] === reference.identifier
+    ) {
+      // `Reflect.set(hd, 'Location', url)`
+      if (isStaticCallee(member.callee, 'Reflect', 'set')) {
+        return pairValues(member.arguments[1], member.arguments[2], sourceCode);
+      }
+      // `Object.defineProperty(hd, 'Location', { value: url })`
+      if (isStaticCallee(member.callee, 'Object', 'defineProperty')) {
+        const [, key, descriptor] = member.arguments;
+        return key !== undefined && key.type !== AST_NODE_TYPES.SpreadElement && isLocationName(key, sourceCode)
+          ? descriptorValues(descriptor, sourceCode)
+          : [];
+      }
+    }
     if (isObjectAssignTarget(reference.identifier)) {
       const call = member as TSESTree.CallExpression;
       return call.arguments
@@ -441,6 +634,10 @@ function holderWrites(
           member.property.name.toLowerCase() === 'location')
     ) {
       return headerValues(parent.right);
+    }
+    // An index write of a pair into Node's array form: `hd[0] = ['Location', url]`.
+    if (parent?.type === AST_NODE_TYPES.AssignmentExpression && parent.left === member && member.computed) {
+      return arrayLocations([parent.right], sourceCode, depth);
     }
     if (parent?.type !== AST_NODE_TYPES.CallExpression || parent.callee !== member) {
       return [];
@@ -484,8 +681,9 @@ function locationHeaderValues(
   if (parts.method === 'setHeaders') {
     return holderLocations(first, sourceCode);
   }
-  if (parts.method === 'writeHead' && args.length > 1) {
-    return holderLocations(args.at(-1), sourceCode);
+  if (parts.method === 'writeHead') {
+    // `writeHead(status, message?, headers?)`, also with a trailing `undefined`.
+    return args.slice(1).flatMap((arg) => holderLocations(arg, sourceCode));
   }
   return [];
 }
@@ -502,6 +700,94 @@ function responseInitLocations(
     return [];
   }
   return initHeaders(node.arguments[1], sourceCode, 0);
+}
+
+/** The `Location` values of `Response.json(data, init)` or `NextResponse.json(data, init)`. */
+function jsonInitLocations(
+  node: TSESTree.CallExpression,
+  sourceCode: Readonly<TSESLint.SourceCode>,
+): TSESTree.Expression[] {
+  return [...RESPONSE_CONSTRUCTORS].some((object) => isStaticCallee(node.callee, object, 'json'))
+    ? initHeaders(node.arguments[1], sourceCode, 0)
+    : [];
+}
+
+/**
+ * True when `node` holds a Fetch response: a receiver in `responseObjects`,
+ * or a value that comes from `new Response(...)`, `new NextResponse(...)` or a
+ * static call on either (`NextResponse.next()`, `Response.json(data)`).
+ */
+function isFetchResponse(
+  node: TSESTree.Node,
+  responseObjects: ReadonlySet<string>,
+  sourceCode: Readonly<TSESLint.SourceCode>,
+): boolean {
+  if (responseObjects.has(squash(sourceCode.getText(node)))) {
+    return true;
+  }
+  return flowSteps(node, node, sourceCode, 'taint').some(({ node: step }) => {
+    const inner = unwrapExpression(step as TSESTree.Expression);
+    if (inner.type === AST_NODE_TYPES.NewExpression) {
+      return inner.callee.type === AST_NODE_TYPES.Identifier && RESPONSE_CONSTRUCTORS.has(inner.callee.name);
+    }
+    return (
+      inner.type === AST_NODE_TYPES.CallExpression &&
+      inner.callee.type === AST_NODE_TYPES.MemberExpression &&
+      inner.callee.object.type === AST_NODE_TYPES.Identifier &&
+      RESPONSE_CONSTRUCTORS.has(inner.callee.object.name)
+    );
+  });
+}
+
+/** `r` in `const { headers } = r` when `name` is that `headers` binding, else null. */
+function destructuredHeadersSource(
+  name: TSESTree.Identifier,
+  sourceCode: Readonly<TSESLint.SourceCode>,
+): TSESTree.Expression | null {
+  const def = findVariable(sourceCode.getScope(name), name)?.defs[0];
+  if (def?.type !== 'Variable' || def.node.id.type !== AST_NODE_TYPES.ObjectPattern || def.node.init === null) {
+    return null;
+  }
+  const taken = def.node.id.properties.some(
+    (property) =>
+      property.type === AST_NODE_TYPES.Property &&
+      property.value === def.name &&
+      keyName(property, sourceCode) === 'headers',
+  );
+  return taken ? def.node.init : null;
+}
+
+/**
+ * The `Location` values of `r.headers.set('Location', url)` on a Fetch
+ * response `r`, also when `r.headers` reaches the call through a binding, a
+ * helper or a container (`const h = r.headers; h.set(...)`).
+ */
+function responseHeadersLocations(
+  node: TSESTree.CallExpression,
+  responseObjects: ReadonlySet<string>,
+  sourceCode: Readonly<TSESLint.SourceCode>,
+): TSESTree.Expression[] {
+  const callee = node.callee;
+  if (
+    callee.type !== AST_NODE_TYPES.MemberExpression ||
+    !HOLDER_SETTERS.has(propertyName(callee, sourceCode) ?? '') ||
+    !flowSteps(callee.object, callee.object, sourceCode, 'taint').some(({ node: step }) => {
+      const headers = unwrapExpression(step as TSESTree.Expression);
+      if (headers.type === AST_NODE_TYPES.Identifier) {
+        const response = destructuredHeadersSource(headers, sourceCode);
+        return response !== null && isFetchResponse(response, responseObjects, sourceCode);
+      }
+      return (
+        headers.type === AST_NODE_TYPES.MemberExpression &&
+        propertyName(headers, sourceCode) === 'headers' &&
+        isFetchResponse(headers.object, responseObjects, sourceCode)
+      );
+    })
+  ) {
+    return [];
+  }
+  const [name, value] = callArguments(node.arguments, sourceCode);
+  return pairValues(name, value, sourceCode);
 }
 
 /** The `Location` values of the `headers` in a `Response` init object, or a binding holding one. */
@@ -526,11 +812,7 @@ function initHeaders(
     if (property.type === AST_NODE_TYPES.SpreadElement) {
       return initHeaders(property.argument, sourceCode, depth + 1);
     }
-    return !property.computed &&
-      property.key.type === AST_NODE_TYPES.Identifier &&
-      property.key.name === 'headers'
-      ? holderLocations(property.value, sourceCode)
-      : [];
+    return keyName(property, sourceCode) === 'headers' ? holderLocations(property.value, sourceCode) : [];
   });
 }
 
@@ -662,9 +944,17 @@ export const noUserControlledRedirectRule = createRule<RuleOptions, MessageIds>(
         const spec = matchRedirectCallee(node, callees, sourceCode);
         if (spec === undefined) {
           check(locationHeaderValues(node, responseObjects, sourceCode), HEADER_PIN);
+          check(
+            [
+              ...responseHeadersLocations(node, responseObjects, sourceCode),
+              ...jsonInitLocations(node, sourceCode),
+            ],
+            SCRIPT_PIN,
+          );
           return;
         }
-        const urlArg = urlArgumentOf(withArguments(node, sourceCode), spec);
+        const call = withArguments(node, sourceCode);
+        const urlArg = urlArgumentOf(call, statusFirst(call, spec, sourceCode));
         const onResponse = spec.object !== undefined && responseObjects.has(squash(spec.object));
         check(urlArg === undefined ? [] : [urlArg], onResponse ? HEADER_PIN : SCRIPT_PIN);
       },

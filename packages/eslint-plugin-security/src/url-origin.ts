@@ -263,8 +263,10 @@ function prefixPinsOrigin(rawPrefix: string): boolean {
   if (authorityStart === -1) {
     // Relative URL. Safe, except a lone `/` (the runtime part can begin with
     // `/` and turn it into a protocol-relative `//evil.com`) or nothing left
-    // once the parser drops what it drops (`' '` then the whole URL).
-    return prefix !== '/' && prefix !== '';
+    // once the parser drops what it drops (`' '` then the whole URL), or text
+    // made only of scheme characters, which the runtime part can finish into a
+    // scheme (`h` then `ttps://evil.com`, `java` then `script:alert(1)`).
+    return prefix !== '/' && prefix !== '' && !/^[a-z][a-z0-9+.-]*$/iu.test(prefix);
   }
 
   // Absolute or protocol-relative: the authority must END inside the literal

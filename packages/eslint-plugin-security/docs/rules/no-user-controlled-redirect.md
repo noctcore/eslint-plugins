@@ -38,7 +38,9 @@ regresses, nothing at the redirect site says so. This rule does.
 The URL argument of each configured redirect callee goes through the same fixed-origin analysis as
 `no-user-controlled-fetch-url`: author-written text, in-file `const` resolution, `+`, `new URL(input,
 base)`. A same-origin relative path passes; a runtime host, a runtime value right after a lone `/`,
-or a runtime value right after an origin that no `/`, `?` or `#` has closed is flagged.
+a runtime value right after relative text made only of scheme characters (`` `h${x}` `` with
+`x = 'ttps://evil.com'`), or a runtime value right after an origin that no `/`, `?` or `#` has
+closed is flagged.
 
 The analysis judges the target's origin, not where the value came from, so a URL read from the
 database (a stored open redirect) or from the `Host` header counts the same as one read from the
@@ -59,9 +61,26 @@ A redirect is also a `Location` header plus a 3xx status. On a receiver named in
   forms (`['Location', url]` and `[['Location', url]]`), `res.setHeaders(new Map(...))` or
   `new Headers(...)`, and a headers holder built earlier in the file (`const headers = {}`, then
   `headers.Location = url`, `headers.set(...)`, `headers.push(...)` or `Object.assign(headers, ...)`).
+  The holder can also be a conditional or logical expression (`ok ? { Location: url } : {}`,
+  `ok && { Location: url }`, each branch read), `Object.fromEntries(...)`, or an object with a
+  `get Location()` getter, and the writes can go through an alias (`const a = headers`),
+  `Reflect.set(headers, 'Location', url)`, `Object.defineProperty(headers, 'Location', { value })`
+  (or `{ get }`), or an index write of a pair (`headers[0] = ['Location', url]`). `writeHead` reads
+  each argument after the status, so `res.writeHead(302, { Location: url }, undefined)` is read;
+  a header name joined from fixed pieces (`'Loc' + 'ation'`) counts as `Location`.
 
 Outside Express and Fastify, `Response.redirect(url)` (in the default `redirectCallees`) and the
-`headers` of `new Response(body, init)` or `new NextResponse(body, init)` are read the same way.
+`headers` of `new Response(body, init)`, `new NextResponse(body, init)`, `Response.json(data, init)`
+and `NextResponse.json(data, init)` are read the same way, with the `headers` key quoted or
+computed too. So is `r.headers.set('Location', url)` (or `append`) on a Fetch response, also after
+`const h = r.headers` or `const { headers } = r`: `r` comes
+from one of those constructors, from a static call on `Response` or `NextResponse`
+(`NextResponse.next()`), or is a receiver in `responseObjects`.
+
+SvelteKit's `redirect(status, location)` puts the target second. The default `redirect` sink reads
+argument 1 when argument 0 is a number literal (`redirect(302, url)`) or when `redirect` is imported
+from `@sveltejs/kit`, under any name or through a namespace import (`kit.redirect(303, url)`);
+`redirect(url)` is read at argument 0.
 
 A sink after calls that return the response is still on the response:
 `res.status(302).set('Location', url)`, `reply.code(302).header('Location', url)` and
@@ -70,6 +89,14 @@ A sink after calls that return the response is still on the response:
 ```ts bad
 export function back(req, res) {
   return res.status(302).set('Location', String(req.query.next)).end();
+}
+```
+
+```ts bad
+export function middleware(request: Request) {
+  const response = new Response(null, { status: 302 });
+  response.headers.set('Location', new URL(request.url).searchParams.get('next') ?? '/');
+  return response;
 }
 ```
 
@@ -90,8 +117,9 @@ export function GET(request: Request) {
 - A literal URL, or a same-origin relative path even with a runtime segment (`/users/${id}`).
 - A `trustedOrigins` match closed by `/`, `?` or `#`, or followed by a sanitizer's result or a
   trusted path; a sanitizer's result on its own.
-- Redirect calls not listed in `redirectCallees` (`ctx.redirect` needs configuring), and header
-  writes on receivers not in `responseObjects` (a `Headers` object's `headers.set(...)`).
+- Redirect calls not listed in `redirectCallees` (`ctx.redirect` needs configuring), header
+  writes on receivers not in `responseObjects`, and a `Headers` object that never reaches a
+  response (`new Headers()` then `headers.set('Location', url)` with no `new Response` around it).
 - A host-pinned target: the URL's host was read with `new URL(url).hostname` (or `.host` /
   `.origin`, with no base argument) into a binding, that binding passed an allowlist before the
   redirect (an `if` that exits, or an `if` around it), and the URL was not written after the read.
@@ -109,7 +137,8 @@ export function GET(request: Request) {
 - A `hostname` or `host` check counts only for a `Location` header a receiver in `responseObjects`
   writes (`res.redirect`, `res.set(...)`, `reply.redirect` and the rest). Browsers refuse to follow
   such a header to a scheme other than http(s). Any other sink (`redirect()`,
-  `NextResponse.redirect`, `Response.redirect`, `new Response(...)`, a configured callee) may hand
+  `NextResponse.redirect`, `Response.redirect`, `new Response(...)`, `r.headers.set(...)` on a Fetch
+  response, a configured callee) may hand
   the URL to a client-side router, where `javascript://app.example.com/%0aalert(1)` passes a host
   check and runs. There, only an `origin` check counts: the origin of a URL that is not http(s) is
   `null`.
@@ -239,7 +268,7 @@ Default `redirectCallees`:
 
 | Call | URL argument |
 | --- | --- |
-| `redirect(url)` (Next.js, Remix, React Router) | 0 |
+| `redirect(url)` (Next.js, Remix, React Router), `redirect(status, url)` (SvelteKit) | 0, or 1 after a number literal or for an `@sveltejs/kit` import |
 | `NextResponse.redirect(url)` | 0 |
 | `reply.redirect(url)` (Fastify v5) | 0 |
 | `res.redirect([status,] url)` (Express) | last |
@@ -296,7 +325,16 @@ that callee, whatever its arguments. For Next.js middleware, `trustedOrigins: ['
 
 The header name and the headers holder are read in the same file: a name imported from another
 module, a receiver under another name (`const r = res`), a destructured method
-(`const { setHeader } = res`) or a holder filled by a helper are not seen.
+(`const { setHeader } = res`) or a holder filled by a helper are not seen. Also not seen:
+
+- a header name only known at run time (`res.setHeader(name, url)`), or joined from more than 16
+  possible texts;
+- `Object.defineProperties`, a getter's `return` nested in a block, and an index write that puts
+  the name and the value in separate slots (`hd[0] = 'Location'; hd[1] = url`);
+- `r.headers.set(...)` on a response the rule cannot trace to a `Response` or `NextResponse` call
+  (a parameter, a helper's result) unless its name is in `responseObjects`, `r.headers` carried in an
+  array or object before the call (`[r.headers][0].set(...)`), and the init of other static calls
+  (`NextResponse.next({ headers })`, `NextResponse.rewrite(url, init)`).
 
 ## When not to use it
 

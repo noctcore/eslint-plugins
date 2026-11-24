@@ -1,0 +1,14 @@
+// @bench category=open-redirect cwe=CWE-601 framework=node pair=sveltekit-login-redirect-to title="login action redirects to the redirectTo query value"
+import { fail, redirect } from '@sveltejs/kit';
+
+export const actions = {
+  default: async ({ request, url, cookies }) => {
+    const form = await request.formData();
+    if (!form.get('email')) {
+      return fail(400, { missing: true });
+    }
+    cookies.set('session', String(form.get('email')), { path: '/' });
+    const redirectTo = url.searchParams.get('redirectTo') ?? '/';
+    redirect(303, redirectTo); // expect: security/no-user-controlled-redirect
+  },
+};

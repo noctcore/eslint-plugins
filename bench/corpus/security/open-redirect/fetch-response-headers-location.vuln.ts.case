@@ -1,0 +1,11 @@
+// @bench category=open-redirect cwe=CWE-601 framework=node pair=fetch-response-headers-location title="worker sets the Location header of a new Response from the next query value"
+export default {
+  async fetch(request: Request): Promise<Response> {
+    const url = new URL(request.url);
+    const next = url.searchParams.get('next') ?? '/';
+    const response = new Response(null, { status: 302 });
+    response.headers.set('Location', next); // expect: security/no-user-controlled-redirect
+    response.headers.set('Cache-Control', 'no-store');
+    return response;
+  },
+};
