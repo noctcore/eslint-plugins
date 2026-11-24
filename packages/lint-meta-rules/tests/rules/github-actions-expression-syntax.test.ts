@@ -475,6 +475,18 @@ describe('github-actions-expression-syntax', () => {
     expect(violations[0]?.message ?? '').toContain('GitHub fails to load a workflow like this');
   });
 
+  test('repairs a flow list of 250 under-indented lines in one go', () => {
+    const items = Array.from({ length: 250 }, (_, index) => `    b${String(index)},`);
+    const text = ['on:', '  push:', '    branches: [main,', ...items, '    last]', 'jobs:', '  b:', '    if: ${{ a = b }}', ''];
+    const started = performance.now();
+    const violations = checkWorkflowExpressionSyntax('w.yml', text.join('\n'));
+
+    expect(violations).toHaveLength(1);
+    expect(violations[0]?.line).toBe(257);
+    expect(violations[0]?.message ?? '').toContain('uses `=`');
+    expect(performance.now() - started).toBeLessThan(1000);
+  });
+
   test('still checks expressions in a workflow whose flow or quoted indentation only yaml rejects', () => {
     const quoted = checkWorkflowExpressionSyntax('w.yml', 'jobs:\n  b:\n    run: "echo\n  ${{ a = b }}"\n');
 

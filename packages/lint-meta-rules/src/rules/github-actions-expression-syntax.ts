@@ -361,67 +361,134 @@ const COMPLETE_QUOTED: Readonly<Record<string, RegExp>> = {
 };
 /** A `---` or `...` document marker, at the start of a line. */
 const DOCUMENT_MARKER = /^(?:---|\.\.\.)(?:\s|$)/u;
-/** Each repair indents one line or spaces one comment, so this bounds the work on a broken file. */
-const MAX_REPAIRS = 200;
+/** Each repair fixes a whole flow collection or quoted scalar, or spaces one comment; this bounds the work on a broken file. */
+const MAX_REPAIRS = 1000;
 
-/** A repaired text, the line of a document marker that must not be repaired, or null when nothing applies. */
-type Repair = { readonly text: string } | { readonly markerLine: number } | null;
+/** A repaired text, the offset of a document marker that must not be repaired, or null when nothing applies. */
+type Repair = { readonly text: string } | { readonly marker: number } | null;
 
-/**
- * `text` with the line at `offset` indented to at least `indent` columns, or
- * null when it already is. A document marker at the start of that line is
- * returned instead: GitHub rejects it inside a flow collection or quoted
- * scalar, so it is never repaired away.
- */
-function indentLineTo(text: string, offset: number, indent: number): Repair {
-  const lineStart = text.lastIndexOf('\n', offset - 1) + 1;
-  // Repairs only add spaces, so counting lines in the repaired text gives the source line.
-  if (DOCUMENT_MARKER.test(text.slice(lineStart))) return { markerLine: text.slice(0, lineStart).split('\n').length };
-  const current = /^ */u.exec(text.slice(lineStart))?.[0].length ?? 0;
-  if (current >= indent) return null;
-  return { text: `${text.slice(0, lineStart)}${' '.repeat(indent - current)}${text.slice(lineStart)}` };
+/** The offset just past the quote that closes the quoted scalar opened at `start`, or -1. */
+function quoteEnd(text: string, start: number): number {
+  const quote = text[start];
+  for (let index = start + 1; index < text.length; index += 1) {
+    const char = text[index];
+    if (quote === '"' && char === '\\') {
+      index += 1;
+    } else if (char === quote) {
+      if (quote !== "'" || text[index + 1] !== "'") return index + 1;
+      index += 1;
+    }
+  }
+  return -1;
 }
 
 /**
- * `text` with the first under-indented continuation of a flow collection or a
- * quoted scalar indented past its opener, or null when there is none. GitHub's
- * reader only needs such a line to stay inside its `[`, `{` or quote; yaml
- * also wants it indented past the parent key, and ends the collection or
- * scalar early otherwise. Extra indentation there is folded away, so neither
- * the parsed values nor any line number change. A collection or quote still
- * open at the end of the file is left alone: it is really unclosed.
+ * The offset just past the bracket that closes the flow collection opened at
+ * `start`, or -1. In flow context a plain scalar cannot hold a bracket or a
+ * comma, so only quoted scalars (which open where a node starts) and comments
+ * need skipping.
+ */
+function flowEnd(text: string, start: number): number {
+  let depth = 0;
+  let nodeStart = true;
+  for (let index = start; index < text.length; index += 1) {
+    const char = text[index] ?? '';
+    if (char === '[' || char === '{') {
+      depth += 1;
+      nodeStart = true;
+    } else if (char === ']' || char === '}') {
+      depth -= 1;
+      if (depth === 0) return index + 1;
+      nodeStart = false;
+    } else if (char === ',') {
+      nodeStart = true;
+    } else if (char === '#' && /[\s,[{]/u.test(text[index - 1] ?? ' ')) {
+      index = text.indexOf('\n', index);
+      if (index === -1) return -1;
+    } else if (char === ':' && /[\s,[\]{}]/u.test(text[index + 1] ?? ' ')) {
+      nodeStart = true;
+    } else if (nodeStart && (char === '"' || char === "'")) {
+      const end = quoteEnd(text, index);
+      if (end === -1) return -1;
+      index = end - 1;
+      nodeStart = false;
+    } else if (!/\s/u.test(char)) {
+      nodeStart = false;
+    }
+  }
+  return -1;
+}
+
+/**
+ * Indent every line of a flow collection or quoted scalar after its opener's
+ * line, up to `end`, to at least `indent` columns. When the end is unknown,
+ * or before `at` (the line yaml stopped at), only the line at `at` is
+ * indented. A document marker at the start of one of those lines is returned
+ * instead: GitHub rejects it there, so it is never repaired away.
+ */
+function indentRange(text: string, opener: number, at: number, end: number, indent: number): Repair {
+  const known = end > at;
+  let cursor = known ? text.indexOf('\n', opener) + 1 : text.lastIndexOf('\n', at - 1) + 1;
+  const stop = known ? end : cursor + 1;
+  let repaired = text.slice(0, cursor);
+  let changed = false;
+  while (cursor > 0 && cursor < stop) {
+    const newline = text.indexOf('\n', cursor);
+    const next = newline === -1 ? text.length : newline + 1;
+    const line = text.slice(cursor, next);
+    if (DOCUMENT_MARKER.test(line)) return { marker: cursor };
+    const current = /^ */u.exec(line)?.[0].length ?? 0;
+    if (line.trim() !== '' && current < indent) {
+      repaired += ' '.repeat(indent - current);
+      changed = true;
+    }
+    repaired += line;
+    cursor = next;
+  }
+  return changed ? { text: `${repaired}${text.slice(cursor)}` } : null;
+}
+
+/**
+ * Repair the first flow collection or quoted scalar whose continuation yaml
+ * rejects as under-indented. GitHub's reader only needs such lines to stay
+ * inside their `[`, `{` or quote; yaml also wants them indented past the
+ * parent key, and ends the collection or scalar early otherwise. Every line
+ * of it is indented past its opener in one go; extra indentation there is
+ * folded away, so neither the parsed values nor any line number change. A
+ * collection or quote still open at the end of the file is left alone: it is
+ * really unclosed.
  */
 function indentContinuation(text: string): Repair {
-  const openers: number[] = [];
-  let quoteColumn: number | null = null;
+  const openers: { readonly column: number; readonly offset: number }[] = [];
+  let quote: { readonly column: number; readonly offset: number } | null = null;
   let offset = 0;
   for (const token of new Lexer().lex(text)) {
     if (MARKER_TOKENS.has(token)) {
-      if (token === FLOW_ERROR_END && openers.length > 0 && text.slice(offset).trim() !== '') {
-        return indentLineTo(text, offset, (openers[0] ?? 0) + 1);
-      }
+      const outer = openers[0];
       if (token === FLOW_ERROR_END) openers.length = 0;
+      if (token === FLOW_ERROR_END && outer !== undefined && text.slice(offset).trim() !== '') {
+        return indentRange(text, outer.offset, offset, flowEnd(text, outer.offset), outer.column + 1);
+      }
       continue;
     }
+    if (quote !== null && token.trim() !== '') {
+      return indentRange(text, quote.offset, offset, quoteEnd(text, quote.offset), quote.column + 1);
+    }
     const column = offset - (text.lastIndexOf('\n', offset - 1) + 1);
-    if (quoteColumn !== null && token.trim() !== '') return indentLineTo(text, offset, quoteColumn + 1);
-    if (token === '[' || token === '{') openers.push(column);
+    if (token === '[' || token === '{') openers.push({ column, offset });
     else if (token === ']' || token === '}') openers.pop();
     const pattern = COMPLETE_QUOTED[token[0] ?? ''];
-    if (pattern !== undefined && !pattern.test(token)) quoteColumn = column;
+    if (pattern !== undefined && !pattern.test(token)) quote = { column, offset };
     offset += token.length;
   }
   return null;
 }
 
-/** One repair of a shape GitHub's reader accepts and yaml rejects, or null when none applies. */
-function repairOnce(text: string, errors: readonly YAMLError[]): Repair {
-  const indented = indentContinuation(text);
-  if (indented !== null) return indented;
+/** `text` with a space before a `#` that follows a flow indicator, or null when the parse reports none. */
+function commentSpacing(text: string, errors: readonly YAMLError[]): string | null {
   // `[x,#c`: GitHub's reader takes a `#` right after a flow indicator as a comment.
   const comment = errors.find((error) => error.code === 'MISSING_CHAR' && error.message.startsWith('Comments must'));
-  if (comment === undefined) return null;
-  return { text: `${text.slice(0, comment.pos[0])} ${text.slice(comment.pos[0])}` };
+  return comment === undefined ? null : `${text.slice(0, comment.pos[0])} ${text.slice(comment.pos[0])}`;
 }
 
 interface ReadWorkflow {
@@ -441,14 +508,29 @@ interface ReadWorkflow {
  */
 function readWorkflow(source: string): ReadWorkflow {
   let text = source;
-  for (let round = 0; ; round += 1) {
+  let repairs = 0;
+  for (;;) {
     const counter = new LineCounter();
     const doc = parseDocument(text, { lineCounter: counter, prettyErrors: false, strict: false, uniqueKeys: false });
     const read: ReadWorkflow = { doc, text, lineOf: (offset) => counter.linePos(offset).line };
-    const repair = doc.errors.length === 0 || round === MAX_REPAIRS ? null : repairOnce(text, doc.errors);
-    if (repair === null) return read;
-    if ('markerLine' in repair) return { ...read, markerLine: repair.markerLine };
-    text = repair.text;
+    if (doc.errors.length === 0 || repairs >= MAX_REPAIRS) return read;
+    // Repairs need only the lexer, so they run without a parse between them, one collection or quote each.
+    let changed = false;
+    for (let repair = indentContinuation(text); repair !== null; repair = indentContinuation(text)) {
+      // Repairs only add spaces, so counting lines in the repaired text gives the source line.
+      if ('marker' in repair) return { ...read, markerLine: text.slice(0, repair.marker).split('\n').length };
+      text = repair.text;
+      changed = true;
+      repairs += 1;
+      if (repairs >= MAX_REPAIRS) break;
+    }
+    const comment = changed ? null : commentSpacing(text, doc.errors);
+    if (comment !== null) {
+      text = comment;
+      repairs += 1;
+    } else if (!changed) {
+      return read;
+    }
   }
 }
 
