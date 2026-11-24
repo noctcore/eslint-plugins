@@ -42,9 +42,13 @@ FROM node:lts-slim
 
 ## What it does not flag
 
-- A repo with no version file: it has not chosen this convention.
+- A repo with no version file: it has not chosen this convention. Set `requireVersionFile` in a repo
+  that has, where deleting the file is the drift to catch.
 - A `node-version` from an expression (`${{ matrix.node }}`): a matrix legitimately tests several.
-- A variable base that does not mention node (`FROM ${BASE}`): it may be any image.
+  Set `allowExpressionNodeVersion: false` to report every expression, a matrix included
+  (`vars.*`, `inputs.*` and `env.*` hide the major just as well).
+- A variable base that does not mention node (`FROM ${BASE}`): it may be any image. Set
+  `reportUnresolvableFrom` to report it too.
 - The minor of an image: images are usually pinned by digest, which hides the minor it resolves to.
 
 Line-based text, not a YAML or Dockerfile parse.
@@ -61,6 +65,9 @@ createNodeVersionParityRule(options?: NodeVersionParityOptions): IMetaRule
 | `checkEngines` | `boolean` | `true` | Check the root `package.json` `engines.node` floor. |
 | `workflowGlobs` | `string[]` | `['.github/workflows/*.yml', '.github/workflows/*.yaml']` | Workflows scanned for `actions/setup-node`. |
 | `dockerfileGlobs` | `string[]` | `Dockerfile`, `Dockerfile.*`, `*.Dockerfile` at any depth | Dockerfiles scanned for a node base image. |
+| `requireVersionFile` | `boolean` | `false` | Report a missing version file instead of staying dormant. With no file there is no major, so nothing else is checked. |
+| `reportUnresolvableFrom` | `boolean` | `false` | Also report a variable `FROM` that does not mention node (`FROM $BASE`, `FROM ${BASE}`). |
+| `allowExpressionNodeVersion` | `boolean` | `true` | Leave a setup-node `node-version` written as an expression alone. `false` reports it and points at `node-version-file`. |
 | `ciCritical` | `boolean` | `true` | Whether a violation fails CI. |
 
 ## When not to use it
