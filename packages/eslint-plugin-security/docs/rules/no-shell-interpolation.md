@@ -175,7 +175,8 @@ A value in a word that runs as a program is proven only by a literal allowlist, 
   quotes stripped (`/usr/bin/env`, `'sudo'`). A program word that holds a shell parameter
   (`$SHELL`, `"$SHELL"`, `${SUDO:-sudo}`, bash's `$'env'`) counts as a wrapper too: it can name any program.
 
-An in-file `const` bound to a string (`const P = 'sudo'`, `const SEP = ';'`) is read as its text.
+An in-file `const` bound to a string (`const P = 'sudo'`, `const SEP = ';'`) is read as its text,
+through wrappers that keep it (`String(';')`, `';' as string`, `';' satisfies string`).
 So is a value checked against literals: the command is read once with each text it can hold, and
 every reading must hold. After `if (e !== '=') return`, `` `A${e}1 ${t}` `` is an assignment and
 `t` runs as the program; after `['sudo', 'ls'].includes(p)`, `` `${p} ${t}` `` may be `sudo ${t}`.

@@ -674,7 +674,7 @@ function unwrap(node: TSESTree.Node): TSESTree.Node {
  * Peels wrappers that keep a string's characters: `String(x)` and a template
  * holding only `${x}`.
  */
-function peelStringWrappers(node: TSESTree.Node, sourceCode?: SourceCode): TSESTree.Node {
+export function peelStringWrappers(node: TSESTree.Node, sourceCode?: SourceCode): TSESTree.Node {
   let current = unwrap(node);
   for (;;) {
     if (

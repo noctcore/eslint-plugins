@@ -8,7 +8,7 @@ import { ASTUtils } from '@typescript-eslint/utils';
 import type { JSONSchema4 } from '@typescript-eslint/utils/json-schema';
 
 import { createRule } from '../createRule';
-import { type GuardContext, isProvenSafeValue } from '../guards';
+import { type GuardContext, isProvenSafeValue, peelStringWrappers } from '../guards';
 import { classifyShellParts, type ShellPart } from '../shell-words';
 import { callArguments, conventionalCallee, stringPieces } from '../value-flow';
 
@@ -157,14 +157,16 @@ const MAX_CONST_DEPTH = 8;
  * The static text and runtime values of a command string, in order. An
  * in-file `const` bound to a string literal (or to a template or `+` of such
  * parts) is read as the text it holds, so `const P = 'sudo'` or
- * `const SEP = ';'` changes where the next value lands.
+ * `const SEP = ';'` changes where the next value lands. Wrappers that keep
+ * the text (`String(x)`, `as`, `satisfies`, `!`) are read through.
  */
 function commandSegments(
   node: TSESTree.Node,
   sourceCode: Readonly<TSESLint.SourceCode>,
 ): (string | TSESTree.Node)[] {
   const segments: (string | TSESTree.Node)[] = [];
-  const collect = (part: TSESTree.Node, depth: number): void => {
+  const collect = (raw: TSESTree.Node, depth: number): void => {
+    const part = peelStringWrappers(raw, sourceCode);
     const pieces = stringPieces(part, sourceCode);
     if (pieces !== null) {
       for (const piece of pieces) {
@@ -224,7 +226,7 @@ function constStringInit(
   ) {
     return null;
   }
-  const init = unwrapTypeWrappers(def.node.init);
+  const init = peelStringWrappers(def.node.init, sourceCode);
   const textual =
     (init.type === AST_NODE_TYPES.Literal && typeof init.value === 'string') ||
     init.type === AST_NODE_TYPES.TemplateLiteral ||
