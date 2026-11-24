@@ -10,6 +10,8 @@ bun run bench                 # score, print the tables, write out/report.md and
 bun run bench --check         # what CI runs: exit 1 on a regression or a stale baseline
 bun run bench --update        # rewrite baseline.json after adding cases or improving a rule
 bun run bench --plugin security
+bun run bench --variant security/ssrf/express-link-preview.vuln.js.case~via-helper   # print one variant
+bun run bench --promote security/ssrf/express-link-preview.vuln.js.case~via-helper   # commit its pair as cases
 ```
 
 ## How a case is written
@@ -99,6 +101,83 @@ twin), and also when the file is merely out of date, so the site never shows sta
 What this guarantees: no recorded case gets worse, and no handled case disappears, without a flag that
 shows in review. It does not promise the rates only rise: adding a case a rule misses lowers its
 detection, by design.
+
+## Variants
+
+Hand-written cases rarely cover rewrites that keep the meaning: a renamed import, a helper in between, a
+template string written as concatenation. Every run also generates **variants** of every case (vulnerable and
+safe): semantics-preserving rewrites, made at bench time and never committed. A rule should give a variant the
+same verdict as its case (metamorphic testing). A vulnerable variant it misses, or a safe variant it reports,
+names the shape the rule depends on.
+
+Each transform plans text edits on the case's AST (from `@typescript-eslint/parser`, the parser the scorer
+lints with) and is skipped where it does not apply; it never fakes a rewrite. Every variant must parse and keep
+exactly its case's labels, or the run fails. A variant's id is `<case file>~<transform>`.
+
+| Transform | What it rewrites |
+| --- | --- |
+| `rename-locals` | every local variable, function and class gets an opaque name (`local1`, ...) |
+| `rename-params` | every function parameter gets an opaque name (`param1`, ...), `req` and `ctx` included |
+| `import-alias` | imported bindings are aliased: `import { exec as imported1 }`, `const { exec: imported1 } = require(...)` |
+| `import-namespace` | named imports go through a namespace: `import * as childProcess`, `const childProcess = require(...)`, then `childProcess.exec(...)` |
+| `esm-to-cjs` | a JavaScript ES module that exports nothing, rewritten as CommonJS |
+| `cjs-to-esm` | a CommonJS file rewritten as an ES module (`__dirname` becomes `import.meta.dirname`); skipped when a `require` has no single ESM spelling, such as `require(m).default` |
+| `node-prefix` | Node builtins toggle the `node:` prefix |
+| `via-variable` | the sink value is first stored in a local: `const relay = req.body.url;` then `fetch(relay)` |
+| `via-helper` | the sink value passes through a local identity function: `fetch(forward(url))` |
+| `via-object` | the sink value travels in an object property: `holder.value` |
+| `via-destructuring` | the sink value is destructured first: `const { url } = req.body;` |
+| `via-spread` | the sink value goes through a spread: `{ ...req.body }`, `fetch(...[url])`, `{ ...options }` |
+| `via-array` | the sink value travels as an array element: `items[0]` |
+| `string-concat` | template literals become `+` chains, line by line |
+| `string-template` | `+` chains that start as string concatenation become template literals |
+| `string-concat-method` | templates and `+` chains become `'...'.concat(...)` |
+| `string-join` | templates and `+` chains become `['...', x].join('')` |
+| `promise-await` | the sink value is awaited through `Promise.resolve` first (async functions only) |
+| `promise-then` | the sink statement runs in a `.then` callback that receives the value (async functions only) |
+| `callback` | the sink statement runs in a callback that receives the value: `[url].forEach((relay) => { ... })` |
+| `arrow-to-function` | arrow functions that do not read `this` or `arguments` become function expressions |
+| `function-to-arrow` | anonymous function expressions that do not read `this` or `arguments` become arrows |
+| `ts-annotations` | TypeScript only: unannotated variables and parameters get annotations |
+| `ts-as-cast` | TypeScript only: the sink value gets an `as` cast |
+| `ts-non-null` | TypeScript only: the sink value gets a `!` assertion |
+
+The `via-*`, `promise-*`, `callback` and `ts-as-cast` / `ts-non-null` transforms rewrite around the sink. In a
+vulnerable case the sink lines are its labelled lines; a safe twin has no labels, so each labelled line of its
+vulnerable twin is matched to the twin's line that does the same thing (same callee, assignment target or
+property) and shares the most identifiers. On a sink line the value is the first property chain on a
+function-local variable or parameter (`req.query.next`, `dto.url`), else the first such local read; a method's
+receiver (`res` in `res.redirect`), module-level constants, imports and globals are never moved. A line that
+reads no local value, such as a cookie flag inside an options object, moves the options object instead. A
+rewrite that needs a new statement puts it on its own line before the statement holding the sink, so the sink
+and its label move down together and the label still states where the problem is.
+
+Assumptions worth knowing when reading a flip: module interop is taken as the usual one (`import x from 'm'`
+reads what `require('m')` returns); `[a, b].join('')` renders `null` and `undefined` as empty strings where a
+template prints them, which changes no verdict in this corpus; `promise-then` and `promise-await` add a
+microtask before the sink.
+
+**Scoring.** A variant is linted and classified exactly like its case, but a safe variant is a negative only for
+the rules of its own category (other categories' rules already get every safe case). The report adds a
+"Variants" section: per rule, the transforms it is invariant to and the ones it fails on, a table per rule and
+transform (holds, missed, false alarms, gained), and every variant that flips a caught or clean case.
+**Missed** is a case the rule catches whose variant it misses (TP to FN); **false alarm** is a clean case whose
+variant it reports (TN to FP); **gained** is a known gap whose variant is not one, which still means the
+verdict hangs on the shape. The bench aims for at least 10 variants per case; the report lists any case whose
+shape allows fewer.
+
+**The ratchet.** `baseline.json` records every variant outcome under `variants` (`<file>~<transform>#<rule>`)
+and the per-transform counts under `variantRules`. `--check` and `--update` treat them exactly like case
+outcomes: a variant going from TP to FN or from TN to FP is a regression, and a TP or TN variant that
+disappears (a transform changed or stopped applying) is removed protection. Failing variants are expected:
+they are recorded as known gaps, the same way a missed case is. Changing a transform's output changes variant
+ids and outcomes, so it updates `baseline.json` in the same PR.
+
+**Promoting a variant.** A flip worth keeping regardless of how the generator evolves becomes a committed
+case: `bun run bench --promote <file>~<transform>` writes the whole pair rewritten by that transform as a new
+pair `<pair>-<transform>` next to the original (a twin the transform does not apply to is copied unchanged, so
+the pair still has both kinds). Review the title and labels, then run `bun run bench --update`.
+`bun run bench --variant <file>~<transform>` prints a variant without writing anything.
 
 ## Adding another plugin
 
