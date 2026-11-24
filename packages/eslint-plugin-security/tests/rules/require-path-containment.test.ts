@@ -536,11 +536,12 @@ ruleTester.run('require-path-containment', requirePathContainmentRule, {
       filename: TS,
       errors: FS,
     },
-    // `startsWith(base)` without a separator before an fs sink.
+    // `startsWith(base)` without a separator: the request value moved into a
+    // `const` is the join's argument, reported at the join as when written there.
     {
       code: "import { resolve } from 'node:path'; import fs from 'node:fs'; function h(req) { const name = req.query.f; const full = resolve('/srv/app', name); if (!full.startsWith('/srv/app')) return; fs.readFileSync(full); }",
       filename: TS,
-      errors: FS,
+      errors: ERR,
     },
     // A test on the first segment does not cover a second request segment joined after it.
     {

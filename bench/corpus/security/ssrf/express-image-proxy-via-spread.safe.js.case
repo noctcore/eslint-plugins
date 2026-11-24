@@ -1,0 +1,20 @@
+// @bench category=ssrf cwe=CWE-918 framework=express pair=express-image-proxy-via-spread title="src query parsed and its hostname looked up in a Set of image CDNs, rewritten by via-spread"
+// ok
+const express = require('express');
+const axios = require('axios');
+
+const app = express();
+const CDN_HOSTS = new Set(['img.example.com', 'cdn.example.com']);
+
+app.get('/img', async (req, res) => {
+  const src = new URL(String(req.query.src));
+  if (src.protocol !== 'https:' || !CDN_HOSTS.has(src.hostname)) {
+    return res.sendStatus(403);
+  }
+  const upstream = await axios.get(...[src.href], { responseType: 'arraybuffer' });
+  res.set('Content-Type', upstream.headers['content-type']);
+  res.set('Cache-Control', 'public, max-age=600');
+  res.send(Buffer.from(upstream.data));
+});
+
+app.listen(3000);

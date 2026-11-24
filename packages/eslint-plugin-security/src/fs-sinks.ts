@@ -423,11 +423,14 @@ function fastifyRoots(method: string, args: readonly TSESTree.Expression[]): TSE
  * after decoding it and serves it under the root, so the root is the path that
  * matters there. `@fastify/static` always serves under a root (the one
  * registered with the plugin, or one the call passes) and refuses `..`
- * segments, so only a root the call passes is checked. Empty for any other call.
+ * segments, so only a root the call passes is checked. `isResponse` also
+ * takes a receiver under another name as Express's response (a handler's
+ * response parameter). Empty for any other call.
  */
 export function fsPathArguments(
   node: TSESTree.CallExpression,
   bindings: PathBindings,
+  isResponse?: (receiver: TSESTree.Identifier) => boolean,
 ): { method: string; paths: TSESTree.Node[] } {
   const none = { method: '', paths: [] };
   const fsName = fsFunction(node.callee, bindings);
@@ -449,7 +452,7 @@ export function fsPathArguments(
   if (FASTIFY_REPLY_OBJECTS.has(callee.object.name)) {
     return { method, paths: fastifyRoots(name, args) };
   }
-  if (!RESPONSE_OBJECTS.has(callee.object.name)) {
+  if (!RESPONSE_OBJECTS.has(callee.object.name) && isResponse?.(callee.object) !== true) {
     return none;
   }
   const root = args.slice(1).map(rootOption).find((value) => value !== null);

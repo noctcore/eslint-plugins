@@ -10,6 +10,7 @@ import type { JSONSchema4 } from '@typescript-eslint/utils/json-schema';
 import { createRule } from '../createRule';
 import { type GuardContext, isProvenSafeValue } from '../guards';
 import { classifyShellParts, type ShellPart } from '../shell-words';
+import { callArguments, conventionalCallee, stringPieces } from '../value-flow';
 
 const RULE_NAME = 'no-shell-interpolation';
 
@@ -81,6 +82,26 @@ interface CalleeInfo {
   readonly objectName: string | undefined;
 }
 
+/**
+ * {@link getCalleeInfo} with imports read under their usual names:
+ * `run` for `import { exec as run }` is `exec`, `shell.exec` for
+ * `const shell = require('child_process')` is `child_process.exec`.
+ */
+function resolvedCalleeInfo(
+  callee: TSESTree.Node,
+  sourceCode: Readonly<TSESLint.SourceCode>,
+): CalleeInfo | null {
+  const text = conventionalCallee(callee, sourceCode);
+  if (text === null) {
+    return getCalleeInfo(callee);
+  }
+  const parts = text.split('.');
+  const name = parts.at(-1) as string;
+  return parts.length === 1
+    ? { name, isMember: false, objectName: undefined }
+    : { name, isMember: true, objectName: parts.length === 2 ? parts[0] : undefined };
+}
+
 function getCalleeInfo(callee: TSESTree.Node): CalleeInfo | null {
   if (callee.type === AST_NODE_TYPES.Identifier) {
     return { name: callee.name, isMember: false, objectName: undefined };
@@ -106,7 +127,20 @@ function concatHasDynamicPart(node: TSESTree.Node): boolean {
 }
 
 /** True when `node` builds a command string from dynamic parts at this call site. */
-function isDynamicCommandString(node: TSESTree.Node): boolean {
+function isDynamicCommandString(
+  node: TSESTree.Node,
+  sourceCode: Readonly<TSESLint.SourceCode>,
+): boolean {
+  // `'git log '.concat(x)` and `['git log ', x].join('')` build it by method.
+  const pieces = stringPieces(node, sourceCode);
+  if (pieces !== null) {
+    return pieces.some(
+      (piece) =>
+        typeof piece !== 'string' &&
+        piece.type !== AST_NODE_TYPES.Literal &&
+        !(piece.type === AST_NODE_TYPES.TemplateLiteral && piece.expressions.length === 0),
+    );
+  }
   if (node.type === AST_NODE_TYPES.TemplateLiteral) {
     return node.expressions.length > 0;
   }
@@ -131,7 +165,16 @@ function commandSegments(
 ): (string | TSESTree.Node)[] {
   const segments: (string | TSESTree.Node)[] = [];
   const collect = (part: TSESTree.Node, depth: number): void => {
-    if (part.type === AST_NODE_TYPES.TemplateLiteral) {
+    const pieces = stringPieces(part, sourceCode);
+    if (pieces !== null) {
+      for (const piece of pieces) {
+        if (typeof piece === 'string') {
+          segments.push(piece);
+        } else {
+          collect(piece, depth);
+        }
+      }
+    } else if (part.type === AST_NODE_TYPES.TemplateLiteral) {
       part.quasis.forEach((quasi, index) => {
         segments.push(quasi.value.cooked ?? '');
         const expression = part.expressions[index];
@@ -159,8 +202,8 @@ function commandSegments(
 
 /**
  * For an identifier bound once by an in-file `const` to a string literal, a
- * template or a `+` (whose own parts are read the same way), that initializer;
- * else null.
+ * template, a `+` or a string built by method (whose own parts are read the
+ * same way), that initializer; else null.
  */
 function constStringInit(
   node: TSESTree.Node,
@@ -186,7 +229,8 @@ function constStringInit(
     (init.type === AST_NODE_TYPES.Literal && typeof init.value === 'string') ||
     init.type === AST_NODE_TYPES.TemplateLiteral ||
     (init.type === AST_NODE_TYPES.BinaryExpression && init.operator === '+') ||
-    init.type === AST_NODE_TYPES.Identifier;
+    init.type === AST_NODE_TYPES.Identifier ||
+    stringPieces(init, sourceCode) !== null;
   return textual ? init : null;
 }
 
@@ -234,14 +278,17 @@ function argsRequestShell(args: readonly TSESTree.Node[]): boolean {
 }
 
 /** True when `callee` is `promisify` or `<x>.promisify` (`util.promisify`). */
-function isPromisify(callee: TSESTree.Node): boolean {
-  const info = getCalleeInfo(callee);
+function isPromisify(callee: TSESTree.Node, sourceCode: Readonly<TSESLint.SourceCode>): boolean {
+  const info = resolvedCalleeInfo(callee, sourceCode);
   return info !== null && info.name === 'promisify';
 }
 
 /** The runner a `child_process` function reference names (`exec`, `cp.execFile`), else null. */
-function childProcessRunner(node: TSESTree.Node): string | null {
-  const info = getCalleeInfo(node);
+function childProcessRunner(
+  node: TSESTree.Node,
+  sourceCode: Readonly<TSESLint.SourceCode>,
+): string | null {
+  const info = resolvedCalleeInfo(node, sourceCode);
   if (info === null) {
     return null;
   }
@@ -268,11 +315,11 @@ function promisifiedRunner(
     return null;
   }
   const init = definition.node.init === null ? null : unwrapTypeWrappers(definition.node.init);
-  if (init?.type !== AST_NODE_TYPES.CallExpression || !isPromisify(init.callee)) {
+  if (init?.type !== AST_NODE_TYPES.CallExpression || !isPromisify(init.callee, sourceCode)) {
     return null;
   }
   const wrapped = init.arguments[0];
-  return wrapped === undefined ? null : childProcessRunner(wrapped);
+  return wrapped === undefined ? null : childProcessRunner(wrapped, sourceCode);
 }
 
 export const noShellInterpolationRule = createRule<RuleOptions, MessageIds>({
@@ -307,29 +354,40 @@ export const noShellInterpolationRule = createRule<RuleOptions, MessageIds>({
           node.callee.type === AST_NODE_TYPES.Identifier
             ? promisifiedRunner(node.callee, context.sourceCode)
             : null;
-        const info: CalleeInfo = wrapped === null ? direct : { ...direct, name: wrapped };
-        // Exclude `regex.exec(...)`: `exec` as a member on a non-child_process
-        // object is RegExp.prototype.exec, never a shell runner.
-        if (
-          info.name === 'exec' &&
-          info.isMember &&
-          !(info.objectName !== undefined && CHILD_PROCESS_OBJECT.test(info.objectName))
-        ) {
+        // The callee as written, then under the usual names of its imports.
+        const info = [direct, resolvedCalleeInfo(node.callee, context.sourceCode)]
+          .map((candidate): CalleeInfo | null =>
+            candidate === null || wrapped === null ? candidate : { ...candidate, name: wrapped },
+          )
+          .find(
+            (candidate): candidate is CalleeInfo =>
+              candidate !== null &&
+              (alwaysShell.has(candidate.name) || CONDITIONAL_SHELL.has(candidate.name)) &&
+              // Exclude `regex.exec(...)`: `exec` as a member on a non-child_process
+              // object is RegExp.prototype.exec, never a shell runner.
+              !(
+                candidate.name === 'exec' &&
+                candidate.isMember &&
+                !(candidate.objectName !== undefined && CHILD_PROCESS_OBJECT.test(candidate.objectName))
+              ),
+          );
+        if (info === undefined) {
           return;
         }
 
-        const command = node.arguments[0];
+        const args = callArguments(node.arguments, context.sourceCode);
+        const command = args[0];
         if (command === undefined || command.type === AST_NODE_TYPES.SpreadElement) {
           return;
         }
 
         const runsShell =
           alwaysShell.has(info.name) ||
-          (CONDITIONAL_SHELL.has(info.name) && argsRequestShell(node.arguments));
+          (CONDITIONAL_SHELL.has(info.name) && argsRequestShell(args));
         if (!runsShell) {
           return;
         }
-        if (!isDynamicCommandString(command)) {
+        if (!isDynamicCommandString(command, context.sourceCode)) {
           return;
         }
         // Every runtime part already proven harmless: checked against an

@@ -15,6 +15,8 @@ import {
 import { AST_NODE_TYPES, type TSESLint, type TSESTree } from '@typescript-eslint/utils';
 import type { JSONSchema4 } from '@typescript-eslint/utils/json-schema';
 
+import { conventionalCallee, flowStep, stringPieces } from './value-flow';
+
 /**
  * One call shape that sends a request to (or redirects to) a URL.
  *
@@ -138,7 +140,23 @@ export function matchCallee(
   specs: readonly UrlCalleeSpec[],
   sourceCode: Readonly<TSESLint.SourceCode>,
 ): UrlCalleeSpec | undefined {
-  return matchFetchCallee(node, specs, sourceCode);
+  const direct = matchFetchCallee(node, specs, sourceCode);
+  if (direct !== undefined) {
+    return direct;
+  }
+  // An import bound to another name: `client.get` for `import * as client from 'node:https'`.
+  const text = conventionalCallee(node.callee, sourceCode);
+  if (text === null) {
+    return undefined;
+  }
+  const dot = text.lastIndexOf('.');
+  const name = text.slice(dot + 1);
+  const object = dot === -1 ? undefined : text.slice(0, dot);
+  return specs.find(
+    (spec) =>
+      spec.name === name &&
+      (spec.object === undefined ? object === undefined : object !== undefined && squash(spec.object) === object),
+  );
 }
 
 type Part =
@@ -328,7 +346,22 @@ function flatten(
   }
   const next = (child: TSESTree.Expression): Part[] =>
     flatten(child, trust, sourceCode, depth + 1, seen);
+  const parts = flattenNode(node, sourceCode, seen, next);
+  if (parts.length !== 1 || parts[0]?.kind !== 'unknown') {
+    return parts;
+  }
+  // The value it holds exactly: a helper's argument, an object property or
+  // array element, a callback's value (`./value-flow`).
+  const step = flowStep(node, node, sourceCode);
+  return step === null || seen.has(step.node) ? parts : next(step.node as TSESTree.Expression);
+}
 
+function flattenNode(
+  node: TSESTree.Expression,
+  sourceCode: Readonly<TSESLint.SourceCode>,
+  seen: Set<TSESTree.Node>,
+  next: (child: TSESTree.Expression) => Part[],
+): Part[] {
   switch (node.type) {
     case AST_NODE_TYPES.Literal:
       // Numbers and booleans stringify into the URL as plain author text.
@@ -371,7 +404,12 @@ function flatten(
       ) {
         return next(node.callee.object);
       }
-      return [{ kind: 'unknown' }];
+      // `'https://api.example.com/'.concat(path)`, `[base, '/', path].join('')`.
+      return (
+        stringPieces(node, sourceCode)?.flatMap((piece): Part[] =>
+          typeof piece === 'string' ? [{ kind: 'text', value: piece }] : next(piece),
+        ) ?? [{ kind: 'unknown' }]
+      );
 
     case AST_NODE_TYPES.MemberExpression:
       // `url.href` is the URL itself.

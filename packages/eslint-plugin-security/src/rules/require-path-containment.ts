@@ -19,8 +19,9 @@ import {
   propertyName,
   type PathBindings,
 } from '../fs-sinks';
-import { isAllowlistedMember, isGuardedBefore } from '../guards';
+import { isAllowlistedMember, isGuardedBefore, isProvenSafeValue } from '../guards';
 import { requestSourceOf, type TaintOptions } from '../request-taint';
+import { flowStep, flowSteps, handlerRole, isImmediateCallback } from '../value-flow';
 
 const RULE_NAME = 'require-path-containment';
 
@@ -128,10 +129,21 @@ function rootIdentifier(node: TSESTree.Node): TSESTree.Identifier | null {
   return current.type === AST_NODE_TYPES.Identifier ? current : null;
 }
 
+/** True when `root` names a request object: by name, or by its place in a handler. */
+function isRequestRoot(
+  root: TSESTree.Identifier,
+  requestObjects: ReadonlySet<string>,
+  sourceCode: SourceCode,
+): boolean {
+  return requestObjects.has(root.name) || handlerRole(root, sourceCode) === 'request';
+}
+
 /**
- * The first argument that is a member chain rooted at a request object (read
- * through type wrappers and optional chains), other than one checked against
- * a literal allowlist before the call.
+ * The first request member an argument holds (read through type wrappers,
+ * optional chains and exact moves such as `const name = req.params.name`, a
+ * helper that returns its argument or a callback's value), other than one
+ * checked against a literal allowlist before the call. A value proven safe
+ * for a path on the way stops the search for that argument.
  */
 function requestSource(
   call: TSESTree.CallExpression,
@@ -139,13 +151,24 @@ function requestSource(
   sourceCode: SourceCode,
 ): TSESTree.Node | null {
   for (const arg of call.arguments) {
-    const inner = peel(arg);
-    if (inner.type !== AST_NODE_TYPES.MemberExpression) {
-      continue;
-    }
-    const root = rootIdentifier(inner);
-    if (root !== null && requestObjects.has(root.name) && !isAllowlistedMember(arg, call, sourceCode)) {
-      return arg;
+    for (const step of flowSteps(arg, call, sourceCode, 'taint')) {
+      const inner = peel(step.node);
+      if (inner.type === AST_NODE_TYPES.Identifier) {
+        if (isProvenSafeValue(inner, step.sink, 'path', sourceCode)) {
+          break;
+        }
+        continue;
+      }
+      if (inner.type !== AST_NODE_TYPES.MemberExpression) {
+        continue;
+      }
+      const root = rootIdentifier(inner);
+      if (root !== null && isRequestRoot(root, requestObjects, sourceCode)) {
+        if (isAllowlistedMember(step.node, step.sink, sourceCode)) {
+          break;
+        }
+        return step.node;
+      }
     }
   }
   return null;
@@ -214,7 +237,16 @@ export const requirePathContainmentRule = createRule<RuleOptions, MessageIds>({
     let taintOptions: TaintOptions | null = null;
     const helperCache = new Map<FunctionNode, Map<number, string>>();
 
-    const scopeOf = (node: TSESTree.Node): TSESTree.Node => enclosingFunction(node) ?? sourceCode.ast;
+    // A callback run where it is passed (`[x].forEach((v) => ...)`) is part of the function around it.
+    const scopeOf = (node: TSESTree.Node): TSESTree.Node => {
+      let fn = enclosingFunction(node);
+      while (fn !== null && isImmediateCallback(fn, sourceCode)) {
+        fn = enclosingFunction(fn);
+      }
+      return fn ?? sourceCode.ast;
+    };
+    // A handler's response parameter under another name: `(a, b) => b.sendFile(p)`.
+    const isResponse = (node: TSESTree.Identifier): boolean => handlerRole(node, sourceCode) === 'response';
 
     const hatched = (node: TSESTree.Node): boolean => {
       const scope = scopeOf(node);
@@ -270,7 +302,8 @@ export const requirePathContainmentRule = createRule<RuleOptions, MessageIds>({
       for (let depth = 0; depth < MAX_DEPTH * 2; depth += 1) {
         const inner = peel(value);
         if (inner.type === AST_NODE_TYPES.Identifier) {
-          const init = singleInit(inner, sourceCode);
+          // A `let` written once in a callback or a destructured literal holds it too.
+          const init = singleInit(inner, sourceCode) ?? flowStep(inner, inner, sourceCode)?.node ?? null;
           if (init === null) {
             return root;
           }
@@ -308,6 +341,25 @@ export const requirePathContainmentRule = createRule<RuleOptions, MessageIds>({
     };
 
     /**
+     * The `let` that `parent` writes `child` into when that is its only write
+     * (`let p; [x].forEach((v) => { p = resolve(base, v); })`), else undefined.
+     */
+    const writtenOnceBy = (parent: TSESTree.Node | undefined, child: TSESTree.Node): Variable | undefined => {
+      if (
+        parent?.type !== AST_NODE_TYPES.AssignmentExpression ||
+        parent.operator !== '=' ||
+        parent.right !== child ||
+        parent.left.type !== AST_NODE_TYPES.Identifier
+      ) {
+        return undefined;
+      }
+      const variable = ASTUtils.findVariable(sourceCode.getScope(parent.left), parent.left);
+      return variable !== null && flowStep(parent.left, parent.left, sourceCode)?.node === child
+        ? variable
+        : undefined;
+    };
+
+    /**
      * Every node holding the resolved value: the root call, and the reads of
      * each binding it is stored in through value-keeping calls, transitively.
      * Null when one of those bindings is reassigned.
@@ -323,18 +375,21 @@ export const requirePathContainmentRule = createRule<RuleOptions, MessageIds>({
           child = parent;
           parent = parent.parent;
         }
-        if (
-          parent?.type !== AST_NODE_TYPES.VariableDeclarator ||
-          parent.init !== child ||
-          parent.id.type !== AST_NODE_TYPES.Identifier
-        ) {
-          continue;
-        }
-        const variable = sourceCode.getDeclaredVariables(parent)[0];
+        const variable =
+          parent?.type === AST_NODE_TYPES.VariableDeclarator &&
+          parent.init === child &&
+          parent.id.type === AST_NODE_TYPES.Identifier
+            ? sourceCode.getDeclaredVariables(parent)[0]
+            : writtenOnceBy(parent, child);
         if (variable === undefined || seen.has(variable)) {
           continue;
         }
-        if (variable.references.some((reference) => reference.isWrite() && reference.init !== true)) {
+        if (
+          variable.references.some(
+            (reference) =>
+              reference.isWrite() && reference.init !== true && reference.identifier.parent !== parent,
+          )
+        ) {
           return null;
         }
         seen.add(variable);
@@ -672,6 +727,7 @@ export const requirePathContainmentRule = createRule<RuleOptions, MessageIds>({
         [...current.pathFunctions].filter(([, imported]) => imported === fn).map(([local]) => local);
       taintOptions = {
         requestObjects,
+        handlerRequests: true,
         context: 'path',
         // `extname` keeps only the last `.ext` of the base name: never `..`, no separator.
         sanitizers: new Set([
@@ -726,7 +782,7 @@ export const requirePathContainmentRule = createRule<RuleOptions, MessageIds>({
     };
 
     const checkFsCall = (node: TSESTree.CallExpression, current: PathBindings): void => {
-      const { method, paths } = fsPathArguments(node, current);
+      const { method, paths } = fsPathArguments(node, current, isResponse);
       // `realpath` whose result is then tested is how containment is checked
       // against symbolic links, not a use of the path.
       if (REALPATH.has(method) && testedAnywhere(node, current)) {
@@ -774,7 +830,7 @@ export const requirePathContainmentRule = createRule<RuleOptions, MessageIds>({
         if (candidate.type !== AST_NODE_TYPES.CallExpression || hatched(candidate)) {
           return false;
         }
-        const { method, paths } = fsPathArguments(candidate, current);
+        const { method, paths } = fsPathArguments(candidate, current, isResponse);
         for (const pathArgument of paths) {
           // One parameter at a time: a path built from two of them names both.
           for (const [variable, index] of parameters) {

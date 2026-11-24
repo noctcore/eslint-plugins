@@ -1,0 +1,22 @@
+// @bench category=path-traversal cwe=CWE-22 framework=express pair=express-export-download-callback title="export name must be in a fixed Set of known files, rewritten by callback"
+// ok
+import path from 'node:path';
+import express, { Router } from 'express';
+
+const EXPORTS_DIR = path.resolve(process.cwd(), 'exports');
+const router = Router();
+
+router.get('/exports/:name', (req, res) => {
+  const known = new Set(['users.csv', 'orders.csv', 'products.csv']);
+  if (!known.has(req.params.name)) {
+    res.status(404).json({ error: 'unknown export' });
+    return;
+  }
+  [req.params.name].forEach((relay) => { res.download(path.join(EXPORTS_DIR, relay)); });
+});
+
+router.get('/exports', (_req, res) => {
+  res.json(['users.csv', 'orders.csv', 'products.csv']);
+});
+
+export default router;

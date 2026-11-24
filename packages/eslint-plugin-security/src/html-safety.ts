@@ -2,6 +2,7 @@ import { AST_NODE_TYPES, ASTUtils, type TSESLint, type TSESTree } from '@typescr
 
 import { type GuardContext, isProvenSafeValue } from './guards';
 import type { HtmlContext } from './html-context';
+import { flowStep, stringPieces, withArguments } from './value-flow';
 
 /*
  * Whether a runtime value is safe where it lands in HTML (`./html-context`),
@@ -690,10 +691,12 @@ export class HtmlSafety {
     if (encoder === null) {
       return null;
     }
-    if (call.arguments.some((arg) => arg.type === AST_NODE_TYPES.SpreadElement)) {
+    // `encode(...[x])` reads the spread elements in place.
+    const laid = withArguments(call, this.sourceCode);
+    if (laid.arguments.some((arg) => arg.type === AST_NODE_TYPES.SpreadElement)) {
       return null;
     }
-    const safe = encoder.options === undefined ? call.arguments.length <= 1 : encoder.options(call, this);
+    const safe = encoder.options === undefined ? laid.arguments.length <= 1 : encoder.options(laid, this);
     return safe ? encoder.encoding : null;
   }
 
@@ -1407,9 +1410,17 @@ export class HtmlSafety {
       return false;
     }
     const inner = unwrap(node);
-    if (this.isConstant(inner) || this.guarded(inner, context, sink)) {
+    if (this.isConstant(inner) || this.guarded(inner, context, sink) || this.shapeSafeIn(inner, context, sink, depth)) {
       return true;
     }
+    // The value it holds exactly: an object property or array element, a
+    // destructured literal, a callback's value (`./value-flow`).
+    const next = flowStep(inner, sink, this.sourceCode);
+    return next !== null && this.safeIn(next.node, context, next.sink, depth + 1);
+  }
+
+  /** {@link safeIn} by the shape of the expression itself. */
+  private shapeSafeIn(inner: TSESTree.Node, context: HtmlContext, sink: TSESTree.Node, depth: number): boolean {
     switch (inner.type) {
       case AST_NODE_TYPES.ConditionalExpression:
         return this.safeIn(inner.consequent, context, sink, depth + 1) && this.safeIn(inner.alternate, context, sink, depth + 1);
@@ -1457,6 +1468,11 @@ export class HtmlSafety {
       }
       if (method === 'toString' && call.arguments.length === 0) {
         return this.safeIn(callee.object, context, sink, depth + 1);
+      }
+      // `'<li>'.concat(x, '</li>')` and `[a, b].join('')` build text like `+`.
+      const pieces = stringPieces(call, this.sourceCode);
+      if (pieces !== null) {
+        return pieces.every((piece) => typeof piece === 'string' || this.safeIn(piece, context, sink, depth + 1));
       }
     }
     const encoding = this.encodingOf(call);

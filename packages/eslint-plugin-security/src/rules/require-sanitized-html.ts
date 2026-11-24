@@ -10,6 +10,7 @@ import {
   toVocabulary,
   unwrapExpression,
 } from '../utils';
+import { conventionalCallee, flowStep, objectLiteralOf, stringPieces } from '../value-flow';
 
 const RULE_NAME = 'require-sanitized-html';
 
@@ -111,18 +112,40 @@ function isSafeHtml(raw: TSESTree.Expression, trust: HtmlTrust, depth: number): 
         return true;
       }
       const init = constInitOf(node, trust.sourceCode);
-      return init !== undefined && safe(init);
+      if (init !== undefined) {
+        return safe(init);
+      }
+      break;
+    }
+    case AST_NODE_TYPES.CallExpression: {
+      // `'<li>'.concat(x, '</li>')` and `[a, b].join('')` build markup like `+`.
+      const pieces = stringPieces(node, trust.sourceCode);
+      if (pieces !== null) {
+        return pieces.every((piece) => typeof piece === 'string' || safe(piece));
+      }
+      break;
     }
     default:
-      return false;
+      break;
   }
+  // The value it holds exactly: a helper's argument, an object property, a
+  // callback's value, a `let` written once (`../value-flow`).
+  const next = flowStep(node, node, trust.sourceCode);
+  return next !== null && safe(next.node as TSESTree.Expression);
 }
 
 function isTrusted(node: TSESTree.Expression, trust: HtmlTrust): boolean {
+  if (matchesVocabulary(node, trust.trusted, trust.sourceCode)) {
+    return true;
+  }
+  if (node.type !== AST_NODE_TYPES.CallExpression) {
+    return false;
+  }
+  // `purify.sanitize(x)` for `import purify from 'dompurify'` is `DOMPurify.sanitize`.
+  const conventional = conventionalCallee(node.callee, trust.sourceCode);
   return (
-    matchesVocabulary(node, trust.trusted, trust.sourceCode) ||
-    (node.type === AST_NODE_TYPES.CallExpression &&
-      trust.sanitizers.has(squash(trust.sourceCode.getText(node.callee))))
+    trust.sanitizers.has(squash(trust.sourceCode.getText(node.callee))) ||
+    (conventional !== null && trust.sanitizers.has(conventional))
   );
 }
 
@@ -148,7 +171,7 @@ function htmlPropertyOf(object: TSESTree.ObjectExpression): TSESTree.Expression 
   return undefined;
 }
 
-/** A `{ __html }` object literal, seen directly or through an in-file `const`. */
+/** A `{ __html }` object literal, seen directly, through an in-file `const` or through an exact move. */
 function markupObjectOf(
   raw: TSESTree.Expression,
   sourceCode: Readonly<TSESLint.SourceCode>,
@@ -160,9 +183,12 @@ function markupObjectOf(
   if (node.type === AST_NODE_TYPES.Identifier) {
     const init = constInitOf(node, sourceCode);
     const unwrapped = init === undefined ? undefined : unwrapExpression(init);
-    return unwrapped?.type === AST_NODE_TYPES.ObjectExpression ? unwrapped : undefined;
+    if (unwrapped?.type === AST_NODE_TYPES.ObjectExpression) {
+      return unwrapped;
+    }
   }
-  return undefined;
+  // Through exact moves: `let body; [x].forEach((v) => { body = { __html: v }; })`.
+  return objectLiteralOf(node, sourceCode) ?? undefined;
 }
 
 function propertyName(node: TSESTree.MemberExpression): string | undefined {
@@ -223,6 +249,14 @@ export const requireSanitizedHtmlRule = createRule<RuleOptions, MessageIds>({
         const value = node.value.expression;
         const object = markupObjectOf(value, sourceCode);
         if (object === undefined) {
+          // A markup object the proof walk cannot vouch for, but that a looser
+          // walk finds holding unsafe markup: report where that markup goes in.
+          const located = objectLiteralOf(value, sourceCode, 'taint');
+          const markup = located === null ? undefined : htmlPropertyOf(located);
+          if (markup !== undefined && markup !== null && !isSafeHtml(markup, trust, 0)) {
+            check(markup, 'dangerouslySetInnerHTML');
+            return;
+          }
           // A markup object built elsewhere: only a trusted source vouches for it.
           if (!isTrusted(unwrapExpression(value), trust)) {
             context.report({

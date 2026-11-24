@@ -1,0 +1,22 @@
+// @bench category=open-redirect cwe=CWE-601 framework=express pair=express-cookie-return-url-rename-params title="cookie value parsed, origin compared and a protocol-relative pathname refused, rewritten by rename-params"
+// ok
+import express, { Request, Response } from 'express';
+import cookieParser from 'cookie-parser';
+
+const app = express();
+app.use(cookieParser());
+
+const APP_ORIGIN = 'https://app.example.com';
+
+app.get('/auth/finish', (param1: Request, param2: Response) => {
+  param1.session.finished = true;
+  param2.clearCookie('flash');
+  const url = new URL(String(param1.cookies.returnTo ?? '/'), APP_ORIGIN);
+  // A pathname that starts with // (from `/.//x`, `/%2e//x` or `/\\x`) would be protocol-relative.
+  if (url.origin !== APP_ORIGIN || url.pathname.startsWith('//')) {
+    return param2.redirect('/');
+  }
+  param2.redirect(url.pathname + url.search);
+});
+
+app.listen(3000);

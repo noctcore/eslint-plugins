@@ -3,6 +3,7 @@ import type { JSONSchema4 } from '@typescript-eslint/utils/json-schema';
 
 import { createRule } from '../createRule';
 import { matchesVocabulary, type SourceVocabulary, toVocabulary, unwrapExpression } from '../utils';
+import { callArguments, objectLiteralOf } from '../value-flow';
 
 const RULE_NAME = 'auth-cookie-flags';
 
@@ -143,8 +144,10 @@ function isNameValueOptionsCall(callee: TSESTree.Expression): boolean {
   return receiver !== null && isCookieStore(receiver);
 }
 
-function cookieWrite(node: TSESTree.CallExpression): CookieWrite | null {
-  const { callee, arguments: args } = node;
+function cookieWrite(node: TSESTree.CallExpression, sourceCode: Readonly<TSESLint.SourceCode>): CookieWrite | null {
+  const { callee } = node;
+  // `res.cookie('sid', ...[value], options)` reads the spread elements in place.
+  const args = callArguments(node.arguments, sourceCode);
   const setReceiver = dotCallReceiver(callee, 'set');
   if (setReceiver !== null) {
     const chainName = cookieChainName(setReceiver);
@@ -174,6 +177,33 @@ function isFlag(name: string | null): name is CookieFlag {
   return name !== null && (FLAGS as readonly string[]).includes(name);
 }
 
+const MAX_SPREAD_DEPTH = 8;
+
+/**
+ * The properties of an options object in order, each spread of an object
+ * this file wrote (`{ ...{ httpOnly: true } }`, `{ ...BASE }` for a `const`
+ * that is only read) laid out in place. A spread of a trusted config, or one
+ * the rule cannot see into, stays as it is.
+ */
+function spreadProperties(
+  object: TSESTree.ObjectExpression,
+  trusted: SourceVocabulary,
+  sourceCode: Readonly<TSESLint.SourceCode>,
+  depth: number,
+): TSESTree.ObjectLiteralElement[] {
+  return object.properties.flatMap((property) => {
+    if (
+      property.type !== AST_NODE_TYPES.SpreadElement ||
+      depth >= MAX_SPREAD_DEPTH ||
+      matchesVocabulary(unwrapExpression(property.argument), trusted, sourceCode)
+    ) {
+      return [property];
+    }
+    const literal = objectLiteralOf(property.argument, sourceCode);
+    return literal === null ? [property] : spreadProperties(literal, trusted, sourceCode, depth + 1);
+  });
+}
+
 /** What the options argument says about each flag. */
 function readFlags(
   options: TSESTree.Expression | undefined,
@@ -189,7 +219,7 @@ function readFlags(
     return states;
   }
   let trustedSpread = false;
-  for (const property of object.properties) {
+  for (const property of spreadProperties(object, trusted, sourceCode, 0)) {
     if (property.type === AST_NODE_TYPES.SpreadElement) {
       if (matchesVocabulary(unwrapExpression(property.argument), trusted, sourceCode)) trustedSpread = true;
       continue;
@@ -258,7 +288,7 @@ export const authCookieFlagsRule = createRule<RuleOptions, MessageIds>({
 
     return {
       CallExpression(node) {
-        const write = cookieWrite(node);
+        const write = cookieWrite(node, sourceCode);
         if (write === null) return;
         const cookie = write.name;
         if (!names.has(cookie) && pattern?.test(cookie) !== true) return;

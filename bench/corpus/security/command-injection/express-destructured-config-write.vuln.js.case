@@ -1,0 +1,19 @@
+// @bench category=command-injection cwe=CWE-78 framework=express pair=express-destructured-config-write title="query fields destructured into a config object that feeds a git exec call"
+const { exec } = require('node:child_process');
+const express = require('express');
+
+const config = { branch: 'main', repoDir: '/srv/acme/app' };
+const router = express.Router();
+
+router.post('/deploy/checkout', (req, res) => {
+  ({ branch: config.branch } = req.query);
+  const branch = config.branch;
+  exec(`git -C ${config.repoDir} checkout ${branch}`, (error, stdout) => { // expect: security/no-shell-interpolation
+    if (error) {
+      return res.status(500).json({ error: 'checkout failed' });
+    }
+    res.json({ output: stdout.trim() });
+  });
+});
+
+module.exports = router;

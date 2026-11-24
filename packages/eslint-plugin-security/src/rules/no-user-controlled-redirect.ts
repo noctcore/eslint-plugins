@@ -41,6 +41,7 @@ import {
   urlArgumentOf,
 } from '../url-origin';
 import { squash, unwrapExpression } from '../utils';
+import { callArguments, flowStep, handlerRole, withArguments } from '../value-flow';
 
 const RULE_NAME = 'no-user-controlled-redirect';
 
@@ -216,19 +217,29 @@ function rootReceiver(
   return current;
 }
 
-/** The method name and peeled receiver text of a member call, else null. */
+/**
+ * The method name and the texts a member call's peeled receiver goes by: as
+ * written, and `res` for a handler's response parameter under another name
+ * (`(a, b) => b.redirect(url)`, a Nest `@Res()`; see `handlerRole`).
+ */
 function memberCallParts(
   node: TSESTree.CallExpression,
   sourceCode: Readonly<TSESLint.SourceCode>,
-): { method: string; receiver: string } | null {
+): { method: string; receivers: string[] } | null {
   const callee = node.callee;
   if (callee.type !== AST_NODE_TYPES.MemberExpression) {
     return null;
   }
   const method = propertyName(callee, sourceCode);
-  return method === undefined
-    ? null
-    : { method, receiver: squash(sourceCode.getText(rootReceiver(callee.object, sourceCode))) };
+  if (method === undefined) {
+    return null;
+  }
+  const receiver = rootReceiver(callee.object, sourceCode);
+  const receivers = [squash(sourceCode.getText(receiver))];
+  if (receiver.type === AST_NODE_TYPES.Identifier && handlerRole(receiver, sourceCode) === 'response') {
+    receivers.push('res');
+  }
+  return { method, receivers };
 }
 
 /** `matchCallee`, also through a chain of response-returning calls on the receiver. */
@@ -248,7 +259,7 @@ function matchRedirectCallee(
         (spec) =>
           spec.object !== undefined &&
           spec.name === parts.method &&
-          squash(spec.object) === parts.receiver,
+          parts.receivers.includes(squash(spec.object)),
       );
 }
 
@@ -459,20 +470,22 @@ function locationHeaderValues(
   sourceCode: Readonly<TSESLint.SourceCode>,
 ): TSESTree.Expression[] {
   const parts = memberCallParts(node, sourceCode);
-  if (parts === null || !responseObjects.has(parts.receiver)) {
+  if (parts === null || !parts.receivers.some((receiver) => responseObjects.has(receiver))) {
     return [];
   }
-  const [first, second] = node.arguments;
+  // `res.setHeader('Location', ...[url])` reads the spread elements in place.
+  const args = callArguments(node.arguments, sourceCode);
+  const [first, second] = args;
   if (HEADER_SETTERS.has(parts.method)) {
-    return node.arguments.length === 1
+    return args.length === 1
       ? holderLocations(first, sourceCode)
       : pairValues(first, second, sourceCode);
   }
   if (parts.method === 'setHeaders') {
     return holderLocations(first, sourceCode);
   }
-  if (parts.method === 'writeHead' && node.arguments.length > 1) {
-    return holderLocations(node.arguments.at(-1), sourceCode);
+  if (parts.method === 'writeHead' && args.length > 1) {
+    return holderLocations(args.at(-1), sourceCode);
   }
   return [];
 }
@@ -556,20 +569,11 @@ function isSafeTarget(
       isSafeTarget(node.alternate, trust, pin, sourceCode, depth + 1)
     );
   }
-  if (node.type === AST_NODE_TYPES.Identifier) {
-    const variable = findVariable(sourceCode.getScope(node), node);
-    const def = variable?.defs[0];
-    if (
-      variable?.defs.length === 1 &&
-      def?.type === 'Variable' &&
-      def.parent.kind === 'const' &&
-      def.node.id.type === AST_NODE_TYPES.Identifier &&
-      def.node.init !== null
-    ) {
-      return isSafeTarget(def.node.init, trust, pin, sourceCode, depth + 1);
-    }
-  }
-  return false;
+  // The value it holds exactly: a `const` initializer, a helper's argument,
+  // an object property or array element, a callback's value, `x!` or
+  // `x as string` (`../value-flow`).
+  const next = flowStep(node, node, sourceCode);
+  return next !== null && isSafeTarget(next.node as TSESTree.Expression, trust, pin, sourceCode, depth + 1);
 }
 
 const optionSchema: JSONSchema4 = {
@@ -660,7 +664,7 @@ export const noUserControlledRedirectRule = createRule<RuleOptions, MessageIds>(
           check(locationHeaderValues(node, responseObjects, sourceCode), HEADER_PIN);
           return;
         }
-        const urlArg = urlArgumentOf(node, spec);
+        const urlArg = urlArgumentOf(withArguments(node, sourceCode), spec);
         const onResponse = spec.object !== undefined && responseObjects.has(squash(spec.object));
         check(urlArg === undefined ? [] : [urlArg], onResponse ? HEADER_PIN : SCRIPT_PIN);
       },
