@@ -385,3 +385,15 @@ ruleTester.run('no-llm-output-to-sink: fetch prefixes', noLlmOutputToSinkRule, {
     },
   ],
 });
+
+// Relative text the output can finish into a protocol handler scheme.
+ruleTester.run('no-llm-output-to-sink: protocol handler schemes', noLlmOutputToSinkRule, {
+  valid: [{ code: fn(`${OPENAI}\nawait fetch(\`docs\${res.choices[0].message.content}\`);`), filename: TS }],
+  invalid: [
+    ...['m', 'ms-', 'se', 'vs', 'itms'].map((prefix) => ({
+      code: fn(`${OPENAI}\nawait fetch(\`${prefix}\${res.choices[0].message.content}\`);`),
+      filename: TS,
+      errors: [error(OPENAI_CHAT, 'the origin of a `fetch` URL')],
+    })),
+  ],
+});

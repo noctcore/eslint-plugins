@@ -1127,3 +1127,21 @@ ruleTester.run('no-user-controlled-redirect: long alias chains', noUserControlle
     { code: longAliases('Location', 300, 'res.set(NAME, req.query.x);'), filename: TS, errors: [error] },
   ],
 });
+
+// Relative text that can still grow into a scheme an operating system
+// protocol handler opens.
+ruleTester.run('no-user-controlled-redirect: protocol handler schemes', noUserControlledRedirectRule, {
+  valid: [
+    { code: 'res.redirect(`docs${req.query.p}`);', filename: TS },
+    { code: 'res.redirect(`about${req.query.p}`);', filename: TS },
+  ],
+  invalid: [
+    ...['m', 'ms', 'ms-', 'MS-MSDT', 'ms-officecmd', 'se', 'search', 'search-m', 'vscode', 'itms-', 'mk', 'hc', 'mhtml'].map((prefix) => ({
+      code: `res.redirect(\`${prefix}\${req.query.p}\`);`,
+      filename: TS,
+      errors: [error],
+    })),
+    { code: "res.redirect('ms-' + req.query.p);", filename: TS, errors: [error] },
+    { code: "res.set('Location', `ms-${req.query.p}`);", filename: TS, errors: [error] },
+  ],
+});

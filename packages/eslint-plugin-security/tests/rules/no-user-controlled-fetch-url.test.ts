@@ -791,3 +791,14 @@ ruleTester.run('no-user-controlled-fetch-url: trusted source readers', noUserCon
     })),
   ],
 });
+
+// Relative text that can still grow into a protocol handler scheme.
+ruleTester.run('no-user-controlled-fetch-url: protocol handler schemes', noUserControlledFetchUrlRule, {
+  valid: [{ code: 'fetch(`docs${x}`);', filename: TS }],
+  invalid: [
+    { code: 'fetch(`ms-${x}`);', filename: TS, errors: [error] },
+    { code: 'fetch(`m${x}`);', filename: TS, errors: [error] },
+    { code: "fetch('se' + x);", filename: TS, errors: [error] },
+    { code: 'fetch(`VSCODE${x}`);', filename: TS, errors: [error] },
+  ],
+});
