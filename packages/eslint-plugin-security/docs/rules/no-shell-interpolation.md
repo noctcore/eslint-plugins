@@ -45,8 +45,9 @@ Precision is the whole point — this rule fires **only** on the genuinely dange
   or handed to a call other than a runner) is reported: the command is then whatever was put
   there. Uses that cannot change the array keep its command known: `.length`, an index read,
   `includes`, `indexOf`, `lastIndexOf`, `join`, `at`, `console.*` (unless the file uses
-  `console` in any other way, such as `console.log = f`, or names it through another object or
-  as text), `JSON.stringify` with no replacer, a plain template (not a tagged one, whose tag gets
+  `console` in any other way, such as `console.log = f`, or names it through another object, as
+  a key such as `const { console: c } = globalThis`, or as text; a name built from split text
+  such as `globalThis['con' + 'sole']` is not followed), `JSON.stringify` with no replacer, a plain template (not a tagged one, whose tag gets
   the array), `+` or `String(args)` use, and a spread into a new array literal. Fixed
   text added with `push` is read after the elements; fixed text added with `unshift` or `splice`
   keeps the command known only when every element is fixed text too. The element the shell runs is checked like an `exec` command when it is built from

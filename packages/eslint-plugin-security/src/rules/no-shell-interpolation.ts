@@ -454,8 +454,10 @@ const consoleChecked = new WeakMap<object, boolean>();
  * True when the file may change what a `console` method does: `console` is
  * used other than to call one of its methods (`console.log = f`,
  * `Object.assign(console, ...)`, `const c = console`), or reached through
- * another object or by its name as text (`globalThis.console`,
- * `Reflect.set(globalThis, 'console', ...)`).
+ * another object, under its name as a key or by its name as text
+ * (`globalThis.console`, `const { console: c } = globalThis`,
+ * `Reflect.set(globalThis, 'console', ...)`). A name built from split text
+ * (`globalThis['con' + 'sole']`) is not followed.
  */
 function consoleMayChange(sourceCode: Readonly<TSESLint.SourceCode>): boolean {
   const known = consoleChecked.get(sourceCode.ast);
@@ -476,12 +478,13 @@ function consoleMayChange(sourceCode: Readonly<TSESLint.SourceCode>): boolean {
       member.parent.callee === member
     );
   });
-  const tokens = sourceCode.ast.tokens;
-  const byText = tokens.some(
-    (token, index) =>
-      (token.type === 'Identifier' &&
-        token.value === 'console' &&
-        (tokens[index - 1]?.value === '.' || tokens[index - 1]?.value === '?.')) ||
+  // Every other `console` name (`globalThis.console`, a key in a pattern or
+  // an object as in `const { console: c } = globalThis`, a local binding) or
+  // text holding it may reach the same object.
+  const called = new Set(references.map((reference) => reference.identifier.range[0]));
+  const byText = sourceCode.ast.tokens.some(
+    (token) =>
+      (token.type === 'Identifier' && token.value === 'console' && !called.has(token.range[0])) ||
       ((token.type === 'String' || token.type === 'Template') && token.value.includes('console')),
   );
   const result = !calledOnly || byText;
