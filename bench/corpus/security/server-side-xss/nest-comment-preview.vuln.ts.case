@@ -11,6 +11,6 @@ export class CommentsController {
   @Post('preview')
   preview(@Body() dto: PreviewDto, @Res() res: Response): void {
     res.type('html');
-    res.send(`<div class="preview"><p>${dto.comment}</p><small>preview only</small></div>`); // expect: security/require-sanitized-html
+    res.send(`<div class="preview"><p>${dto.comment}</p><small>preview only</small></div>`); // expect: security/require-sanitized-html, security/no-unescaped-html-response
   }
 }

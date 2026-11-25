@@ -8,7 +8,7 @@ http
     const params = new URL(req.url ?? '/', 'http://localhost').searchParams;
     const title = params.get('title') ?? 'Report';
     let html = '<html><body>';
-    html += '<h1>' + title + '</h1><table>'; // expect: security/require-sanitized-html
+    html += '<h1>' + title + '</h1><table>'; // expect: security/require-sanitized-html, security/no-unescaped-html-response
     for (const [region, total] of rows) {
       html += '<tr><td>' + region + '</td><td>' + total + '</td></tr>';
     }

@@ -1,0 +1,14 @@
+// @bench category=server-side-xss cwe=CWE-79 framework=koa pair=koa-flash-message title="flash route escapes the message on its HTML branch"
+// ok
+const Koa = require('koa');
+const escapeHtml = require('escape-html');
+
+const app = new Koa();
+
+app.use(async (ctx) => {
+  const saved = ctx.query.saved === '1';
+  const msg = String(ctx.query.msg || '');
+  ctx.body = saved ? 'Saved' : `<p class="error">${escapeHtml(msg)}</p>`;
+});
+
+app.listen(4007);

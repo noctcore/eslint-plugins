@@ -4079,7 +4079,10 @@ function denyRegexMatches(pattern: string, flags: string, value: string): boolea
   }
 }
 
-/** Which of `.` and `..` `x === lit` (or `!==` when `negated`) singles out. */
+/** The segments a dot check must refuse: `.` and `..`, plus `''` for a sink that acts on a directory. */
+const EMPTY_AND_DOT_SEGMENTS: readonly string[] = ['', '.', '..'];
+
+/** Which of `.` and `..` (and `''`) `x === lit` (or `!==` when `negated`) singles out. */
 function comparedDots(
   node: TSESTree.Node,
   subject: Subject,
@@ -4098,7 +4101,43 @@ function comparedDots(
     : readsVariable(inner.right, subject, sourceCode)
       ? literalString(inner.left, sourceCode)
       : null;
-  return text !== null && DOT_SEGMENTS.includes(text) ? [text] : [];
+  return text !== null && EMPTY_AND_DOT_SEGMENTS.includes(text) ? [text] : [];
+}
+
+/**
+ * True when a test refuses an empty value: `!x`, `x.length === 0` (or
+ * `< 1`), read as true for `''`; with `negated`, a test true only when it is
+ * not empty (`x`, `x.length > 0`, `x.length !== 0`).
+ */
+function emptyRefused(node: TSESTree.Node, subject: Subject, negated: boolean, sourceCode: SourceCode): boolean {
+  const inner = unwrap(node);
+  if (negated && readsVariable(inner, subject, sourceCode)) {
+    return true;
+  }
+  if (!negated && inner.type === AST_NODE_TYPES.UnaryExpression && inner.operator === '!') {
+    return readsVariable(inner.argument, subject, sourceCode);
+  }
+  if (inner.type !== AST_NODE_TYPES.BinaryExpression || inner.left.type === AST_NODE_TYPES.PrivateIdentifier) {
+    return false;
+  }
+  const left = unwrap(inner.left);
+  const right = unwrap(inner.right);
+  if (
+    left.type !== AST_NODE_TYPES.MemberExpression ||
+    left.computed ||
+    left.property.type !== AST_NODE_TYPES.Identifier ||
+    left.property.name !== 'length' ||
+    !readsVariable(left.object, subject, sourceCode) ||
+    right.type !== AST_NODE_TYPES.Literal
+  ) {
+    return false;
+  }
+  const empty = negated
+    ? (['>', '!==', '!='].includes(inner.operator) && right.value === 0) ||
+      (inner.operator === '>=' && right.value === 1)
+    : (['===', '=='].includes(inner.operator) && right.value === 0) ||
+      (inner.operator === '<' && right.value === 1);
+  return empty;
 }
 
 /**
@@ -4131,7 +4170,7 @@ function refusedDots(node: TSESTree.Node, subject: Subject, sourceCode: SourceCo
     readsVariable(includes.arguments[0] as TSESTree.Node, subject, sourceCode)
   ) {
     const list = listStrings(includes.callee.object, sourceCode) ?? [];
-    return DOT_SEGMENTS.filter((dots) => list.includes(dots));
+    return EMPTY_AND_DOT_SEGMENTS.filter((dots) => list.includes(dots));
   }
   const test = memberCall(inner, 'test');
   if (
@@ -4148,7 +4187,7 @@ function refusedDots(node: TSESTree.Node, subject: Subject, sourceCode: SourceCo
     if (regex === null || (/[gy]/u.test(regex.flags) && !fresh)) {
       return [];
     }
-    return DOT_SEGMENTS.filter((dots) => denyRegexMatches(regex.pattern, regex.flags, dots));
+    return EMPTY_AND_DOT_SEGMENTS.filter((dots) => denyRegexMatches(regex.pattern, regex.flags, dots));
   }
   return [];
 }
@@ -4166,8 +4205,8 @@ function admittedOnlyWithoutDots(
   return comparedDots(inner, subject, true, sourceCode);
 }
 
-function coversDots(found: readonly string[]): boolean {
-  return DOT_SEGMENTS.every((dots) => found.includes(dots));
+function coversDots(found: readonly string[], refuseEmpty: boolean): boolean {
+  return (refuseEmpty ? EMPTY_AND_DOT_SEGMENTS : DOT_SEGMENTS).every((dots) => found.includes(dots));
 }
 
 /**
@@ -4183,20 +4222,28 @@ export function isDotSegmentRefused(
   node: TSESTree.Identifier,
   sink: TSESTree.Node,
   sourceCode: SourceCode,
+  refuseEmpty = false,
 ): boolean {
   const variable = variableOf(node, sourceCode);
   if (variable === null || isImportBinding(variable)) {
     return false;
   }
+  const empty = (term: TSESTree.Node, negated: boolean): string[] =>
+    refuseEmpty && emptyRefused(term, variable, negated, sourceCode) ? [''] : [];
   return guardedBefore(
     sink,
     (test, negated) =>
       coversDots(
         negated
-          ? flattenLogical(test, '||').flatMap((term) => refusedDots(term, variable, sourceCode))
-          : flattenLogical(test, '&&').flatMap((term) =>
-              admittedOnlyWithoutDots(term, variable, sourceCode),
-            ),
+          ? flattenLogical(test, '||').flatMap((term) => [
+              ...refusedDots(term, variable, sourceCode),
+              ...empty(term, false),
+            ])
+          : flattenLogical(test, '&&').flatMap((term) => [
+              ...admittedOnlyWithoutDots(term, variable, sourceCode),
+              ...empty(term, true),
+            ]),
+        refuseEmpty,
       ),
     (position, scope) => writtenOnlyBefore(variable, Math.min(position, node.range[0]), scope),
     sourceCode,

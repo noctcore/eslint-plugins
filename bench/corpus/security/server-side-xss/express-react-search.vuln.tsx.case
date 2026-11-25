@@ -18,7 +18,7 @@ const app = express();
 
 app.get('/find', (req, res) => {
   const query = String(req.query.q ?? '');
-  res.send(renderToString(<SearchPage query={query} count={0} />));
+  res.send(renderToString(<SearchPage query={query} count={0} />)); // expect: security/no-unescaped-html-response
 });
 
 app.listen(3007);

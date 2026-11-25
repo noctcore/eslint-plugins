@@ -11,7 +11,7 @@ function handle(req: IncomingMessage, res: ServerResponse): void {
   }
   res.writeHead(404, { 'Content-Type': 'text/html' });
   res.write('<html><body><h1>Missing</h1>');
-  res.write(`<p>The path ${path} does not exist.</p>`); // expect: security/require-sanitized-html
+  res.write(`<p>The path ${path} does not exist.</p>`); // expect: security/require-sanitized-html, security/no-unescaped-html-response
   res.end('</body></html>');
 }
 

@@ -1,0 +1,12 @@
+// @bench category=server-side-xss cwe=CWE-79 framework=koa pair=koa-flash-message title="flash route returns plain text on success and the raw message as HTML otherwise"
+const Koa = require('koa');
+
+const app = new Koa();
+
+app.use(async (ctx) => {
+  const saved = ctx.query.saved === '1';
+  const msg = String(ctx.query.msg || '');
+  ctx.body = saved ? 'Saved' : `<p class="error">${msg}</p>`; // expect: security/no-unescaped-html-response
+});
+
+app.listen(4007);

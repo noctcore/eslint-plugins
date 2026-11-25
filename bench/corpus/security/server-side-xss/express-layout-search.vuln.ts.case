@@ -1,0 +1,12 @@
+// @bench category=server-side-xss cwe=CWE-79 framework=express pair=express-layout-search title="search page wraps the raw query in a shared layout helper"
+import express from 'express';
+import { layout } from './layout';
+
+const app = express();
+
+app.get('/search', (req, res) => {
+  const q = String(req.query.q ?? '');
+  res.send(layout(`<h1>Results for ${q}</h1>`)); // expect: security/no-unescaped-html-response
+});
+
+app.listen(3008);

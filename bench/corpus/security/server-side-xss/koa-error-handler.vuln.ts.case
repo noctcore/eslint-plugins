@@ -9,7 +9,7 @@ async function errorPages(ctx: Context, next: Next): Promise<void> {
     if (ctx.status !== 404) return;
     ctx.status = 404;
     ctx.type = 'text/html';
-    ctx.body = `<h1>404</h1><p>Nothing lives at ${ctx.path}</p>`; // expect: security/require-sanitized-html
+    ctx.body = `<h1>404</h1><p>Nothing lives at ${ctx.path}</p>`; // expect: security/require-sanitized-html, security/no-unescaped-html-response
   } catch (err) {
     ctx.status = 500;
     ctx.body = 'internal error';

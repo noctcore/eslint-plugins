@@ -11,6 +11,6 @@ export class LookupController {
   @Header('Content-Type', 'text/html')
   async find(@Query('q') q = ''): Promise<string> {
     const hits = await this.search.find(q);
-    return `<h2>${q}</h2><p>${hits.length} matches</p>`; // expect: security/require-sanitized-html
+    return `<h2>${q}</h2><p>${hits.length} matches</p>`; // expect: security/require-sanitized-html, security/no-unescaped-html-response
   }
 }

@@ -8,8 +8,8 @@ const app = express();
 
 app.get('/logs', (req: Request, res: Response) => {
   const file = String(req.query.file ?? 'app.log');
-  const full = LOG_DIR + '/' + file; // expect: security/require-path-containment
-  fs.createReadStream(full).pipe(res);
+  const full = LOG_DIR + '/' + file;
+  fs.createReadStream(full).pipe(res); // expect: security/require-path-containment
 });
 
 app.listen(9000);

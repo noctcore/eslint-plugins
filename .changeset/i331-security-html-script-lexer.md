@@ -1,0 +1,11 @@
+---
+'@noctcore/eslint-plugin-security': patch
+---
+
+`no-unescaped-html-response` reads more of what decides a value's place in a script. In-file `const` text with no tag in it is now read as author text, so a quote in `const OPEN = "JSON.parse('"` opens a string before a serialized value. The script lexer ends a word at a comment (`1// n` then `typeof /'/`), reads a spread `...` as an operator and the dot of `1.` as part of the number, never takes a private name (`this.#in`) or a name with a `\u` escape for a keyword, reads every identifier character (combining marks, ZWNJ, `·`), and knows `default` and `extends` as words a regex may follow. The HTML escape states of a script are followed: after `<!--<script>`, a `</script>` no longer ends the element.
+
+A dotted `sanitizers` entry (`utils.escapeHtml`) is now trusted by the binding it starts from, as bare entries are: only when imported, `require`d or not declared in the file. An object, class or parameter of the file proves nothing. A helper that returns a parameter it also writes no longer counts as returning the argument.
+
+Report removed: a `<script>` whose first `type` attribute is a literal JSON or plain text type (`application/json`, `application/ld+json` and other `+json` types, `text/json`, `text/plain`) is a data block no script runs. Its content is judged like `<textarea>` content, so serialize-javascript output inside a quote there, and escaper output in markup there (``<script type="text/plain"><p>${escapeHtml(q)}</p></script>``), are no longer reported; JSON.stringify output, which can write `</script>`, still is. Every other type stays script, including `text/babel`, `text/x-template`, a type with parameters (`text/javascript; charset=utf-8`) and a type written with a character reference (`text&#47;javascript`).
+
+Reports removed: a `/` that the lexer now reads as division no longer makes it stop reading the script, so a serialized value inside a string after it is no longer reported: after the dot of a number (`1./'/`), after a private name (`this.#in /'/`), and after a name holding `·`, a combining mark or ZWNJ (`a· /'/`, or `typeof` with a ZWNJ after it). A serialized value that in-file `const` text puts back in code position (`const C = "'"` then `` `<script>var s = '${C}; var t = ${serialize(q)}</script>` ``) is no longer reported either.

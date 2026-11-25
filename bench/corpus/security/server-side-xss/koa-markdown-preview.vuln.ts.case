@@ -13,7 +13,7 @@ app.use(async (ctx) => {
   }
   const md: string = String((ctx.request.body as { md?: string }).md ?? '');
   ctx.type = 'text/html';
-  ctx.body = `<article>${marked(md)}</article>`; // expect: security/require-sanitized-html
+  ctx.body = `<article>${marked(md)}</article>`; // expect: security/require-sanitized-html, security/no-unescaped-html-response
 });
 
 app.listen(4003);

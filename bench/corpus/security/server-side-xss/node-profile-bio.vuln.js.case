@@ -12,6 +12,6 @@ http
     }
     const bio = await bios.get(id);
     res.writeHead(200, { 'Content-Type': 'text/html' });
-    res.end(`<div class="bio"><h1>About</h1><p>${bio}</p></div>`); // expect: security/require-sanitized-html
+    res.end(`<div class="bio"><h1>About</h1><p>${bio}</p></div>`); // expect: security/require-sanitized-html, security/no-unescaped-html-response
   })
   .listen(5002);

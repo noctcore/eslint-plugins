@@ -1,0 +1,14 @@
+// @bench category=server-side-xss cwe=CWE-79 framework=express pair=express-state-script title="inline state is serialized as a JS expression"
+// ok
+import express from 'express';
+import serialize from 'serialize-javascript';
+
+const OPEN = 'window.__PREFS__ = ';
+const app = express();
+
+app.get('/app', (req, res) => {
+  const prefs = { theme: String(req.query.theme ?? 'light') };
+  res.send(`<div id="app"></div><script>${OPEN}${serialize(prefs)};</script>`);
+});
+
+app.listen(3009);

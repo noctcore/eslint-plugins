@@ -13,7 +13,7 @@ app.post('/comments/preview', (req: Request, res: Response) => {
   const { comment = '', author = 'guest' } = req.body as PreviewBody;
   const stamp = new Date().toISOString();
   res.set('Content-Type', 'text/html; charset=utf-8');
-  res.send(`<section><h3>Preview (${stamp})</h3><blockquote>${comment}</blockquote></section>`); // expect: security/require-sanitized-html
+  res.send(`<section><h3>Preview (${stamp})</h3><blockquote>${comment}</blockquote></section>`); // expect: security/require-sanitized-html, security/no-unescaped-html-response
 });
 
 app.listen(3001);

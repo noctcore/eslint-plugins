@@ -9,7 +9,7 @@ router.get('/echo', (ctx) => {
   const note = String(ctx.query.note ?? '');
   ctx.type = 'text/html; charset=utf-8';
   ctx.set('X-Content-Type-Options', 'nosniff');
-  ctx.body = `<p>Your note: ${note}</p>`; // expect: security/require-sanitized-html
+  ctx.body = `<p>Your note: ${note}</p>`; // expect: security/require-sanitized-html, security/no-unescaped-html-response
 });
 
 app.use(router.routes());

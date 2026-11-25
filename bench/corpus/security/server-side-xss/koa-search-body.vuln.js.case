@@ -10,7 +10,7 @@ router.get('/search', async (ctx) => {
   const term = String(ctx.query.term || '');
   const hits = await searchArticles(term);
   ctx.type = 'html';
-  ctx.body = `<h1>Search: ${term}</h1><p>${hits.length} articles found</p>`; // expect: security/require-sanitized-html
+  ctx.body = `<h1>Search: ${term}</h1><p>${hits.length} articles found</p>`; // expect: security/require-sanitized-html, security/no-unescaped-html-response
 });
 
 app.use(router.routes());
