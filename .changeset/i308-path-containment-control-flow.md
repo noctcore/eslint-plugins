@@ -1,0 +1,10 @@
+---
+'@noctcore/eslint-plugin-security': patch
+'@noctcore/eslint-plugin-electron': patch
+---
+
+`security/require-path-containment` and `electron/no-renderer-setting-to-fs` share one containment matcher, and a containment test now counts only when its result decides whether the path is used. A test whose result is ignored (`full.startsWith(base + sep);`), one that guards some other statement (`if (inside) log()`), and one inside a nested function that may never run no longer silence either rule, also for the security rule's join report. `startsWith` needs a base that ends in a separator in both rules (`startsWith(BASE)` lets `/srv/app-evil` through), and a `path.relative` result must be refused both when it climbs and when it is absolute, against a base that is not `'/'`, `''`, `path.sep` or `process.cwd()`.
+
+New reports: the electron rule reports all of those shapes, which it accepted before (`if (full.startsWith(BASE)) fs.readFileSync(full)` included); the security rule reports them at the join, also when the joined value is not passed to an fs call, and reports `path.relative('/', full)` and `path.relative(process.cwd(), full)` checks.
+
+Reports removed from `security/require-path-containment` (both rules now read these as guarded): an fs call on the right of an `&&` or `||` whose left side is the containment test (`return full.startsWith(BASE + path.sep) && fs.readFileSync(full)`); a relative result refused as `rel === '..' || rel.startsWith('..' + path.sep) || path.isAbsolute(rel)`; and a tested path read back unchanged before the fs call, through an array or object literal (`const items = [full]; fs.createReadStream(items[0])`, `{ value: full }.value`) or a local function that only returns its parameter (`forward(full)`). A decoder or any other call between the test and the fs call still reports.
