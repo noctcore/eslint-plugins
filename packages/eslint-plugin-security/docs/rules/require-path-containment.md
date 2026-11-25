@@ -50,7 +50,8 @@ A test takes the joined value and a base the requester does not pick:
 - a `path.relative(base, full)` result refused both when it climbs and when it is absolute
   (`path.isAbsolute(rel)`): on Windows, `relative` across drives returns an absolute path that does
   not start with `..`. A climb is refused by `rel.startsWith('..')`, or by both `rel === '..'` and
-  `rel.startsWith('..' + path.sep)`;
+  `rel.startsWith('..' + path.sep)`. Every refusal has to read the same result: one binding, or
+  inline `path.relative(...)` calls with the same base and path text and no call or write in them;
 - a call to a helper named in `containmentGuards` that takes the joined value.
 
 A base every path is under proves nothing: `'/'`, `''`, `'.'`, `path.sep`, `process.cwd()` and
@@ -104,6 +105,10 @@ static import, `require`, dynamic `import()` (awaited or not) or `import fs = re
 (`const { promises: { readFile } } = require('fs')`), type wrappers (`(fs as any).readFileSync`)
 and string keys (`fs['readFileSync']`).
 
+Arguments are read by position. An array literal spread in place keeps the positions
+(`writeFile(...[dest], data)` checks `dest`). After a spread of unknown length
+(`readFile(...args, name)`), any later argument may sit at a path position, so each is checked.
+
 `fs-extra` (and `fs-extra/esm`) counts as an fs module too, with the functions it re-exports from
 `fs` and its own: `emptyDir`, `ensureDir`, `mkdirp`, `mkdirs`, `ensureFile`, `createFile`,
 `outputFile`, `outputJson`, `pathExists`, `readJson`, `writeJson`, `remove` and their `Sync`
@@ -118,11 +123,14 @@ registered with the plugin and refuse `..` segments, so only a root the call pas
 `reply.download(file, name, { root })`.
 
 A root that confines nothing is not a root, and the served path is checked instead: `'/'`, `''`
-(Express then serves the path as given), `null`, `path.sep`, and an environment value that may be
+(Express then serves the path as given), `null`, `path.sep`, the working directory (`'.'`,
+`process.cwd()`, `path.resolve()`), and an environment value that may be
 unset or empty (`process.env.FILES`, `process.env.FILES ?? '/srv'`; `process.env.FILES || '/srv'`
 falls back to a fixed root and counts). A spread after the root (`{ root: BASE, ...req.body.opts }`)
 can replace it, so the spread value is checked as a root too, as is a spread options object with no
-`root` (`reply.sendFile('a.txt', { ...req.query })`).
+`root` (`reply.sendFile('a.txt', { ...req.query })`). A later key that sets `root` again
+(`['root']`, `` [`root`] ``) replaces it, and so may a computed key the rule cannot read; their
+values are checked as roots.
 
 ```ts bad
 export function serve(req, res) {
@@ -183,7 +191,12 @@ The flow stops at:
   the parent of `BASE`. Both refusals have to sit in one test;
 - a path built by `join` / `resolve` (or `normalize`, `realpath`) when a containment test above
   takes it and runs before the call on every path to it: an `if` that exits, an `if` around the
-  call, or a call to a `containmentGuards` helper as a statement before it.
+  call, or a call to a `containmentGuards` helper as a statement before it. The tested path has to
+  reach the call as it is: directly, through bindings, read back from an array or object literal
+  (`[full][0]`, `{ value: full }.value`), or through a local function that only returns its
+  parameter (plain parameters, never reassigned). A path built from it after the test
+  (`join(full, '..')`, `full + '/..'`, `` `${full}/..` ``, `[full, '..'].join('/')`,
+  `p += '/..'`) is a new path the test says nothing about.
 
 A request member checked against a literal allowlist
 (`if (!allowed.includes(req.params.name)) return res.status(404).end()`) is clean where it is used

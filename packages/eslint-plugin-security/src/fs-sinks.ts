@@ -492,6 +492,24 @@ export function fsFunction(callee: TSESTree.Node, bindings: PathBindings): strin
 }
 
 /**
+ * The name a property key writes (`root`, `'root'`, `['root']`,
+ * `[\`root\`]`), or null for a computed key whose name is not written out.
+ */
+function staticKey(property: TSESTree.Property): string | null {
+  const key = property.key;
+  if (!property.computed && key.type === AST_NODE_TYPES.Identifier) {
+    return key.name;
+  }
+  if (key.type === AST_NODE_TYPES.Literal) {
+    return String(key.value);
+  }
+  if (key.type === AST_NODE_TYPES.TemplateLiteral && key.expressions.length === 0) {
+    return key.quasis[0]?.value.cooked ?? null;
+  }
+  return null;
+}
+
+/**
  * The values that may set `root` in an options object literal, in order: the
  * `root` property, and every spread or computed key written after it (any of
  * which can set `root` again, `{ root: DIR, ...req.body }`). `explicit` is
@@ -509,15 +527,11 @@ function rootValues(node: TSESTree.Node | undefined): { values: TSESTree.Node[];
       values.push(property.argument);
       continue;
     }
-    const key = property.key;
-    const literalKey = key.type === AST_NODE_TYPES.Literal ? key.value : undefined;
-    if (
-      literalKey === 'root' ||
-      (!property.computed && key.type === AST_NODE_TYPES.Identifier && key.name === 'root')
-    ) {
+    const key = staticKey(property);
+    if (key === 'root') {
       values = [property.value];
       explicit = true;
-    } else if (property.computed && literalKey === undefined && key.type !== AST_NODE_TYPES.TemplateLiteral) {
+    } else if (key === null) {
       // A computed key the rule cannot read may be `root`.
       values.push(property.value);
     }
@@ -550,14 +564,18 @@ function fastifyRoots(method: string, args: readonly TSESTree.Expression[]): TSE
 
 /**
  * The arguments of a call by position: an array literal spread in place
- * (`f(...[a, b])` is `f(a, b)`), and any other spread as the next position,
- * after which positions are unknown.
+ * (`f(...[a, b])` is `f(a, b)`), and any other spread as the next position.
+ * Positions after such a spread are unknown, so `unknown` holds the spread
+ * and every argument after it: any of them may land at any later position.
  */
-function positionalArguments(args: readonly TSESTree.CallExpressionArgument[]): TSESTree.Expression[] {
-  const result: TSESTree.Expression[] = [];
-  for (const arg of args) {
+function positionalArguments(args: readonly TSESTree.CallExpressionArgument[]): {
+  known: TSESTree.Expression[];
+  unknown: TSESTree.Expression[];
+} {
+  const known: TSESTree.Expression[] = [];
+  for (const [index, arg] of args.entries()) {
     if (arg.type !== AST_NODE_TYPES.SpreadElement) {
-      result.push(arg);
+      known.push(arg);
       continue;
     }
     const inner = peel(arg.argument);
@@ -565,12 +583,25 @@ function positionalArguments(args: readonly TSESTree.CallExpressionArgument[]): 
       inner.type === AST_NODE_TYPES.ArrayExpression &&
       inner.elements.every((element) => element !== null && element.type !== AST_NODE_TYPES.SpreadElement)
     ) {
-      result.push(...(inner.elements as TSESTree.Expression[]));
+      known.push(...(inner.elements as TSESTree.Expression[]));
       continue;
     }
-    return [...result, arg.argument];
+    const unknown = args
+      .slice(index)
+      .map((rest) => (rest.type === AST_NODE_TYPES.SpreadElement ? rest.argument : rest));
+    return { known, unknown };
   }
-  return result;
+  return { known, unknown: [] };
+}
+
+/** The first `count` positions of a call, or every argument that may sit there after an unknown spread. */
+function leadingArguments(
+  positions: { known: TSESTree.Expression[]; unknown: TSESTree.Expression[] },
+  count: number,
+): TSESTree.Expression[] {
+  return positions.known.length >= count
+    ? positions.known.slice(0, count)
+    : [...positions.known, ...positions.unknown];
 }
 
 /**
@@ -596,10 +627,13 @@ export function fsPathArguments(
 ): { method: string; paths: TSESTree.Node[]; confines: Map<TSESTree.Node, TSESTree.Node> } {
   const none = { method: '', paths: [], confines: new Map<TSESTree.Node, TSESTree.Node>() };
   const fsName = fsFunction(node.callee, bindings);
-  const args = positionalArguments(node.arguments);
+  const positions = positionalArguments(node.arguments);
   if (fsName !== null) {
-    return { ...none, method: fsName, paths: args.slice(0, isTwoPathFunction(fsName) ? 2 : 1) };
+    return { ...none, method: fsName, paths: leadingArguments(positions, isTwoPathFunction(fsName) ? 2 : 1) };
   }
+  const args = [...positions.known, ...positions.unknown.slice(0, 1)];
+  // Past an unknown spread, any argument may be the file or the options.
+  const unplaced = positions.unknown.slice(1);
   const callee = peel(node.callee);
   if (callee.type !== AST_NODE_TYPES.MemberExpression || callee.object.type !== AST_NODE_TYPES.Identifier) {
     return none;
@@ -614,7 +648,7 @@ export function fsPathArguments(
     new Map(file === undefined ? [] : roots.map((root) => [root, file]));
   if (FASTIFY_REPLY_OBJECTS.has(callee.object.name)) {
     const roots = fastifyRoots(name, args);
-    return { method, paths: roots, confines: confining(roots) };
+    return { method, paths: [...roots, ...unplaced], confines: confining(roots) };
   }
   if (!RESPONSE_OBJECTS.has(callee.object.name) && isResponse?.(callee.object) !== true) {
     return none;
@@ -622,9 +656,9 @@ export function fsPathArguments(
   const options = args.slice(1).map(rootValues);
   const roots = options.flatMap((option) => option.values);
   if (roots.length === 0) {
-    return { ...none, method, paths: args.slice(0, 1) };
+    return { ...none, method, paths: [...args.slice(0, 1), ...unplaced] };
   }
   // Without a `root` property, a spread may leave the root unset: the file path is served as is.
   const paths = options.some((option) => option.explicit) ? roots : [...args.slice(0, 1), ...roots];
-  return { method, paths, confines: confining(roots) };
+  return { method, paths: [...paths, ...unplaced], confines: confining(roots) };
 }

@@ -7,6 +7,7 @@ import {
   isAssertedBefore,
   isExitGuard,
   isGuardedByLogicalBefore,
+  isProcessCwd,
   singleInitializer,
   walkSome,
   type PathContainmentContext,
@@ -94,11 +95,15 @@ type FunctionNode =
  *  - the path is resolved and one of the tests above runs before the sink on
  *    every path to it (an `if` that exits, or an `if`, `?:`, `&&` or `||`
  *    around the sink). A test that only runs somewhere in the function does
- *    not count here.
+ *    not count here. The tested path must reach the sink as it is (through
+ *    bindings, a literal holder or an identity helper): `join(full, '..')`,
+ *    `full + '/..'` and the like are new paths.
  * `res.sendFile(p, { root })` is checked on the root: Express refuses a `..`
  * segment of `p` (after decoding it) and serves it under the root. A root that
- * confines nothing (`'/'`, `''`, an environment value that may be unset) is
- * not one, so `p` is checked instead; a spread after the root may replace it.
+ * confines nothing (`'/'`, `''`, `'.'`, `process.cwd()`, an environment
+ * value that may be unset) is not one, so `p` is checked instead; a spread or
+ * a later `root` key after the root may replace it. After a spread of unknown
+ * length, every later argument of an fs call is checked as a path.
  *
  * HELPERS. A call to a local function (a declaration, or a `const` or a `let`
  * never reassigned that holds one) that forwards one of its parameters to an
@@ -142,6 +147,9 @@ const optionSchema: JSONSchema4 = {
     },
   },
 };
+
+/** A root text that confines nothing: separators only, `''`, or the working directory `'.'`. */
+const WEAK_ROOT_TEXT = /^(?:\.[\\/]?|[\\/]*)$/u;
 
 /** An fs sink a helper's parameter reaches. */
 interface HelperSink {
@@ -660,8 +668,9 @@ export const requirePathContainmentRule = createRule<RuleOptions, MessageIds>({
 
     /**
      * True for a root that confines nothing: `'/'`, `''` (Express then
-     * serves the path as is), `null` or `undefined`, `path.sep`, or an
-     * environment variable that may be unset or empty.
+     * serves the path as is), `null` or `undefined`, `path.sep`, the working
+     * directory (`'.'`, `process.cwd()`, `path.resolve()`, as `isBroadBase`
+     * reads a base), or an environment variable that may be unset or empty.
      */
     const isWeakRoot = (raw: TSESTree.Node, current: PathBindings, depth = 0): boolean => {
       if (depth > MAX_DEPTH) {
@@ -670,9 +679,14 @@ export const requirePathContainmentRule = createRule<RuleOptions, MessageIds>({
       const node = peel(raw);
       switch (node.type) {
         case AST_NODE_TYPES.Literal:
-          return node.value === null || (typeof node.value === 'string' && /^[\\/]*$/u.test(node.value));
+          return node.value === null || (typeof node.value === 'string' && WEAK_ROOT_TEXT.test(node.value));
         case AST_NODE_TYPES.TemplateLiteral:
-          return node.expressions.length === 0 && /^[\\/]*$/u.test(node.quasis[0]?.value.cooked ?? '');
+          return node.expressions.length === 0 && WEAK_ROOT_TEXT.test(node.quasis[0]?.value.cooked ?? '');
+        case AST_NODE_TYPES.CallExpression:
+          return (
+            isProcessCwd(node, sourceCode) ||
+            (node.arguments.length === 0 && pathFunction(node.callee, current) === 'resolve')
+          );
         case AST_NODE_TYPES.Identifier: {
           if (node.name === 'undefined') {
             const variable = ASTUtils.findVariable(sourceCode.getScope(node), node);
