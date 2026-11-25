@@ -273,7 +273,7 @@ written with a character reference (`text&#47;javascript`). The HTML escape stat
   member on the way, handed on: to a call (`patch(utils)`; `Object.keys(utils)` and other
   `Object.*` / `Reflect.*` reads aside, but not for `utils.html.escape`, whose `utils.html` a
   shallow copy or `Object.values` shares), to a property (`app.locals.u = utils`), a return or an
-  export. A reassigned `require` of an escaping module no longer counts as that module either.
+  export. Not followed: an alias of the global object (`const g = globalThis; g.utils = ...`), and `Reflect.apply` or another `Object.*` / `Reflect.*` method that calls a function with the object as `this`. A reassigned `require` of an escaping module no longer counts as that module either.
 - **A `.replace` / `.replaceAll` chain** that encodes at least `&`, `<`, `>` and `"`. A step counts
   for a character only when it is global (`replaceAll`, or a regex with `g` and no `y`), its
   pattern consumes every occurrence of the character (`/</g`, `/[&<>"]/g`, `/&|</g`, not
@@ -333,7 +333,7 @@ markup is read at every `return`),
 | `responseObjects` | `string[]` | `['res', 'response']` | Receivers whose `send`, `end` and `write` write an HTML-capable response body. Setting this replaces the defaults. |
 | `replyObjects` | `string[]` | `['reply']` | Receivers whose `send` sends a string as text unless an HTML content type is set on them (Fastify). Setting this replaces the defaults. |
 | `contextObjects` | `string[]` | `['ctx']` | Receivers whose `body` assignment is the response (Koa). Setting this replaces the defaults. |
-| `sanitizers` | `string[]` | `['escapeHtml', 'escapeHTML', 'htmlEscape', 'encodeHTML']` | Escapers trusted to encode `&`, `<`, `>` and `"`, for helpers imported from another file or not declared in this one; a function declared in this file is judged by its body instead. An entry with a dot (`utils.escapeHtml`) matches that callee when the name it starts from is imported, `require`d or not declared in this file; one without matches a call by that bare name, never a method. Neither counts once the file may change it: a write to the name, to a member on the way to the callee (destructuring included), or to one of them through `Object.assign` / `Object.defineProperty` / `Reflect.set`, an alias or the global object, or the object handed on to a call, a property, a return or an export. Setting this replaces the defaults. |
+| `sanitizers` | `string[]` | `['escapeHtml', 'escapeHTML', 'htmlEscape', 'encodeHTML']` | Escapers trusted to encode `&`, `<`, `>` and `"`, for helpers imported from another file or not declared in this one; a function declared in this file is judged by its body instead. An entry with a dot (`utils.escapeHtml`) matches that callee when the name it starts from is imported, `require`d or not declared in this file; one without matches a call by that bare name, never a method. Neither counts once the file may change it: a write to the name, to a member on the way to the callee (destructuring included), or to one of them through `Object.assign` / `Object.defineProperty` / `Reflect.set`, an alias or the global object, or the object handed on to a call, a property, a return or an export (an alias of the global object and `Reflect.apply` are not followed). Setting this replaces the defaults. |
 
 Escaping modules count by their import whatever `sanitizers` says (see above).
 
