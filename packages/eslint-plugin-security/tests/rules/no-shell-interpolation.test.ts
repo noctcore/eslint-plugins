@@ -1262,3 +1262,59 @@ ruleTester.run('no-shell-interpolation reading', noShellInterpolationRule, {
     { code: checked('exec(`git -C ${process.env.REPO_DIR} log ${t}`);'), filename: TS, options: [{ trustEnvironment: true }], errors: error },
   ],
 });
+
+/** A function whose `x` and `t` passed shell-inert regex checks before `body` runs. */
+const checkedTwo = (body: string): string =>
+  `function run(x: string, t: string) { if (!/^[a-z]+$/.test(x)) return; if (!/^[a-z][a-z0-9-]*$/.test(t)) return; ${body} }`;
+/** A joi schema `S` checked on `x`, then `value` used in `body` with a checked `t`. */
+const joiChecked = (schema: string, body: string): string =>
+  `const Joi = require('joi'); const S = ${schema}; function run(x: string, t: string) { if (!/^[a-z][a-z0-9-]*$/.test(t)) return; const { error, value } = S.validate(x); if (error) return; ${body} }`;
+
+// #360: case-changed schema literals, `sh -c` without a shell option and
+// value-built find actions or runner subcommands.
+ruleTester.run('no-shell-interpolation follow-ups', noShellInterpolationRule, {
+  valid: [
+    // A case change that leaves a plain program name.
+    { code: joiChecked("Joi.string().valid('LS').lowercase()", 'exec(`${value} ${t}`);'), filename: TS },
+    { code: joiChecked("Joi.string().valid('ls')", 'exec(`${value} ${t}`);'), filename: TS },
+    // `sh -c` with a static or proven command, or a script file.
+    { code: "spawn('sh', ['-c', 'ls -la']);", filename: TS },
+    { code: checked("spawn('sh', ['-c', `ls ${t}`]);"), filename: TS },
+    { code: "spawn('sh', ['./deploy.sh', target]);", filename: TS },
+    { code: "spawn('bash', ['-lc', 'echo \"$1\"', 'name', target]);", filename: TS },
+    { code: "spawn('node', ['-e', `console.log(${x})`]);", filename: TS },
+    // A command held whole in a binding is not built here, as with `exec(cmd)`.
+    { code: "spawn('sh', ['-c', cmd]);", filename: TS },
+    // A value-built word that cannot be a find action or a runner subcommand.
+    { code: checkedTwo('exec(`find . -name ${x} ${t}`);'), filename: TS },
+    { code: checkedTwo('exec(`git log -${x} ${t}`);'), filename: TS },
+    { code: checkedTwo('exec(`npm install ${x} ${t}`);'), filename: TS },
+  ],
+  invalid: [
+    // A literal that becomes a wrapper once its case changes.
+    { code: joiChecked("Joi.string().valid('SUDO').lowercase()", 'exec(`${value} ${t}`);'), filename: TS, errors: error },
+    { code: joiChecked("Joi.string().lowercase().valid('Sudo')", 'exec(`${value} ${t}`);'), filename: TS, errors: error },
+    { code: joiChecked("Joi.string().valid('ENV').trim().lowercase()", 'exec(`${value} ${t}`);'), filename: TS, errors: error },
+    // `sh -c` and friends with no shell option.
+    { code: "function dig(d: string) { spawn('sh', ['-c', `dig +short ${d} A`]); }", filename: TS, errors: error },
+    { code: "function dig(d: string) { const cmd = `dig +short ${d} A`; spawn('sh', ['-c', cmd]); }", filename: TS, errors: error },
+    { code: "function log(b: string) { execFile('/bin/bash', ['-lc', 'git log ' + b], cb); }", filename: TS, errors: error },
+    { code: "function pack(f: string) { spawnSync('bash', ['-e', '-c', `tar czf ${f}.tgz src`]); }", filename: TS, errors: error },
+    { code: "function pipe(x: string) { spawn('sh', ['-o', 'pipefail', '-c', `grep ${x} log | wc -l`]); }", filename: TS, errors: error },
+    { code: "function pipe(x: string) { spawn('sh', ['-c', `grep ${x} log`], { shell: false }); }", filename: TS, errors: error },
+    { code: "function show(f: string) { spawn('cmd.exe', ['/d', '/s', '/c', `type ${f}`]); }", filename: TS, errors: error },
+    { code: "function show(f: string) { spawn('cmd', ['/c', 'type', f]); }", filename: TS, errors: error },
+    { code: checked("spawn('sh', ['-c', `sudo ${t}`]);"), filename: TS, errors: error },
+    {
+      code: "import { execFile } from 'node:child_process'; import { promisify } from 'node:util'; const run = promisify(execFile); async function f(y: string) { await run('sh', ['-c', `ls ${y}`]); }",
+      filename: TS,
+      errors: error,
+    },
+    // A proven value that spells a find action or a runner subcommand.
+    { code: checkedTwo('exec(`find . -${x} ${t}`);'), filename: TS, errors: error },
+    { code: checkedTwo('exec(`find . -name a -e${x} ${t}`);'), filename: TS, errors: error },
+    { code: checkedTwo('exec(`npm ${x} ${t}`);'), filename: TS, errors: error },
+    { code: checkedTwo('exec(`pnpm ${x} ${t}`);'), filename: TS, errors: error },
+    { code: checkedTwo('exec(`npm --prefix /srv ${x} ${t}`);'), filename: TS, errors: error },
+  ],
+});
