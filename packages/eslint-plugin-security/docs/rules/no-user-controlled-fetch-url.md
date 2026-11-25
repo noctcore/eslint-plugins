@@ -245,7 +245,7 @@ export function probe(input: string) {
 | `trustedOrigins` | `string[]` | `[]` | Expressions (source text) that are a fixed-origin URL. `name()` matches any call to `name`. |
 | `sanitizers` | `string[]` | `[]` | Functions whose result is a safe same-origin path. |
 | `trustedPaths` | `string[]` | `[]` | Expressions (source text) that hold a safe same-origin path, e.g. an imported constant. |
-| `trustedSources` | `string[]` | `[]` | Expressions (source text) whose value the person running the program picks, such as a CLI config or flag. The expression and every property read off it count as a trusted origin, and as a fixed host for `hostname` and `host`. |
+| `trustedSources` | `string[]` | `[]` | For CLI and test code: variables whose value the person running the program picks, such as a CLI config or flag. The variable and every property read off it count as a trusted origin, and as a fixed host for `hostname` and `host`, unless the binding is a parameter, is written, or takes request data. |
 | `allowLoopback` | `boolean` | `false` | Trust a URL whose author-written text names `localhost`, `127.0.0.1` or `[::1]`, followed by a port the rule can see is a number. |
 
 A `CalleeSpec` is `{ name, object?, urlArgument?, urlProperty? }`: `name` is the function or method
@@ -300,19 +300,44 @@ trusted path closes the authority.
 
 ### `trustedSources`
 
-In a CLI the person running it picks the base URL, in a config file or a flag, so no requester can
-move it. Name the object it comes from once. An entry covers the expression itself and every
+This option is meant for CLI and test code, where the person running the program picks the base
+URL, in a config file or a flag, so no requester can move it. Do not turn it on for server code.
+Name the variable the value comes from once. An entry covers the expression itself and every
 property read off it by name or literal key (`config` covers `config.registryUrl`,
-`config?.mirrors[0]` and `config['registryUrl']`, not `config[key]` or `getConfig().registryUrl`):
+`config?.mirrors[0]` and `config['registryUrl']`, not `config[key]`).
+
+The entry names a binding, not just text, so a matching name is not enough. The source is trusted
+only when its root is a variable or an import, and:
+
+- it is not a function parameter (a caller fills it) and not rooted at `this` or a call result;
+- it never takes its value from request data along the value flow (`const config = req.body`,
+  `const { config } = req.body`);
+- it is never reassigned (`config = req.body`), and no property under it is written:
+  `config.url = x`, `delete config.url`, `({ url: config.url } = x)`, `Object.assign(config, x)`,
+  `config.mirrors.push(x)`.
+
+A helper that changes the object it is handed (`merge(config, req.body)`) or a write through an
+alias (`const c = config; c.url = x`) is not followed, which is why the option belongs only in code
+that never handles requests. Limit it to those files with a `files` override:
 
 ```js
-'noctcore-security/no-user-controlled-fetch-url': ['error', {
-  trustedSources: ['config', 'argv.registry'],
-}],
+// eslint.config.js
+export default [
+  // ...
+  {
+    files: ['bin/**', 'src/cli/**', '**/*.test.ts'],
+    rules: {
+      'noctcore-security/no-user-controlled-fetch-url': ['error', {
+        trustedSources: ['config', 'argv.registry'],
+      }],
+    },
+  },
+];
 ```
 
 ```ts good options={"trustedSources":["config","argv.registry"]}
 // with the options above
+const config = await loadConfig();
 await fetch(new URL(`r/${name}.json`, config.registryUrl));
 await fetch(`${argv.registry}/r/${name}.json`);
 https.get({ hostname: config.host, path: `/r/${name}` });
@@ -325,9 +350,19 @@ await fetch(new URL(path, config.registryUrl));
 await fetch(`${config.registryUrl}${path}`);
 ```
 
-A trusted source is a trusted origin, nothing more: what follows it must still close the authority.
-Use it only for values a requester cannot reach; naming `req.body` here turns the rule off for it.
+```ts bad options={"trustedSources":["config"]} reports=2
+// still flagged: the name matches, but the binding holds request data
+function handler(req) {
+  const config = req.body;
+  return fetch(config.url);
+}
+// still flagged: a parameter is filled by whoever calls the function
+function load(config) {
+  return fetch(config.url);
+}
+```
 
+A trusted source is a trusted origin, nothing more: what follows it must still close the authority.
 ### `allowLoopback`
 
 Integration tests often start a server on a random port and call it on loopback. With

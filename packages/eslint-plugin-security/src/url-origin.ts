@@ -54,11 +54,13 @@ export interface UrlTrustOptions {
    */
   readonly trustedPaths?: readonly string[];
   /**
-   * Values the person running the program picks, not a requester, matched by
-   * source text: the expression itself and every property read off it
-   * (`config` covers `config.registryUrl` and `config.mirrors[0]`). Each
+   * Variables whose value the person running the program picks, not a
+   * requester (CLI and test code): the variable and every property read off
+   * it (`config` covers `config.registryUrl` and `config.mirrors[0]`). Each
    * counts as a trusted origin, so what follows it must still close the
-   * authority. Read by `no-user-controlled-fetch-url` only.
+   * authority. The binding must be a variable or import that is never
+   * written and never takes request data. Read by
+   * `no-user-controlled-fetch-url` only.
    */
   readonly trustedSources?: readonly string[];
   /**
@@ -88,7 +90,7 @@ export const sourceTrustSchemaProperties: Record<string, JSONSchema4> = {
     items: { type: 'string' },
     uniqueItems: true,
     description:
-      'Expressions whose value the person running the program picks (a CLI config or flag), as written: the expression and every property read off it count as a trusted origin.',
+      'For CLI and test code: variables whose value the person running the program picks (a CLI config or flag). The variable and every property read off it count as a trusted origin, unless the binding is a parameter, is written, or takes request data.',
   },
   allowLoopback: {
     type: 'boolean',
@@ -105,6 +107,12 @@ export interface UrlTrust {
   readonly pathTexts: ReadonlySet<string>;
   readonly sourceTexts: ReadonlySet<string>;
   readonly loopback: boolean;
+  /**
+   * True when the root binding of a trusted source may hold request data
+   * (`const config = req.body`). Set by a rule that follows request taint;
+   * without it, no source binding is taken to reach a request.
+   */
+  readonly sourceReachesRequest?: (root: TSESTree.Identifier) => boolean;
 }
 
 /** Drops all whitespace so `this.shared.appUrl` matches however it is wrapped. */
@@ -418,7 +426,7 @@ function readsTrustedSource(
       current = current.expression;
     }
     if (trust.sourceTexts.has(squash(sourceCode.getText(current)))) {
-      return true;
+      return isSettledSource(current, trust, sourceCode);
     }
     if (
       current.type !== AST_NODE_TYPES.MemberExpression ||
@@ -428,6 +436,163 @@ function readsTrustedSource(
     }
     current = unwrap(current.object);
   }
+}
+
+/**
+ * True when the binding a trusted source is read from holds what the person
+ * running the program picked, and nothing can swap it for request data: its
+ * root is a variable or import (not a parameter, which any caller fills, nor
+ * `this` or a call result), it is never reassigned, no property under it is
+ * written, and it never takes its value from a request.
+ */
+function isSettledSource(
+  source: TSESTree.Expression,
+  trust: UrlTrust,
+  sourceCode: Readonly<TSESLint.SourceCode>,
+): boolean {
+  let root: TSESTree.Expression = source;
+  for (;;) {
+    if (root.type === AST_NODE_TYPES.ChainExpression) {
+      root = root.expression;
+    } else if (root.type === AST_NODE_TYPES.MemberExpression) {
+      root = unwrap(root.object);
+    } else {
+      break;
+    }
+  }
+  if (root.type !== AST_NODE_TYPES.Identifier) {
+    return false;
+  }
+  const variable = ASTUtils.findVariable(sourceCode.getScope(root), root);
+  let references: readonly TSESLint.Scope.Reference[];
+  if (variable === null) {
+    const name = root.name;
+    references = sourceCode.scopeManager?.globalScope?.through.filter((ref) => ref.identifier.name === name) ?? [];
+  } else if (variable.defs.length === 0) {
+    references = variable.references;
+  } else {
+    const def = variable.defs[0];
+    if (variable.defs.length !== 1 || (def?.type !== 'Variable' && def?.type !== 'ImportBinding')) {
+      return false;
+    }
+    references = variable.references;
+  }
+  return !references.some(writesThrough) && !(trust.sourceReachesRequest?.(root) ?? false);
+}
+
+/** Calls that change their first argument. */
+const MUTATING_CALLS = new Set([
+  'Object.assign',
+  'Object.defineProperty',
+  'Object.defineProperties',
+  'Object.setPrototypeOf',
+  'Reflect.set',
+  'Reflect.defineProperty',
+  'Reflect.setPrototypeOf',
+  'Reflect.deleteProperty',
+]);
+
+/** Methods that change the array, map or set they are called on. */
+const MUTATING_METHODS = new Set([
+  'push',
+  'pop',
+  'shift',
+  'unshift',
+  'splice',
+  'sort',
+  'reverse',
+  'fill',
+  'copyWithin',
+  'set',
+  'add',
+  'delete',
+  'clear',
+]);
+
+/**
+ * True when a reference reassigns the binding, or writes the object it holds
+ * or anything under it: `config = x`, `config.url = x`, `delete config.url`,
+ * `({ url: config.url } = x)`, `Object.assign(config, x)`,
+ * `config.mirrors.push(x)`.
+ */
+function writesThrough(reference: TSESLint.Scope.Reference): boolean {
+  if (reference.init === true) {
+    return false;
+  }
+  if (reference.isWrite()) {
+    return true;
+  }
+  let chain: TSESTree.Node = reference.identifier;
+  for (;;) {
+    const parent: TSESTree.Node | undefined = chain.parent;
+    if (
+      (parent?.type === AST_NODE_TYPES.MemberExpression && parent.object === chain) ||
+      parent?.type === AST_NODE_TYPES.ChainExpression ||
+      parent?.type === AST_NODE_TYPES.TSNonNullExpression ||
+      parent?.type === AST_NODE_TYPES.TSAsExpression ||
+      parent?.type === AST_NODE_TYPES.TSSatisfiesExpression ||
+      parent?.type === AST_NODE_TYPES.TSTypeAssertion
+    ) {
+      chain = parent;
+    } else {
+      break;
+    }
+  }
+  const parent = chain.parent;
+  if (parent === undefined) {
+    return false;
+  }
+  if (chain !== reference.identifier) {
+    if (
+      (parent.type === AST_NODE_TYPES.AssignmentExpression && parent.left === chain) ||
+      parent.type === AST_NODE_TYPES.UpdateExpression ||
+      (parent.type === AST_NODE_TYPES.UnaryExpression && parent.operator === 'delete') ||
+      ((parent.type === AST_NODE_TYPES.ForInStatement || parent.type === AST_NODE_TYPES.ForOfStatement) &&
+        parent.left === chain) ||
+      parent.type === AST_NODE_TYPES.ArrayPattern ||
+      parent.type === AST_NODE_TYPES.RestElement ||
+      (parent.type === AST_NODE_TYPES.AssignmentPattern && parent.left === chain) ||
+      (parent.type === AST_NODE_TYPES.Property &&
+        parent.value === chain &&
+        parent.parent.type === AST_NODE_TYPES.ObjectPattern)
+    ) {
+      return true;
+    }
+    const last = unwrapChain(chain);
+    if (
+      parent.type === AST_NODE_TYPES.CallExpression &&
+      parent.callee === chain &&
+      last.type === AST_NODE_TYPES.MemberExpression &&
+      !last.computed &&
+      last.property.type === AST_NODE_TYPES.Identifier &&
+      MUTATING_METHODS.has(last.property.name)
+    ) {
+      return true;
+    }
+  }
+  return (
+    parent.type === AST_NODE_TYPES.CallExpression &&
+    parent.arguments[0] === chain &&
+    parent.callee.type === AST_NODE_TYPES.MemberExpression &&
+    !parent.callee.computed &&
+    parent.callee.object.type === AST_NODE_TYPES.Identifier &&
+    parent.callee.property.type === AST_NODE_TYPES.Identifier &&
+    MUTATING_CALLS.has(`${parent.callee.object.name}.${parent.callee.property.name}`)
+  );
+}
+
+function unwrapChain(node: TSESTree.Node): TSESTree.Node {
+  let current = node;
+  while (
+    current.type === AST_NODE_TYPES.ChainExpression ||
+    current.type === AST_NODE_TYPES.TSNonNullExpression ||
+    current.type === AST_NODE_TYPES.TSAsExpression ||
+    current.type === AST_NODE_TYPES.TSSatisfiesExpression ||
+    current.type === AST_NODE_TYPES.TSTypeAssertion
+  ) {
+    current = current.expression;
+  }
+  return current;
 }
 
 /** Globals whose result is always a number. */

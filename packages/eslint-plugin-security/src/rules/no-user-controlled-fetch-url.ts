@@ -337,7 +337,10 @@ export const noUserControlledFetchUrlRule = createRule<RuleOptions, MessageIds>(
   create(context, [options]) {
     const callees = normalizeCallees(options.fetchCallees ?? DEFAULT_FETCH_CALLEES);
     const sockets = normalizeCallees(options.socketCallees ?? DEFAULT_SOCKET_CALLEES);
-    const trust: UrlTrust = normalizeTrust(options);
+    const trust: UrlTrust = {
+      ...normalizeTrust(options),
+      sourceReachesRequest: (root) => requestSourceOf(root, root, REQUEST_TAINT, sourceCode) !== null,
+    };
     const sourceCode = context.sourceCode;
     const axiosSpecs = callees.filter(
       (spec) => spec.object === 'axios' || (spec.object === undefined && spec.name === 'axios'),
