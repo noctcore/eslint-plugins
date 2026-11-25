@@ -1,5 +1,23 @@
 # @noctcore/eslint-plugin-observability
 
+## 1.1.0
+
+### Minor Changes
+
+- [#292](https://github.com/noctcore/eslint-plugins/pull/292) [`a8c9270`](https://github.com/noctcore/eslint-plugins/commit/a8c9270dbed03a6946e45ba72015e3274d928f21) Thanks [@Shironex](https://github.com/Shironex)! - Add two opt-in rules for stable event identifiers in logs.
+  
+  `require-event-field` reports a logger call whose object-literal payload has no event field (option `eventField`, default `event`), or that has no payload at all. The payload may come first (pino) or later. A string-literal key and shorthand count. A payload with a spread or a computed key, and an argument the rule cannot inspect (an identifier, a call, a member access), are accepted, because they may supply the field.
+  
+  `typed-event-names` checks the event field against the names a project declares in one module: an exported `const` tuple of strings, or an object whose string values are the names (nested objects included; `as const`, `satisfies` and `Object.freeze` are fine). Options `eventNamesModule` (resolved against the working directory, then against the linted file; the extension may be left off) and `eventNamesExport` (default `LOG_EVENTS`). It reports an unknown string literal (with a "did you mean" hint), a missing `LOG_EVENTS.x` entry, and a value it cannot check (a variable, a call, an interpolated template). The module is parsed with the TypeScript parser and re-read when its modification time moves. When the module is unset, missing, or does not export a readable list, the rule reports a configuration error once per linted file instead of going quiet.
+  
+  Both rules take the shared `loggers` and `methods` options. Neither is in `recommended`, so a project spreading `recommended` sees no new errors. Enable them with `'noctcore-observability/require-event-field': 'error'` and `'noctcore-observability/typed-event-names': ['error', { eventNamesModule: 'src/log-events.ts' }]`.
+
+### Patch Changes
+
+- [#306](https://github.com/noctcore/eslint-plugins/pull/306) [`846ec22`](https://github.com/noctcore/eslint-plugins/commit/846ec222ef19bce79e4d44209f49d7d273f6e546) Thanks [@Shironex](https://github.com/Shironex)! - Rule messages no longer use em dashes; the wording is otherwise unchanged.
+- Updated dependencies [[`88d49c9`](https://github.com/noctcore/eslint-plugins/commit/88d49c9f5dc6366018dcc2cda9351426d873add3), [`e3cab3e`](https://github.com/noctcore/eslint-plugins/commit/e3cab3e9964f045e3072eef4674a7972cd211d1c)]:
+  - @noctcore/eslint-utils@0.3.0
+
 ## 1.0.0
 
 ### Major Changes

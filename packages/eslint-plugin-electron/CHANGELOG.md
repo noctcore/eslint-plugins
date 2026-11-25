@@ -1,5 +1,25 @@
 # @noctcore/eslint-plugin-electron
 
+## 0.2.0
+
+### Minor Changes
+
+- [#296](https://github.com/noctcore/eslint-plugins/pull/296) [`864e20c`](https://github.com/noctcore/eslint-plugins/commit/864e20c80ebc87ba53971d063e067e1b8a44de77) Thanks [@Shironex](https://github.com/Shironex)! - New rule `no-renderer-setting-to-fs`, shipped off and left out of `recommended`.
+  
+  It reports, inside one function, a value read from a settings store the renderer can write (the calls you list in `sources`: a store call such as `{ object: 'store', method: 'get' }`, a `{ function: 'loadSettings' }` loader, or a `{ function: 'getSetting', returns: 'value' }` getter, optionally narrowed with `keys`) that reaches the path argument of an `fs` function or `shell.openPath` / `shell.showItemInFolder` / `shell.trashItem` without a containment check. A `startsWith` or `path.relative` test on the joined or resolved path, a call to one of your `sanitizers` (add `includes` for allowlist checks) and any helper call in between end the chain. Every tainted operand of a join, template or `+` is checked on its own. `path.basename` ends the chain for file sinks only: for `rm`, `rmdir`, `readdir`, `opendir`, `cp`, `rename`, `chmod`, `symlink`, `shell.trashItem` and `shell.openPath` it is not containment, since `path.basename('..')` is `'..'` and an empty or `.` name is the base itself. Without `sources` it reports nothing.
+  
+  A project that spreads `recommended` as-is sees no new errors.
+
+### Patch Changes
+
+- [#366](https://github.com/noctcore/eslint-plugins/pull/366) [`5cf053f`](https://github.com/noctcore/eslint-plugins/commit/5cf053fbbef3e295289de9a507d58359eef366ee) Thanks [@Shironex](https://github.com/Shironex)! - `security/require-path-containment` and `electron/no-renderer-setting-to-fs` share one containment matcher, and a containment test now counts only when its result decides whether the path is used. A test whose result is ignored (`full.startsWith(base + sep);`), one that guards some other statement (`if (inside) log()`), and one inside a nested function that may never run no longer silence either rule, also for the security rule's join report. `startsWith` needs a base that ends in a separator in both rules (`startsWith(BASE)` lets `/srv/app-evil` through), and a `path.relative` result must be refused both when it climbs and when it is absolute, against a base that is not `'/'`, `''`, `path.sep` or `process.cwd()`. Refusals pair only when they read the same result as far as the rule can see: one binding, or inline `path.relative(...)` calls with the same argument tokens (string text as written) whose arguments read no member, call, await or write nothing, and name no binding written after its declaration. `relative(BASE + '/sub', full) === '..'` does not pair with a check of `relative(BASE, full)`, and neither do calls on `o.b`, on a `let b` written in between, or on `'/srv/s ub'` and `'/srv/sub'`. Code that converts a value through its own `toString` or `valueOf` (one that returns a different base on each call) is not followed.
+  
+  New reports: the electron rule reports all of those shapes, which it accepted before (`if (full.startsWith(BASE)) fs.readFileSync(full)` included); the security rule reports them at the join, also when the joined value is not passed to an fs call, and reports `path.relative('/', full)` and `path.relative(process.cwd(), full)` checks.
+  
+  Reports removed from `security/require-path-containment` (both rules now read these as guarded): an fs call on the right of an `&&` or `||` whose left side is the containment test (`return full.startsWith(BASE + path.sep) && fs.readFileSync(full)`); a relative result refused as `rel === '..' || rel.startsWith('..' + path.sep) || path.isAbsolute(rel)`; and a tested path read back unchanged before the fs call, through an array or object literal (`const items = [full]; fs.createReadStream(items[0])`, `{ value: full }.value`) or a local function that only returns its parameter (`forward(full)`, with plain parameters and never reassigned), or as one branch of `||`, `??` or `?:` whose other branch carries no request input (`fs.readFileSync(full || '/srv/data/x')`: the value is the tested path or a fixed one). Only the tested path itself counts: a path built from it after the test (`path.join(full, '..')`, `path.resolve(full, '..')`, `full + '/..'`, `` `${full}/..` ``, `[full, '..'].join('/')`, `p += '/..'`), or one passed through a decoder or any other call, still reports.
+- Updated dependencies [[`88d49c9`](https://github.com/noctcore/eslint-plugins/commit/88d49c9f5dc6366018dcc2cda9351426d873add3), [`e3cab3e`](https://github.com/noctcore/eslint-plugins/commit/e3cab3e9964f045e3072eef4674a7972cd211d1c)]:
+  - @noctcore/eslint-utils@0.3.0
+
 ## 0.1.0
 
 ### Minor Changes

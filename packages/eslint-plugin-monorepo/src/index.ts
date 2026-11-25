@@ -3,7 +3,7 @@ import { rules } from './rules';
 
 /** Flat-config namespace: rule ids are keyed `noctcore-monorepo/<rule>`. */
 const NAMESPACE = 'noctcore-monorepo';
-const VERSION = '1.0.0';
+const VERSION = '1.0.1';
 
 const plugin = {
   meta: { name: '@noctcore/eslint-plugin-monorepo', version: VERSION },

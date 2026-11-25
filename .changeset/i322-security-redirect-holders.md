@@ -1,5 +1,0 @@
----
-'@noctcore/eslint-plugin-security': patch
----
-
-`no-user-controlled-redirect` reads more `Location` sinks. A conditional or logical headers holder (`res.writeHead(302, ok ? { Location: next } : {})`, `const hd = ok && { Location: next }`) is read in each branch. `r.headers.set('Location', next)` and `r.headers.append(...)` on a Fetch response (`new Response(...)`, `new NextResponse(...)`, `NextResponse.next()`, `Response.json(...)`, or a receiver in `responseObjects`) are now reported, also after `const h = r.headers` or `const { headers } = r`, matching a `new Headers()` holder passed into `new Response`. Also read: alias writes (`const a = hd; a.Location = next`, also for a `Map` or `Headers`), `Reflect.set`, `Object.defineProperty` with a `value` or a `get`, index writes of a pair (`hd[0] = ['Location', next]`), `Object.fromEntries`, a `get Location()` getter, a quoted or computed `headers` key in a `Response` init, the init of `Response.json` / `NextResponse.json`, `res.writeHead(302, { Location: next }, undefined)`, and a header name joined from fixed pieces (`'Loc' + 'ation'`).

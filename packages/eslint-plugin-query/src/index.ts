@@ -3,7 +3,7 @@ import { rules } from './rules';
 
 /** Flat-config namespace: rule ids are keyed `noctcore-query/<rule>`. */
 const NAMESPACE = 'noctcore-query';
-const VERSION = '0.3.0';
+const VERSION = '0.3.1';
 
 const plugin = {
   meta: { name: '@noctcore/eslint-plugin-query', version: VERSION },

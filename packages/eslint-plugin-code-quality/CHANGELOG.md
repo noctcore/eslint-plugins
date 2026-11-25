@@ -1,5 +1,12 @@
 # @noctcore/eslint-plugin-code-quality
 
+## 1.0.1
+
+### Patch Changes
+
+- Updated dependencies [[`88d49c9`](https://github.com/noctcore/eslint-plugins/commit/88d49c9f5dc6366018dcc2cda9351426d873add3), [`e3cab3e`](https://github.com/noctcore/eslint-plugins/commit/e3cab3e9964f045e3072eef4674a7972cd211d1c)]:
+  - @noctcore/eslint-utils@0.3.0
+
 ## 1.0.0
 
 ### Major Changes
