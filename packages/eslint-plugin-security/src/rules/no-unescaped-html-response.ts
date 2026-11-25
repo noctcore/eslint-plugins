@@ -1225,6 +1225,38 @@ function everyValueRaw(object: TSESTree.ObjectExpression): TemplateOutput[] {
   });
 }
 
+/**
+ * The function a call invokes and the arguments it passes, reading
+ * `fn.call(self, ...args)` and `fn.apply(self, [...args])` as `fn(...args)`;
+ * null arguments when an `apply` list is not an inline array.
+ */
+function invoked(call: TSESTree.CallExpression): { callee: TSESTree.Node; args: readonly TSESTree.CallExpressionArgument[] | null } {
+  const callee = unwrap(call.callee);
+  const method = callee.type === AST_NODE_TYPES.MemberExpression ? propertyName(callee) : null;
+  if (callee.type !== AST_NODE_TYPES.MemberExpression || (method !== 'call' && method !== 'apply')) {
+    return { callee, args: call.arguments };
+  }
+  const target = unwrap(callee.object);
+  if (method === 'call') {
+    return { callee: target, args: call.arguments.slice(1) };
+  }
+  const list = call.arguments[1];
+  if (list === undefined) {
+    return { callee: target, args: [] };
+  }
+  const array = list.type === AST_NODE_TYPES.SpreadElement ? null : unwrap(list);
+  if (array?.type !== AST_NODE_TYPES.ArrayExpression || array.elements.some((element) => element === null)) {
+    return { callee: target, args: null };
+  }
+  return { callee: target, args: array.elements as TSESTree.CallExpressionArgument[] };
+}
+
+/** True when a `setConfig` argument list has a config that cannot be read or switches protection off. */
+function configUnsafe(judge: HtmlSafety, args: readonly TSESTree.CallExpressionArgument[] | null): boolean {
+  const config = args?.[0];
+  return args === null || config?.type === AST_NODE_TYPES.SpreadElement || !judge.domPurifyConfigSafe(config);
+}
+
 interface WriteSink {
   readonly kind: 'write' | 'reply' | 'koa' | 'plain';
   readonly node: TSESTree.Node;
@@ -1923,7 +1955,8 @@ export const noUnescapedHtmlResponseRule = createRule<RuleOptions, MessageIds>({
               }
             }
           }
-          if (method === 'setConfig') {
+          const target = invoked(node).callee;
+          if (target.type === AST_NODE_TYPES.MemberExpression && propertyName(target) === 'setConfig') {
             purifierConfigs.push(node);
           }
           if (method === 'configure') {
@@ -1980,13 +2013,14 @@ export const noUnescapedHtmlResponseRule = createRule<RuleOptions, MessageIds>({
           }
         }
         for (const call of purifierConfigs) {
-          const object = unwrap((unwrap(call.callee) as TSESTree.MemberExpression).object);
+          const { callee, args } = invoked(call);
+          const object = unwrap((callee as TSESTree.MemberExpression).object);
           const variable = object.type === AST_NODE_TYPES.Identifier ? judge.variableOf(object) : null;
           const binding = variable === null ? null : aliasedBinding(variable);
           if (
             variable !== null &&
             (judge.purifiers.has(variable) || binding?.module.includes('dompurify') === true) &&
-            !judge.domPurifyConfigSafe(call.arguments[0])
+            configUnsafe(judge, args)
           ) {
             judge.weakenedPurifiers.add(variable);
             // The default export is the module's one instance: every import of it shares the config.
@@ -1996,14 +2030,10 @@ export const noUnescapedHtmlResponseRule = createRule<RuleOptions, MessageIds>({
           }
         }
         for (const call of templateCalls) {
-          const callee = unwrap(call.callee);
+          const { callee, args } = invoked(call);
           const variable = callee.type === AST_NODE_TYPES.Identifier ? judge.variableOf(callee) : null;
           const binding = variable === null ? null : aliasedBinding(variable);
-          if (
-            binding?.imported === 'setConfig' &&
-            PURIFY_MODULES.has(binding.module) &&
-            !judge.domPurifyConfigSafe(call.arguments[0])
-          ) {
+          if (binding?.imported === 'setConfig' && PURIFY_MODULES.has(binding.module) && configUnsafe(judge, args)) {
             judge.weakenedModules.add(binding.module);
           }
         }

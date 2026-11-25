@@ -240,7 +240,7 @@ written with a character reference (`text&#47;javascript`). The HTML escape stat
   another file) counts as unknown, so as unsafe.
 - **No shared config that switches protection off.** The default export of `dompurify` and
   `isomorphic-dompurify` is one instance: a `setConfig` on it (as `DOMPurify.setConfig`, through
-  a `const` alias, or as the named `setConfig` export) whose config fails the checks above, or
+  a `const` alias, or as the named `setConfig` export, also through `.call` or `.apply`) whose config fails the checks above, or
   cannot be read, makes every `sanitize` of that module untrusted in the file, the named
   `sanitize` export included. So does handing the module binding to a call, assigning it, or
   writing one of its members. An instance made with `DOMPurify(window)` keeps its own config. A
