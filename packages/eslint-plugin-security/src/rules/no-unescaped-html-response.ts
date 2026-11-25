@@ -53,7 +53,7 @@ export interface NoUnescapedHtmlResponseOptions {
 }
 
 type RuleOptions = [NoUnescapedHtmlResponseOptions];
-type MessageIds = 'unescapedHtmlResponse' | 'unsafeContext' | 'rawTemplateValue';
+type MessageIds = 'unescapedHtmlResponse' | 'unsafeContext' | 'dollarReplacement' | 'rawTemplateValue';
 
 /*
  * Server-side XSS, OPT-IN. Express sends a string as `text/html`, so
@@ -352,6 +352,8 @@ interface Part {
   readonly forced: boolean;
   /** For a call the rule cannot read through: the parts read in what it is given. The call is reported only when none of them is. */
   readonly inner?: readonly Part[];
+  /** A `.replace` replacement string, which lands anywhere because `$` patterns in it are expanded. */
+  readonly dollar?: boolean;
 }
 
 /** Where a value lands when a call may put it anywhere in its output, a tag name included. */
@@ -399,6 +401,7 @@ class HtmlBuilder {
     node: TSESTree.Node,
     states: readonly HtmlState[],
     opaque?: { readonly forced: boolean; readonly inner: readonly Part[] },
+    dollar = false,
   ): HtmlState[] {
     this.sawDynamic = true;
     if (node.type === AST_NODE_TYPES.CallExpression && this.judge.rendersMarkup(node)) {
@@ -409,6 +412,7 @@ class HtmlBuilder {
       contexts: new Set(states.map(contextAt)),
       forced: this.forcing || (opaque?.forced ?? false),
       ...(opaque === undefined ? {} : { inner: opaque.inner }),
+      ...(dollar ? { dollar } : {}),
     });
     return dedupe(states.map(feedValue));
   }
@@ -429,6 +433,7 @@ class HtmlBuilder {
     states: HtmlState[],
     depth: number,
     forced: boolean,
+    dollar?: TSESTree.Node,
   ): HtmlState[] {
     const start = this.parts.length;
     const saved = { text: this.text, leading: this.leading, sawDynamic: this.sawDynamic, rendered: this.rendered, forcing: this.forcing };
@@ -437,7 +442,7 @@ class HtmlBuilder {
       this.visit(node, states, depth + 1);
     }
     for (const node of values) {
-      this.dynamic(node, [ANYWHERE]);
+      this.dynamic(node, [ANYWHERE], undefined, node === dollar);
     }
     this.text = saved.text;
     this.leading = saved.leading;
@@ -957,7 +962,18 @@ class HtmlBuilder {
     // A method called on markup (`page.slice(9)`, `page.padStart(n, x)`) returns text cut,
     // padded or rewritten from it, which the rule does not follow.
     if (callee.type === AST_NODE_TYPES.MemberExpression && this.carriesMarkup(callee.object)) {
-      return this.opaque(call, [callee.object], args, states, depth, true);
+      const method = propertyName(callee);
+      const [pattern, replacement] = args;
+      const dollar =
+        (method === 'replace' || method === 'replaceAll') &&
+        args.length === 2 &&
+        pattern !== undefined &&
+        replacement !== undefined &&
+        literalPattern(pattern) !== null &&
+        !this.writtenAsIs(replacement)
+          ? replacement
+          : undefined;
+      return this.opaque(call, [callee.object], args, states, depth, true, dollar);
     }
     if (callee.type === AST_NODE_TYPES.MemberExpression && STRING_METHODS.has(propertyName(callee) ?? '')) {
       return this.dynamic(call, states);
@@ -1283,6 +1299,8 @@ export const noUnescapedHtmlResponseRule = createRule<RuleOptions, MessageIds>({
         '`{{value}}` is written into an HTML response without escaping, so markup in it runs in the browser (XSS). Escape it (`escapeHtml(value)`), sanitize it, or send JSON with `res.json`.',
       unsafeContext:
         '`{{value}}` is safe in HTML text but lands in {{where}} (XSS). Use an encoder made for that place, check it against a literal allowlist, or move it into element text or a quoted attribute.',
+      dollarReplacement:
+        '`{{value}}` is a `.replace` replacement string, where `$&` and `$\'` (and `$` followed by a backtick) copy other text of the page into its place, so it may land in a tag or attribute name (XSS). Pass a function instead (`() => value`), whose result is written as it is.',
       rawTemplateValue:
         '`{{key}}` is marked raw in the template, so `{{value}}` is rendered without escaping (XSS). Drop the raw marker and let the engine escape it, or sanitize the value first.',
     },
@@ -1514,7 +1532,7 @@ export const noUnescapedHtmlResponseRule = createRule<RuleOptions, MessageIds>({
           unsafe.add(part);
           const value = sourceCode.getText(part.node);
           if (where !== 'text' && judge.safeIn(part.node, 'text', sink)) {
-            report(part.node, 'unsafeContext', { value, where: CONTEXT_LABELS[where] });
+            report(part.node, part.dollar === true ? 'dollarReplacement' : 'unsafeContext', { value, where: CONTEXT_LABELS[where] });
           } else {
             report(part.node, 'unescapedHtmlResponse', { value });
           }

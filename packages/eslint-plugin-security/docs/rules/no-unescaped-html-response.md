@@ -91,7 +91,8 @@ A placeholder is read with the value in place only when `.replace` writes the va
 replacer function of this file, a constant without `$`, a number or `encodeURIComponent` output. A
 replacement string applies `$` patterns (`` $` ``, `$'` and `$&` copy author text into the value's
 place), and escape-html leaves `$` alone, so any other replacement may land anywhere and must be
-safe in a tag. A value an earlier `.replace` wrote may hold a later placeholder, so the later
+safe in a tag; when it is safe only in text, the report says the `$` patterns are why and suggests
+a replacer function. A value an earlier `.replace` wrote may hold a later placeholder, so the later
 replacement is judged there too.
 
 Any other call or template tag given markup (``layout(`<h1>${q}</h1>`)``, `dedent`, the common-tags
