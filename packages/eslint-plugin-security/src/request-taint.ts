@@ -52,8 +52,20 @@ const NUMERIC_CALLS: ReadonlySet<string> = new Set(['Number', 'parseInt', 'parse
 const NON_TEXT_PROPERTIES: ReadonlySet<string> = new Set(['length', 'size']);
 /** Methods that put a value into the array they are called on. */
 const ARRAY_WRITERS: ReadonlySet<string> = new Set(['push', 'unshift', 'splice', 'fill']);
-/** Global functions that decode text into characters a check on the input never saw. */
-const DECODERS: ReadonlySet<string> = new Set(['decodeURIComponent', 'decodeURI', 'unescape', 'atob']);
+/**
+ * Functions that decode text into characters a check on the input never saw.
+ * URL parsing reads `%2e%2e` as a `..` segment, and `fileURLToPath`
+ * percent-decodes the path, so `new URL(\`./${n}/\`, base)` climbs for an `n` that
+ * passed a dot check.
+ */
+const DECODERS: ReadonlySet<string> = new Set([
+  'decodeURIComponent',
+  'decodeURI',
+  'unescape',
+  'atob',
+  'fileURLToPath',
+  'URL',
+]);
 /**
  * Methods whose result keeps a checked value checked: case changes, a string
  * conversion and joining checked parts. Any other method on a checked value
@@ -101,6 +113,20 @@ export interface TaintOptions {
    * Any other call reshapes the value and its arguments' proofs no longer hold.
    */
   readonly preservingCalls?: ReadonlySet<string>;
+  /**
+   * Also require a segment sanitizer's result to be refused as empty, for a
+   * sink that acts on a directory (`basename('/')` is `''`, and
+   * `join(base, '')` is the base itself).
+   */
+  readonly refuseEmptySegment?: boolean;
+  /**
+   * True for a read the caller proves safe at the sink (a resolved path whose
+   * containment test decides whether the sink runs): the flow stops there
+   * only when the value read reaches the sink as it is, through bindings,
+   * holders and identity helpers. A join, a `+`, a template or any other call
+   * between them builds a new path, which the test says nothing about.
+   */
+  readonly contained?: (node: TSESTree.Identifier) => boolean;
   /** Bindings that are themselves the input followed (a helper's parameter). */
   readonly sourceVariables?: ReadonlySet<Variable>;
   /**
@@ -118,6 +144,8 @@ interface Walk {
   readonly seen: Set<Variable>;
   /** True below a decoder or a reshaping method: proofs on the text no longer hold. */
   readonly reshaped: boolean;
+  /** True once a step built new text around the value or took part of it: the sink gets another value. */
+  readonly rebuilt: boolean;
 }
 
 /**
@@ -130,7 +158,7 @@ export function requestSourceOf(
   options: TaintOptions,
   sourceCode: SourceCode,
 ): TSESTree.Node | null {
-  return carried(node, { options, sink, sourceCode, seen: new Set(), reshaped: false }, 0);
+  return carried(node, { options, sink, sourceCode, seen: new Set(), reshaped: false, rebuilt: false }, 0);
 }
 
 function squash(text: string): string {
@@ -181,9 +209,15 @@ function carried(raw: TSESTree.Node, walk: Walk, depth: number): TSESTree.Node |
   }
   const next = (child: TSESTree.Node | null | undefined): TSESTree.Node | null =>
     child == null ? null : carried(child, walk, depth + 1);
-  const firstOf = (children: readonly (TSESTree.Node | null)[]): TSESTree.Node | null => {
+  const rebuiltWalk = walk.rebuilt ? walk : { ...walk, rebuilt: true };
+  const built = (child: TSESTree.Node | null | undefined): TSESTree.Node | null =>
+    child == null ? null : carried(child, rebuiltWalk, depth + 1);
+  const firstOf = (
+    children: readonly (TSESTree.Node | null)[],
+    step: (child: TSESTree.Node | null) => TSESTree.Node | null = next,
+  ): TSESTree.Node | null => {
     for (const child of children) {
-      const found = next(child);
+      const found = step(child);
       if (found !== null) {
         return found;
       }
@@ -223,7 +257,7 @@ function carried(raw: TSESTree.Node, walk: Walk, depth: number): TSESTree.Node |
       return next(exact.node);
     }
     const loose = flowStep(node, walk.sink, walk.sourceCode, 'taint');
-    const moved = loose === null ? null : next(loose.node);
+    const moved = loose === null ? null : built(loose.node);
     if (moved !== null) {
       return moved;
     }
@@ -241,12 +275,12 @@ function carried(raw: TSESTree.Node, walk: Walk, depth: number): TSESTree.Node |
     case AST_NODE_TYPES.AwaitExpression:
       return next(node.argument);
     case AST_NODE_TYPES.TemplateLiteral:
-      return firstOf(node.expressions);
+      return firstOf(node.expressions, built);
     case AST_NODE_TYPES.TaggedTemplateExpression:
-      return firstOf(node.quasi.expressions);
+      return firstOf(node.quasi.expressions, built);
     case AST_NODE_TYPES.BinaryExpression:
       // Only `+` builds a string; comparisons and arithmetic yield booleans and numbers.
-      return node.operator === '+' ? firstOf([node.left, node.right]) : null;
+      return node.operator === '+' ? firstOf([node.left, node.right], built) : null;
     case AST_NODE_TYPES.LogicalExpression:
       return firstOf([node.left, node.right]);
     case AST_NODE_TYPES.ConditionalExpression:
@@ -254,7 +288,7 @@ function carried(raw: TSESTree.Node, walk: Walk, depth: number): TSESTree.Node |
     case AST_NODE_TYPES.SequenceExpression:
       return next(node.expressions.at(-1));
     case AST_NODE_TYPES.AssignmentExpression:
-      return next(node.right);
+      return node.operator === '=' ? next(node.right) : built(node.right);
     case AST_NODE_TYPES.MemberExpression:
       if (
         !node.computed &&
@@ -264,24 +298,30 @@ function carried(raw: TSESTree.Node, walk: Walk, depth: number): TSESTree.Node |
         return null;
       }
       // A part of a checked value is not the checked text (`n[0]`, `parse(n).name`).
-      return carried(node.object, walk.reshaped ? walk : { ...walk, reshaped: true }, depth + 1);
+      return carried(node.object, { ...rebuiltWalk, reshaped: true }, depth + 1);
     case AST_NODE_TYPES.ArrayExpression:
-      return firstOf(node.elements.map((element) => element ?? null));
+      return firstOf(
+        node.elements.map((element) => element ?? null),
+        built,
+      );
     case AST_NODE_TYPES.SpreadElement:
-      return next(node.argument);
+      return built(node.argument);
     case AST_NODE_TYPES.ObjectExpression:
-      return firstOf(node.properties.map((property) => property));
+      return firstOf(
+        node.properties.map((property) => property),
+        built,
+      );
     case AST_NODE_TYPES.Property:
       if (
         node.value.type === AST_NODE_TYPES.FunctionExpression ||
         node.value.type === AST_NODE_TYPES.ArrowFunctionExpression
       ) {
-        return carriedByReturn(node.value, walk, depth);
+        return carriedByReturn(node.value, rebuiltWalk, depth);
       }
-      return next(node.value);
+      return built(node.value);
     case AST_NODE_TYPES.ArrowFunctionExpression:
     case AST_NODE_TYPES.FunctionExpression:
-      return carriedByReturn(node, walk, depth);
+      return carriedByReturn(node, rebuiltWalk, depth);
     case AST_NODE_TYPES.CallExpression:
     case AST_NODE_TYPES.NewExpression:
       return carriedByCall(node, walk, depth);
@@ -343,7 +383,13 @@ function isDecoder(node: TSESTree.CallExpression | TSESTree.NewExpression): bool
   }
   const method = callee.property.name;
   const owner = callee.object.type === AST_NODE_TYPES.Identifier ? callee.object.name : null;
-  if (method === 'unescape' || method === 'fromCharCode' || method === 'fromCodePoint') {
+  if (
+    method === 'unescape' ||
+    method === 'fromCharCode' ||
+    method === 'fromCodePoint' ||
+    method === 'fileURLToPath' ||
+    method === 'URL'
+  ) {
     return true;
   }
   if (owner === 'Buffer' && method === 'from') {
@@ -365,9 +411,11 @@ const TEXT_KEEPING_GLOBALS: ReadonlySet<string> = new Set(['String', 'encodeURIC
  * True when a call's result keeps each argument's text, so a proof on an
  * argument still holds for it: a call in `preservingCalls` (`path.join`),
  * a segment sanitizer with one argument (`basename(x)`, not `basename(x, ext)`),
- * `String(x)` and URI encoding, or a method that keeps its receiver checked
- * (`parts.join(sep)`, `a.concat(b)`). Every other call, `path.parse`,
- * `_.trim`, `new URL` and local helpers included, may change the text.
+ * the global `String(x)` and URI encoding, or a text-keeping method of a
+ * literal (`'a'.concat(b)`, `['a', b].join(sep)`). A method on any other
+ * receiver (`qs.join(n)`, `lib.concat(n)`, `x.toString(n)`) is not known to
+ * be the string or array one. Every other call, `path.parse`, `_.trim`,
+ * `new URL`, a local `String` and local helpers included, may change the text.
  */
 function keepsArgumentText(
   node: TSESTree.CallExpression | TSESTree.NewExpression,
@@ -385,9 +433,95 @@ function keepsArgumentText(
     return node.arguments.length === 1;
   }
   if (callee.type === AST_NODE_TYPES.Identifier) {
-    return TEXT_KEEPING_GLOBALS.has(callee.name);
+    const variable = ASTUtils.findVariable(walk.sourceCode.getScope(callee), callee);
+    if (variable === null || variable.defs.length === 0) {
+      return TEXT_KEEPING_GLOBALS.has(callee.name);
+    }
+    return returnsItsParameter(variable);
   }
-  return callee.type === AST_NODE_TYPES.MemberExpression && !reshapesReceiver(callee);
+  return (
+    callee.type === AST_NODE_TYPES.MemberExpression &&
+    !reshapesReceiver(callee) &&
+    isLiteralReceiver(callee.object)
+  );
+}
+
+/** True for a call to a local function that only returns one of its parameters (`forward(x)`). */
+function isIdentityCall(
+  node: TSESTree.CallExpression | TSESTree.NewExpression,
+  callee: TSESTree.Node,
+  walk: Walk,
+): boolean {
+  if (node.type !== AST_NODE_TYPES.CallExpression || callee.type !== AST_NODE_TYPES.Identifier) {
+    return false;
+  }
+  const variable = ASTUtils.findVariable(walk.sourceCode.getScope(callee), callee);
+  return variable !== null && variable.defs.length > 0 && returnsItsParameter(variable);
+}
+
+/**
+ * True for a local function that returns one of its parameters as it is on
+ * every return (`function forward(v) { return v; }`), a parameter nothing in
+ * it writes: every parameter is a plain name (a default value may write
+ * another one), and nothing assigns the function's binding again.
+ */
+function returnsItsParameter(variable: Variable): boolean {
+  const def = variable.defs[0];
+  if (
+    variable.defs.length !== 1 ||
+    def === undefined ||
+    variable.references.some((reference) => reference.isWrite() && reference.init !== true)
+  ) {
+    return false;
+  }
+  let fn: TSESTree.Node | null = null;
+  if (def.type === 'FunctionName') {
+    fn = def.node;
+  } else if (
+    def.type === 'Variable' &&
+    def.parent.kind === 'const' &&
+    def.node.init != null
+  ) {
+    fn = peelTypes(def.node.init);
+  }
+  if (
+    fn === null ||
+    (fn.type !== AST_NODE_TYPES.FunctionDeclaration &&
+      fn.type !== AST_NODE_TYPES.FunctionExpression &&
+      fn.type !== AST_NODE_TYPES.ArrowFunctionExpression) ||
+    fn.async ||
+    fn.generator ||
+    fn.params.some((param) => param.type !== AST_NODE_TYPES.Identifier)
+  ) {
+    return false;
+  }
+  const parameters = new Set(
+    fn.params.flatMap((param) => (param.type === AST_NODE_TYPES.Identifier ? [param.name] : [])),
+  );
+  const isParameter = (node: TSESTree.Node | null): boolean => {
+    const inner = node === null ? null : peelTypes(node);
+    return inner?.type === AST_NODE_TYPES.Identifier && parameters.has(inner.name);
+  };
+  if (fn.body.type !== AST_NODE_TYPES.BlockStatement) {
+    return isParameter(fn.body);
+  }
+  // Only a body of plain returns: anything else may write the parameter first.
+  return (
+    fn.body.body.length > 0 &&
+    fn.body.body.every(
+      (statement) => statement.type === AST_NODE_TYPES.ReturnStatement && isParameter(statement.argument),
+    )
+  );
+}
+
+/** A string, template or array literal: its `concat` and `join` are the built-in ones. */
+function isLiteralReceiver(node: TSESTree.Node): boolean {
+  const inner = peelTypes(node);
+  return (
+    (inner.type === AST_NODE_TYPES.Literal && typeof inner.value === 'string') ||
+    inner.type === AST_NODE_TYPES.TemplateLiteral ||
+    inner.type === AST_NODE_TYPES.ArrayExpression
+  );
 }
 
 /**
@@ -417,10 +551,13 @@ function carriedByCall(
   }
   // Only a call known to keep its arguments' text keeps their proofs:
   // `basename('...', extname('...'))` and `path.parse('...').name` are `..`.
-  const argumentWalk =
+  const reshapedWalk =
     !walk.reshaped && (isDecoder(node) || !keepsArgumentText(node, callee, calleeText, walk))
       ? { ...walk, reshaped: true }
       : walk;
+  // Only an identity helper hands an argument on as it is: `join`, `String` and the rest build a new value.
+  const argumentWalk =
+    reshapedWalk.rebuilt || isIdentityCall(node, callee, walk) ? reshapedWalk : { ...reshapedWalk, rebuilt: true };
   for (const arg of node.arguments) {
     const found = carried(arg, argumentWalk, depth + 1);
     if (found !== null) {
@@ -429,7 +566,9 @@ function carriedByCall(
   }
   if (callee.type === AST_NODE_TYPES.MemberExpression) {
     const receiverWalk =
-      !walk.reshaped && reshapesReceiver(callee) ? { ...walk, reshaped: true } : walk;
+      !walk.reshaped && reshapesReceiver(callee)
+        ? { ...walk, reshaped: true, rebuilt: true }
+        : { ...walk, rebuilt: true };
     return carried(callee.object, receiverWalk, depth + 1);
   }
   if (callee.type === AST_NODE_TYPES.Identifier) {
@@ -437,7 +576,7 @@ function carriedByCall(
     const def = variable?.defs[0];
     // A local function value built from the request: `const read = capture(input); read()`.
     if (def?.type === 'Variable') {
-      return carried(callee, walk, depth + 1);
+      return carried(callee, walk.rebuilt ? walk : { ...walk, rebuilt: true }, depth + 1);
     }
   }
   return null;
@@ -458,14 +597,16 @@ function carriedByVariable(
   }
   if (
     !walk.reshaped &&
-    isProvenSafeValue(node, walk.sink, walk.options.context, walk.sourceCode)
+    (isProvenSafeValue(node, walk.sink, walk.options.context, walk.sourceCode) ||
+      (!walk.rebuilt && walk.options.contained?.(node) === true))
   ) {
     return null;
   }
   if (walk.options.sourceVariables?.has(variable) === true || isRequestFieldParameter(variable)) {
     return node;
   }
-  // A callback's parameter holds the value it was handed: `v` in `[x].forEach((v) => ...)`.
+  // A callback's parameter holds the value it was handed, as it is: `v` in `[x].forEach((v) => ...)`
+  // or `Promise.resolve(x).then((v) => ...)`.
   if (variable.defs[0]?.type === 'Parameter') {
     const exact = flowStep(node, walk.sink, walk.sourceCode);
     const step = exact ?? flowStep(node, walk.sink, walk.sourceCode, 'taint');
@@ -488,7 +629,12 @@ function carriedByVariable(
   const segmentChecked =
     !walk.reshaped &&
     (walk.options.segmentSanitizers?.size ?? 0) > 0 &&
-    isDotSegmentRefused(node, walk.sink, walk.sourceCode);
+    isDotSegmentRefused(node, walk.sink, walk.sourceCode, walk.options.refuseEmptySegment === true);
+  // A binding written after its declaration (`p += '/..'`, `p = join(p, '..')`) may hold a value built from a read.
+  const writesWalk =
+    !walk.rebuilt && variable.references.some((reference) => reference.isWrite() && reference.init !== true)
+      ? { ...walk, rebuilt: true }
+      : walk;
   walk.seen.add(variable);
   try {
     for (const reference of variable.references) {
@@ -496,7 +642,7 @@ function carriedByVariable(
         if (segmentChecked && isSegmentSanitizerCall(reference.writeExpr, walk)) {
           continue;
         }
-        const found = carried(reference.writeExpr, walk, depth + 1);
+        const found = carried(reference.writeExpr, writesWalk, depth + 1);
         if (found !== null) {
           return found;
         }
@@ -519,13 +665,13 @@ function carriedByVariable(
         ARRAY_WRITERS.has(parent.property.name)
       ) {
         for (const arg of grand.arguments) {
-          const found = carried(arg, walk, depth + 1);
+          const found = carried(arg, { ...walk, rebuilt: true }, depth + 1);
           if (found !== null) {
             return found;
           }
         }
       } else if (grand?.type === AST_NODE_TYPES.AssignmentExpression && grand.left === parent) {
-        const found = carried(grand.right, walk, depth + 1);
+        const found = carried(grand.right, { ...walk, rebuilt: true }, depth + 1);
         if (found !== null) {
           return found;
         }
@@ -580,7 +726,7 @@ const CASE_METHODS: ReadonlySet<string> = new Set([
  * a request field name: `query` in `({ query }) => ...`, `file` in
  * `({ params: { file } }) => ...`, `q` in `({ query: q }) => ...`.
  */
-function isRequestFieldParameter(variable: Variable): boolean {
+export function isRequestFieldParameter(variable: Variable): boolean {
   const def = variable.defs[0];
   if (def?.type !== 'Parameter') {
     return false;

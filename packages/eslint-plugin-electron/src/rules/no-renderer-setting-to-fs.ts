@@ -3,8 +3,8 @@ import {
   enclosingFunction,
   fileMatchesAnyGlob,
   globToRegExp,
+  isContainedBefore,
   resolveAllowIn,
-  walkSome,
 } from '@noctcore/eslint-utils';
 import { ASTUtils, AST_NODE_TYPES, type TSESLint, type TSESTree } from '@typescript-eslint/utils';
 import type { JSONSchema4 } from '@typescript-eslint/utils/json-schema';
@@ -70,11 +70,12 @@ type MessageIds = 'settingToFs';
  * or `'.'` joined under a base is the base itself, so a basename can still
  * name the parent or the whole base directory.
  *
- * A containment test on a path built from the setting ends the chain too: the
- * same shapes `security/require-path-containment` accepts (`full.startsWith(base)`
- * or `path.relative(base, full)` on the built path), plus a call to a configured
- * sanitizer that takes any binding of the chain, when it comes before the sink
- * in the same function.
+ * A containment test on a path built from the setting ends the chain too, when
+ * its result decides whether the sink runs: the shared matcher in
+ * `@noctcore/eslint-utils` that `security/require-path-containment` uses
+ * (`full.startsWith(base + sep)`, or `path.relative(base, full)` refused when
+ * it climbs and when it is absolute), plus a call to a configured sanitizer that
+ * takes any binding of the chain, before the sink in the same function.
  */
 
 /** `fs` functions whose first argument is a path. */
@@ -527,31 +528,28 @@ export const noRendererSettingToFsRule = createRule<RuleOptions, MessageIds>({
       return variable !== null && variables.has(variable);
     }
 
-    /** True when `call` is a containment test of the value in `found`. */
-    function isContainmentTest(call: TSESTree.CallExpression, found: Flow): boolean {
-      const name = calleeName(unwrap(call.callee));
-      if (name === null) return false;
-      if (sanitizers.has(name)) return call.arguments.some((arg) => holds(arg, found.bindings));
-      if (name === 'startsWith') {
-        const callee = unwrap(call.callee);
-        return callee.type === AST_NODE_TYPES.MemberExpression && holds(callee.object, found.built);
-      }
-      if (name === 'relative') return call.arguments.some((arg) => holds(arg, found.built));
-      return false;
+    /** The `path` function a callee names (`path.relative`, an imported `isAbsolute`), or null. */
+    function pathFunctionOf(callee: TSESTree.Node): string | null {
+      const member = moduleMemberOf(callee, sourceCode);
+      return member?.module === 'path' && member.path.length === 1 ? (member.path[0] ?? null) : null;
     }
 
-    /** True when a containment test of the value comes before `sink` in its function. */
+    /** True when a containment test of the value in `found` decides whether `sink` runs. */
     function contained(sink: TSESTree.CallExpression, found: Flow): boolean {
       if (found.bindings.size === 0) return false;
-      const scope: TSESTree.Node = enclosingFunction(sink) ?? sourceCode.ast;
-      return walkSome(
-        scope,
-        sourceCode.visitorKeys,
-        (candidate) =>
-          candidate.type === AST_NODE_TYPES.CallExpression &&
-          candidate.range[0] < sink.range[0] &&
-          isContainmentTest(candidate, found),
-      );
+      return isContainedBefore(sink, {
+        sourceCode,
+        pathFunction: pathFunctionOf,
+        isPathSep: (node) => pathFunctionOf(node) === 'sep',
+        holdsResolved: (node) => holds(node, found.built),
+        // A base the renderer can write proves nothing.
+        fixedBase: (node) => flows(node, { depth: 0, throughBasename: true }).length === 0,
+        isGuardCall: (node) => {
+          if (node.type !== AST_NODE_TYPES.CallExpression) return false;
+          const name = calleeName(unwrap(node.callee));
+          return name !== null && sanitizers.has(name) && node.arguments.some((arg) => holds(arg, found.bindings));
+        },
+      });
     }
 
     function check(

@@ -8,8 +8,8 @@ const app = express();
 
 app.get('/avatar', (req, res) => {
   const name = req.query.name;
-  const target = `${UPLOADS}/${name}`; // expect: security/require-path-containment
-  fs.readFile(target, (err, data) => {
+  const target = `${UPLOADS}/${name}`;
+  fs.readFile(target, (err, data) => { // expect: security/require-path-containment
     if (err) {
       res.status(404).send('not found');
       return;

@@ -112,10 +112,17 @@ check that comes after the call.
 
 ## What it does not flag
 
-- A path built from the setting and tested for containment before the sink, in the same function:
-  `full.startsWith(base)` or `path.relative(base, full)` on the `path.join` / `path.resolve` result,
-  the same shapes `security/require-path-containment` accepts. Like that rule, it checks that the
-  test exists, not what the code does with its result.
+- A path built from the setting and tested for containment in the same function, when the result of
+  the test decides whether the sink runs: an `if` before it that returns or throws when the path is
+  outside, or an `if`, `?:`, `&&` or `||` around it. The tests are the ones
+  `security/require-path-containment` accepts, on the `path.join` / `path.resolve` result:
+  `full.startsWith(base + path.sep)` (the base must end in a separator, or `/srv/app-evil` passes
+  a test for `/srv/app`), or a `path.relative(base, full)` result refused both when it climbs
+  (`rel.startsWith('..')`) and when it is absolute (`path.isAbsolute(rel)`), every refusal on the
+  same result (one binding, or inline `path.relative(...)` calls with the same arguments that read
+  no member and no binding written after its declaration). A test whose result is
+  ignored, one that guards another statement, one in a nested function, and one against `'/'`,
+  `path.sep` or `process.cwd()` (every path is under those) do not count.
 - A call to a function in `sanitizers` that takes a binding the setting went through, before the
   sink (`assertInside(base, file)`).
 - `path.basename(value)` reaching a sink that acts on a file (`readFile`, `writeFile`, `stat`,

@@ -1,0 +1,15 @@
+// @bench category=path-traversal cwe=CWE-22 framework=express pair=express-backup-prefix title="backup path checked with startsWith on the dir without a trailing separator"
+const fs = require('node:fs');
+const path = require('node:path');
+const express = require('express');
+
+const BACKUPS = path.resolve('/srv/backups');
+const app = express();
+
+app.get('/backups/:name', (req, res) => {
+  const file = path.join(BACKUPS, req.params.name); // expect: security/require-path-containment
+  if (!file.startsWith(BACKUPS)) return res.status(403).end();
+  res.download(file);
+});
+
+app.listen(3000);

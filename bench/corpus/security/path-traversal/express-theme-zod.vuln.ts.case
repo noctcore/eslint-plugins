@@ -10,8 +10,8 @@ app.use(express.json());
 
 app.post('/themes/load', async (req, res) => {
   const { theme } = req.body as { theme: string };
-  const cssPath = path.resolve(THEMES, `${theme}.css`); // expect: security/require-path-containment
-  const css = await fs.readFile(cssPath, 'utf8');
+  const cssPath = path.resolve(THEMES, `${theme}.css`);
+  const css = await fs.readFile(cssPath, 'utf8'); // expect: security/require-path-containment
   res.type('text/css').send(css);
 });
 

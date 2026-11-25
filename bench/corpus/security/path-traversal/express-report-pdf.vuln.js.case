@@ -7,8 +7,8 @@ const app = express();
 
 app.get('/reports/:name', (req, res) => {
   const { name } = req.params;
-  const full = path.resolve(ROOT, name); // expect: security/require-path-containment
-  res.download(full);
+  const full = path.resolve(ROOT, name);
+  res.download(full); // expect: security/require-path-containment
 });
 
 app.listen(8080, () => {
