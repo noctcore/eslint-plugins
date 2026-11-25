@@ -58,6 +58,20 @@ AST:
 - `isSelfOrAncestor`, `unwrapTypeWrappers` (peels `as`, `satisfies`, `!`, `<T>x`) and
   `isStaticMemberAccess(node, 'process', 'env')` (dot and computed string forms).
 
+Path containment:
+
+- `isContainedBefore(sink, context)`: true when a containment test of a resolved path decides
+  whether `sink` runs: an `if` before it that returns, throws, breaks or continues when the path is
+  outside, an `if`, `?:`, `&&` or `||` around it, or a configured guard called as a statement
+  before it, all in the function that holds the sink. The tests are `full.startsWith(base + sep)`
+  (the base must end in a separator), a `path.relative(base, full)` result refused when it climbs
+  and when it is absolute, and a guard call. `PathContainmentContext` tells it how the rule names
+  `path` functions, the separator, the resolved value, a fixed base and guard calls.
+- Its parts: `isGuardedByBranchBefore`, `isGuardedByLogicalBefore`, `isAssertedBefore`,
+  `containmentGuard`, `failsOutside`, `holdsInside`, `isStartsWithBase`, `endsInSeparator`,
+  `isBroadBase` (`'/'`, `''`, `'.'`, `path.sep`, `process.cwd()` and `path.resolve()` are not
+  bases), `isProcessCwd` and `singleInitializer`.
+
 Logger calls:
 
 - `loggerCallMatcher(options)` and `loggerCallMethod(call, matcher)`: structural detection of

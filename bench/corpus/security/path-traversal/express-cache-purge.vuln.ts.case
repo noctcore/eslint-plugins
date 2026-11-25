@@ -1,0 +1,16 @@
+// @bench category=path-traversal cwe=CWE-22 framework=express pair=express-cache-purge title="basename refused as dot segments but not as empty, so a trailing slash removes the whole cache"
+import fs from 'node:fs';
+import path from 'node:path';
+import express, { Request, Response } from 'express';
+
+const CACHE = path.resolve('/var/cache/thumbs');
+const app = express();
+
+app.delete('/cache', (req: Request, res: Response) => {
+  const key = path.basename(String(req.query.key));
+  if (key === '.' || key === '..') return res.status(400).end();
+  fs.rmSync(path.join(CACHE, key), { recursive: true, force: true }); // expect: security/require-path-containment
+  res.status(204).end();
+});
+
+export default app;

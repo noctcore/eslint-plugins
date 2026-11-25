@@ -46,7 +46,7 @@ ruleTester.run('no-renderer-setting-to-fs', noRendererSettingToFsRule, {
     },
     // Contained in the positive form.
     {
-      code: `${FS}function read() {\n  const full = path.resolve(BASE, store.get('x'));\n  if (full.startsWith(BASE)) fs.readFileSync(full);\n}`,
+      code: `${FS}function read() {\n  const full = path.resolve(BASE, store.get('x'));\n  if (full.startsWith(BASE + path.sep)) fs.readFileSync(full);\n}`,
       filename: MAIN,
       options: STORE,
     },
@@ -148,6 +148,37 @@ ruleTester.run('no-renderer-setting-to-fs', noRendererSettingToFsRule, {
     // Both tainted operands contained.
     {
       code: `${FS}function read() {\n  const a = path.join(BASE, store.get('a'));\n  const b = path.join(BASE, store.get('b'));\n  if (!a.startsWith(BASE + path.sep) || !b.startsWith(BASE + path.sep)) return;\n  fs.copyFileSync(a, b);\n}`,
+      filename: MAIN,
+      options: STORE,
+    },
+    // A containment test that decides whether the read runs, against a base that ends in a separator.
+    {
+      code: "import fs from 'node:fs';\nimport path from 'node:path';\nfunction read() {\nconst full = path.resolve(BASE, store.get('x'));\nif (full.startsWith(BASE + path.sep)) return fs.readFileSync(full);\n}",
+      filename: MAIN,
+      options: STORE,
+    },
+    {
+      code: "import fs from 'node:fs';\nimport path from 'node:path';\nfunction read() {\nconst full = path.resolve(BASE, store.get('x'));\nreturn full.startsWith(BASE + path.sep) && fs.readFileSync(full);\n}",
+      filename: MAIN,
+      options: STORE,
+    },
+    {
+      code: "import fs from 'node:fs';\nimport path from 'node:path';\nfunction read() {\nconst full = path.resolve(BASE, store.get('x'));\nconst rel = path.relative(BASE, full);\nif (rel === '..' || rel.startsWith('..' + path.sep) || path.isAbsolute(rel)) return;\nreturn fs.readFileSync(full);\n}",
+      filename: MAIN,
+      options: STORE,
+    },
+    {
+      code: "import fs from 'node:fs';\nimport path from 'node:path';\nfunction read() {\nconst full = path.resolve(BASE, store.get('x'));\nconst ok = full.startsWith(BASE + path.sep);\nif (!ok) return;\nreturn fs.readFileSync(full);\n}",
+      filename: MAIN,
+      options: STORE,
+    },
+    {
+      code: "import fs from 'node:fs';\nimport path from 'node:path';\nfunction read() {\nconst full = path.resolve('/srv/data', store.get('x'));\nif (!full.startsWith('/srv/data/')) return;\nreturn fs.readFileSync(full);\n}",
+      filename: MAIN,
+      options: STORE,
+    },
+    {
+      code: "import fs from 'node:fs';\nimport path from 'node:path';\nfunction read() {\nconst full = path.resolve(BASE, store.get('x'));\nif (path.relative(BASE,full) === '..' || path.relative(BASE, full).startsWith('..' + path.sep) || path.isAbsolute(path.relative(BASE, full))) return;\nreturn fs.readFileSync(full);\n}",
       filename: MAIN,
       options: STORE,
     },
@@ -332,6 +363,118 @@ ruleTester.run('no-renderer-setting-to-fs', noRendererSettingToFsRule, {
     },
     {
       code: `${FS}fs.readFileSync(this['store']['get']('dir'));`,
+      filename: MAIN,
+      options: STORE,
+      errors: [ERROR],
+    },
+    // A containment test counts only when its result decides whether the read runs, against a base that ends in a
+    // separator, and a relative result taken against a base that is not '/' or the working directory.
+    {
+      code: "import fs from 'node:fs';\nimport path from 'node:path';\nfunction read() {\nconst full = path.resolve(BASE, store.get('x'));\nfull.startsWith(BASE + path.sep);\nreturn fs.readFileSync(full);\n}",
+      filename: MAIN,
+      options: STORE,
+      errors: [ERROR],
+    },
+    {
+      code: "import fs from 'node:fs';\nimport path from 'node:path';\nfunction read() {\nconst full = path.resolve(BASE, store.get('x'));\nif (full.startsWith(BASE + path.sep)) log('inside');\nreturn fs.readFileSync(full);\n}",
+      filename: MAIN,
+      options: STORE,
+      errors: [ERROR],
+    },
+    {
+      code: "import fs from 'node:fs';\nimport path from 'node:path';\nfunction read() {\nconst full = path.resolve(BASE, store.get('x'));\nconst check = () => {\n  if (!full.startsWith(BASE + path.sep)) throw new Error('outside');\n};\nreturn fs.readFileSync(full);\n}",
+      filename: MAIN,
+      options: STORE,
+      errors: [ERROR],
+    },
+    {
+      code: "import fs from 'node:fs';\nimport path from 'node:path';\nfunction read() {\nconst full = path.resolve(BASE, store.get('x'));\nfull.startsWith(BASE);\nreturn fs.readFileSync(full);\n}",
+      filename: MAIN,
+      options: STORE,
+      errors: [ERROR],
+    },
+    {
+      code: "import fs from 'node:fs';\nimport path from 'node:path';\nfunction read() {\nconst full = path.resolve(BASE, store.get('x'));\nconst ok = full.startsWith('/srv/data');\nif (!ok) throw new Error('outside');\nreturn fs.readFileSync(full);\n}",
+      filename: MAIN,
+      options: STORE,
+      errors: [ERROR],
+    },
+    {
+      code: "import fs from 'node:fs';\nimport path from 'node:path';\nfunction read() {\nconst full = path.resolve(BASE, store.get('x'));\nif (full.startsWith(BASE)) return fs.readFileSync(full);\n}",
+      filename: MAIN,
+      options: STORE,
+      errors: [ERROR],
+    },
+    {
+      code: "import fs from 'node:fs';\nimport path from 'node:path';\nfunction read() {\nconst full = path.resolve(BASE, store.get('x'));\nif (!full.startsWith(BASE)) throw new Error('outside');\nreturn fs.readFileSync(full);\n}",
+      filename: MAIN,
+      options: STORE,
+      errors: [ERROR],
+    },
+    {
+      code: "import fs from 'node:fs';\nimport path from 'node:path';\nfunction read() {\nconst full = path.resolve(BASE, store.get('x'));\npath.relative(BASE, full);\nreturn fs.readFileSync(full);\n}",
+      filename: MAIN,
+      options: STORE,
+      errors: [ERROR],
+    },
+    {
+      code: "import fs from 'node:fs';\nimport path from 'node:path';\nfunction read() {\nconst full = path.resolve(BASE, store.get('x'));\nconst rel = path.relative(BASE, full);\nif (rel === '') return;\nreturn fs.readFileSync(full);\n}",
+      filename: MAIN,
+      options: STORE,
+      errors: [ERROR],
+    },
+    {
+      code: "import fs from 'node:fs';\nimport path from 'node:path';\nfunction read() {\nconst full = path.resolve(BASE, store.get('x'));\nconst rel = path.relative(BASE, full);\nif (rel === '..' || rel.startsWith('..' + path.sep)) return;\nreturn fs.readFileSync(full);\n}",
+      filename: MAIN,
+      options: STORE,
+      errors: [ERROR],
+    },
+    {
+      code: "import fs from 'node:fs';\nimport path from 'node:path';\nfunction read() {\nconst full = path.resolve(BASE, store.get('x'));\nconst rel = path.relative('/', full);\nif (rel.startsWith('..') || path.isAbsolute(rel)) return;\nreturn fs.readFileSync(full);\n}",
+      filename: MAIN,
+      options: STORE,
+      errors: [ERROR],
+    },
+    {
+      code: "import fs from 'node:fs';\nimport path from 'node:path';\nfunction read() {\nconst full = path.resolve(BASE, store.get('x'));\nconst rel = path.relative(process.cwd(), full);\nif (rel.startsWith('..') || path.isAbsolute(rel)) return;\nreturn fs.readFileSync(full);\n}",
+      filename: MAIN,
+      options: STORE,
+      errors: [ERROR],
+    },
+    // Refusals of two different inline relative calls do not pair up.
+    {
+      code: "import fs from 'node:fs';\nimport path from 'node:path';\nfunction read() {\nconst full = path.resolve(BASE, store.get('x'));\nif (path.relative(BASE + '/sub', full) === '..' || path.relative(BASE, full).startsWith('..' + path.sep) || path.isAbsolute(path.relative(BASE, full))) return;\nreturn fs.readFileSync(full);\n}",
+      filename: MAIN,
+      options: STORE,
+      errors: [ERROR],
+    },
+    // Relative calls pair up only on the same base: not a base written in between, a member read, or other string text.
+    {
+      code: "import fs from 'node:fs';\nimport path from 'node:path';\nfunction read() {\nconst full = path.resolve(BASE, store.get('x'));\nlet b = BASE + '/sub';\nif (path.relative(b, full) === '..' || (b = BASE) === '' || path.relative(b, full).startsWith('..' + path.sep) || path.isAbsolute(path.relative(b, full))) return;\nreturn fs.readFileSync(full);\n}",
+      filename: MAIN,
+      options: STORE,
+      errors: [ERROR],
+    },
+    {
+      code: "import fs from 'node:fs';\nimport path from 'node:path';\nfunction read() {\nconst full = path.resolve(BASE, store.get('x'));\nlet b = BASE + '/sub';\nconst set = () => { b = BASE; return false; };\nif (path.relative(b, full) === '..' || set() || path.relative(b, full).startsWith('..' + path.sep) || path.isAbsolute(path.relative(b, full))) return;\nreturn fs.readFileSync(full);\n}",
+      filename: MAIN,
+      options: STORE,
+      errors: [ERROR],
+    },
+    {
+      code: "import fs from 'node:fs';\nimport path from 'node:path';\nfunction read() {\nconst full = path.resolve(BASE, store.get('x'));\nconst o = { b: BASE };\nif (path.relative(o.b, full) === '..' || path.relative(o.b, full).startsWith('..' + path.sep) || path.isAbsolute(path.relative(o.b, full))) return;\nreturn fs.readFileSync(full);\n}",
+      filename: MAIN,
+      options: STORE,
+      errors: [ERROR],
+    },
+    {
+      code: "import fs from 'node:fs';\nimport path from 'node:path';\nfunction read() {\nconst full = path.resolve(BASE, store.get('x'));\nlet n = 0;\nconst o = { get b() { n += 1; return n === 1 ? BASE + '/sub' : BASE; } };\nif (path.relative(o.b, full) === '..' || path.relative(o.b, full).startsWith('..' + path.sep) || path.isAbsolute(path.relative(o.b, full))) return;\nreturn fs.readFileSync(full);\n}",
+      filename: MAIN,
+      options: STORE,
+      errors: [ERROR],
+    },
+    {
+      code: "import fs from 'node:fs';\nimport path from 'node:path';\nfunction read() {\nconst full = path.resolve(BASE, store.get('x'));\nif (path.relative('/srv/data/s ub', full) === '..' || path.relative('/srv/data/sub', full).startsWith('..' + path.sep) || path.isAbsolute(path.relative('/srv/data/sub', full))) return;\nreturn fs.readFileSync(full);\n}",
       filename: MAIN,
       options: STORE,
       errors: [ERROR],

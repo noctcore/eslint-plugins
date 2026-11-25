@@ -1,0 +1,18 @@
+// @bench category=path-traversal cwe=CWE-22 framework=express pair=express-fsextra-remove title="fs-extra remove after checking the joined path stays under the uploads dir"
+// ok
+const fse = require('fs-extra');
+const path = require('node:path');
+const express = require('express');
+
+const UPLOADS = path.resolve('/srv/uploads');
+const app = express();
+app.use(express.json());
+
+app.post('/uploads/delete', async (req, res) => {
+  const target = path.join(UPLOADS, String(req.body.name));
+  if (!target.startsWith(UPLOADS + path.sep)) return res.status(403).end();
+  await fse.remove(target);
+  res.status(204).end();
+});
+
+app.listen(3000);

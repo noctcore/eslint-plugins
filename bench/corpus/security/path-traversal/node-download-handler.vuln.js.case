@@ -8,9 +8,9 @@ const DOWNLOADS = path.resolve('/srv/downloads');
 const server = http.createServer(async (req, res) => {
   const { searchParams } = new URL(req.url, 'http://localhost');
   const file = searchParams.get('file');
-  const target = path.join(DOWNLOADS, file); // expect: security/require-path-containment
+  const target = path.join(DOWNLOADS, file);
   try {
-    const body = await fs.readFile(target);
+    const body = await fs.readFile(target); // expect: security/require-path-containment
     res.end(body);
   } catch {
     res.writeHead(404).end();

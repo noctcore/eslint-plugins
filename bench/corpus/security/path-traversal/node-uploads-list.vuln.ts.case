@@ -8,9 +8,9 @@ const ROOT = resolve('/srv/files');
 http.createServer(async (req, res) => {
   const url = new URL(req.url ?? '/', 'http://localhost');
   const name = decodeURIComponent(url.pathname.slice(1));
-  const full = resolve(ROOT, name); // expect: security/require-path-containment
+  const full = resolve(ROOT, name);
   try {
-    res.end(await readFile(full));
+    res.end(await readFile(full)); // expect: security/require-path-containment
   } catch {
     res.statusCode = 404;
     res.end();

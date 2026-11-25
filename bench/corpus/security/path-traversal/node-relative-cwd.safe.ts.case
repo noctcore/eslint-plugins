@@ -1,0 +1,18 @@
+// @bench category=path-traversal cwe=CWE-22 framework=node pair=node-relative-cwd title="relative check taken against the docs dir"
+// ok
+import { createServer } from 'node:http';
+import { readFile } from 'node:fs/promises';
+import path from 'node:path';
+
+const DOCS = path.resolve('docs');
+
+createServer(async (req, res) => {
+  const url = new URL(req.url ?? '/', 'http://localhost');
+  const full = path.resolve(DOCS, url.searchParams.get('page') ?? 'index.md');
+  const rel = path.relative(DOCS, full);
+  if (rel.startsWith('..') || path.isAbsolute(rel)) {
+    res.writeHead(403).end();
+    return;
+  }
+  res.end(await readFile(full, 'utf8'));
+}).listen(8080);
