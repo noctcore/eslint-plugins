@@ -83,13 +83,25 @@ constant text (read as author text, so a quote in `const OPEN = "JSON.parse('"` 
 script), `let` accumulators (`html += row`, `html = html + row`, in loops and callbacks too),
 array accumulators (`rows.push(row)` then `rows.join('')`), `[...].join(sep)` and
 `list.map(fn).join(sep)` (every `return` of the mapper), `.concat`, a constant template filled by
-`.replace` / `.replaceAll` at a string or plain regex placeholder (`tpl.replace('{{name}}', q)`; a
-placeholder the rule cannot find may be anywhere, so the value must be safe in a tag), and in-file
-helpers that return markup (every `return`), with their parameters bound to the call's arguments
-unless the helper writes them. A call or template tag from elsewhere (``layout(`<h1>${q}</h1>`)``,
-`dedent`, the common-tags `html` tag, `page.trim()`) is taken to keep the markup it is given, which
-is judged where it is written; an escaping module (common-tags `safeHtml` included) is judged as a
-value.
+`.replace` / `.replaceAll` at a string or plain regex placeholder (`tpl.replace('{{name}}', q)`),
+and in-file helpers that return markup (every `return`), with their parameters bound to the call's
+arguments unless the helper writes them.
+
+A placeholder is read with the value in place only when `.replace` writes the value as it is: a
+replacer function of this file, a constant without `$`, a number or `encodeURIComponent` output. A
+replacement string applies `$` patterns (`` $` ``, `$'` and `$&` copy author text into the value's
+place), and escape-html leaves `$` alone, so any other replacement may land anywhere and must be
+safe in a tag. A value an earlier `.replace` wrote may hold a later placeholder, so the later
+replacement is judged there too.
+
+Any other call or template tag given markup (``layout(`<h1>${q}</h1>`)``, `dedent`, the common-tags
+`html` tag, a decoder, or a string method that cuts, pads or rewrites it: `.slice`, `.padStart`,
+`.split`, `.trim`, a `.replace` that is not a placeholder fill) is opaque: the rule cannot tell that
+it keeps the escaped text escaped and in place. The markup it is given is still read where the call
+stands, so an unsafe value in it is reported; every other value it is given may land anywhere and
+must be safe in a tag; and the call itself is reported where it lands when nothing inside it is. A
+string method called on markup returns markup, so it counts with no author tag around it. An
+escaping module (common-tags `safeHtml` included) is judged as a value.
 
 ```ts bad
 export function report(res, rows) {
@@ -286,8 +298,7 @@ export function note(req, res) {
 }
 ```
 
-Not read: arguments of a call from elsewhere that build no markup (`layout(title, body)` judges
-`body` only), a meta `http-equiv` written after `content`, a nunjucks `{% set %}{% endset %}` block,
+Not read: what a call from elsewhere returns (it stays opaque), a meta `http-equiv` written after `content`, a nunjucks `{% set %}{% endset %}` block,
 a template string built at run time, a context object that is not a literal (or has a
 spread), a template loaded from a file (`res.render('page', ...)`), engines other than nunjucks and
 EJS, a nunjucks output that is a function call or a literal, HTML written over several
@@ -296,8 +307,8 @@ through a helper that returns it (a parameter the helper writes no longer counts
 a helper that returns no markup and has more than declarations and one `return` (one that returns
 markup is read at every `return`),
 `DOMPurify.addHook`, a sanitizer config or default changed in another file, and whether a URL in `<script src>` or `<iframe src>` points at another host
-(a fixed scheme is all the rule checks there). `.replace` is taken to be the string method,
-without type information.
+(a fixed scheme is all the rule checks there). A method with a string method's name (`.replace`,
+`.slice`, ...) is taken to be the string method, without type information.
 
 ## Options
 

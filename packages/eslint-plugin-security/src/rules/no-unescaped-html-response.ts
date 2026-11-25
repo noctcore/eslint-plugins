@@ -106,22 +106,38 @@ const TAG = /<[a-z!/]/iu;
 const SCRIPTABLE_TYPE = /htm|xml|svg/iu;
 const MAX_DEPTH = 8;
 const MAX_STATES = 24;
-/** String methods, whose arguments are not part of what they return. */
+/** String methods: their arguments are not what they return (`q.replace(/\n/g, '<br>')`). */
 const STRING_METHODS: ReadonlySet<string> = new Set([
-  'replace',
-  'replaceAll',
-  'split',
-  'padStart',
-  'padEnd',
-  'includes',
-  'startsWith',
+  'at',
+  'charAt',
   'endsWith',
+  'includes',
   'indexOf',
   'lastIndexOf',
+  'localeCompare',
   'match',
   'matchAll',
+  'normalize',
+  'padEnd',
+  'padStart',
+  'repeat',
+  'replace',
+  'replaceAll',
   'search',
-  'localeCompare',
+  'slice',
+  'split',
+  'startsWith',
+  'substr',
+  'substring',
+  'toLocaleLowerCase',
+  'toLocaleUpperCase',
+  'toLowerCase',
+  'toString',
+  'toUpperCase',
+  'trim',
+  'trimEnd',
+  'trimStart',
+  'valueOf',
 ]);
 /** Modules whose default export is a DOMPurify instance with shared config. */
 const PURIFY_MODULES: ReadonlySet<string> = new Set(['dompurify', 'isomorphic-dompurify']);
@@ -319,11 +335,23 @@ function literalPattern(node: TSESTree.Node): { text: string; global: boolean } 
 }
 
 /** A piece of a template filled by `.replace`: author text, or the value written in place of a placeholder. */
-type Segment = { readonly text: string } | { readonly node: TSESTree.Node };
+type Segment =
+  | { readonly text: string }
+  /** `also`: replacements of later calls whose placeholder this value may hold, so they may land here too. */
+  | { readonly node: TSESTree.Node; readonly also?: readonly TSESTree.Node[] };
+/** Characters `encodeURIComponent` leaves as they are. */
+const URI_UNRESERVED = /^[\w.!~*'()-]*$/u;
 interface Part {
   readonly node: TSESTree.Node;
   readonly contexts: ReadonlySet<HtmlContext>;
+  /** Judged even when the body has no author tag: a value in markup that a call is given. */
+  readonly forced: boolean;
+  /** For a call the rule cannot read through: the parts read in what it is given. The call is reported only when none of them is. */
+  readonly inner?: readonly Part[];
 }
+
+/** Where a value lands when a call may put it anywhere in its output, a tag name included. */
+const ANYWHERE: HtmlState = { mode: 'tag-name', tag: '?', attr: '', value: '' };
 
 /**
  * Walks the expression a body is built from, author text and runtime parts in
@@ -341,6 +369,8 @@ class HtmlBuilder {
   /** True when a runtime part is a React server render, so the body is markup without an author tag. */
   rendered = false;
   private sawDynamic = false;
+  /** True while reading what an opaque call is given, whose parts are then forced. */
+  private forcing = false;
   private readonly active = new Set<unknown>();
   private readonly bound = new Map<TSESLint.Scope.Variable, TSESTree.Node>();
 
@@ -361,13 +391,56 @@ class HtmlBuilder {
     return dedupe(states.map((state) => feedText(state, text)));
   }
 
-  private dynamic(node: TSESTree.Node, states: readonly HtmlState[]): HtmlState[] {
+  private dynamic(
+    node: TSESTree.Node,
+    states: readonly HtmlState[],
+    opaque?: { readonly forced: boolean; readonly inner: readonly Part[] },
+  ): HtmlState[] {
     this.sawDynamic = true;
     if (node.type === AST_NODE_TYPES.CallExpression && this.judge.rendersMarkup(node)) {
       this.rendered = true;
     }
-    this.parts.push({ node, contexts: new Set(states.map(contextAt)) });
+    this.parts.push({
+      node,
+      contexts: new Set(states.map(contextAt)),
+      forced: this.forcing || (opaque?.forced ?? false),
+      ...(opaque === undefined ? {} : { inner: opaque.inner }),
+    });
     return dedupe(states.map(feedValue));
+  }
+
+  /**
+   * A call (or tag) the rule cannot prove keeps the markup it is given escaped
+   * and in place: a function from elsewhere, or a string method that cuts,
+   * pads, decodes or rewrites it. The markup it is given is read where the call
+   * stands, to report what is unsafe in it; every other value it is given may
+   * land anywhere; and the call itself stays an opaque value, reported when
+   * nothing inside it is. `forced` makes the call count without an author tag
+   * around it, for a string method whose result is the markup it was called on.
+   */
+  private opaque(
+    call: TSESTree.Node,
+    markup: readonly TSESTree.Node[],
+    values: readonly TSESTree.Node[],
+    states: HtmlState[],
+    depth: number,
+    forced: boolean,
+  ): HtmlState[] {
+    const start = this.parts.length;
+    const saved = { text: this.text, leading: this.leading, sawDynamic: this.sawDynamic, rendered: this.rendered, forcing: this.forcing };
+    this.forcing = true;
+    for (const node of markup) {
+      this.visit(node, states, depth + 1);
+    }
+    for (const node of values) {
+      this.dynamic(node, [ANYWHERE]);
+    }
+    this.text = saved.text;
+    this.leading = saved.leading;
+    this.sawDynamic = saved.sawDynamic;
+    this.rendered = saved.rendered;
+    this.forcing = saved.forcing;
+    return this.dynamic(call, states, { forced, inner: this.parts.slice(start) });
   }
 
   private visit(node: TSESTree.Node, states: HtmlState[], depth: number): HtmlState[] {
@@ -389,10 +462,10 @@ class HtmlBuilder {
         ) {
           return this.visitTemplate(inner.quasi, states, depth, true);
         }
-        // A tag from elsewhere (`dedent`, common-tags `html`) is taken to keep the markup it is given;
-        // an escaping module, or a tag function of this file, stays a value.
+        // A tag from elsewhere (`dedent`, common-tags `html`) is opaque; an escaping module, or a tag
+        // function of this file, stays a value.
         if (!this.judge.isEscapingModule(tag) && this.judge.functionOf(tag) === null) {
-          return this.visitTemplate(inner.quasi, states, depth, false);
+          return this.opaque(inner, [inner.quasi], [], states, depth, false);
         }
         return this.dynamic(inner, states);
       }
@@ -547,12 +620,26 @@ class HtmlBuilder {
     }
   }
 
-  /** True for a node that builds markup, directly or through a `const`. */
-  private carriesMarkup(node: TSESTree.Node): boolean {
+  /** True for a node that builds markup, directly, through a `const` or through string methods called on it. */
+  private carriesMarkup(node: TSESTree.Node, depth = 0): boolean {
     const inner = unwrap(node);
+    if (depth > MAX_DEPTH) {
+      return false;
+    }
     if (inner.type === AST_NODE_TYPES.Identifier) {
       const init = this.judge.constInit(inner);
-      return init !== null && buildsMarkup(init);
+      return init !== null && this.carriesMarkup(init, depth + 1);
+    }
+    if (inner.type === AST_NODE_TYPES.CallExpression) {
+      const callee = unwrap(inner.callee);
+      const method = callee.type === AST_NODE_TYPES.MemberExpression ? propertyName(callee) : null;
+      if (
+        callee.type === AST_NODE_TYPES.MemberExpression &&
+        (STRING_METHODS.has(method ?? '') || method === 'concat') &&
+        this.carriesMarkup(callee.object, depth + 1)
+      ) {
+        return true;
+      }
     }
     return buildsMarkup(inner);
   }
@@ -574,7 +661,8 @@ class HtmlBuilder {
       patternNode === undefined ||
       replacement === undefined ||
       patternNode.type === AST_NODE_TYPES.SpreadElement ||
-      replacement.type === AST_NODE_TYPES.SpreadElement
+      replacement.type === AST_NODE_TYPES.SpreadElement ||
+      !this.writtenAsIs(replacement)
     ) {
       return null;
     }
@@ -594,7 +682,16 @@ class HtmlBuilder {
     const segments: Segment[] = [];
     let done = false;
     for (const segment of base) {
-      if (!('text' in segment) || done) {
+      if (!('text' in segment)) {
+        // An earlier value may hold the placeholder, and a first match there takes the replacement.
+        segments.push(
+          !done && this.mayHold(segment.node, pattern.text)
+            ? { node: segment.node, also: [...(segment.also ?? []), replacement] }
+            : segment,
+        );
+        continue;
+      }
+      if (done) {
         segments.push(segment);
         continue;
       }
@@ -611,6 +708,45 @@ class HtmlBuilder {
       });
     }
     return segments;
+  }
+
+  /**
+   * True for a replacement `.replace` writes as it is: a replacer function of
+   * this file, whose result is never read for `$` patterns, or text that
+   * cannot hold a `$` (a constant without one, a number, `encodeURIComponent`
+   * output). In a string, `` $` ``, `$'` and `$&` copy author text into the
+   * value's place, and `escapeHtml` leaves them alone.
+   */
+  private writtenAsIs(replacement: TSESTree.Node): boolean {
+    if (this.judge.functionOf(replacement) !== null) {
+      return true;
+    }
+    const inner = unwrap(replacement);
+    const text = this.constantString(inner, 0);
+    if (text !== null) {
+      return !text.includes('$');
+    }
+    if (inner.type === AST_NODE_TYPES.Literal) {
+      return typeof inner.value === 'number';
+    }
+    return inner.type === AST_NODE_TYPES.CallExpression && this.judge.isGlobal(unwrap(inner.callee), 'encodeURIComponent');
+  }
+
+  /** False when a value cannot contain `pattern`: a number, a constant without it, or URI-encoded text it does not fit. */
+  private mayHold(node: TSESTree.Node, pattern: string): boolean {
+    const inner = unwrap(node);
+    if (inner.type === AST_NODE_TYPES.Literal && typeof inner.value === 'number') {
+      return false;
+    }
+    const text = this.constantString(inner, 0);
+    if (text !== null) {
+      return text.includes(pattern);
+    }
+    return !(
+      inner.type === AST_NODE_TYPES.CallExpression &&
+      this.judge.isGlobal(unwrap(inner.callee), 'encodeURIComponent') &&
+      !URI_UNRESERVED.test(pattern)
+    );
   }
 
   /** A `.replace` replacement: a value, or what a replacer function returns. */
@@ -762,18 +898,19 @@ class HtmlBuilder {
         if (segments !== null) {
           let current = states;
           for (const segment of segments) {
-            current = 'text' in segment ? this.feed(current, segment.text) : this.visitReplacement(segment.node, current, depth);
+            if ('text' in segment) {
+              current = this.feed(current, segment.text);
+              continue;
+            }
+            for (const other of segment.also ?? []) {
+              this.visitReplacement(other, current, depth);
+            }
+            current = this.visitReplacement(segment.node, current, depth);
           }
           return current;
         }
-        const [, replacement] = call.arguments;
-        if (this.carriesMarkup(callee.object) && replacement !== undefined && replacement.type !== AST_NODE_TYPES.SpreadElement) {
-          // A placeholder the rule cannot find may be anywhere, a tag name included.
-          this.dynamic(replacement, [{ mode: 'tag-name', tag: '?', attr: '', value: '' }]);
-          return this.visit(callee.object, states, depth + 1);
-        }
       }
-      if (method === 'concat' && this.carriesMarkup(callee.object)) {
+      if (method === 'concat' && [callee.object, ...call.arguments].some((node) => this.carriesMarkup(node))) {
         let current = this.visit(callee.object, states, depth + 1);
         for (const arg of call.arguments) {
           current = arg.type === AST_NODE_TYPES.SpreadElement ? this.dynamic(arg.argument, current) : this.visit(arg, current, depth + 1);
@@ -808,22 +945,23 @@ class HtmlBuilder {
       }
       return result;
     }
-    // A call from elsewhere (``layout(`<h1>${q}</h1>`)``, `html.trim()`) is taken to keep the
-    // markup it is given; an escaper or sanitizer is judged as a value.
-    if (this.judge.encoderOf(call) === null && !this.judge.isEscapingModule(callee)) {
-      // A string method's arguments (`q.replace(/\n/g, '<br>')`) are not its result.
-      const method = callee.type === AST_NODE_TYPES.MemberExpression ? propertyName(callee) : null;
-      const carried = [
-        ...(callee.type === AST_NODE_TYPES.MemberExpression ? [callee.object] : []),
-        ...(STRING_METHODS.has(method ?? '') ? [] : call.arguments.filter((arg) => arg.type !== AST_NODE_TYPES.SpreadElement)),
-      ].filter((node) => this.carriesMarkup(node));
-      if (carried.length > 0) {
-        let current = states;
-        for (const node of carried) {
-          current = this.visit(node, current, depth + 1);
-        }
-        return current;
-      }
+    // An escaper or sanitizer is judged as a value.
+    if (this.judge.encoderOf(call) !== null || this.judge.isEscapingModule(callee)) {
+      return this.dynamic(call, states);
+    }
+    const args = call.arguments.map((arg) => (arg.type === AST_NODE_TYPES.SpreadElement ? arg.argument : arg));
+    // A method called on markup (`page.slice(9)`, `page.padStart(n, x)`) returns text cut,
+    // padded or rewritten from it, which the rule does not follow.
+    if (callee.type === AST_NODE_TYPES.MemberExpression && this.carriesMarkup(callee.object)) {
+      return this.opaque(call, [callee.object], args, states, depth, true);
+    }
+    if (callee.type === AST_NODE_TYPES.MemberExpression && STRING_METHODS.has(propertyName(callee) ?? '')) {
+      return this.dynamic(call, states);
+    }
+    // A call from elsewhere (``layout(`<h1>${q}</h1>`)``) given markup: the markup is read, the call is not.
+    const markup = args.filter((arg) => this.carriesMarkup(arg));
+    if (markup.length > 0) {
+      return this.opaque(call, markup, args.filter((arg) => !markup.includes(arg)), states, depth, false);
     }
     return this.dynamic(call, states);
   }
@@ -1327,11 +1465,17 @@ export const noUnescapedHtmlResponseRule = createRule<RuleOptions, MessageIds>({
     /* ---- judging -------------------------------------------------------- */
 
     const judgeParts = (parts: readonly Part[], sink: TSESTree.Node): void => {
+      const unsafe = new Set<Part>();
       for (const part of parts) {
+        if (part.inner?.some((innerPart) => unsafe.has(innerPart)) === true) {
+          unsafe.add(part);
+          continue;
+        }
         for (const where of part.contexts) {
           if (judge.safeIn(part.node, where, sink)) {
             continue;
           }
+          unsafe.add(part);
           const value = sourceCode.getText(part.node);
           if (where !== 'text' && judge.safeIn(part.node, 'text', sink)) {
             report(part.node, 'unsafeContext', { value, where: CONTEXT_LABELS[where] });
@@ -1369,14 +1513,16 @@ export const noUnescapedHtmlResponseRule = createRule<RuleOptions, MessageIds>({
       }
       const builder = new HtmlBuilder(judge, sink.node);
       builder.run(sink.body);
-      if (!TAG.test(builder.text) && !builder.rendered) {
+      // Without an author tag, only values in markup a call is given are judged.
+      const parts = TAG.test(builder.text) || builder.rendered ? builder.parts : builder.parts.filter((part) => part.forced);
+      if (parts.length === 0) {
         return;
       }
       // Koa sends a string that does not start with `<` as text, unless a type is set.
       if (sink.kind === 'koa' && !setters.some((setter) => setter.value !== null) && !koaMayBeHtml(sink.body, sink.node, 0)) {
         return;
       }
-      judgeParts(builder.parts, sink.node);
+      judgeParts(parts, sink.node);
     };
 
     /** The value a template path reads from a literal context object, through nested literals. */
