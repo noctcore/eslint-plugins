@@ -204,6 +204,57 @@ export function isChangedConstObject(
 }
 
 /**
+ * True when every value `Object.assign` would copy out of `node` is a
+ * primitive. The copy is shallow, so a nested object stays shared with the
+ * copy (`Object.assign({}, cfg).proxy.host = x` changes `cfg.proxy`), and
+ * only a source made of primitives is left unchanged by what happens to the
+ * copy. `node` is an object literal or an in-file `const` bound to one.
+ */
+export function copiesOnlyPrimitives(node: TSESTree.Node, sourceCode: SourceCode): boolean {
+  let object = peelTypes(node);
+  if (object.type === AST_NODE_TYPES.Identifier) {
+    const variable = ASTUtils.findVariable(sourceCode.getScope(object), object);
+    const def = variable?.defs[0];
+    if (
+      variable?.defs.length !== 1 ||
+      def?.type !== 'Variable' ||
+      def.parent.kind !== 'const' ||
+      def.node.init === null
+    ) {
+      return false;
+    }
+    object = peelTypes(def.node.init);
+  }
+  return (
+    object.type === AST_NODE_TYPES.ObjectExpression &&
+    object.properties.every(
+      (property) =>
+        property.type === AST_NODE_TYPES.Property &&
+        !setsPrototype(property) &&
+        property.kind === 'init' &&
+        !property.method &&
+        isPrimitiveValue(property.value, sourceCode),
+    )
+  );
+}
+
+function isPrimitiveValue(raw: TSESTree.Node, sourceCode: SourceCode): boolean {
+  const node = peelTypes(raw);
+  switch (node.type) {
+    case AST_NODE_TYPES.Literal:
+      return !('regex' in node);
+    case AST_NODE_TYPES.TemplateLiteral:
+      return true;
+    case AST_NODE_TYPES.UnaryExpression:
+      return node.operator !== 'delete';
+    case AST_NODE_TYPES.Identifier:
+      return node.name === 'undefined' || isFixedValue(node, sourceCode);
+    default:
+      return false;
+  }
+}
+
+/**
  * True for `__proto__: value` written with a plain key, which sets the
  * object's prototype rather than an own key. A client reads `options.host`
  * through the prototype like any other key. A shorthand, computed or method

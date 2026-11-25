@@ -16,6 +16,7 @@ import type { JSONSchema4 } from '@typescript-eslint/utils/json-schema';
 import { createRule } from '../createRule';
 import { isHostPinned } from '../guards';
 import {
+  copiesOnlyPrimitives,
   isAuthorWritten,
   isChangedConstObject,
   isFixedValue,
@@ -384,13 +385,40 @@ export const noUserControlledFetchUrlRule = createRule<RuleOptions, MessageIds>(
       return AXIOS_BODY_METHODS.has(method) ? 'body-method' : 'method';
     }
 
-    /** True for a call that only reads `argument`: a call this rule reads, or a source of `Object.assign`. */
+    /**
+     * True for a call that only reads `argument`: a call this rule reads, or a
+     * source of `Object.assign` that nothing can change through the copy.
+     */
     function readsOptions(call: TSESTree.CallExpression, argument: TSESTree.Node): boolean {
       return (
         matchCallee(call, sockets, sourceCode) !== undefined ||
         matchCallee(call, callees, sourceCode) !== undefined ||
         axiosForm(call) !== undefined ||
-        (isObjectAssign(call, sourceCode) && call.arguments[0] !== argument)
+        (isObjectAssign(call, sourceCode) &&
+          call.arguments[0] !== argument &&
+          (copiesOnlyPrimitives(argument, sourceCode) || copyOnlyRead(call)))
+      );
+    }
+
+    /**
+     * True for `Object.assign({}, ...)` whose fresh copy goes straight into a
+     * call that only reads it, so no binding holds the copy and nothing can
+     * reach the nested values it shares with its sources.
+     */
+    function copyOnlyRead(call: TSESTree.CallExpression): boolean {
+      const target = call.arguments[0];
+      let outer: TSESTree.Node = call;
+      while (outer.parent !== undefined && peelTypes(outer.parent) === call) {
+        outer = outer.parent;
+      }
+      const parent = outer.parent;
+      return (
+        target !== undefined &&
+        peelTypes(target).type === AST_NODE_TYPES.ObjectExpression &&
+        parent?.type === AST_NODE_TYPES.CallExpression &&
+        parent.callee !== outer &&
+        parent.arguments.includes(outer as TSESTree.CallExpressionArgument) &&
+        readsOptions(parent, outer)
       );
     }
 

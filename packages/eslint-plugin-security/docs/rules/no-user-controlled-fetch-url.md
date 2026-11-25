@@ -65,7 +65,10 @@ The default `fetchCallees` cover `fetch`, `axios` with its methods, `axios(confi
 and `https.request`. An options or config object is read when it is an object literal, or an
 in-file `const` bound to one that nothing changes before the call (`opts.host = x`,
 `Object.assign(opts, ...)` or handing it to a helper makes it unreadable, and so does exporting
-it, since an importing module can change it: `as const` freezes only the type). `as`, `satisfies`,
+it, since an importing module can change it: `as const` freezes only the type). Copying it with
+`Object.assign({}, opts)` keeps it readable only when every value in it is a primitive, or when the
+fresh copy goes straight into the request call: the copy is shallow, so a nested object such as
+`proxy` stays shared and a write through the copy changes `opts` too. `as`, `satisfies`,
 `!` and `<T>` around the object or the `const` are seen through. Later keys win, a spread of such
 an object copies its keys, and a spread or computed key the rule cannot read (`...req.body`,
 `[key]: value`) is reported, since it may set any key. `__proto__: value` sets the prototype, which
