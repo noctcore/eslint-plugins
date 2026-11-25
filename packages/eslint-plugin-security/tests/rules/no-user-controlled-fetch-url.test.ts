@@ -192,6 +192,7 @@ ruleTester.run('no-user-controlled-fetch-url', noUserControlledFetchUrlRule, {
         "fetch('http://LOCALHOST:' + parseInt(port, 10) + '/x/' + id);",
         'fetch(new URL(`/api/${id}`, `https://127.0.0.1:${Number.parseInt(port)}`));',
         'fetch(`ws://localhost:${base + 1 - 1}#x`);',
+        'fetch(`http://localhost:${Math.max(1024, Math.floor(port))}/x`);',
         'const p = Number(port); fetch(`http://localhost:${p}/x`);',
       ].join('\n'),
       filename: TS,
@@ -207,6 +208,15 @@ ruleTester.run('no-user-controlled-fetch-url', noUserControlledFetchUrlRule, {
       code: "import config from './config'; const cli = loadConfig(); fetch(config.url); fetch(cli.url); https.get({ hostname: cli.host, path: '/x' }); log(config.url.replace(a, b));",
       filename: TS,
       options: [{ trustedSources: ['config', 'cli'] }],
+    },
+    // A hook the author wrote, reached through a later assignment or a callback's value.
+    {
+      code: "import { Agent } from 'node:https'; let a; a = new Agent({ keepAlive: true }); https.get({ hostname: 'api.example.com', agent: a });",
+      filename: TS,
+    },
+    {
+      code: "import { Agent } from 'node:https'; [new Agent()].forEach((agent) => https.get({ hostname: 'api.example.com', agent }));",
+      filename: TS,
     },
     // A host regex over a public suffix with one more literal label pinned.
     {
@@ -558,10 +568,12 @@ ruleTester.run('no-user-controlled-fetch-url', noUserControlledFetchUrlRule, {
         'fetch(`http://localhost${Number(port)}/x`);',
         'fetch(`http://user@localhost:${Number(port)}/x`);',
         'function f(Number) { return fetch(`http://localhost:${Number(port)}/x`); }',
+        'fetch(`http://localhost:${Math.constructor(port)}/x`);',
+        'fetch(`http://localhost:${Math.random.call(port)}/x`);',
       ].join('\n'),
       filename: TS,
       options: [{ allowLoopback: true }],
-      errors: Array.from({ length: 13 }, () => error),
+      errors: Array.from({ length: 15 }, () => error),
     },
     // Object.assign copies shallowly: a nested object stays shared with the copy.
     {
