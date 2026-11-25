@@ -293,7 +293,8 @@ spread), a template loaded from a file (`res.render('page', ...)`), engines othe
 EJS, a nunjucks output that is a function call or a literal, HTML written over several
 `res.write` calls (each is judged alone), HTML built in one function and sent from another unless
 through a helper that returns it (a parameter the helper writes no longer counts as the argument),
-helpers with more than declarations and one `return`,
+a helper that returns no markup and has more than declarations and one `return` (one that returns
+markup is read at every `return`),
 `DOMPurify.addHook`, a sanitizer config or default changed in another file, and whether a URL in `<script src>` or `<iframe src>` points at another host
 (a fixed scheme is all the rule checks there). `.replace` is taken to be the string method,
 without type information.
