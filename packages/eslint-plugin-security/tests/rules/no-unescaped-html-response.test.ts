@@ -317,6 +317,15 @@ ruleTester.run('no-unescaped-html-response', noUnescapedHtmlResponseRule, {
       code: "import { Controller, Get, Query, Res } from '@nestjs/common'; @Controller() class C { @Get() find(@Query('q') q: string, @Res() res) { res.json({ q }); return `<h1>${q}</h1>`; } }",
       filename: TS,
     },
+    {
+      code: "import * as common from '@nestjs/common'; @common.Controller() class C { @common.Get() @common.Header('Content-Type', 'application/json') find(@common.Query('q') q = '') { return `<h1>${q}</h1>`; } }",
+      filename: TS,
+    },
+    {
+      code: "import * as common from '@nestjs/common'; @common.Controller() class C { @common.Get() find(@common.Query('q') q = '', @common.Res() res = null) { res.json({ q }); return `<h1>${q}</h1>`; } }",
+      filename: TS,
+    },
+    { code: "export function h(req, res) { res.send(layout('<h1>'.concat(escapeHtml(req.query.q), '</h1>'))); }", filename: TS },
     { code: "class C { find(q: string) { return `<h1>${q}</h1>`; } }", filename: TS },
     // URLs, comments and meta content where the value is safe.
     { code: "export function h(req, res) { res.send(`<img src=\"data:image/png;base64,${encodeURIComponent(req.query.b)}\"><iframe src=\"https://x.test/?q=${encodeURIComponent(req.query.q)}\"></iframe>`); }", filename: TS },
@@ -901,6 +910,12 @@ ruleTester.run('no-unescaped-html-response', noUnescapedHtmlResponseRule, {
       filename: TS,
       errors: html,
     },
+    {
+      code: "import * as common from '@nestjs/common'; @common.Controller() class C { @common.Get() find(@common.Query('q') q = '') { return `<h1>${q}</h1>`; } }",
+      filename: TS,
+      errors: html,
+    },
+    { code: "export function h(req, res) { res.send(layout('<h1>'.concat(req.query.q, '</h1>'))); }", filename: TS, errors: html },
     // A `data:` page in a frame, comment ends browsers accept, and URL text written with character references.
     { code: "export function h(req, res) { res.send(`<iframe src=\"data:text/html,${escapeHtml(req.query.q)}\"></iframe>`); }", filename: TS, errors: where },
     { code: "export function h(req, res) { res.send(`<object data=\"data:text/html;base64,${encodeURIComponent(req.query.q)}\"></object>`); }", filename: TS, errors: where },
