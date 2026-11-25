@@ -7,6 +7,7 @@ const TSX = 'page.tsx';
 const html = [{ messageId: 'unescapedHtmlResponse' as const }];
 const where = [{ messageId: 'unsafeContext' as const }];
 const raw = [{ messageId: 'rawTemplateValue' as const }];
+const dollar = [{ messageId: 'dollarReplacement' as const }];
 
 const PURIFY = "import DOMPurify from 'isomorphic-dompurify';";
 const SANITIZE = "import sanitizeHtml from 'sanitize-html';";
@@ -953,11 +954,12 @@ ruleTester.run('no-unescaped-html-response', noUnescapedHtmlResponseRule, {
     {
       code: "const TPL = '<a href=\"{{url}}\">{{name}}</a>'; export function h(req, res) { res.send(TPL.replace(/\\{\\{name\\}\\}/g, escapeHtml(req.query.n)).replace('{{url}}', escapeHtml(req.query.u))); }",
       filename: TS,
-      errors: [...where, ...where],
+      errors: [...dollar, ...dollar],
     },
     // A string replacement applies `$` patterns, which escape-html leaves alone.
-    { code: "const TPL = '<h1>{{name}}</h1>'; export function h(req, res) { res.send(TPL.replace('{{name}}', escapeHtml(req.query.q))); }", filename: TS, errors: where },
-    { code: "export function h(req, res) { res.send('<div title=\"{{n}}\">x</div>'.replace('{{n}}', escapeHtml(req.query.q))); }", filename: TS, errors: where },
+    { code: "const TPL = '<h1>{{name}}</h1>'; export function h(req, res) { res.send(TPL.replace('{{name}}', escapeHtml(req.query.q))); }", filename: TS, errors: dollar },
+    { code: "export function h(req, res) { res.send('<div title=\"{{n}}\">x</div>'.replace('{{n}}', escapeHtml(req.query.q))); }", filename: TS, errors: dollar },
+    { code: "export function h(req, res) { res.send(`<p>${escapeHtml(req.query.a)}</p>`.replace('{{n}}', escapeHtml(req.query.q))); }", filename: TS, errors: dollar },
     // A later placeholder may be found inside an earlier value, and the replacement then lands there.
     {
       code: "const TPL = '<a href=\"{{url}}\">{{name}}</a>'; export function h(req, res) { res.send(TPL.replace('{{url}}', () => escapeHtml(req.query.u)).replace('{{name}}', () => escapeHtml(req.query.n))); }",
