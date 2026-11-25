@@ -1318,3 +1318,50 @@ ruleTester.run('no-shell-interpolation follow-ups', noShellInterpolationRule, {
     { code: checkedTwo('exec(`npm --prefix /srv ${x} ${t}`);'), filename: TS, errors: error },
   ],
 });
+
+/** A function whose `d` is unchecked and whose `cmd` is built from it before `body`. */
+const builtCmd = (body: string): string =>
+  `function run(d: string) { const cmd = \`dig +short \${d} A\`; ${body} } function forward<T>(value: T): T { return value; }`;
+/** The same with `d` checked against a shell-inert regex first. */
+const checkedCmd = (body: string): string =>
+  `function run(d: string) { if (!/^[a-z.]+$/.test(d)) return; const cmd = \`dig +short \${d} A\`; ${body} } function forward<T>(value: T): T { return value; }`;
+
+// The `sh -c` command moved through a holder, an element, a local identity
+// function, destructuring or a callback; shells started through `env`, long
+// valued options and args arrays held in a binding.
+ruleTester.run('no-shell-interpolation: sh -c command flows', noShellInterpolationRule, {
+  valid: [
+    // A proven command stays proven along an exact move.
+    ...[
+      "const holder = { value: cmd }; spawn('sh', ['-c', holder.value]);",
+      "const items = [cmd]; spawn('sh', ['-c', items[0]]);",
+      "const { value: picked } = { value: cmd }; spawn('sh', ['-c', picked]);",
+      "spawn('sh', ['-c', forward(cmd)]);",
+      "[cmd].forEach((relay) => { spawn('sh', ['-c', relay]); });",
+      "const args = ['-c', cmd]; spawn('sh', args);",
+      "spawn('/usr/bin/env', ['sh', '-c', cmd]);",
+    ].map((body) => ({ code: checkedCmd(body), filename: TS })),
+    // Static commands and programs that are not a shell.
+    { code: "const holder = { value: 'ls -la' }; spawn('sh', ['-c', holder.value]);", filename: TS },
+    { code: "const args = ['-c', 'dig +short example.com A']; spawn('sh', args);", filename: TS },
+    { code: "const args = ['./run.sh', target]; spawn('sh', args);", filename: TS },
+    { code: builtCmd("spawn('env', ['node', '-e', cmd]);"), filename: TS },
+    { code: builtCmd("spawn('env', ['-S', 'sh -c', cmd]);"), filename: TS },
+  ],
+  invalid: [
+    ...[
+      "const holder = { value: cmd }; spawn('sh', ['-c', holder.value]);",
+      "const items = [cmd]; execFile('bash', ['-lc', items[0]]);",
+      "const { value: picked } = { value: cmd }; spawn('sh', ['-c', picked]);",
+      "spawn('sh', ['-c', forward(cmd)]);",
+      "[cmd].forEach((relay) => { spawn('sh', ['-c', relay]); });",
+      "const args = ['-c', cmd]; spawn('sh', args);",
+      "const args = ['-c', `dig ${d}`] as const; spawnSync('bash', args);",
+      "spawn('/usr/bin/env', ['sh', '-c', cmd]);",
+      "spawn('env', ['-i', 'PATH=/bin', 'bash', '-lc', cmd]);",
+      "spawn('env', ['-u', 'HOME', '--', 'sh', '-c', cmd]);",
+      "spawn('bash', ['--rcfile', '/etc/app.rc', '-c', cmd]);",
+      "execFile('bash', ['--init-file', '/etc/app.rc', '-ic', cmd]);",
+    ].map((body) => ({ code: builtCmd(body), filename: TS, errors: error })),
+  ],
+});
