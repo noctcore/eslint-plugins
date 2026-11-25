@@ -916,7 +916,7 @@ function onlyReads(call: TSESTree.CallExpression | TSESTree.NewExpression, walk:
   }
   const methods = READING_METHODS[callee.object.name];
   const name = memberKey(callee);
-  if (callee.object.name === 'JSON' && name === 'stringify' && !isNoReplacer(call.arguments[1])) {
+  if (callee.object.name === 'JSON' && name === 'stringify' && !isNoReplacer(call.arguments[1], walk)) {
     return false;
   }
   return (
@@ -927,8 +927,11 @@ function onlyReads(call: TSESTree.CallExpression | TSESTree.NewExpression, walk:
   );
 }
 
-/** True when a `JSON.stringify` replacer is absent or cannot be a function: an array, `null`, `undefined`. */
-function isNoReplacer(argument: TSESTree.CallExpressionArgument | undefined): boolean {
+/**
+ * True when a `JSON.stringify` replacer is absent or cannot be a function:
+ * an array, `null`, or `undefined` when no binding of that name shadows it.
+ */
+function isNoReplacer(argument: TSESTree.CallExpressionArgument | undefined, walk: SourceWalk): boolean {
   if (argument === undefined) {
     return true;
   }
@@ -936,7 +939,7 @@ function isNoReplacer(argument: TSESTree.CallExpressionArgument | undefined): bo
   return (
     inner.type === AST_NODE_TYPES.ArrayExpression ||
     (inner.type === AST_NODE_TYPES.Literal && inner.value === null) ||
-    (inner.type === AST_NODE_TYPES.Identifier && inner.name === 'undefined')
+    (inner.type === AST_NODE_TYPES.Identifier && inner.name === 'undefined' && isUnshadowedGlobal(inner, walk))
   );
 }
 
