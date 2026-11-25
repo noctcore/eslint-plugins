@@ -285,9 +285,10 @@ ruleTester.run('no-unescaped-html-response', noUnescapedHtmlResponseRule, {
       filename: TS,
     },
     {
-      code: "export function h(req, res) { res.send(`<script type='text/x-template'><p>${escapeHtml(req.query.q)}</p></script>`); }",
+      code: "import serialize from 'serialize-javascript'; export function h(req, res) { res.send(`<script type=\"application/ld+json\">'${serialize(req.query.q)}'</script>`); }",
       filename: TS,
     },
+    { code: "export function h(req, res) { res.send(`<script type=\"text/plain\"><p>${escapeHtml(req.query.q)}</p></script>`); }", filename: TS },
     {
       code: "export function h(req, res) { res.send(`<script><!-- a --></script><p>${escapeHtml(req.query.q)}</p>`); }",
       filename: TS,
@@ -880,6 +881,17 @@ ruleTester.run('no-unescaped-html-response', noUnescapedHtmlResponseRule, {
       filename: TS,
       errors: where,
     },
+    // Only JSON and plain text never run; a library may compile and run any other type, and a character reference hides the type.
+    { code: "import serialize from 'serialize-javascript'; export function h(req, res) { res.send(`<script type=\"text/x-template\">'${serialize(req.query.q)}'</script>`); }", filename: TS, errors: where },
+    { code: "import serialize from 'serialize-javascript'; export function h(req, res) { res.send(`<script type=\"text/babel\">'${serialize(req.query.q)}'</script>`); }", filename: TS, errors: where },
+    { code: "import serialize from 'serialize-javascript'; export function h(req, res) { res.send(`<script type=\"text/jsx\">'${serialize(req.query.q)}'</script>`); }", filename: TS, errors: where },
+    { code: "import serialize from 'serialize-javascript'; export function h(req, res) { res.send(`<script type=\"text/typescript\">'${serialize(req.query.q)}'</script>`); }", filename: TS, errors: where },
+    { code: "import serialize from 'serialize-javascript'; export function h(req, res) { res.send(`<script type=\"text/javascript; charset=utf-8\">'${serialize(req.query.q)}'</script>`); }", filename: TS, errors: where },
+    { code: "import serialize from 'serialize-javascript'; export function h(req, res) { res.send(`<script type=\"text&#47;javascript\">'${serialize(req.query.q)}'</script>`); }", filename: TS, errors: where },
+    { code: "import serialize from 'serialize-javascript'; export function h(req, res) { res.send(`<script type=\"&#109;odule\">'${serialize(req.query.q)}'</script>`); }", filename: TS, errors: where },
+    { code: "import serialize from 'serialize-javascript'; export function h(req, res) { res.send(`<script type=\"text&sol;javascript\">'${serialize(req.query.q)}'</script>`); }", filename: TS, errors: where },
+    { code: "import serialize from 'serialize-javascript'; export function h(req, res) { res.send(`<script type=\"application&#47;json\">'${serialize(req.query.q)}'</script>`); }", filename: TS, errors: where },
+    { code: "export function h(req, res) { res.send(`<script type='text/x-template'><p>${escapeHtml(req.query.q)}</p></script>`); }", filename: TS, errors: where },
     // Markup passed through a call or tag from elsewhere, a placeholder, or an array accumulator.
     { code: "export function h(req, res) { res.send(layout(`<h1>${req.query.q}</h1>`)); }", filename: TS, errors: html },
     { code: "import dedent from 'dedent'; export function h(req, res) { res.send(dedent`<h1>${req.query.q}</h1>`); }", filename: TS, errors: html },
