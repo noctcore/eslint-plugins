@@ -314,42 +314,57 @@ const RUNTIME_PIECE = '\u0000';
 const MAX_ALIAS_CHAIN = 256;
 
 /**
- * State of one {@link nameShapes} reading. Bindings are read once each, in
- * the order of Tarjan's strongly connected components: a binding met again
- * while it is still being read is part of a cycle with every binding read
- * since. Only the first one is kept once the cycle closes: the others were
- * read with it still open (a runtime piece), so each is read again, with the
- * first one's shapes, when a later reading reaches it. That later reading
- * starts at the binding itself, which keeps its result, so a walk passes over
- * a cycle at most once per binding in it, and no result depends on the path,
- * depth or order the cycle was first reached by.
+ * State of one {@link nameShapes} reading. Bindings are found in the order of
+ * Tarjan's strongly connected components: a binding met again while it is
+ * still being read is part of a cycle with every binding read since, and
+ * stands for no shapes until the cycle closes. Then every binding of the
+ * cycle is computed to a fixed point (see {@link cycleShapes}), so each keeps
+ * every shape its writes allow, whatever binding, path or order the cycle was
+ * first reached by.
  */
 interface ShapeWalk {
   readonly done: Map<object, readonly string[] | null>;
   readonly open: Map<object, number>;
   readonly stack: object[];
+  /** The values written into each binding on the stack. */
+  readonly values: Map<object, readonly TSESTree.Expression[]>;
+  /** Bindings met again while still open: each is in a cycle, perhaps with itself alone. */
+  readonly reentered: Set<object>;
+  /** The current shapes of the cycle being computed to its fixed point. */
+  cycle: Map<object, readonly string[] | null> | undefined;
   /** Lowest stack index of an open binding the current reading met. */
   low: number;
   /** True once a chain passed {@link MAX_ALIAS_CHAIN}: results since then are not kept. */
   capped: boolean;
+  /** Drops shapes that cannot change the answer (see {@link isLocationName}); none when undefined. */
+  readonly keep: ((shape: string) => boolean) | undefined;
 }
 
-function shapeWalk(): ShapeWalk {
+function shapeWalk(keep?: (shape: string) => boolean): ShapeWalk {
   return {
     done: new Map(),
     open: new Map(),
     stack: [],
+    values: new Map(),
+    reentered: new Set(),
+    cycle: undefined,
     low: Number.POSITIVE_INFINITY,
     capped: false,
+    keep,
   };
+}
+
+/** The shapes a walk keeps (see {@link ShapeWalk.keep}). */
+function keptShapes(shapes: readonly string[], walk: ShapeWalk): readonly string[] {
+  const keep = walk.keep;
+  return keep === undefined ? shapes : shapes.filter((shape) => keep(shape));
 }
 
 /**
  * The shapes a header name can take: its author text, with
  * {@link RUNTIME_PIECE} for each runtime piece (`'Loc' + n` is `Loc\0`).
- * Null when the shapes are too many to list, which may be anything. A binding
- * met again inside its own values is a runtime piece there; `depth` bounds
- * only the nesting of templates and `+` inside one expression.
+ * Null when the shapes are too many to list, which may be anything. `depth`
+ * bounds only the nesting of templates and `+` inside one expression.
  */
 function nameShapes(
   node: TSESTree.Node,
@@ -359,7 +374,7 @@ function nameShapes(
 ): readonly string[] | null {
   const inner = unwrapExpression(node as TSESTree.Expression);
   if (inner.type === AST_NODE_TYPES.Literal) {
-    return typeof inner.value === 'string' ? [inner.value] : [String(inner.value)];
+    return keptShapes([typeof inner.value === 'string' ? inner.value : String(inner.value)], walk);
   }
   if (inner.type === AST_NODE_TYPES.Identifier) {
     return bindingShapes(inner, sourceCode, walk);
@@ -384,6 +399,29 @@ function nameShapes(
   return [RUNTIME_PIECE];
 }
 
+/** Both lists of shapes, or null past {@link MAX_JOINED_TEXTS}. */
+function unionShapes(first: readonly string[], second: readonly string[]): readonly string[] | null {
+  const shapes = [...new Set([...first, ...second])];
+  return shapes.length > MAX_JOINED_TEXTS ? null : shapes;
+}
+
+/** The shapes of every value in `values`, or null past {@link MAX_JOINED_TEXTS}. */
+function valuesShapes(
+  values: readonly TSESTree.Expression[],
+  sourceCode: Readonly<TSESLint.SourceCode>,
+  walk: ShapeWalk,
+): readonly string[] | null {
+  let shapes: readonly string[] | null = [];
+  for (const value of values) {
+    const more = nameShapes(value, sourceCode, walk);
+    shapes = more === null ? null : unionShapes(shapes, more);
+    if (shapes === null) {
+      return null;
+    }
+  }
+  return shapes;
+}
+
 /** The shapes of every value a binding is set to (see {@link ShapeWalk}). */
 function bindingShapes(
   identifier: TSESTree.Identifier,
@@ -391,9 +429,13 @@ function bindingShapes(
   walk: ShapeWalk,
 ): readonly string[] | null {
   const variable = findVariable(sourceCode.getScope(identifier), identifier);
-  const values = writtenValues(identifier, sourceCode);
-  if (variable === null || values === undefined) {
+  if (variable === null) {
     return [RUNTIME_PIECE];
+  }
+  // Only a binding whose values can be read is ever kept, so these come first.
+  const current = walk.cycle?.get(variable);
+  if (current !== undefined || walk.cycle?.has(variable) === true) {
+    return current ?? null;
   }
   const done = walk.done.get(variable);
   if (done !== undefined || walk.done.has(variable)) {
@@ -402,37 +444,87 @@ function bindingShapes(
   const open = walk.open.get(variable);
   if (open !== undefined) {
     walk.low = Math.min(walk.low, open);
+    walk.reentered.add(variable);
+    return [];
+  }
+  const values = writtenValues(identifier, sourceCode);
+  if (values === undefined) {
     return [RUNTIME_PIECE];
   }
-  if (walk.stack.length >= MAX_ALIAS_CHAIN) {
+  if (walk.cycle !== undefined || walk.stack.length >= MAX_ALIAS_CHAIN) {
+    // A binding a cycle's first reading never reached, or a chain too deep:
+    // the name may be anything.
     walk.capped = true;
     return null;
   }
   const index = walk.stack.length;
   walk.open.set(variable, index);
   walk.stack.push(variable);
+  walk.values.set(variable, values);
   const outerLow = walk.low;
   walk.low = index;
-  let shapes: string[] | null = [];
-  for (const value of values) {
-    const more = nameShapes(value, sourceCode, walk);
-    shapes = more === null ? null : [...new Set([...shapes, ...more])];
-    if (shapes === null || shapes.length > MAX_JOINED_TEXTS) {
-      shapes = null;
-      break;
-    }
-  }
+  let shapes = valuesShapes(values, sourceCode, walk);
   const low = walk.low;
   walk.low = Math.min(outerLow, low);
-  if (low >= index) {
-    for (const member of walk.stack.splice(index)) {
-      walk.open.delete(member);
+  if (low < index) {
+    // Still in an open cycle: its first binding computes this one again.
+    return shapes;
+  }
+  const members = walk.stack.splice(index);
+  for (const member of members) {
+    walk.open.delete(member);
+  }
+  if (members.length > 1 || walk.reentered.has(variable)) {
+    const cycle = walk.capped ? undefined : cycleShapes(members, sourceCode, walk);
+    shapes = cycle === undefined || walk.capped ? null : (cycle.get(variable) ?? null);
+    for (const member of members) {
+      walk.reentered.delete(member);
+      if (cycle !== undefined && !walk.capped) {
+        walk.done.set(member, cycle.get(member) ?? null);
+      }
     }
-    if (!walk.capped) {
-      walk.done.set(variable, shapes);
-    }
+  } else if (!walk.capped) {
+    walk.done.set(variable, shapes);
+  }
+  for (const member of members) {
+    walk.values.delete(member);
   }
   return shapes;
+}
+
+/**
+ * The shapes of every binding of a closed cycle, at their fixed point: each
+ * starts with no shapes and is read again, with the current shapes of the
+ * others, until none changes. Shapes only grow, and a binding past
+ * {@link MAX_JOINED_TEXTS} is null (may be anything) and stays so, so this
+ * ends after at most 17 rounds per binding.
+ */
+function cycleShapes(
+  members: readonly object[],
+  sourceCode: Readonly<TSESLint.SourceCode>,
+  walk: ShapeWalk,
+): Map<object, readonly string[] | null> {
+  const cycle = new Map<object, readonly string[] | null>(members.map((member) => [member, []]));
+  const outer = walk.cycle;
+  walk.cycle = cycle;
+  let changed = true;
+  while (changed) {
+    changed = false;
+    for (const member of members) {
+      const before = cycle.get(member);
+      if (before === null || before === undefined) {
+        continue;
+      }
+      const read = valuesShapes(walk.values.get(member) ?? [], sourceCode, walk);
+      const after = read === null ? null : unionShapes(before, read);
+      if (after === null || after.length !== before.length) {
+        cycle.set(member, after);
+        changed = true;
+      }
+    }
+  }
+  walk.cycle = outer;
+  return cycle;
 }
 
 /** Every shape a header name joined from pieces can take, or null past {@link MAX_JOINED_TEXTS}. */
@@ -442,13 +534,13 @@ function joinedShapes(
   walk: ShapeWalk,
   depth: number,
 ): readonly string[] | null {
-  let shapes = [''];
+  let shapes: readonly string[] = [''];
   for (const piece of pieces) {
     const options = typeof piece === 'string' ? [piece] : nameShapes(piece, sourceCode, walk, depth + 1);
     if (options === null) {
       return null;
     }
-    shapes = [...new Set(shapes.flatMap((shape) => options.map((option) => shape + option)))];
+    shapes = keptShapes([...new Set(shapes.flatMap((shape) => options.map((option) => shape + option)))], walk);
     if (shapes.length > MAX_JOINED_TEXTS) {
       return null;
     }
@@ -456,24 +548,49 @@ function joinedShapes(
   return shapes;
 }
 
-/** True when a name shape can read `location` in any case, each runtime piece standing for any text. */
-function shapeCanBeLocation(shape: string): boolean {
-  const pattern = shape
+/** A pattern for a name shape in lower case, each runtime piece standing for any text. */
+function shapePattern(shape: string): string {
+  return shape
     .toLowerCase()
     .split(RUNTIME_PIECE)
     .map((text) => text.replace(/[\\^$.*+?()[\]{}|]/gu, '\\$&'))
     .join('[^]*');
-  return new RegExp(`^${pattern}$`, 'u').test('location');
+}
+
+/** True when a name shape can read `location` in any case, each runtime piece standing for any text. */
+function shapeCanBeLocation(shape: string): boolean {
+  return new RegExp(`^${shapePattern(shape)}$`, 'u').test('location');
+}
+
+/**
+ * True when a name shape can still be part of `location` in any case: some
+ * run of its letters fits it. A shape that cannot can never make a joined
+ * name `Location`, since joining only adds text around it.
+ */
+function shapeCanBeInLocation(shape: string): boolean {
+  return new RegExp(shapePattern(shape), 'u').test('location');
 }
 
 /**
  * True when a header name is, or may be, `Location` in any case: a fixed
  * name, a name joined from pieces whose author text fits `Location`
- * (`'Loc' + n`), or one with too many fixed spellings to list. A name that
- * is runtime as a whole (`res.set(name, value)`) is not read.
+ * (`'Loc' + n`), or one with more than 16 spellings that can each still be
+ * part of `Location`. A name that is runtime as a whole
+ * (`res.set(name, value)`) is not read. Shapes no join can turn into
+ * `Location` (`'X-Trace'`, `'-B'`) are dropped as they are read, so a cycle
+ * that keeps adding such text (`r = x2 + '-B'`) reaches its fixed point.
  */
 function isLocationName(node: TSESTree.Node, sourceCode: Readonly<TSESLint.SourceCode>): boolean {
-  const shapes = nameShapes(node, sourceCode, shapeWalk());
+  const fits = new Map<string, boolean>();
+  const keep = (shape: string): boolean => {
+    let fit = fits.get(shape);
+    if (fit === undefined) {
+      fit = shapeCanBeInLocation(shape);
+      fits.set(shape, fit);
+    }
+    return fit;
+  };
+  const shapes = nameShapes(node, sourceCode, shapeWalk(keep));
   return (
     shapes === null ||
     shapes.some((shape) => !/^\u0000*$/u.test(shape) && shapeCanBeLocation(shape))

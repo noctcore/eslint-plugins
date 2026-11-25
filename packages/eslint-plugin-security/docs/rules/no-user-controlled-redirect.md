@@ -72,8 +72,11 @@ A redirect is also a `Location` header plus a 3xx status. On a receiver named in
   each argument after the status, so `res.writeHead(302, { Location: url }, undefined)` is read;
   a header name joined from fixed pieces (`'Loc' + 'ation'`) counts as `Location`, and so does a
   name whose runtime piece can finish it into `Location` (`'Loc' + n`) or that can hold more than
-  16 texts. A name passed down a chain of aliases is read whole, however long the chain; past 256
-  aliases in one chain it counts as `Location`.
+  16 texts that could each still be part of `Location` (text no join can turn into `Location`,
+  such as `X-Trace`, is left out of the count). A name passed down a chain of aliases is read
+  whole, however long the chain; past 256 aliases in one chain it counts as `Location`. Bindings
+  that write each other in a cycle are computed together to a fixed point, so each holds every
+  name its writes allow, whatever order the writes come in.
 
 Outside Express and Fastify, `Response.redirect(url)` (in the default `redirectCallees`) and the
 `headers` of `new Response(body, init)`, `new NextResponse(body, init)`, `Response.json(data, init)`
