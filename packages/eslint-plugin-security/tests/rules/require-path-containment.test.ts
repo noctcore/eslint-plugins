@@ -5,6 +5,7 @@ import { requirePathContainmentRule } from '../../src/rules/require-path-contain
 const TS = 'handler.ts';
 const ERR = [{ messageId: 'unguardedPathJoin' as const }];
 const FS = [{ messageId: 'unguardedFsPath' as const }];
+const HELPER = [{ messageId: 'unguardedFsHelper' as const }];
 
 ruleTester.run('require-path-containment', requirePathContainmentRule, {
   valid: [
@@ -124,11 +125,11 @@ ruleTester.run('require-path-containment', requirePathContainmentRule, {
       filename: TS,
     },
     {
-      code: "import { basename, join } from 'node:path'; import { rmSync } from 'node:fs'; function h(req) { const name = basename(req.query.u); if (['.', '..'].includes(name)) return; rmSync(join(BASE, name), { recursive: true }); }",
+      code: "import { basename, join } from 'node:path'; import { rmSync } from 'node:fs'; function h(req) { const name = basename(req.query.u); if (['', '.', '..'].includes(name)) return; rmSync(join(BASE, name), { recursive: true }); }",
       filename: TS,
     },
     {
-      code: "import { basename, join } from 'node:path'; import { rmSync } from 'node:fs'; function h(req) { const name = basename(req.query.u); if (name !== '..' && name !== '.') { rmSync(join(BASE, name), { recursive: true }); } }",
+      code: "import { basename, join } from 'node:path'; import { rmSync } from 'node:fs'; function h(req) { const name = basename(req.query.u); if (name && name !== '..' && name !== '.') { rmSync(join(BASE, name), { recursive: true }); } }",
       filename: TS,
     },
     // A regex that cannot match `.` or `..`.
@@ -200,7 +201,7 @@ ruleTester.run('require-path-containment', requirePathContainmentRule, {
     },
     // A deny regex written at the test is a new object each time: `g` keeps no state there.
     {
-      code: "import { basename, join } from 'node:path'; import fs from 'node:fs'; function h(req) { const n = basename(String(req.query.f)); if (/^\\.{1,2}$/g.test(n)) return; fs.rmSync(join(BASE, n), { recursive: true }); }",
+      code: "import { basename, join } from 'node:path'; import fs from 'node:fs'; function h(req) { const n = basename(String(req.query.f)); if (/^\\.{0,2}$/g.test(n)) return; fs.rmSync(join(BASE, n), { recursive: true }); }",
       filename: TS,
     },
     // `@fastify/static` serves under its registered root, or a fixed root the call passes.
@@ -218,7 +219,119 @@ ruleTester.run('require-path-containment', requirePathContainmentRule, {
     },
     // A fresh sticky regex is anchored at index 0 and matches both dot segments.
     {
-      code: "import { basename, join } from 'node:path'; import fs from 'node:fs'; function h(req) { const n = basename(String(req.query.f)); if (/^\\.{1,2}$/y.test(n)) return; fs.rmSync(join(BASE, n), { recursive: true }); }",
+      code: "import { basename, join } from 'node:path'; import fs from 'node:fs'; function h(req) { const n = basename(String(req.query.f)); if (/^\\.{0,2}$/y.test(n)) return; fs.rmSync(join(BASE, n), { recursive: true }); }",
+      filename: TS,
+    },
+    // An if that exits when the joined value is outside checks all that follows it, a later use or none.
+    {
+      code: "import path from 'node:path';\nfunction h(req, res) {\nconst full = path.resolve(BASE, req.params.f);\nif (!full.startsWith(BASE + path.sep)) throw new Error('outside');\n}",
+      filename: TS,
+    },
+    // A containment test that decides whether the sink runs, against a base that ends in a separator.
+    {
+      code: "import fs from 'node:fs';\nimport path from 'node:path';\nfunction h(req, res) {\nconst full = path.resolve(BASE, req.params.f);\nif (!full.startsWith(BASE + path.sep)) throw new Error('outside');\nreturn fs.readFileSync(full);\n}",
+      filename: TS,
+    },
+    {
+      code: "import fs from 'node:fs';\nimport path from 'node:path';\nfunction h(req, res) {\nconst full = path.resolve(BASE, req.params.f);\nif (full.startsWith(BASE + path.sep)) return fs.readFileSync(full);\n}",
+      filename: TS,
+    },
+    {
+      code: "import fs from 'node:fs';\nimport path from 'node:path';\nfunction h(req, res) {\nconst full = path.resolve(BASE, req.params.f);\nreturn full.startsWith(BASE + path.sep) && fs.readFileSync(full);\n}",
+      filename: TS,
+    },
+    {
+      code: "import fs from 'node:fs';\nimport path from 'node:path';\nfunction h(req, res) {\nconst full = path.resolve(BASE, req.params.f);\nconst rel = path.relative(BASE, full);\nif (rel === '..' || rel.startsWith('..' + path.sep) || path.isAbsolute(rel)) return;\nreturn fs.readFileSync(full);\n}",
+      filename: TS,
+    },
+    {
+      code: "import fs from 'node:fs';\nimport path from 'node:path';\nfunction h(req, res) {\nconst full = path.resolve(BASE, req.params.f);\nconst ok = full.startsWith(BASE + path.sep);\nif (!ok) return;\nreturn fs.readFileSync(full);\n}",
+      filename: TS,
+    },
+    {
+      code: "import fs from 'node:fs';\nimport path from 'node:path';\nfunction h(req, res) {\nconst full = path.resolve('/srv/data', req.params.f);\nif (!full.startsWith('/srv/data/')) return;\nreturn fs.readFileSync(full);\n}",
+      filename: TS,
+    },
+    {
+      code: "import fs from 'node:fs';\nimport { basename, join } from 'node:path';\nimport { fileURLToPath } from 'node:url';\nfunction h(req, res) {\nconst n = basename(req.query.f);\nif (n === '.' || n === '..') return;\nfs.readFileSync(join('/srv/users', n, 'profile.json'));\n}",
+      filename: TS,
+    },
+    // A root that confines the served file.
+    {
+      code: "import fs from 'node:fs';\nimport path from 'node:path';\nfunction h(req, res) {\nres.sendFile(req.params.f, { root: BASE });\n}",
+      filename: TS,
+    },
+    {
+      code: "import fs from 'node:fs';\nimport path from 'node:path';\nfunction h(req, res) {\nres.sendFile(req.params.f, { root: '/srv/files' });\n}",
+      filename: TS,
+    },
+    {
+      code: "import fs from 'node:fs';\nimport path from 'node:path';\nfunction h(req, res) {\nres.sendFile(req.params.f, { root: process.env.FILES || '/srv/files' });\n}",
+      filename: TS,
+    },
+    {
+      code: "import fs from 'node:fs';\nimport path from 'node:path';\nfunction h(req, res) {\nres.sendFile(req.params.f, { ...req.body.opts, root: BASE });\n}",
+      filename: TS,
+    },
+    {
+      code: "import fs from 'node:fs';\nimport path from 'node:path';\nfunction h(req, reply) {\nreply.sendFile(req.params.f, '/srv/files');\n}",
+      filename: TS,
+    },
+    // `''` refused beside `.` and `..` before a call that acts on a directory; a file read needs only `.` and `..`.
+    {
+      code: "import fs from 'node:fs';\nimport { basename, join } from 'node:path';\nimport { fileURLToPath } from 'node:url';\nfunction h(req, res) {\nconst n = basename(req.query.f);\nif (n === '' || n === '.' || n === '..') return;\nfs.rmSync(join(BASE, n), { recursive: true });\n}",
+      filename: TS,
+    },
+    {
+      code: "import fs from 'node:fs';\nimport { basename, join } from 'node:path';\nimport { fileURLToPath } from 'node:url';\nfunction h(req, res) {\nconst n = basename(req.query.f);\nif (!n || n === '.' || n === '..') return;\nfs.rmSync(join(BASE, n), { recursive: true });\n}",
+      filename: TS,
+    },
+    {
+      code: "import fs from 'node:fs';\nimport { basename, join } from 'node:path';\nimport { fileURLToPath } from 'node:url';\nfunction h(req, res) {\nconst n = basename(req.query.f);\nif (n.length === 0 || n === '.' || n === '..') return;\nfs.rmSync(join(BASE, n), { recursive: true });\n}",
+      filename: TS,
+    },
+    {
+      code: "import fse from 'fs-extra';\nimport { basename, join } from 'node:path';\nfunction h(req, res) {\nconst n = basename(req.query.f);\nif (n === '.' || n === '..') return;\nfse.readJson(join(BASE, n));\n}",
+      filename: TS,
+    },
+    // A reassigned `let` helper, and a helper whose destructured key that reaches the sink is fixed.
+    {
+      code: "import fs from 'node:fs';\nimport path from 'node:path';\nlet read = (p) => fs.readFileSync(p);\nread = () => null;\nfunction h(req, res) {\nread(req.query.f);\n}",
+      filename: TS,
+    },
+    {
+      code: "import fs from 'node:fs';\nimport path from 'node:path';\nfunction read({ name, mode }) {\n  log(mode);\n  return fs.readFileSync(path.join(BASE, name));\n}\nfunction h(req, res) {\nread({ name: 'a.txt', mode: req.query.m });\n}",
+      filename: TS,
+    },
+    // The checked value's own method, a literal array join, and the global `String` keep the proof.
+    {
+      code: "import fs from 'node:fs';\nimport { basename, join } from 'node:path';\nimport { fileURLToPath } from 'node:url';\nfunction h(req, res) {\nconst n = basename(req.query.f);\nif (n === '.' || n === '..') return;\nfs.readFileSync(join(BASE, n.toLowerCase()));\n}",
+      filename: TS,
+    },
+    {
+      code: "import fs from 'node:fs';\nimport { basename, join } from 'node:path';\nimport { fileURLToPath } from 'node:url';\nfunction h(req, res) {\nconst n = basename(req.query.f);\nif (n === '.' || n === '..') return;\nfs.readFileSync(join(BASE, [n, 'txt'].join('.')));\n}",
+      filename: TS,
+    },
+    {
+      code: "import fs from 'node:fs';\nimport { basename, join } from 'node:path';\nimport { fileURLToPath } from 'node:url';\nfunction h(req, res) {\nconst n = basename(req.query.f);\nif (n === '.' || n === '..') return;\nfs.readFileSync(join(BASE, String(n)));\n}",
+      filename: TS,
+    },
+    // The tested path read back through an array, an object or a function that returns its parameter keeps its test.
+    {
+      code: "import fs from 'node:fs';\nimport path from 'node:path';\nfunction h(req, res) {\nconst full = path.resolve(BASE, req.params.f);\nif (!full.startsWith(BASE + path.sep)) return;\nconst items = [full];\nfs.createReadStream(items[0]).pipe(res);\n}",
+      filename: TS,
+    },
+    {
+      code: "import fs from 'node:fs';\nimport path from 'node:path';\nfunction h(req, res) {\nconst full = path.resolve(BASE, req.params.f);\nif (!full.startsWith(BASE + path.sep)) return;\nconst holder = { value: full };\nfs.createReadStream(holder.value).pipe(res);\n}",
+      filename: TS,
+    },
+    {
+      code: "import fs from 'node:fs';\nimport path from 'node:path';\nfunction forward(value) {\n  return value;\n}\nfunction h(req, res) {\nconst full = path.resolve(BASE, req.params.f);\nif (!full.startsWith(BASE + path.sep)) return;\nfs.createReadStream(forward(full)).pipe(res);\n}",
+      filename: TS,
+    },
+    // An array literal spread in place keeps argument positions: the path is `dest`, not the data.
+    {
+      code: "import fs from 'node:fs';\nimport path from 'node:path';\nfunction h(req, res) {\nconst dest = path.join(BASE, `${randomUUID()}.bin`);\nfs.promises.writeFile(...[dest], Buffer.from(req.body.content, 'base64'));\n}",
       filename: TS,
     },
   ],
@@ -778,6 +891,307 @@ ruleTester.run('require-path-containment', requirePathContainmentRule, {
     // A fresh sticky regex is anchored at index 0: `/\.$/y.test('..')` is false.
     {
       code: "import { basename, join } from 'node:path'; import fs from 'node:fs'; function h(req) {\n  const n = basename(String(req.query.f));\n  if (/\\.$/y.test(n)) return;\n  fs.rmSync(join(B, n), { recursive: true });\n}",
+      filename: TS,
+      errors: FS,
+    },
+    // A containment test counts only when its result decides whether the sink runs: one ignored, one that guards
+    // another statement, or one in a nested function reports at the fs call.
+    {
+      code: "import fs from 'node:fs';\nimport path from 'node:path';\nfunction h(req, res) {\nconst full = path.resolve(BASE, req.params.f);\nfull.startsWith(BASE + path.sep);\nreturn fs.readFileSync(full);\n}",
+      filename: TS,
+      errors: FS,
+    },
+    {
+      code: "import fs from 'node:fs';\nimport path from 'node:path';\nfunction h(req, res) {\nconst full = path.resolve(BASE, req.params.f);\nif (full.startsWith(BASE + path.sep)) log('inside');\nreturn fs.readFileSync(full);\n}",
+      filename: TS,
+      errors: FS,
+    },
+    {
+      code: "import fs from 'node:fs';\nimport path from 'node:path';\nfunction h(req, res) {\nconst full = path.resolve(BASE, req.params.f);\nconst check = () => {\n  if (!full.startsWith(BASE + path.sep)) throw new Error('outside');\n};\nreturn fs.readFileSync(full);\n}",
+      filename: TS,
+      errors: FS,
+    },
+    // With no later use, an if that does not exit or one in a nested function checks nothing: the join reports.
+    {
+      code: "import path from 'node:path';\nfunction h(req, res) {\nconst full = path.resolve(BASE, req.params.f);\nif (!full.startsWith(BASE + path.sep)) log('outside');\n}",
+      filename: TS,
+      errors: ERR,
+    },
+    {
+      code: "import path from 'node:path';\nfunction h(req, res) {\nconst full = path.resolve(BASE, req.params.f);\nconst check = () => {\n  if (!full.startsWith(BASE + path.sep)) throw new Error('outside');\n};\n}",
+      filename: TS,
+      errors: ERR,
+    },
+    // A test that is not a containment test reports at the resolve: a base with no trailing separator, a relative
+    // result not refused both when it climbs and when it is absolute, or one taken against '/' or the working directory.
+    {
+      code: "import fs from 'node:fs';\nimport path from 'node:path';\nfunction h(req, res) {\nconst full = path.resolve(BASE, req.params.f);\nfull.startsWith(BASE);\nreturn fs.readFileSync(full);\n}",
+      filename: TS,
+      errors: ERR,
+    },
+    {
+      code: "import fs from 'node:fs';\nimport path from 'node:path';\nfunction h(req, res) {\nconst full = path.resolve(BASE, req.params.f);\nconst ok = full.startsWith('/srv/data');\nif (!ok) throw new Error('outside');\nreturn fs.readFileSync(full);\n}",
+      filename: TS,
+      errors: ERR,
+    },
+    {
+      code: "import fs from 'node:fs';\nimport path from 'node:path';\nfunction h(req, res) {\nconst full = path.resolve(BASE, req.params.f);\nif (full.startsWith(BASE)) return fs.readFileSync(full);\n}",
+      filename: TS,
+      errors: ERR,
+    },
+    {
+      code: "import fs from 'node:fs';\nimport path from 'node:path';\nfunction h(req, res) {\nconst full = path.resolve(BASE, req.params.f);\nif (!full.startsWith(BASE)) throw new Error('outside');\nreturn fs.readFileSync(full);\n}",
+      filename: TS,
+      errors: ERR,
+    },
+    {
+      code: "import fs from 'node:fs';\nimport path from 'node:path';\nfunction h(req, res) {\nconst full = path.resolve(BASE, req.params.f);\npath.relative(BASE, full);\nreturn fs.readFileSync(full);\n}",
+      filename: TS,
+      errors: ERR,
+    },
+    {
+      code: "import fs from 'node:fs';\nimport path from 'node:path';\nfunction h(req, res) {\nconst full = path.resolve(BASE, req.params.f);\nconst rel = path.relative(BASE, full);\nif (rel === '') return;\nreturn fs.readFileSync(full);\n}",
+      filename: TS,
+      errors: ERR,
+    },
+    {
+      code: "import fs from 'node:fs';\nimport path from 'node:path';\nfunction h(req, res) {\nconst full = path.resolve(BASE, req.params.f);\nconst rel = path.relative(BASE, full);\nif (rel === '..' || rel.startsWith('..' + path.sep)) return;\nreturn fs.readFileSync(full);\n}",
+      filename: TS,
+      errors: ERR,
+    },
+    {
+      code: "import fs from 'node:fs';\nimport path from 'node:path';\nfunction h(req, res) {\nconst full = path.resolve(BASE, req.params.f);\nconst rel = path.relative('/', full);\nif (rel.startsWith('..') || path.isAbsolute(rel)) return;\nreturn fs.readFileSync(full);\n}",
+      filename: TS,
+      errors: ERR,
+    },
+    {
+      code: "import fs from 'node:fs';\nimport path from 'node:path';\nfunction h(req, res) {\nconst full = path.resolve(BASE, req.params.f);\nconst rel = path.relative(process.cwd(), full);\nif (rel.startsWith('..') || path.isAbsolute(rel)) return;\nreturn fs.readFileSync(full);\n}",
+      filename: TS,
+      errors: ERR,
+    },
+    // The same for a join whose result is not passed to an fs call.
+    {
+      code: "import fs from 'node:fs';\nimport path from 'node:path';\nfunction h(req, res) {\nconst full = path.join(BASE, req.params.f);\nfull.startsWith(BASE + path.sep);\nreturn full;\n}",
+      filename: TS,
+      errors: ERR,
+    },
+    {
+      code: "import fs from 'node:fs';\nimport path from 'node:path';\nfunction h(req, res) {\nconst full = path.join(BASE, req.params.f);\nif (full.startsWith(BASE + path.sep)) log('inside');\nreturn full;\n}",
+      filename: TS,
+      errors: ERR,
+    },
+    {
+      code: "import fs from 'node:fs';\nimport path from 'node:path';\nfunction h(req, res) {\nconst full = path.join(BASE, req.params.f);\nconst check = () => full.startsWith(BASE + path.sep);\nreturn full;\n}",
+      filename: TS,
+      errors: ERR,
+    },
+    {
+      code: "import fs from 'node:fs';\nimport path from 'node:path';\nfunction h(req, res) {\nconst full = path.join(BASE, req.params.f);\nif (!full.startsWith(BASE)) throw new Error('outside');\nreturn full;\n}",
+      filename: TS,
+      errors: ERR,
+    },
+    {
+      code: "import fs from 'node:fs';\nimport path from 'node:path';\nfunction h(req, res) {\nconst full = path.join(BASE, req.params.f);\nconst rel = path.relative(process.cwd(), full);\nif (rel.startsWith('..') || path.isAbsolute(rel)) throw new Error('outside');\nreturn full;\n}",
+      filename: TS,
+      errors: ERR,
+    },
+    // URL parsing and `fileURLToPath` decode `%2e%2e` after the dot check.
+    {
+      code: "import fs from 'node:fs';\nimport { basename, join } from 'node:path';\nimport { fileURLToPath } from 'node:url';\nfunction h(req, res) {\nconst n = basename(req.query.f);\nif (n === '.' || n === '..') return;\nfs.readFileSync(new URL(`./users/${n}/profile.json`, import.meta.url));\n}",
+      filename: TS,
+      errors: FS,
+    },
+    {
+      code: "import fs from 'node:fs';\nimport { basename, join } from 'node:path';\nimport { fileURLToPath } from 'node:url';\nfunction h(req, res) {\nconst n = basename(req.query.f);\nif (n === '.' || n === '..') return;\nfs.readFileSync(fileURLToPath(`file:///srv/users/${n}/profile.json`));\n}",
+      filename: TS,
+      errors: FS,
+    },
+    // A root that confines nothing: `'/'`, `''`, an environment value that may be unset or empty, or one a later
+    // spread may replace.
+    {
+      code: "import fs from 'node:fs';\nimport path from 'node:path';\nfunction h(req, res) {\nres.sendFile(req.params.f, { root: '/' });\n}",
+      filename: TS,
+      errors: FS,
+    },
+    {
+      code: "import fs from 'node:fs';\nimport path from 'node:path';\nfunction h(req, res) {\nres.sendFile(req.params.f, { root: '' });\n}",
+      filename: TS,
+      errors: FS,
+    },
+    {
+      code: "import fs from 'node:fs';\nimport path from 'node:path';\nfunction h(req, res) {\nres.sendFile(req.params.f, { root: process.env.FILES });\n}",
+      filename: TS,
+      errors: FS,
+    },
+    {
+      code: "import fs from 'node:fs';\nimport path from 'node:path';\nfunction h(req, res) {\nres.sendFile(req.params.f, { root: process.env.FILES ?? '/srv/files' });\n}",
+      filename: TS,
+      errors: FS,
+    },
+    // A root that may fall back to request input is still checked, once per call.
+    {
+      code: "import fs from 'node:fs';\nimport path from 'node:path';\nfunction h(req, res) {\nres.sendFile('a.txt', { root: process.env.FILES ?? req.query.dir });\n}",
+      filename: TS,
+      errors: FS,
+    },
+    {
+      code: "import fs from 'node:fs';\nimport path from 'node:path';\nfunction h(req, res) {\nres.sendFile(req.params.f, { root: process.env.FILES ?? req.query.dir });\n}",
+      filename: TS,
+      errors: FS,
+    },
+    {
+      code: "import fs from 'node:fs';\nimport path from 'node:path';\nfunction h(req, res) {\nres.sendFile(req.params.f, { root: BASE, ...req.body.opts });\n}",
+      filename: TS,
+      errors: FS,
+    },
+    {
+      code: "import fs from 'node:fs';\nimport path from 'node:path';\nfunction h(req, res) {\nres.download(req.params.f, 'report.pdf', { root: '/' });\n}",
+      filename: TS,
+      errors: FS,
+    },
+    {
+      code: "import fs from 'node:fs';\nimport path from 'node:path';\nfunction h(req, reply) {\nreply.sendFile(req.params.f, '/');\n}",
+      filename: TS,
+      errors: FS,
+    },
+    {
+      code: "import fs from 'node:fs';\nimport path from 'node:path';\nfunction h(req, reply) {\nreply.sendFile('a.txt', { ...req.query });\n}",
+      filename: TS,
+      errors: FS,
+    },
+    {
+      code: "import fs from 'node:fs';\nimport path from 'node:path';\nfunction h(req, reply) {\nreply.sendFile('a.txt', { root: BASE, ...req.body });\n}",
+      filename: TS,
+      errors: FS,
+    },
+    // A call that acts on a directory also needs `''` refused: `basename('/')` is `''`, and `join(BASE, '')` is BASE.
+    {
+      code: "import fs from 'node:fs';\nimport { basename, join } from 'node:path';\nimport { fileURLToPath } from 'node:url';\nfunction h(req, res) {\nconst n = basename(req.query.f);\nif (n === '.' || n === '..') return;\nfs.rmSync(join(BASE, n), { recursive: true });\n}",
+      filename: TS,
+      errors: FS,
+    },
+    {
+      code: "import { basename, join } from 'node:path'; import { rmSync } from 'node:fs'; function h(req) { const name = basename(req.query.u); if (['.', '..'].includes(name)) return; rmSync(join(BASE, name), { recursive: true }); }",
+      filename: TS,
+      errors: FS,
+    },
+    {
+      code: "import { basename, join } from 'node:path'; import { rmSync } from 'node:fs'; function h(req) { const name = basename(req.query.u); if (name !== '..' && name !== '.') { rmSync(join(BASE, name), { recursive: true }); } }",
+      filename: TS,
+      errors: FS,
+    },
+    {
+      code: "import { basename, join } from 'node:path'; import fs from 'node:fs'; function h(req) { const n = basename(String(req.query.f)); if (/^\\.{1,2}$/g.test(n)) return; fs.rmSync(join(BASE, n), { recursive: true }); }",
+      filename: TS,
+      errors: FS,
+    },
+    {
+      code: "import fse from 'fs-extra';\nimport { basename, join } from 'node:path';\nfunction h(req, res) {\nconst n = basename(req.query.f);\nif (n === '.' || n === '..') return;\nfse.emptyDir(join(BASE, n));\n}",
+      filename: TS,
+      errors: FS,
+    },
+    // fs-extra, and a nested destructure of `promises`.
+    {
+      code: "import fse from 'fs-extra';\nfunction h(req, res) {\nfse.readFile(req.query.f);\n}",
+      filename: TS,
+      errors: FS,
+    },
+    {
+      code: "import fse from 'fs-extra';\nfunction h(req, res) {\nfse.remove(req.query.f);\n}",
+      filename: TS,
+      errors: FS,
+    },
+    {
+      code: "import { outputFile } from 'fs-extra';\nfunction h(req, res) {\noutputFile(req.query.f, 'x');\n}",
+      filename: TS,
+      errors: FS,
+    },
+    {
+      code: "const fse = require('fs-extra');\nfunction h(req, res) {\nfse.copySync(req.query.f, '/tmp/x');\n}",
+      filename: TS,
+      errors: FS,
+    },
+    {
+      code: "const { promises: { readFile } } = require('fs');\nfunction h(req, res) {\nreadFile(req.query.f);\n}",
+      filename: TS,
+      errors: FS,
+    },
+    // A helper with a destructured parameter, or held in a `let` that is never reassigned.
+    {
+      code: "import fs from 'node:fs';\nimport path from 'node:path';\nfunction read({ name }) {\n  return fs.readFileSync(path.join(BASE, name));\n}\nfunction h(req, res) {\nread({ name: req.query.f });\n}",
+      filename: TS,
+      errors: HELPER,
+    },
+    {
+      code: "import fs from 'node:fs';\nimport path from 'node:path';\nfunction read({ opts: { name } }) {\n  return fs.readFileSync(path.join(BASE, name));\n}\nfunction h(req, res) {\nread({ opts: { name: req.query.f } });\n}",
+      filename: TS,
+      errors: HELPER,
+    },
+    {
+      code: "import fs from 'node:fs';\nimport path from 'node:path';\nfunction read([name]) {\n  return fs.readFileSync(path.join(BASE, name));\n}\nfunction h(req, res) {\nread([req.query.f]);\n}",
+      filename: TS,
+      errors: HELPER,
+    },
+    {
+      code: "import fs from 'node:fs';\nimport path from 'node:path';\nconst read = ({ name } = {}) => fs.readFileSync(path.join(BASE, name));\nfunction h(req, res) {\nread({ name: req.query.f });\n}",
+      filename: TS,
+      errors: HELPER,
+    },
+    {
+      code: "import fs from 'node:fs';\nimport path from 'node:path';\nfunction read({ name }) {\n  return fs.readFileSync(path.join(BASE, name));\n}\nfunction h(req, res) {\nread(req.query);\n}",
+      filename: TS,
+      errors: HELPER,
+    },
+    {
+      code: "import fs from 'node:fs';\nimport path from 'node:path';\nlet read = (p) => fs.readFileSync(p);\nfunction h(req, res) {\nread(req.query.f);\n}",
+      filename: TS,
+      errors: HELPER,
+    },
+    {
+      code: "import fs from 'node:fs';\nimport { basename, join } from 'node:path';\nimport { fileURLToPath } from 'node:url';\nlet remove = (n) => fs.rmSync(join(BASE, n), { recursive: true });\nfunction h(req, res) {\nconst n = basename(req.query.f);\nif (n === '.' || n === '..') return;\nremove(n);\n}",
+      filename: TS,
+      errors: HELPER,
+    },
+    // A method keeps the proof only on the checked value or a literal: not `qs.join(n)`, `lib.concat(n)` or
+    // `x.toString(n)`, and a local `String` is not the global one.
+    {
+      code: "import fs from 'node:fs';\nimport { basename, join } from 'node:path';\nimport { fileURLToPath } from 'node:url';\nfunction h(req, res) {\nconst n = basename(req.query.f);\nif (n === '.' || n === '..') return;\nfs.readFileSync(join(BASE, qs.join(n)));\n}",
+      filename: TS,
+      errors: FS,
+    },
+    {
+      code: "import fs from 'node:fs';\nimport { basename, join } from 'node:path';\nimport { fileURLToPath } from 'node:url';\nfunction h(req, res) {\nconst n = basename(req.query.f);\nif (n === '.' || n === '..') return;\nfs.readFileSync(join(BASE, lib.concat(n)));\n}",
+      filename: TS,
+      errors: FS,
+    },
+    {
+      code: "import fs from 'node:fs';\nimport { basename, join } from 'node:path';\nimport { fileURLToPath } from 'node:url';\nfunction h(req, res) {\nconst n = basename(req.query.f);\nif (n === '.' || n === '..') return;\nfs.readFileSync(join(BASE, x.toString(n)));\n}",
+      filename: TS,
+      errors: FS,
+    },
+    {
+      code: "import fs from 'node:fs';\nimport { basename, join } from 'node:path';\nimport { fileURLToPath } from 'node:url';\nconst String = (x) => decodeURIComponent(x);\nfunction h(req, res) {\nconst n = basename(req.query.f);\nif (n === '.' || n === '..') return;\nfs.readFileSync(join(BASE, String(n)));\n}",
+      filename: TS,
+      errors: FS,
+    },
+    // A decoder or a function that may change the text loses the test; a spread path is still a path.
+    {
+      code: "import fs from 'node:fs';\nimport path from 'node:path';\nfunction h(req, res) {\nconst full = path.resolve(BASE, req.params.f);\nif (!full.startsWith(BASE + path.sep)) return;\nfs.readFileSync(decodeURIComponent(full));\n}",
+      filename: TS,
+      errors: FS,
+    },
+    {
+      code: "import fs from 'node:fs';\nimport path from 'node:path';\nfunction pick(value) {\n  log(value);\n  return value;\n}\nfunction h(req, res) {\nconst full = path.resolve(BASE, req.params.f);\nif (!full.startsWith(BASE + path.sep)) return;\nfs.readFileSync(pick(full));\n}",
+      filename: TS,
+      errors: FS,
+    },
+    {
+      code: "import fs from 'node:fs';\nimport path from 'node:path';\nfunction h(req, res) {\nfs.readFile(...[req.query.f], cb);\n}",
+      filename: TS,
+      errors: FS,
+    },
+    {
+      code: "import fs from 'node:fs';\nimport path from 'node:path';\nfunction h(req, res) {\nconst args = [req.query.f];\nfs.readFile(...args, cb);\n}",
       filename: TS,
       errors: FS,
     },
