@@ -36,10 +36,14 @@ Precision is the whole point — this rule fires **only** on the genuinely dange
   same way, read where it lands (`spawn('sudo', [tool], { shell: true })` runs `tool` as a
   program). An args value that is not an inline array (a binding, a call, a spread) is reported.
 - **A shell as the program**, with no `shell` option (or a statically off one): `sh`, `bash`, `zsh`,
-  `dash`, `ksh`, `mksh`, `ash` or `fish` (by basename, `/bin/sh` too) told to run a command with
-  `-c` (also in a cluster such as `-lc`, after other options such as `-e` or `-o pipefail`), and
-  `cmd` / `cmd.exe` with `/c` or `/k`. The element the shell runs is checked like an `exec`
-  command when it is built from runtime parts here or in the `const` it names; for `cmd.exe` the
+  `dash`, `ksh`, `mksh`, `ash` or `fish` (by basename, `/bin/sh` too, also started through `env`
+  as in `spawn('/usr/bin/env', ['sh', '-c', cmd])`) told to run a command with `-c` (also in a
+  cluster such as `-lc`, after other options such as `-e`, `-o pipefail` or `--rcfile file`), and
+  `cmd` / `cmd.exe` with `/c` or `/k`. The args may be an inline array or a binding that holds one
+  (`const args = ['-c', cmd]`). The element the shell runs is checked like an `exec` command when
+  it is built from runtime parts here or in the `const` it names, also after it moves through a
+  holder (`holder.value`), an element (`items[0]`), destructuring, a local function that returns
+  its parameter or a callback (`[cmd].forEach((c) => ...)`); for `cmd.exe` the
   elements after it are more of the same line, so a runtime one there is checked too. The words after
   a POSIX shell's command are its `$0`, `$1` ..., which it does not re-parse.
 
@@ -304,10 +308,10 @@ export function status() {
 
 ### What the rule does not see
 
-A wrapper command that is not on the list above is not seen. A shell program reached some other way
-than an inline args array (`spawn('sh', args)`), through `env` (`spawn('env', ['bash', '-c', cmd])`)
-or PowerShell (`pwsh -Command`) is not read, and neither is an `sh -c` command held whole in a
-binding the rule cannot read as built text (a parameter, as with `exec(cmd)`).
+A wrapper command that is not on the list above is not seen. A shell program whose args come from a
+call or a spread (`spawn('sh', buildArgs())`), `env -S`, and PowerShell (`pwsh -Command`,
+`powershell -c`) are not read, and neither is an `sh -c` command held whole in a binding the rule
+cannot read as built text (a parameter, as with `exec(cmd)`).
 
 A checked array changed in place after the check (`parts.push(y)`, `parts[0] = y`) cancels the
 check. Handing it to a function, or storing it in an array or object, after the check also cancels

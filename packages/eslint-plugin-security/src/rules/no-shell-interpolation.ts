@@ -10,7 +10,7 @@ import type { JSONSchema4 } from '@typescript-eslint/utils/json-schema';
 import { createRule } from '../createRule';
 import { type GuardContext, isProvenSafeValue, peelStringWrappers } from '../guards';
 import { classifyShellParts, commandName, type ShellPart } from '../shell-words';
-import { callArguments, conventionalCallee, stringPieces } from '../value-flow';
+import { callArguments, conventionalCallee, flowSteps, stringPieces } from '../value-flow';
 
 const RULE_NAME = 'no-shell-interpolation';
 
@@ -419,34 +419,100 @@ function staticWord(
   return segments.every((segment) => typeof segment === 'string') ? segments.join('') : null;
 }
 
+/** `env` options that take no value. */
+const ENV_FLAGS: ReadonlySet<string> = new Set(['-', '-i', '--ignore-environment', '-0', '--null', '--']);
+
+/** Long shell options that take the next word as their value (`--rcfile x`). */
+const VALUED_LONG_SHELL_OPTIONS: ReadonlySet<string> = new Set(['--rcfile', '--init-file']);
+
+/** The array literal an args list is, or (as in `const args = ['-c', cmd]`) holds. */
+function argsArray(
+  list: TSESTree.Node,
+  sourceCode: Readonly<TSESLint.SourceCode>,
+): TSESTree.ArrayExpression | null {
+  for (const step of flowSteps(list, list, sourceCode, 'taint')) {
+    const value = unwrapTypeWrappers(step.node);
+    if (value.type === AST_NODE_TYPES.ArrayExpression) {
+      return value;
+    }
+  }
+  return null;
+}
+
 /**
- * For `spawn('sh', ['-c', cmd])` (or `execFile`, `bash -lc`, `cmd /c`)
- * run without a shell option, the element the shell reads as its command and,
- * for `cmd.exe`, the elements after it, which it reads as the rest of the
- * line. Null when the program is not a known shell, the args are not an
- * inline array or no command element is found.
+ * Where `env` (`spawn('/usr/bin/env', ['sh', '-c', cmd])`) names the program
+ * it runs, after its variable assignments and the options it knows, else -1.
+ */
+function envProgramIndex(
+  elements: TSESTree.ArrayExpression['elements'],
+  sourceCode: Readonly<TSESLint.SourceCode>,
+): number {
+  for (let index = 0; index < elements.length; index += 1) {
+    const element = elements[index];
+    if (element === null || element === undefined || element.type === AST_NODE_TYPES.SpreadElement) {
+      return -1;
+    }
+    const word = staticWord(element, sourceCode);
+    if (word === null) {
+      return -1;
+    }
+    if (word === '-u' || word === '--unset') {
+      index += 1;
+    } else if (!ENV_FLAGS.has(word) && !/^[A-Za-z_]\w*=/u.test(word) && !/^--unset=/u.test(word)) {
+      // Any other option (`-S` splits its value into words) is not read.
+      return /^-/u.test(word) ? -1 : index;
+    }
+  }
+  return -1;
+}
+
+/**
+ * For `spawn('sh', ['-c', cmd])` (or `execFile`, `bash -lc`, `cmd /c`,
+ * `/usr/bin/env sh -c`) run without a shell option, the element the shell
+ * reads as its command and, for `cmd.exe`, the elements after it, which it
+ * reads as the rest of the line. The args may be an array literal or a
+ * binding that holds one. Null when the program is not a known shell, the
+ * args are not such an array or no command element is found.
  */
 function shellProgramCommand(
   args: readonly TSESTree.CallExpressionArgument[],
   sourceCode: Readonly<TSESLint.SourceCode>,
-): { readonly node: TSESTree.Node; readonly rest: readonly TSESTree.Node[] } | null {
+): {
+  readonly node: TSESTree.Node;
+  readonly rest: readonly TSESTree.Node[];
+  readonly reportAt: TSESTree.Node;
+} | null {
   const [program, list] = args;
   if (program === undefined || program.type === AST_NODE_TYPES.SpreadElement) {
     return null;
   }
   const text = staticWord(program, sourceCode);
-  const array = list === undefined ? null : unwrapTypeWrappers(list);
-  if (text === null || array?.type !== AST_NODE_TYPES.ArrayExpression) {
+  const array = list === undefined || list.type === AST_NODE_TYPES.SpreadElement ? null : argsArray(list, sourceCode);
+  if (text === null || list === undefined || array === null) {
     return null;
   }
-  const name = commandName(text).toLowerCase().replace(/\.exe$/u, '');
+  // A list held in a binding is reported where the call reads it.
+  const inline = unwrapTypeWrappers(list) === array;
+  const at = (node: TSESTree.Node): TSESTree.Node => (inline ? node : list);
+  let name = commandName(text).toLowerCase().replace(/\.exe$/u, '');
+  let start = 0;
+  if (name === 'env') {
+    start = envProgramIndex(array.elements, sourceCode);
+    const shell = array.elements[start];
+    const word = start === -1 || shell === undefined || shell === null ? null : staticWord(shell, sourceCode);
+    if (word === null) {
+      return null;
+    }
+    name = commandName(word).toLowerCase().replace(/\.exe$/u, '');
+    start += 1;
+  }
   const windows = name === 'cmd';
   if (!windows && !POSIX_SHELLS.has(name)) {
     return null;
   }
   const elements = array.elements;
   let commandFlag = false;
-  for (let index = 0; index < elements.length; index += 1) {
+  for (let index = start; index < elements.length; index += 1) {
     const element = elements[index];
     if (element === null || element === undefined) {
       continue;
@@ -463,12 +529,12 @@ function shellProgramCommand(
           first === undefined ||
           rest.some((item) => item === null || item.type === AST_NODE_TYPES.SpreadElement)
           ? null
-          : { node: first, rest: rest.slice(1) as TSESTree.Node[] };
+          : { node: first, rest: rest.slice(1) as TSESTree.Node[], reportAt: at(first) };
       }
       continue;
     }
     if (commandFlag && (word === null || !/^[-+]/u.test(word))) {
-      return { node: element, rest: [] };
+      return { node: element, rest: [], reportAt: at(element) };
     }
     if (word === null) {
       // A runtime option before `-c` may be anything; nothing is read.
@@ -479,7 +545,7 @@ function shellProgramCommand(
     }
     if (/^-[a-zA-Z]*c[a-zA-Z]*$/u.test(word) || word === '--command') {
       commandFlag = true;
-    } else if (VALUED_SHELL_OPTIONS.test(word)) {
+    } else if (VALUED_SHELL_OPTIONS.test(word) || VALUED_LONG_SHELL_OPTIONS.has(word.toLowerCase())) {
       index += 1;
     } else if (!/^[-+]/u.test(word) && !commandFlag) {
       // A script path: the shell runs a file, not text from the call.
@@ -648,16 +714,27 @@ export const noShellInterpolationRule = createRule<RuleOptions, MessageIds>({
             ' ',
             ...commandSegments(part, context.sourceCode),
           ]);
-          if (
-            !buildsCommand(program.node, context.sourceCode) &&
-            rest.every((segment) => typeof segment === 'string')
-          ) {
+          // The command may reach the array through a holder, an element, a
+          // local identity function or a callback (`holder.value`). Its parts
+          // are proven only along an exact move; a looser one still reports.
+          const exact = flowSteps(program.node, node, context.sourceCode).find((step) =>
+            buildsCommand(step.node, context.sourceCode),
+          );
+          const built =
+            exact !== undefined ||
+            flowSteps(program.node, node, context.sourceCode, 'taint').some((step) =>
+              buildsCommand(step.node, context.sourceCode),
+            );
+          if (!built && rest.every((segment) => typeof segment === 'string')) {
             return;
           }
-          const segments = [...commandSegments(program.node, context.sourceCode), ...rest];
+          const segments = [
+            ...commandSegments(exact?.node ?? program.node, context.sourceCode),
+            ...rest,
+          ];
           if (!provenCommand(segments)) {
             context.report({
-              node: program.node,
+              node: program.reportAt,
               messageId: 'shellInterpolation',
               data: { callee: direct.name },
             });
