@@ -301,6 +301,10 @@ ruleTester.run('no-unescaped-html-response', noUnescapedHtmlResponseRule, {
     { code: "import utils from './utils'; utils.cache = new Map(); res.send('<p>' + utils.escapeHtml(q) + '</p>');", filename: TS, options: [{ sanitizers: ['utils.escapeHtml'] }] },
     { code: "const utils = require('./utils'); Object.assign(other, utils); res.send('<p>' + utils.escapeHtml(q) + '</p>');", filename: TS, options: [{ sanitizers: ['utils.escapeHtml'] }] },
     { code: `${PURIFY} DOMPurify.setConfig.apply(null, [{ ALLOWED_TAGS: ['b'] }]); res.send('<p>' + DOMPurify.sanitize(q) + '</p>');`, filename: TS },
+    { code: "import utils from './utils'; if (utils) { res.send('<p>' + utils.escapeHtml(q) + '</p>'); }", filename: TS, options: [{ sanitizers: ['utils.escapeHtml'] }] },
+    { code: "import utils from './utils'; const keys = Object.keys(utils); log(typeof utils, keys); res.send('<p>' + utils.escapeHtml(q) + '</p>');", filename: TS, options: [{ sanitizers: ['utils.escapeHtml'] }] },
+    { code: "import utils from './utils'; const u2 = utils; log(u2.version, u2.escapeHtml.name); res.send('<p>' + utils.escapeHtml(q) + '</p>');", filename: TS, options: [{ sanitizers: ['utils.escapeHtml'] }] },
+    { code: "globalThis.config = load(); res.send('<p>' + utils.escapeHtml(q) + '</p>');", filename: TS, options: [{ sanitizers: ['utils.escapeHtml'] }] },
     // A replacer function's result is written as is, with no `$` patterns.
     { code: "const TPL = '<h1>{{name}}</h1>'; export function h(req, res) { res.send(TPL.replace('{{name}}', () => escapeHtml(req.query.q))); }", filename: TS },
     { code: "const TPL = '<a href=\"/s?q={{q}}\">x</a>'; export function h(req, res) { res.send(TPL.replace('{{q}}', encodeURIComponent(req.query.q))); }", filename: TS },
@@ -870,6 +874,17 @@ ruleTester.run('no-unescaped-html-response', noUnescapedHtmlResponseRule, {
     { code: "import utils from './utils'; ({ a: [, ...utils.escapeHtml] } = { a: [] }); res.send('<p>' + utils.escapeHtml(q) + '</p>');", filename: TS, options: [{ sanitizers: ['utils.escapeHtml'] }], errors: html },
     { code: `${PURIFY} [DOMPurify.sanitize] = [(s) => s]; res.send('<p>' + DOMPurify.sanitize(q) + '</p>');`, filename: TS, errors: html },
     { code: `${PURIFY} ({ s: DOMPurify.sanitize } = { s: (s) => s }); res.send('<p>' + DOMPurify.sanitize(q) + '</p>');`, filename: TS, errors: html },
+    // Writes through a type assertion, an alias, `Reflect`, the global object, or the object handed on.
+    { code: "import utils from './utils'; ((utils as any).escapeHtml as unknown) = (s) => s; res.send('<p>' + utils.escapeHtml(q) + '</p>');", filename: TS, options: [{ sanitizers: ['utils.escapeHtml'] }], errors: html },
+    { code: "import utils from './utils'; const u2 = utils; u2.escapeHtml = (s) => s; res.send('<p>' + utils.escapeHtml(q) + '</p>');", filename: TS, options: [{ sanitizers: ['utils.escapeHtml'] }], errors: html },
+    { code: "import utils from './utils'; let u2; u2 = utils; u2.escapeHtml = (s) => s; res.send('<p>' + utils.escapeHtml(q) + '</p>');", filename: TS, options: [{ sanitizers: ['utils.escapeHtml'] }], errors: html },
+    { code: "import utils from './utils'; const u2 = utils || {}; u2.escapeHtml = (s) => s; res.send('<p>' + utils.escapeHtml(q) + '</p>');", filename: TS, options: [{ sanitizers: ['utils.escapeHtml'] }], errors: html },
+    { code: "import utils from './utils'; Reflect.set(utils, 'escapeHtml', (s) => s); res.send('<p>' + utils.escapeHtml(q) + '</p>');", filename: TS, options: [{ sanitizers: ['utils.escapeHtml'] }], errors: html },
+    { code: "import utils from './utils'; patch(utils); res.send('<p>' + utils.escapeHtml(q) + '</p>');", filename: TS, options: [{ sanitizers: ['utils.escapeHtml'] }], errors: html },
+    { code: "import utils from './utils'; app.locals.helpers = utils; res.send('<p>' + utils.escapeHtml(q) + '</p>');", filename: TS, options: [{ sanitizers: ['utils.escapeHtml'] }], errors: html },
+    { code: "globalThis.utils = { escapeHtml: (s) => s }; res.send('<p>' + utils.escapeHtml(q) + '</p>');", filename: TS, options: [{ sanitizers: ['utils.escapeHtml'] }], errors: html },
+    { code: "window.utils.escapeHtml = (s) => s; res.send('<p>' + utils.escapeHtml(q) + '</p>');", filename: TS, options: [{ sanitizers: ['utils.escapeHtml'] }], errors: html },
+    { code: "Object.assign(globalThis, { utils: { escapeHtml: (s) => s } }); res.send('<p>' + utils.escapeHtml(q) + '</p>');", filename: TS, options: [{ sanitizers: ['utils.escapeHtml'] }], errors: html },
     // A helper's parameter written in its body.
     {
       code: "function wrap(s) { const t = (s = other.q); return s; } res.send('<p>' + wrap(escapeHtml(q)) + '</p>');",
