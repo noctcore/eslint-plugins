@@ -235,10 +235,15 @@ function buildsMarkup(node: TSESTree.Node, depth = 0): boolean {
       return buildsMarkup(inner.left, depth + 1) || buildsMarkup(inner.right, depth + 1);
     case AST_NODE_TYPES.CallExpression: {
       const callee = unwrap(inner.callee);
+      if (callee.type !== AST_NODE_TYPES.MemberExpression) {
+        return false;
+      }
+      const method = propertyName(callee);
       return (
-        callee.type === AST_NODE_TYPES.MemberExpression &&
-        propertyName(callee) === 'join' &&
-        buildsMarkup(callee.object, depth + 1)
+        ((method === 'join' || method === 'concat' || method === 'replace' || method === 'replaceAll') &&
+          buildsMarkup(callee.object, depth + 1)) ||
+        (method === 'concat' &&
+          inner.arguments.some((arg) => arg.type !== AST_NODE_TYPES.SpreadElement && buildsMarkup(arg, depth + 1)))
       );
     }
     case AST_NODE_TYPES.ArrayExpression:
@@ -1654,6 +1659,16 @@ export const noUnescapedHtmlResponseRule = createRule<RuleOptions, MessageIds>({
         return null;
       }
       const callee = unwrap(expression.callee);
+      if (callee.type === AST_NODE_TYPES.MemberExpression) {
+        // `@common.Get()` on a namespace import or a `require` of the module.
+        const object = unwrap(callee.object);
+        const variable = object.type === AST_NODE_TYPES.Identifier ? judge.variableOf(object) : null;
+        const binding = variable === null ? undefined : judge.bindings.get(variable);
+        const name = propertyName(callee);
+        return binding?.module === '@nestjs/common' && (binding.imported === '*' || binding.imported === 'default') && name !== null
+          ? { name, call: expression }
+          : null;
+      }
       const variable = callee.type === AST_NODE_TYPES.Identifier ? judge.variableOf(callee) : null;
       const binding = variable === null ? undefined : judge.bindings.get(variable);
       return binding?.module === '@nestjs/common' ? { name: binding.imported, call: expression } : null;
@@ -1694,7 +1709,9 @@ export const noUnescapedHtmlResponseRule = createRule<RuleOptions, MessageIds>({
         return isScriptable(type);
       }
       const takesResponse = fn.params.some((param) =>
-        (param.type === AST_NODE_TYPES.Identifier || param.type === AST_NODE_TYPES.TSParameterProperty
+        (param.type === AST_NODE_TYPES.Identifier ||
+        param.type === AST_NODE_TYPES.AssignmentPattern ||
+        param.type === AST_NODE_TYPES.TSParameterProperty
           ? param.decorators
           : []
         ).some((decorator) => {

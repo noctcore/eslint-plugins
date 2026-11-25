@@ -71,8 +71,8 @@ The report is on that part. The bodies it reads:
 - `new Response(x, init)` and `new NextResponse(x, init)` (from `next/server`) whose `init` sets an
   HTML content type, as in a Next route handler: a literal, or a `const` headers object or
   `Headers` instance (with its `.set` / `.append` calls);
-- the return value of a Nest route handler (`@Get`, `@Post`, ... from `@nestjs/common`): the
-  Express platform sends a returned string as `text/html`. A `@Header('Content-Type', ...)` with a
+- the return value of a Nest route handler (`@Get`, `@Post`, ... from `@nestjs/common`, also
+  `@common.Get()` on a namespace import): the Express platform sends a returned string as `text/html`. A `@Header('Content-Type', ...)` with a
   type that is not HTML, `@Render`, `@Redirect`, `@Sse` or a `@Res()` / `@Next()` parameter
   leaves it alone. The Fastify platform sends a string as text, but the rule cannot tell the
   platform from the handler, so it reports there too.
