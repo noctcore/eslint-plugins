@@ -298,6 +298,8 @@ ruleTester.run('no-unescaped-html-response', noUnescapedHtmlResponseRule, {
     { code: "import { safeHtml } from 'common-tags'; export function h(req, res) { res.send(safeHtml`<h1>${req.query.q}</h1>`); }", filename: TS },
     { code: `export function h(req, res) { res.send(\`<a href="${' '.repeat(300)}/s?q=\${encodeURIComponent(req.query.q)}">x</a>\`); }`, filename: TS },
     { code: `export function h(req, res) { res.send(\`<a href="https${'\\t'.repeat(300)}://x.test/\${escapeHtml(req.query.q)}">x</a>\`); }`, filename: TS },    { code: "ejs.render('<p><%= bio %></p>', { ...opts, bio: escapeHtml(input) });", filename: TS },
+    { code: "import utils from './utils'; utils.cache = new Map(); res.send('<p>' + utils.escapeHtml(q) + '</p>');", filename: TS, options: [{ sanitizers: ['utils.escapeHtml'] }] },
+    { code: "const utils = require('./utils'); Object.assign(other, utils); res.send('<p>' + utils.escapeHtml(q) + '</p>');", filename: TS, options: [{ sanitizers: ['utils.escapeHtml'] }] },
     // A replacer function's result is written as is, with no `$` patterns.
     { code: "const TPL = '<h1>{{name}}</h1>'; export function h(req, res) { res.send(TPL.replace('{{name}}', () => escapeHtml(req.query.q))); }", filename: TS },
     { code: "const TPL = '<a href=\"/s?q={{q}}\">x</a>'; export function h(req, res) { res.send(TPL.replace('{{q}}', encodeURIComponent(req.query.q))); }", filename: TS },
@@ -843,6 +845,17 @@ ruleTester.run('no-unescaped-html-response', noUnescapedHtmlResponseRule, {
       options: [{ sanitizers: ['utils.escapeHtml'] }],
       errors: html,
     },
+    // A configured escaper name says nothing once this file writes it, the object it is read from, or that object's members.
+    { code: "let utils = require('./utils'); utils = { escapeHtml: (s) => s }; res.send('<p>' + utils.escapeHtml(q) + '</p>');", filename: TS, options: [{ sanitizers: ['utils.escapeHtml'] }], errors: html },
+    { code: "const utils = require('./utils'); utils.escapeHtml = (s) => s; res.send('<p>' + utils.escapeHtml(q) + '</p>');", filename: TS, options: [{ sanitizers: ['utils.escapeHtml'] }], errors: html },
+    { code: "import utils from './utils'; utils.escapeHtml = (s) => s; res.send('<p>' + utils.escapeHtml(q) + '</p>');", filename: TS, options: [{ sanitizers: ['utils.escapeHtml'] }], errors: html },
+    { code: "import utils from './utils'; Object.assign(utils, { escapeHtml: (s) => s }); res.send('<p>' + utils.escapeHtml(q) + '</p>');", filename: TS, options: [{ sanitizers: ['utils.escapeHtml'] }], errors: html },
+    { code: "import utils from './utils'; Object.defineProperty(utils, 'escapeHtml', { value: (s) => s }); res.send('<p>' + utils.escapeHtml(q) + '</p>');", filename: TS, options: [{ sanitizers: ['utils.escapeHtml'] }], errors: html },
+    { code: "utils.escapeHtml = (s) => s; res.send('<p>' + utils.escapeHtml(q) + '</p>');", filename: TS, options: [{ sanitizers: ['utils.escapeHtml'] }], errors: html },
+    { code: "import utils from './utils'; utils['escapeHtml'] = (s) => s; res.send('<p>' + utils.escapeHtml(q) + '</p>');", filename: TS, options: [{ sanitizers: ['utils.escapeHtml'] }], errors: html },
+    { code: "let escapeHtml = require('escape-html'); escapeHtml = (s) => s; res.send('<p>' + escapeHtml(q) + '</p>');", filename: TS, errors: html },
+    { code: "let escapeHtml = require('./esc'); escapeHtml = (s) => s; res.send('<p>' + escapeHtml(q) + '</p>');", filename: TS, errors: html },
+    { code: "escapeHtml = (s) => s; res.send('<p>' + escapeHtml(q) + '</p>');", filename: TS, errors: html },
     // A helper's parameter written in its body.
     {
       code: "function wrap(s) { const t = (s = other.q); return s; } res.send('<p>' + wrap(escapeHtml(q)) + '</p>');",
