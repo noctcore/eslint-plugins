@@ -258,6 +258,41 @@ ruleTester.run('no-unescaped-html-response', noUnescapedHtmlResponseRule, {
     { code: "ejs.render('<p><?= bio ?></p>', { bio: input }, { delimiter: '?' });", filename: TS },
     { code: "ejs.render('<p><%= bio %></p>', { bio: input }, { cache: true, filename: 'bio.ejs', rmWhitespace: true });", filename: TS },
     { code: "ejs.render('<p><?= bio ?></p>', { bio: input, delimiter: '?' });", filename: TS },
+    // Constant text, dotted escapers that are imported, and data blocks.
+    {
+      code: "import serialize from 'serialize-javascript'; const OPEN = 'window.S = '; export function h(req, res) { res.send(`<script>${OPEN}${serialize(req.query.q)}</script>`); }",
+      filename: TS,
+    },
+    {
+      code: "import utils from './utils'; res.send('<p>' + utils.escapeHtml(q) + '</p>');",
+      filename: TS,
+      options: [{ sanitizers: ['utils.escapeHtml'] }],
+    },
+    {
+      code: "const utils = require('./utils'); res.send('<p>' + utils.escapeHtml(q) + '</p>');",
+      filename: TS,
+      options: [{ sanitizers: ['utils.escapeHtml'] }],
+    },
+    {
+      code: "import serialize from 'serialize-javascript';\nexport function h(req, res) { res.send(`<script>var a = 1// n\nb / 2; var s = ${serialize(req.query.q)};</script>`); }",
+      filename: TS,
+    },
+    {
+      code: "import serialize from 'serialize-javascript';\nexport function h(req, res) { res.send(`<script>var a = [...b], c = 1.5 / 2, d = x\u00B7y / 2; var s = ${serialize(req.query.q)};</script>`); }",
+      filename: TS,
+    },
+    {
+      code: "import serialize from 'serialize-javascript'; export function h(req, res) { res.send(`<script type=\"application/json\" id=\"state\">${serialize(req.query.q)}</script>`); }",
+      filename: TS,
+    },
+    {
+      code: "export function h(req, res) { res.send(`<script type='text/x-template'><p>${escapeHtml(req.query.q)}</p></script>`); }",
+      filename: TS,
+    },
+    {
+      code: "export function h(req, res) { res.send(`<script><!-- a --></script><p>${escapeHtml(req.query.q)}</p>`); }",
+      filename: TS,
+    },
   ],
   invalid: [
     // A same-file function with a configured name is judged by its body, not its name.
@@ -707,5 +742,78 @@ ruleTester.run('no-unescaped-html-response', noUnescapedHtmlResponseRule, {
     { code: "ejs.render('<p><%= bio %></p>', { bio: input }, { outputFunctionName: 'echo' });", filename: TS, errors: raw },
     { code: "ejs.escapeXML = (s) => s; ejs.render('<p><%= bio %></p>', { bio: input });", filename: TS, errors: raw },
     { code: "ejs.delimiter = '?'; ejs.render('<p><?- bio ?></p>', { bio: input });", filename: TS, errors: raw },
+    // Constant text read as author text in a script.
+    {
+      code: "import serialize from 'serialize-javascript'; const OPEN = \"window.S = JSON.parse('\"; export function h(req, res) { res.send(`<script>${OPEN}${serialize(req.query.q)}')</script>`); }",
+      filename: TS,
+      errors: where,
+    },
+    {
+      code: "import serialize from 'serialize-javascript'; const Q = \"'\"; const OPEN = 'var s = ' + Q; export function h(req, res) { res.send(`<script>${OPEN}${serialize(req.query.q)}${Q}</script>`); }",
+      filename: TS,
+      errors: where,
+    },
+    // A dotted escaper name says nothing about an object, class or parameter of this file.
+    {
+      code: "const utils = { escapeHtml: (s) => s }; res.send('<p>' + utils.escapeHtml(q) + '</p>');",
+      filename: TS,
+      options: [{ sanitizers: ['utils.escapeHtml'] }],
+      errors: html,
+    },
+    {
+      code: "class Utils { static escapeHtml(s) { return s; } } res.send('<p>' + Utils.escapeHtml(q) + '</p>');",
+      filename: TS,
+      options: [{ sanitizers: ['Utils.escapeHtml'] }],
+      errors: html,
+    },
+    {
+      code: "function h(utils, q, res) { res.send('<p>' + utils.escapeHtml(q) + '</p>'); }",
+      filename: TS,
+      options: [{ sanitizers: ['utils.escapeHtml'] }],
+      errors: html,
+    },
+    // A helper's parameter written in its body.
+    {
+      code: "function wrap(s) { const t = (s = other.q); return s; } res.send('<p>' + wrap(escapeHtml(q)) + '</p>');",
+      filename: TS,
+      errors: html,
+    },
+    // A `<script>` inside an escaped script keeps the element open past `</script>`.
+    {
+      code: "export function h(req, res) { res.send(`<script><!--<script></script>\n${escapeHtml(req.query.q)}\n</script>`); }",
+      filename: TS,
+      errors: where,
+    },
+    {
+      code: "export function h(req, res) { res.send(`<script>/*<!--<SCRIPT>*/</script >${escapeHtml(req.query.q)}--></script>`); }",
+      filename: TS,
+      errors: where,
+    },
+    // Script lexer corners: comment ends, spreads, number dots, private names, name characters and escapes.
+    { code: "import serialize from 'serialize-javascript';\nexport function h(req, res) { res.send(`<script>var a = 1// n\ntypeof /'/; var s = '${serialize(req.query.q)}'</script>`); }", filename: TS, errors: where },
+    { code: "import serialize from 'serialize-javascript';\nexport function h(req, res) { res.send(`<script>a/**/in /'/; var s = '${serialize(req.query.q)}'</script>`); }", filename: TS, errors: where },
+    { code: "import serialize from 'serialize-javascript';\nexport function h(req, res) { res.send(`<script>var a = [...typeof /'/, '${serialize(req.query.q)}']</script>`); }", filename: TS, errors: where },
+    { code: "import serialize from 'serialize-javascript';\nexport function h(req, res) { res.send(`<script>var x = 1.\ntypeof /'/; var s = '${serialize(req.query.q)}'</script>`); }", filename: TS, errors: where },
+    { code: "import serialize from 'serialize-javascript';\nexport function h(req, res) { res.send(`<script>class A { #in = 4; f() { return this.#in / 2, '/ ${serialize(req.query.q)} ' } }</script>`); }", filename: TS, errors: where },
+    { code: "import serialize from 'serialize-javascript';\nexport function h(req, res) { res.send(`<script>var x\u00B7in = 4, r = x\u00B7in / 2, s = '/ ${serialize(req.query.q)} '</script>`); }", filename: TS, errors: where },
+    { code: "import serialize from 'serialize-javascript';\nexport function h(req, res) { res.send(`<script>var \\\\u{62}do = 4, r = \\\\u{62}do / 2, s = '/ ${serialize(req.query.q)} '</script>`); }", filename: TS, errors: where },
+    { code: "import serialize from 'serialize-javascript';\nexport function h(req, res) { res.send(`<script type=\"module\">export default /'/; var s = '${serialize(req.query.q)}'</script>`); }", filename: TS, errors: where },
+    { code: "import serialize from 'serialize-javascript';\nexport function h(req, res) { res.send(`<script>class A extends /'/.constructor {} var s = '${serialize(req.query.q)}'</script>`); }", filename: TS, errors: where },
+    // A data block still ends at `</script>`; a type the rule cannot read may be script.
+    {
+      code: "export function h(req, res) { res.send(`<script type=\"application/json\">${JSON.stringify(req.query.q)}</script>`); }",
+      filename: TS,
+      errors: html,
+    },
+    {
+      code: "import serialize from 'serialize-javascript'; export function h(req, res) { res.send(`<script type=\"${escapeHtml(type)}\">'${serialize(req.query.q)}'</script>`); }",
+      filename: TS,
+      errors: where,
+    },
+    {
+      code: "import serialize from 'serialize-javascript'; export function h(req, res) { res.send(`<script type=\" text/JavaScript \" type=\"application/json\">'${serialize(req.query.q)}'</script>`); }",
+      filename: TS,
+      errors: where,
+    },
   ],
 });
