@@ -597,6 +597,8 @@ function unwrapChain(node: TSESTree.Node): TSESTree.Node {
 
 /** Globals whose result is always a number. */
 const NUMBER_CALLS = new Set(['Number', 'parseInt', 'parseFloat']);
+/** `Math` methods that always return a number (`Math.constructor(x)` returns `x`). */
+const MATH_NUMBER_METHODS = new Set(['max', 'min', 'floor', 'trunc', 'round', 'abs', 'ceil']);
 const NUMBER_OPERATORS = new Set(['-', '*', '/', '%', '**', '|', '&', '^', '<<', '>>', '>>>']);
 
 /** True for an unshadowed global name read here. */
@@ -632,7 +634,7 @@ function isNumberExpression(node: TSESTree.Expression, sourceCode: Readonly<TSES
     !callee.computed &&
     callee.property.type === AST_NODE_TYPES.Identifier &&
     isGlobal(callee.object, sourceCode) &&
-    ((callee.object.name === 'Math' && callee.property.name !== 'toString') ||
+    ((callee.object.name === 'Math' && MATH_NUMBER_METHODS.has(callee.property.name)) ||
       (callee.object.name === 'Number' &&
         (callee.property.name === 'parseInt' || callee.property.name === 'parseFloat')))
   );

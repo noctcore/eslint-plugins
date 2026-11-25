@@ -368,8 +368,8 @@ A trusted source is a trusted origin, nothing more: what follows it must still c
 Integration tests often start a server on a random port and call it on loopback. With
 `allowLoopback`, a URL passes when its author-written text is `http://`, `https://`, `ws://` or
 `wss://`, then `localhost`, `127.0.0.1` or `[::1]` and a `:`, then a port the rule can see is a number
-(a number literal, `Number(x)`, `parseInt(x)`, `Number.parseInt(x)`, a `Math` call, unary `+` or `-`,
-or arithmetic other than `+`), then nothing or `/`, `?` or `#`:
+(a number literal, `Number(x)`, `parseInt(x)`, `Number.parseInt(x)`, `Math.max`, `min`, `floor`,
+`trunc`, `round`, `abs` or `ceil`, unary `+` or `-`, or arithmetic other than `+`), then nothing or `/`, `?` or `#`:
 
 ```ts good options={"allowLoopback":true}
 // with allowLoopback: true
