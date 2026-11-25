@@ -198,10 +198,13 @@ and character references in a URL (`&#106;avascript:`, `javascript&colon;`) are 
 the scheme is read. A meta `content` holds a URL when an earlier `http-equiv` is `refresh` (or not
 literal).
 
-A `<script>` whose first `type` attribute is a literal type that is not script (`application/json`,
-`text/template`) is a data block the browser never runs: only its `</script>` matters, as in a
-`<textarea>`. A JavaScript type, `module`, `importmap`, `speculationrules`, an empty type and a
-type with a runtime part stay script. The HTML escape states inside a script are followed: after
+A `<script>` whose first `type` attribute is a literal JSON or plain text type
+(`application/json`, `application/ld+json` and other `+json` types, `text/json`, `text/plain`) is a
+data block no script runs: only its `</script>` matters, as in a `<textarea>`. Any other type stays
+script, since the browser or a library may run it: a JavaScript type, `module`, `importmap`,
+`speculationrules`, `text/babel`, `text/x-template` (Vue reads `{{ }}` in it), a type with
+parameters (`text/javascript; charset=utf-8`), an empty type, a type with a runtime part and a type
+written with a character reference (`text&#47;javascript`). The HTML escape states inside a script are followed: after
 `<!--` then `<script>`, a `</script>` does not end the element until a `-->` comes first.
 
 ### What makes a value safe

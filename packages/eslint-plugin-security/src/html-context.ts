@@ -176,14 +176,14 @@ const CLOSED_SCHEME = /^([a-z\uE000][a-z\d+.\-\uE000]*):/iu;
 /** Schemes whose URL body is script. */
 const SCRIPT_SCHEMES = /^(?:javascript|vbscript)$/iu;
 /**
- * `type` values that leave a script to run: a JavaScript MIME type, `module`,
- * and the JSON blocks the browser reads itself (`importmap`, `speculationrules`).
- * Any other static type makes a data block.
+ * `type` values that make a data block no script ever runs: JSON and plain
+ * text. Every other type keeps the script reading: a JavaScript MIME type,
+ * `module`, the blocks the browser reads itself (`importmap` maps module URLs,
+ * `speculationrules`), types a library compiles and runs (`text/babel`,
+ * `text/x-template` for Vue, which reads `{{ }}` in it), and a JavaScript type
+ * with parameters (`text/javascript; charset=utf-8`).
  */
-const SCRIPT_TYPES = new RegExp(
-  '^(?:|module|importmap|speculationrules|(?:application|text)/(?:x-)?(?:ecmascript|javascript)|text/javascript1\\.[0-5]|text/(?:jscript|livescript))$',
-  'u',
-);
+const DATA_TYPES = /^(?:application\/(?:[a-z\d.-]+\+)?json|text\/json|text\/plain)$/u;
 const MAX_TYPE_LENGTH = 64;
 /** The longest URL prefix kept while it may still become a scheme. */
 const MAX_PREFIX = 256;
@@ -283,13 +283,14 @@ function endValue(state: HtmlState): HtmlState {
   if (KIND_ATTRIBUTES[state.tag] !== state.attr || state.kind !== undefined) {
     return next;
   }
-  // Browsers trim the value and ignore ASCII case; a runtime part may be anything.
+  // Browsers trim the value and ignore ASCII case; a runtime part may be anything, and a
+  // character reference (`text&#47;javascript`) is decoded before the type is read.
   const type = state.value.replace(/^[\t\n\f\r ]+|[\t\n\f\r ]+$/gu, '').toLowerCase();
-  const known = !type.includes(RUNTIME) && type.length <= MAX_TYPE_LENGTH;
+  const known = !type.includes(RUNTIME) && !type.includes('&') && type.length <= MAX_TYPE_LENGTH;
   if (state.tag === 'meta') {
     return { ...next, kind: known && type !== 'refresh' ? 'plain' : 'refresh' };
   }
-  return { ...next, kind: known && !SCRIPT_TYPES.test(type) ? 'data' : 'js' };
+  return { ...next, kind: known && DATA_TYPES.test(type) ? 'data' : 'js' };
 }
 
 function closeStartTag(state: HtmlState): HtmlState {
