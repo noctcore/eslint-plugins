@@ -863,6 +863,13 @@ ruleTester.run('no-unescaped-html-response', noUnescapedHtmlResponseRule, {
     { code: "let escapeHtml = require('escape-html'); escapeHtml = (s) => s; res.send('<p>' + escapeHtml(q) + '</p>');", filename: TS, errors: html },
     { code: "let escapeHtml = require('./esc'); escapeHtml = (s) => s; res.send('<p>' + escapeHtml(q) + '</p>');", filename: TS, errors: html },
     { code: "escapeHtml = (s) => s; res.send('<p>' + escapeHtml(q) + '</p>');", filename: TS, errors: html },
+    // A member written by destructuring assignment, at any depth.
+    { code: "import utils from './utils'; [utils.escapeHtml] = [(s) => s]; res.send('<p>' + utils.escapeHtml(q) + '</p>');", filename: TS, options: [{ sanitizers: ['utils.escapeHtml'] }], errors: html },
+    { code: "import utils from './utils'; ({ x: utils.escapeHtml } = { x: (s) => s }); res.send('<p>' + utils.escapeHtml(q) + '</p>');", filename: TS, options: [{ sanitizers: ['utils.escapeHtml'] }], errors: html },
+    { code: "import utils from './utils'; ({ x: utils.escapeHtml = (s) => s } = {}); res.send('<p>' + utils.escapeHtml(q) + '</p>');", filename: TS, options: [{ sanitizers: ['utils.escapeHtml'] }], errors: html },
+    { code: "import utils from './utils'; ({ a: [, ...utils.escapeHtml] } = { a: [] }); res.send('<p>' + utils.escapeHtml(q) + '</p>');", filename: TS, options: [{ sanitizers: ['utils.escapeHtml'] }], errors: html },
+    { code: `${PURIFY} [DOMPurify.sanitize] = [(s) => s]; res.send('<p>' + DOMPurify.sanitize(q) + '</p>');`, filename: TS, errors: html },
+    { code: `${PURIFY} ({ s: DOMPurify.sanitize } = { s: (s) => s }); res.send('<p>' + DOMPurify.sanitize(q) + '</p>');`, filename: TS, errors: html },
     // A helper's parameter written in its body.
     {
       code: "function wrap(s) { const t = (s = other.q); return s; } res.send('<p>' + wrap(escapeHtml(q)) + '</p>');",
