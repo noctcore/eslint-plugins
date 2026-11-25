@@ -448,6 +448,47 @@ function isGlobalName(node: TSESTree.Node, name: string, sourceCode: Readonly<TS
   return variable === null || variable.defs.length === 0;
 }
 
+const consoleChecked = new WeakMap<object, boolean>();
+
+/**
+ * True when the file may change what a `console` method does: `console` is
+ * used other than to call one of its methods (`console.log = f`,
+ * `Object.assign(console, ...)`, `const c = console`), or reached through
+ * another object or by its name as text (`globalThis.console`,
+ * `Reflect.set(globalThis, 'console', ...)`).
+ */
+function consoleMayChange(sourceCode: Readonly<TSESLint.SourceCode>): boolean {
+  const known = consoleChecked.get(sourceCode.ast);
+  if (known !== undefined) {
+    return known;
+  }
+  const globalScope = sourceCode.scopeManager?.globalScope;
+  const references = [
+    ...(globalScope?.through ?? []).filter((reference) => reference.identifier.name === 'console'),
+    ...(globalScope?.set.get('console')?.references ?? []),
+  ];
+  const calledOnly = references.every((reference) => {
+    const member = reference.identifier.parent;
+    return (
+      member?.type === AST_NODE_TYPES.MemberExpression &&
+      member.object === reference.identifier &&
+      member.parent?.type === AST_NODE_TYPES.CallExpression &&
+      member.parent.callee === member
+    );
+  });
+  const tokens = sourceCode.ast.tokens;
+  const byText = tokens.some(
+    (token, index) =>
+      (token.type === 'Identifier' &&
+        token.value === 'console' &&
+        (tokens[index - 1]?.value === '.' || tokens[index - 1]?.value === '?.')) ||
+      ((token.type === 'String' || token.type === 'Template') && token.value.includes('console')),
+  );
+  const result = !calledOnly || byText;
+  consoleChecked.set(sourceCode.ast, result);
+  return result;
+}
+
 /** The name a member reads: `a.push`, `a['push']`; else null. */
 function memberKey(member: TSESTree.MemberExpression): string | null {
   if (!member.computed) {
@@ -532,7 +573,8 @@ function argsUse(
     return elementRead && !isWriteTarget(used) && !calledWithThis ? read : change;
   }
   if (parent.type === AST_NODE_TYPES.TemplateLiteral) {
-    return read;
+    // A tag gets the array itself (`` t`${args}` ``), so only a plain template reads it.
+    return parent.parent?.type === AST_NODE_TYPES.TaggedTemplateExpression ? change : read;
   }
   if (parent.type === AST_NODE_TYPES.BinaryExpression && parent.operator === '+') {
     return read;
@@ -542,7 +584,11 @@ function argsUse(
   }
   if (parent.type === AST_NODE_TYPES.CallExpression && parent.callee !== node) {
     const callee = parent.callee;
-    if (callee.type === AST_NODE_TYPES.MemberExpression && isGlobalName(callee.object, 'console', sourceCode)) {
+    if (
+      callee.type === AST_NODE_TYPES.MemberExpression &&
+      isGlobalName(callee.object, 'console', sourceCode) &&
+      !consoleMayChange(sourceCode)
+    ) {
       return read;
     }
     const [first, second] = parent.arguments;
