@@ -1454,5 +1454,9 @@ ruleTester.run('no-shell-interpolation: sh -c args handed to a tag or a written 
     "Object.assign(console, { log: (a: string[]) => { a[1] = d; } }); const args = ['-c', 'ls']; console.log(args); spawn('sh', args);",
     "globalThis.console.log = (a: string[]) => { a[1] = d; }; const args = ['-c', 'ls']; console.log(args); spawn('sh', args);",
     "const c = console; c.log = (a: string[]) => { a[1] = d; }; const args = ['-c', 'ls']; console.log(args); spawn('sh', args);",
+    // `console` renamed in a destructuring pattern.
+    "const { console: c } = globalThis; c.log = (a: string[]) => { a[1] = d + ' y'; }; const args = ['-c', 'ls']; console.log(args); spawn('sh', args);",
+    "const g = globalThis; const { console: c } = g; Object.assign(c, { log: mutate }); const args = ['-c', 'ls']; console.log(args); spawn('sh', args);",
+    "function f({ console: c } = globalThis) { c.log = mutate; } f(); const args = ['-c', 'ls']; console.log(args); spawn('sh', args);",
   ].map((body) => ({ code: `function run(d: string) { ${body} }`, filename: TS, errors: error })),
 });
