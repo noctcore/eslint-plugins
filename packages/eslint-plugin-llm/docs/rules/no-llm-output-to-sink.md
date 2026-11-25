@@ -107,7 +107,11 @@ keeps the array.
 - The SQL text of Prisma's `$queryRawUnsafe` / `$executeRawUnsafe`.
 - `innerHTML` / `outerHTML` assignment, `insertAdjacentHTML`, `document.write`, and JSX
   `dangerouslySetInnerHTML={{ __html }}`.
-- The URL of `fetch`, when the model output sits where it can choose the host.
+- The URL of `fetch`, when the model output sits where it can choose the host: first, after a host
+  that no `/`, `?` or `#` has closed (`https://api.example.com${text}` and `https:///${text}` alike),
+  after a lone `/` (`/${text}` with `text = '/evil.com'`, also `/` then a tab, or `/\`), after only
+  spaces, or after relative text it can finish into a scheme (`h${text}` with
+  `text = 'ttps://evil.com'`).
 - The path arguments of `fs` functions (`readFile`, `writeFile`, `unlink`, `rm`, `rename`, ...),
   from `fs`, `fs.promises` or `fs/promises`.
 

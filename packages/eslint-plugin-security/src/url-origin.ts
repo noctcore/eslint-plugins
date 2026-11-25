@@ -301,6 +301,53 @@ function authorityClosedBy(rest: readonly Part[], originHead: boolean): boolean 
   return true;
 }
 
+/**
+ * Schemes that leave the page's origin, reach the file system or run script
+ * when a redirect or a request is sent to them. A relative prefix that can
+ * still grow into one of them (`h`, `java`, `dat`) does not pin the origin.
+ */
+const ORIGIN_MOVING_SCHEMES: readonly string[] = [
+  'http',
+  'https',
+  'ws',
+  'wss',
+  'ftp',
+  'ftps',
+  'sftp',
+  'file',
+  'data',
+  'blob',
+  'filesystem',
+  'javascript',
+  'vbscript',
+  'livescript',
+  'view-source',
+  'jar',
+  'intent',
+  'gopher',
+  'ldap',
+  'ldaps',
+  'dict',
+  'tftp',
+  'telnet',
+  'smb',
+];
+
+/**
+ * True when relative text made only of scheme characters can still become one
+ * of {@link ORIGIN_MOVING_SCHEMES} once the runtime part after it supplies the
+ * rest and a `:` (`h` then `ttps://evil.com`). Text no such scheme starts
+ * with (`page`, `users`, `api`) can only become a scheme the browser and
+ * `fetch` do not follow, or a path.
+ */
+function canStartOriginMovingScheme(prefix: string): boolean {
+  const lower = prefix.toLowerCase();
+  return (
+    /^[a-z][a-z0-9+.-]*$/u.test(lower) &&
+    ORIGIN_MOVING_SCHEMES.some((scheme) => scheme.startsWith(lower))
+  );
+}
+
 /** Whether author-written text before the first runtime part fully determines the origin. */
 function prefixPinsOrigin(rawPrefix: string): boolean {
   // Analyse the prefix the way the browser (WHATWG URL) will: leading spaces
@@ -327,9 +374,9 @@ function prefixPinsOrigin(rawPrefix: string): boolean {
     // Relative URL. Safe, except a lone `/` (the runtime part can begin with
     // `/` and turn it into a protocol-relative `//evil.com`) or nothing left
     // once the parser drops what it drops (`' '` then the whole URL), or text
-    // made only of scheme characters, which the runtime part can finish into a
-    // scheme (`h` then `ttps://evil.com`, `java` then `script:alert(1)`).
-    return prefix !== '/' && prefix !== '' && !/^[a-z][a-z0-9+.-]*$/iu.test(prefix);
+    // the runtime part can finish into a scheme that moves the origin
+    // (`h` then `ttps://evil.com`, `java` then `script:alert(1)`).
+    return prefix !== '/' && prefix !== '' && !canStartOriginMovingScheme(prefix);
   }
 
   // Absolute or protocol-relative: the authority must END inside the literal

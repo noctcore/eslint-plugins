@@ -38,9 +38,11 @@ regresses, nothing at the redirect site says so. This rule does.
 The URL argument of each configured redirect callee goes through the same fixed-origin analysis as
 `no-user-controlled-fetch-url`: author-written text, in-file `const` resolution, `+`, `new URL(input,
 base)`. A same-origin relative path passes; a runtime host, a runtime value right after a lone `/`,
-a runtime value right after relative text made only of scheme characters (`` `h${x}` `` with
-`x = 'ttps://evil.com'`), or a runtime value right after an origin that no `/`, `?` or `#` has
-closed is flagged.
+a runtime value right after relative text that can still grow into a scheme which leaves the
+origin or runs script (`` `h${x}` `` with `x = 'ttps://evil.com'`, `java`, `dat`, `vb`, in any
+case), or a runtime value right after an origin that no `/`, `?` or `#` has closed is flagged.
+Relative text no such scheme starts with (`` `page${x}` ``, `` `users${id}` ``) passes: the runtime
+part can only turn it into a path or a scheme that does not leave the site.
 
 The analysis judges the target's origin, not where the value came from, so a URL read from the
 database (a stored open redirect) or from the `Host` header counts the same as one read from the
@@ -67,7 +69,9 @@ A redirect is also a `Location` header plus a 3xx status. On a receiver named in
   `Reflect.set(headers, 'Location', url)`, `Object.defineProperty(headers, 'Location', { value })`
   (or `{ get }`), or an index write of a pair (`headers[0] = ['Location', url]`). `writeHead` reads
   each argument after the status, so `res.writeHead(302, { Location: url }, undefined)` is read;
-  a header name joined from fixed pieces (`'Loc' + 'ation'`) counts as `Location`.
+  a header name joined from fixed pieces (`'Loc' + 'ation'`) counts as `Location`, and so does a
+  name whose runtime piece can finish it into `Location` (`'Loc' + n`) or that can hold more than
+  16 texts.
 
 Outside Express and Fastify, `Response.redirect(url)` (in the default `redirectCallees`) and the
 `headers` of `new Response(body, init)`, `new NextResponse(body, init)`, `Response.json(data, init)`
@@ -79,8 +83,10 @@ from one of those constructors, from a static call on `Response` or `NextRespons
 
 SvelteKit's `redirect(status, location)` puts the target second. The default `redirect` sink reads
 argument 1 when argument 0 is a number literal (`redirect(302, url)`) or when `redirect` is imported
-from `@sveltejs/kit`, under any name or through a namespace import (`kit.redirect(303, url)`);
-`redirect(url)` is read at argument 0.
+from `@sveltejs/kit`, under any name or through a namespace import (`kit.redirect(status, url)`),
+and argument 1 is there and is not a number literal. `redirect(url)` is read at argument 0, and so
+is a kit call with one argument or a number literal second (`redirect(next)`,
+`redirect(next, 302)`): SvelteKit throws on those at run time, but they still name the target.
 
 A sink after calls that return the response is still on the response:
 `res.status(302).set('Location', url)`, `reply.code(302).header('Location', url)` and
@@ -272,7 +278,7 @@ Default `redirectCallees`:
 
 | Call | URL argument |
 | --- | --- |
-| `redirect(url)` (Next.js, Remix, React Router), `redirect(status, url)` (SvelteKit) | 0, or 1 after a number literal or for an `@sveltejs/kit` import |
+| `redirect(url)` (Next.js, Remix, React Router), `redirect(status, url)` (SvelteKit) | 0, or 1 after a number literal or for an `@sveltejs/kit` import with a second argument that is not a number literal |
 | `NextResponse.redirect(url)` | 0 |
 | `reply.redirect(url)` (Fastify v5) | 0 |
 | `res.redirect([status,] url)` (Express) | last |
@@ -331,8 +337,7 @@ The header name and the headers holder are read in the same file: a name importe
 module, a receiver under another name (`const r = res`), a destructured method
 (`const { setHeader } = res`) or a holder filled by a helper are not seen. Also not seen:
 
-- a header name only known at run time (`res.setHeader(name, url)`), or joined from more than 16
-  possible texts;
+- a header name only known at run time as a whole (`res.setHeader(name, url)`);
 - `Object.defineProperties`, a getter's `return` nested in a block, and an index write that puts
   the name and the value in separate slots (`hd[0] = 'Location'; hd[1] = url`);
 - `r.headers.set(...)` on a response the rule cannot trace to a `Response` or `NextResponse` call

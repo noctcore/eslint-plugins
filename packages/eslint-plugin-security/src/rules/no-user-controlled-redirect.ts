@@ -163,75 +163,19 @@ function writtenValues(
   return values;
 }
 
-/**
- * The texts a string the author fixed can hold: a literal, a template without
- * values, or a binding only ever set to those (`const L = 'Location'`). Empty
- * when any part is runtime.
- */
-function staticTexts(
-  node: TSESTree.Node,
-  sourceCode: Readonly<TSESLint.SourceCode>,
-  depth = 0,
-): string[] {
-  const inner = unwrapExpression(node as TSESTree.Expression);
-  if (inner.type === AST_NODE_TYPES.Literal) {
-    return typeof inner.value === 'string' ? [inner.value] : [];
-  }
-  if (inner.type === AST_NODE_TYPES.TemplateLiteral && inner.expressions.length === 0) {
-    const cooked = inner.quasis[0]?.value.cooked;
-    return cooked == null ? [] : [cooked];
-  }
-  if (inner.type === AST_NODE_TYPES.TemplateLiteral && depth < MAX_NAME_DEPTH) {
-    const pieces: (string | TSESTree.Node)[] = [];
-    inner.quasis.forEach((quasi, index) => {
-      pieces.push(quasi.value.cooked ?? quasi.value.raw);
-      const expression = inner.expressions[index];
-      if (expression !== undefined) {
-        pieces.push(expression);
-      }
-    });
-    return joinedTexts(pieces, sourceCode, depth);
-  }
-  if (inner.type === AST_NODE_TYPES.BinaryExpression && inner.operator === '+' && depth < MAX_NAME_DEPTH) {
-    return joinedTexts([inner.left, inner.right], sourceCode, depth);
-  }
-  if (inner.type === AST_NODE_TYPES.Identifier && depth < MAX_NAME_DEPTH) {
-    return (writtenValues(inner, sourceCode) ?? []).flatMap((value) =>
-      staticTexts(value, sourceCode, depth + 1),
-    );
-  }
-  return [];
-}
-
 const MAX_JOINED_TEXTS = 16;
 
 /**
- * Every text a string joined from fixed pieces can hold (`'Loc' + 'ation'`),
- * or none when a piece is runtime or there are too many to list.
+ * The one text a string the author fixed holds: a literal, a template, a `+`
+ * or a binding only ever set to those (`const L = 'Location'`), with runtime
+ * values left out (see {@link nameShapes}); else undefined.
  */
-function joinedTexts(
-  pieces: readonly (string | TSESTree.Node)[],
-  sourceCode: Readonly<TSESLint.SourceCode>,
-  depth: number,
-): string[] {
-  let texts = [''];
-  for (const piece of pieces) {
-    const options = typeof piece === 'string' ? [piece] : staticTexts(piece, sourceCode, depth + 1);
-    texts = texts.flatMap((text) => options.map((option) => text + option));
-    if (texts.length === 0 || texts.length > MAX_JOINED_TEXTS) {
-      return [];
-    }
-  }
-  return texts;
-}
-
-/** The one text a fixed string holds (see {@link staticTexts}), else undefined. */
 function staticText(
   node: TSESTree.Node,
   sourceCode: Readonly<TSESLint.SourceCode>,
 ): string | undefined {
-  const texts = staticTexts(node, sourceCode);
-  return texts.length === 1 ? texts[0] : undefined;
+  const texts = nameShapes(node, sourceCode, new Map())?.filter((shape) => !shape.includes(RUNTIME_PIECE));
+  return texts?.length === 1 ? texts[0] : undefined;
 }
 
 /** The name of a member's property: `res.set`, `res['set']`, `res[SET]`. */
@@ -323,34 +267,153 @@ function matchRedirectCallee(
       );
 }
 
+/** True when a call argument is a number literal: a status code, never a target. */
+function isNumberArgument(node: TSESTree.CallExpressionArgument | undefined): boolean {
+  const inner =
+    node === undefined || node.type === AST_NODE_TYPES.SpreadElement ? undefined : unwrapExpression(node);
+  return inner?.type === AST_NODE_TYPES.Literal && typeof inner.value === 'number';
+}
+
 /**
- * The spec with the URL moved to argument 1 for a status-first call:
- * SvelteKit's `redirect(status, location)`, known by its import from
- * `@sveltejs/kit`, or any call whose argument 0 is a number literal (a status
- * code is never the target). Specs that name another argument are left alone.
+ * The redirect targets a call names. A status-first call reads argument 1:
+ * any call whose argument 0 is a number literal, and SvelteKit's
+ * `redirect(status, location)` (known by its import from `@sveltejs/kit`)
+ * when argument 1 exists and is not itself a number literal. A kit call with
+ * one argument, or a number literal second (`redirect(next)`,
+ * `redirect(next, 302)`, which SvelteKit rejects at run time), reads
+ * argument 0. Specs that name another argument are left alone.
  */
-function statusFirst(
+function redirectTargets(
   node: TSESTree.CallExpression,
   spec: UrlCalleeSpec,
   sourceCode: Readonly<TSESLint.SourceCode>,
-): UrlCalleeSpec {
+): TSESTree.Expression[] {
+  const read = (urlArgument: number): TSESTree.Expression[] => {
+    const target = urlArgumentOf(node, { ...spec, urlArgument });
+    return target === undefined ? [] : [target];
+  };
   if (spec.urlArgument !== undefined && spec.urlArgument !== 0) {
-    return spec;
+    const target = urlArgumentOf(node, spec);
+    return target === undefined ? [] : [target];
   }
-  const first = node.arguments[0];
-  const inner =
-    first === undefined || first.type === AST_NODE_TYPES.SpreadElement ? undefined : unwrapExpression(first);
-  const status = inner?.type === AST_NODE_TYPES.Literal && typeof inner.value === 'number';
+  const [first, second] = node.arguments;
+  if (isNumberArgument(first)) {
+    return read(1);
+  }
   const callee = node.callee;
   const root =
     callee.type === AST_NODE_TYPES.MemberExpression ? callee.object : callee;
   const fromKit = root.type === AST_NODE_TYPES.Identifier && isKitImport(root, sourceCode);
-  return status || fromKit ? { ...spec, urlArgument: 1 } : spec;
+  return read(fromKit && second !== undefined && !isNumberArgument(second) ? 1 : 0);
 }
 
-/** True when a header name is, or may be, `Location` in any case. */
+/** Stands for a runtime piece of a header name in {@link nameShapes}. */
+const RUNTIME_PIECE = '\u0000';
+
+type ShapeMemo = Map<object, readonly string[] | null | 'pending'>;
+
+/**
+ * The shapes a header name can take: its author text, with
+ * {@link RUNTIME_PIECE} for each runtime piece (`'Loc' + n` is `Loc\0`).
+ * Null when the shapes are too many to list, which may be anything. A binding
+ * is read once per name; one met again inside its own values is runtime.
+ */
+function nameShapes(
+  node: TSESTree.Node,
+  sourceCode: Readonly<TSESLint.SourceCode>,
+  memo: ShapeMemo,
+  depth = 0,
+): readonly string[] | null {
+  const inner = unwrapExpression(node as TSESTree.Expression);
+  if (inner.type === AST_NODE_TYPES.Literal) {
+    return typeof inner.value === 'string' ? [inner.value] : [String(inner.value)];
+  }
+  if (depth >= MAX_NAME_DEPTH) {
+    return [RUNTIME_PIECE];
+  }
+  if (inner.type === AST_NODE_TYPES.TemplateLiteral) {
+    const pieces: (string | TSESTree.Node)[] = [];
+    inner.quasis.forEach((quasi, index) => {
+      pieces.push(quasi.value.cooked ?? quasi.value.raw);
+      const expression = inner.expressions[index];
+      if (expression !== undefined) {
+        pieces.push(expression);
+      }
+    });
+    return joinedShapes(pieces, sourceCode, memo, depth);
+  }
+  if (inner.type === AST_NODE_TYPES.BinaryExpression && inner.operator === '+') {
+    return joinedShapes([inner.left, inner.right], sourceCode, memo, depth);
+  }
+  if (inner.type !== AST_NODE_TYPES.Identifier) {
+    return [RUNTIME_PIECE];
+  }
+  const variable = findVariable(sourceCode.getScope(inner), inner);
+  const values = writtenValues(inner, sourceCode);
+  if (variable === null || values === undefined) {
+    return [RUNTIME_PIECE];
+  }
+  const known = memo.get(variable);
+  if (known !== undefined) {
+    return known === 'pending' ? [RUNTIME_PIECE] : known;
+  }
+  memo.set(variable, 'pending');
+  let shapes: string[] | null = [];
+  for (const value of values) {
+    const more = nameShapes(value, sourceCode, memo, depth + 1);
+    shapes = more === null ? null : [...new Set([...shapes, ...more])];
+    if (shapes === null || shapes.length > MAX_JOINED_TEXTS) {
+      shapes = null;
+      break;
+    }
+  }
+  memo.set(variable, shapes);
+  return shapes;
+}
+
+/** Every shape a header name joined from pieces can take, or null past {@link MAX_JOINED_TEXTS}. */
+function joinedShapes(
+  pieces: readonly (string | TSESTree.Node)[],
+  sourceCode: Readonly<TSESLint.SourceCode>,
+  memo: ShapeMemo,
+  depth: number,
+): readonly string[] | null {
+  let shapes = [''];
+  for (const piece of pieces) {
+    const options = typeof piece === 'string' ? [piece] : nameShapes(piece, sourceCode, memo, depth + 1);
+    if (options === null) {
+      return null;
+    }
+    shapes = [...new Set(shapes.flatMap((shape) => options.map((option) => shape + option)))];
+    if (shapes.length > MAX_JOINED_TEXTS) {
+      return null;
+    }
+  }
+  return shapes;
+}
+
+/** True when a name shape can read `location` in any case, each runtime piece standing for any text. */
+function shapeCanBeLocation(shape: string): boolean {
+  const pattern = shape
+    .toLowerCase()
+    .split(RUNTIME_PIECE)
+    .map((text) => text.replace(/[\\^$.*+?()[\]{}|]/gu, '\\$&'))
+    .join('[^]*');
+  return new RegExp(`^${pattern}$`, 'u').test('location');
+}
+
+/**
+ * True when a header name is, or may be, `Location` in any case: a fixed
+ * name, a name joined from pieces whose author text fits `Location`
+ * (`'Loc' + n`), or one with too many fixed spellings to list. A name that
+ * is runtime as a whole (`res.set(name, value)`) is not read.
+ */
 function isLocationName(node: TSESTree.Node, sourceCode: Readonly<TSESLint.SourceCode>): boolean {
-  return staticTexts(node, sourceCode).some((text) => text.toLowerCase() === 'location');
+  const shapes = nameShapes(node, sourceCode, new Map());
+  return (
+    shapes === null ||
+    shapes.some((shape) => !/^\u0000*$/u.test(shape) && shapeCanBeLocation(shape))
+  );
 }
 
 /** True when an object key names `Location`: `Location`, `'location'`, `[L]`. */
@@ -411,6 +474,7 @@ function holderLocations(
   node: TSESTree.Node | undefined | null,
   sourceCode: Readonly<TSESLint.SourceCode>,
   depth = 0,
+  visits: Visits = newVisits(),
 ): TSESTree.Expression[] {
   if (node == null || depth > MAX_NAME_DEPTH || node.type === AST_NODE_TYPES.SpreadElement) {
     return [];
@@ -420,7 +484,7 @@ function holderLocations(
     case AST_NODE_TYPES.ObjectExpression:
       return inner.properties.flatMap((property) => {
         if (property.type === AST_NODE_TYPES.SpreadElement) {
-          return holderLocations(property.argument, sourceCode, depth + 1);
+          return holderLocations(property.argument, sourceCode, depth + 1, visits);
         }
         if (property.kind === 'set' || !isLocationKey(property, sourceCode)) {
           return [];
@@ -429,37 +493,43 @@ function holderLocations(
       });
     case AST_NODE_TYPES.ConditionalExpression:
       return [
-        ...holderLocations(inner.consequent, sourceCode, depth + 1),
-        ...holderLocations(inner.alternate, sourceCode, depth + 1),
+        ...holderLocations(inner.consequent, sourceCode, depth + 1, visits),
+        ...holderLocations(inner.alternate, sourceCode, depth + 1, visits),
       ];
     case AST_NODE_TYPES.LogicalExpression:
       return [
-        ...holderLocations(inner.left, sourceCode, depth + 1),
-        ...holderLocations(inner.right, sourceCode, depth + 1),
+        ...holderLocations(inner.left, sourceCode, depth + 1, visits),
+        ...holderLocations(inner.right, sourceCode, depth + 1, visits),
       ];
     case AST_NODE_TYPES.ArrayExpression:
-      return arrayLocations(inner.elements, sourceCode, depth);
+      return arrayLocations(inner.elements, sourceCode, depth, visits);
     case AST_NODE_TYPES.NewExpression:
       return inner.callee.type === AST_NODE_TYPES.Identifier &&
         (inner.callee.name === 'Map' || inner.callee.name === 'Headers')
-        ? holderLocations(inner.arguments[0], sourceCode, depth + 1)
+        ? holderLocations(inner.arguments[0], sourceCode, depth + 1, visits)
         : [];
     case AST_NODE_TYPES.CallExpression:
       // `Object.assign({}, base, { Location: url })`
       if (isObjectAssignCallee(inner.callee)) {
-        return inner.arguments.flatMap((source) => holderLocations(source, sourceCode, depth + 1));
+        return inner.arguments.flatMap((source) => holderLocations(source, sourceCode, depth + 1, visits));
       }
       // `Object.fromEntries([['Location', url]])`
       return isStaticCall(inner, 'Object', 'fromEntries')
-        ? holderLocations(inner.arguments[0], sourceCode, depth + 1)
+        ? holderLocations(inner.arguments[0], sourceCode, depth + 1, visits)
         : [];
-    case AST_NODE_TYPES.Identifier:
+    case AST_NODE_TYPES.Identifier: {
+      // A holder already read at this depth or above adds nothing new: `let a = hd; hd = a`.
+      const variable = findVariable(sourceCode.getScope(inner), inner);
+      if (variable !== null && !firstVisit(visits.values, variable, depth)) {
+        return [];
+      }
       return [
         ...(writtenValues(inner, sourceCode) ?? []).flatMap((value) =>
-          holderLocations(value, sourceCode, depth + 1),
+          holderLocations(value, sourceCode, depth + 1, visits),
         ),
-        ...holderWrites(inner, sourceCode, depth),
+        ...holderWrites(inner, sourceCode, depth, visits),
       ];
+    }
     default:
       return [];
   }
@@ -473,10 +543,11 @@ function arrayLocations(
   elements: readonly (TSESTree.Node | null)[],
   sourceCode: Readonly<TSESLint.SourceCode>,
   depth: number,
+  visits: Visits,
 ): TSESTree.Expression[] {
   return elements.flatMap((element, index) => {
     if (element?.type === AST_NODE_TYPES.SpreadElement) {
-      return holderLocations(element.argument, sourceCode, depth + 1);
+      return holderLocations(element.argument, sourceCode, depth + 1, visits);
     }
     const item = element === null ? null : unwrapExpression(element as TSESTree.Expression);
     return item?.type === AST_NODE_TYPES.ArrayExpression
@@ -561,6 +632,31 @@ function isObjectAssignTarget(node: TSESTree.Node): boolean {
   );
 }
 
+/**
+ * The bindings a headers walk has read, each with the least depth it was read
+ * at. Every walk takes the union of what it finds, so a binding read again at
+ * that depth or deeper adds nothing and is skipped; this keeps cyclic aliases
+ * (`let a = hd; hd = a`) from multiplying the work.
+ */
+interface Visits {
+  readonly values: Map<object, number>;
+  readonly writes: Map<object, number>;
+}
+
+function newVisits(): Visits {
+  return { values: new Map(), writes: new Map() };
+}
+
+/** Records a visit of `key` at `depth`; false when it was read before at that depth or above. */
+function firstVisit(seen: Map<object, number>, key: object, depth: number): boolean {
+  const before = seen.get(key);
+  if (before !== undefined && before <= depth) {
+    return false;
+  }
+  seen.set(key, depth);
+  return true;
+}
+
 /** The binding `node` is copied into as a whole: `a` in `const a = hd` or `a = hd`. */
 function aliasOf(node: TSESTree.Identifier): TSESTree.Identifier | null {
   const parent = node.parent;
@@ -584,9 +680,10 @@ function holderWrites(
   name: TSESTree.Identifier,
   sourceCode: Readonly<TSESLint.SourceCode>,
   depth: number,
+  visits: Visits,
 ): TSESTree.Expression[] {
   const variable = findVariable(sourceCode.getScope(name), name);
-  if (variable === null || depth > MAX_NAME_DEPTH) {
+  if (variable === null || depth > MAX_NAME_DEPTH || !firstVisit(visits.writes, variable, depth)) {
     return [];
   }
   return variable.references.flatMap((reference) => {
@@ -594,7 +691,7 @@ function holderWrites(
     // An alias writes into the same holder: `const a = hd; a.Location = url`.
     const alias = reference.identifier.type === AST_NODE_TYPES.Identifier ? aliasOf(reference.identifier) : null;
     if (alias !== null) {
-      return holderWrites(alias, sourceCode, depth + 1);
+      return holderWrites(alias, sourceCode, depth + 1, visits);
     }
     if (
       member?.type === AST_NODE_TYPES.CallExpression &&
@@ -616,7 +713,7 @@ function holderWrites(
       const call = member as TSESTree.CallExpression;
       return call.arguments
         .slice(1)
-        .flatMap((source) => holderLocations(source, sourceCode, depth + 1));
+        .flatMap((source) => holderLocations(source, sourceCode, depth + 1, visits));
     }
     if (
       member?.type !== AST_NODE_TYPES.MemberExpression ||
@@ -637,7 +734,7 @@ function holderWrites(
     }
     // An index write of a pair into Node's array form: `hd[0] = ['Location', url]`.
     if (parent?.type === AST_NODE_TYPES.AssignmentExpression && parent.left === member && member.computed) {
-      return arrayLocations([parent.right], sourceCode, depth);
+      return arrayLocations([parent.right], sourceCode, depth, visits);
     }
     if (parent?.type !== AST_NODE_TYPES.CallExpression || parent.callee !== member) {
       return [];
@@ -647,7 +744,7 @@ function holderWrites(
       return pairValues(parent.arguments[0], parent.arguments[1], sourceCode);
     }
     if (method === 'push' || method === 'unshift') {
-      return arrayLocations(parent.arguments, sourceCode, depth);
+      return arrayLocations(parent.arguments, sourceCode, depth, visits);
     }
     return [];
   });
@@ -954,9 +1051,8 @@ export const noUserControlledRedirectRule = createRule<RuleOptions, MessageIds>(
           return;
         }
         const call = withArguments(node, sourceCode);
-        const urlArg = urlArgumentOf(call, statusFirst(call, spec, sourceCode));
         const onResponse = spec.object !== undefined && responseObjects.has(squash(spec.object));
-        check(urlArg === undefined ? [] : [urlArg], onResponse ? HEADER_PIN : SCRIPT_PIN);
+        check(redirectTargets(call, spec, sourceCode), onResponse ? HEADER_PIN : SCRIPT_PIN);
       },
       NewExpression(node: TSESTree.NewExpression): void {
         check(responseInitLocations(node, sourceCode), SCRIPT_PIN);
