@@ -197,6 +197,11 @@ ruleTester.run('no-user-controlled-fetch-url', noUserControlledFetchUrlRule, {
       filename: TS,
       options: [{ allowLoopback: true }],
     },
+    // A source of Object.assign whose values are all primitives cannot change through the copy.
+    {
+      code: "const base = { hostname: 'api.example.com', port: 443, path: `/v1`, agent: undefined, family: null }; const copy = Object.assign({}, base); copy.path = '/v2'; https.get(base);",
+      filename: TS,
+    },
     // A host regex over a public suffix with one more literal label pinned.
     {
       code: "async function h(src: string) { if (!/^[a-z0-9-]+\\.assets\\.github\\.io$/.test(new URL(src).hostname)) return; await fetch(src); }",
@@ -551,6 +556,22 @@ ruleTester.run('no-user-controlled-fetch-url', noUserControlledFetchUrlRule, {
       filename: TS,
       options: [{ allowLoopback: true }],
       errors: Array.from({ length: 13 }, () => error),
+    },
+    // Object.assign copies shallowly: a nested object stays shared with the copy.
+    {
+      code: "const cfg = { proxy: { host: 'p.example.com', port: 8080 } }; const t = Object.assign({}, cfg); t.proxy.host = req.query.h; axios.get('/x', cfg);",
+      filename: TS,
+      errors: [option],
+    },
+    {
+      code: "import { Agent } from 'node:https'; const o = { hostname: 'api.example.com', agent: new Agent() }; Object.assign({}, o).agent.options.host = req.query.h; https.get(o);",
+      filename: TS,
+      errors: [error],
+    },
+    {
+      code: "const cfg = { headers: { host: 'api.example.com' } }; const t = {}; https.get('https://api.example.com/x', Object.assign(t, cfg)); t.headers.host = req.query.h;",
+      filename: TS,
+      errors: [option, option],
     },
     // A host regex over a public suffix: anyone can register a name under it.
     ...['vercel\\.app', 'github\\.io', 'netlify\\.app', 'pages\\.dev', 'co\\.uk'].map((suffix) => ({
