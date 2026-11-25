@@ -1088,3 +1088,42 @@ ruleTester.run('no-user-controlled-redirect: kit targets, header names, prefixes
     { code: cyclic('{}', 40, 'q.Location = req.query.u; res.writeHead(302, p);'), filename: TS, errors: [error] },
   ],
 });
+
+/**
+ * A header name passed down six `const` aliases into `N`, then written into
+ * `N` again straight from `V`. `wrap` dresses each link (a template, a `+ ''`).
+ */
+const aliasChain = (name: string, sink: string, wrap = (link: string): string => link): string => {
+  const links = [6, 5, 4, 3, 2, 1].map((i) => `const c${i} = ${wrap(i === 6 ? 'V' : `c${i + 1}`)};`).join(' ');
+  return `function h(req, res) { const L = '${name}'; const V = L; ${links} let N = c1; N = V; ${sink} }`;
+};
+/** `a0` set to `name`, then `n` aliases each set to the one before. */
+const longAliases = (name: string, n: number, sink: string): string =>
+  `function h(req, res) { const a0 = '${name}'; ${Array.from({ length: n }, (_, i) => `const a${i + 1} = a${i};`).join(' ')} ${sink.replaceAll('NAME', `a${n}`)} }`;
+
+// A header name read through a long alias chain is the same name however
+// deep the binding was first met.
+ruleTester.run('no-user-controlled-redirect: long alias chains', noUserControlledRedirectRule, {
+  valid: [
+    { code: aliasChain('X-Trace', 'res.set(N, req.query.x);'), filename: TS },
+    { code: aliasChain('X-Trace', 'res.writeHead(302, { [N]: req.query.x });'), filename: TS },
+    { code: aliasChain('X-Trace', 'res.set(N, req.query.x);', (link) => `\`\${${link}}\``), filename: TS },
+    { code: longAliases('X-Trace', 100, 'res.set(NAME, req.query.x);'), filename: TS },
+  ],
+  invalid: [
+    { code: aliasChain('Location', 'res.set(N, req.query.x);'), filename: TS, errors: [error] },
+    { code: aliasChain('Location', 'res.writeHead(302, { [N]: req.query.x });'), filename: TS, errors: [error] },
+    { code: aliasChain('Location', 'res.set(N, req.query.x);', (link) => `\`\${${link}}\``), filename: TS, errors: [error] },
+    { code: aliasChain('Location', 'res.set(N, req.query.x);', (link) => `${link} + ''`), filename: TS, errors: [error] },
+    {
+      code: aliasChain('Location', 'res.writeHead(302, { [N]: req.query.x });', (link) => `\`\${${link}}\``),
+      filename: TS,
+      errors: [error],
+    },
+    { code: aliasChain('Location', 'res.setHeader(`${N}`, req.query.x);'), filename: TS, errors: [error] },
+    { code: aliasChain('Loc', "res.set(N + 'ation', req.query.x);", (link) => `${link} + ''`), filename: TS, errors: [error] },
+    { code: longAliases('Location', 100, 'res.set(NAME, req.query.x);'), filename: TS, errors: [error] },
+    // Past 256 aliases in one chain the name may be anything.
+    { code: longAliases('Location', 300, 'res.set(NAME, req.query.x);'), filename: TS, errors: [error] },
+  ],
+});
