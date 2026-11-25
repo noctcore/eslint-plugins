@@ -754,3 +754,40 @@ ruleTester.run('no-user-controlled-fetch-url: trusted sources that leave', noUse
     },
   ],
 });
+
+// `Object.values` and `Object.entries` hand out the objects under the source,
+// a `JSON.stringify` replacer function is handed every value, and an export
+// list lets the source go.
+ruleTester.run('no-user-controlled-fetch-url: trusted source readers', noUserControlledFetchUrlRule, {
+  valid: [
+    ...[
+      'Object.values(config.mirrors).forEach((m) => console.log(m.url));',
+      'for (const [k, m] of Object.entries(config.mirrors)) console.log(k, m.url);',
+      'const first = Object.values(config)[0]; log(first.url.trim());',
+      "JSON.stringify(config); JSON.stringify(config, null, 2); JSON.stringify(config, ['url']); JSON.stringify(config, undefined, 2);",
+      'Object.keys(config).forEach((k) => console.log(k));',
+    ].map((setup) => ({
+      code: `${setup} fetch(config.url); https.get({ hostname: config.host, path: '/x' });`,
+      filename: TS,
+      options: [{ trustedSources: ['config'] }],
+    })),
+  ],
+  invalid: [
+    ...[
+      'Object.values(config.mirrors).forEach((m) => { m.url = req.query.u; });',
+      'for (const [k, m] of Object.entries(config.mirrors)) m.url = req.query.u;',
+      'Object.values(config)[0][0].url = req.query.u;',
+      'const parts = Object.entries(config); parts[0][1].url = x;',
+      'mutate(Object.values(config));',
+      'JSON.stringify(config, (k, v) => { v.url = x; return v; });',
+      'JSON.stringify(config, replacer);',
+      'export { config };',
+      'export { config as settings };',
+    ].map((setup) => ({
+      code: `${setup} fetch(config.url); https.get({ hostname: config.host, path: '/x' });`,
+      filename: TS,
+      options: [{ trustedSources: ['config'] }],
+      errors: [error, host],
+    })),
+  ],
+});
