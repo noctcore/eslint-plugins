@@ -3,6 +3,7 @@ import { ruleTester } from '@noctcore/eslint-test-utils';
 import { noUnescapedHtmlResponseRule } from '../../src/rules/no-unescaped-html-response';
 
 const TS = 'handler.ts';
+const TSX = 'page.tsx';
 const html = [{ messageId: 'unescapedHtmlResponse' as const }];
 const where = [{ messageId: 'unsafeContext' as const }];
 const raw = [{ messageId: 'rawTemplateValue' as const }];
@@ -224,6 +225,39 @@ ruleTester.run('no-unescaped-html-response', noUnescapedHtmlResponseRule, {
       code: "import { Controller, Get, Query } from '@nestjs/common'; @Controller() class C { @Get() find(@Query('q') q: string) { return `<h1>${q}</h1>`; } }",
       filename: TS,
     },
+    // A global sanitizer config that keeps protection on, or set on another instance.
+    {
+      code: "import { sanitize, setConfig } from 'isomorphic-dompurify'; setConfig({ ALLOWED_TAGS: ['b'], ADD_URI_SAFE_ATTR: ['title'], ADD_DATA_URI_TAGS: ['img'] }); res.send('<div>' + sanitize(q) + '</div>');",
+      filename: TS,
+    },
+    {
+      code: `${PURIFY} res.send('<p>' + DOMPurify.sanitize(q, { NAMESPACE: 'http://www.w3.org/1999/xhtml', PARSER_MEDIA_TYPE: 'text/html' }) + '</p>');`,
+      filename: TS,
+    },
+    {
+      code: "import createDOMPurify from 'dompurify'; const purify = createDOMPurify(window); const loose = createDOMPurify(window); loose.setConfig({ ADD_TAGS: ['script'] }); res.send('<p>' + purify.sanitize(q) + '</p>');",
+      filename: TS,
+    },
+    // Shared defaults only read, copied or handed to the sanitizer.
+    {
+      code: `${SANITIZE} const count = sanitizeHtml.defaults.allowedTags.length; res.send('<p>' + count + sanitizeHtml(q, { allowedTags: sanitizeHtml.defaults.allowedTags.concat(['img']) }) + '</p>');`,
+      filename: TS,
+    },
+    {
+      code: "const xss = require('xss'); const list = xss.getDefaultWhiteList(); list.img.push('onerror'); res.send('<p>' + xss(q) + '</p>');",
+      filename: TS,
+    },
+    { code: `${SANITIZE} res.send('<p>' + sanitizeHtml(q, { allowedAttributes: { '*': ['data-*'] }, allowedSchemesByTag: { img: ['data'] } }) + '</p>');`, filename: TS },
+    { code: `${SANITIZE} res.send('<p>' + sanitizeHtml(q, { allowedSchemes: ['data', 'https'] }) + '</p>');`, filename: TS },
+    // React rendering with inner HTML that is constant or sanitized.
+    {
+      code: `import { renderToString } from 'react-dom/server'; ${PURIFY} function Bio({ bio }) { return <p dangerouslySetInnerHTML={{ __html: DOMPurify.sanitize(bio) }} />; } res.send('<div id="root">' + renderToString(<main><Bio bio={q} /><i dangerouslySetInnerHTML={{ __html: '<b>x</b>' }} /></main>) + '</div>');`,
+      filename: TSX,
+    },
+    // EJS options that keep escaping and read a custom delimiter.
+    { code: "ejs.render('<p><?= bio ?></p>', { bio: input }, { delimiter: '?' });", filename: TS },
+    { code: "ejs.render('<p><%= bio %></p>', { bio: input }, { cache: true, filename: 'bio.ejs', rmWhitespace: true });", filename: TS },
+    { code: "ejs.render('<p><?= bio ?></p>', { bio: input, delimiter: '?' });", filename: TS },
   ],
   invalid: [
     // A same-file function with a configured name is judged by its body, not its name.
@@ -578,5 +612,100 @@ ruleTester.run('no-unescaped-html-response', noUnescapedHtmlResponseRule, {
       filename: TS,
       errors: html,
     },
+    // A global DOMPurify config reaches every import of the module.
+    {
+      code: "import { sanitize, setConfig } from 'isomorphic-dompurify'; setConfig({ ADD_TAGS: ['script'] }); export function h(req, res) { res.send('<div>' + sanitize(req.query.q) + '</div>'); }",
+      filename: TS,
+      errors: html,
+    },
+    {
+      code: "import DOMPurify, { sanitize } from 'isomorphic-dompurify'; DOMPurify.setConfig({ ADD_TAGS: ['script'] }); res.send('<div>' + sanitize(q) + '</div>');",
+      filename: TS,
+      errors: html,
+    },
+    {
+      code: "const { sanitize, setConfig: configure } = require('isomorphic-dompurify'); configure({ ALLOWED_URI_REGEXP: /.*/ }); res.send('<div>' + sanitize(q) + '</div>');",
+      filename: TS,
+      errors: html,
+    },
+    {
+      code: `${PURIFY} const P = DOMPurify; P.setConfig({ ADD_ATTR: ['onerror'] }); res.send('<p>' + DOMPurify.sanitize(q) + '</p>');`,
+      filename: TS,
+      errors: html,
+    },
+    { code: `${PURIFY} configure(DOMPurify); res.send('<p>' + DOMPurify.sanitize(q) + '</p>');`, filename: TS, errors: html },
+    { code: `${PURIFY} DOMPurify.sanitize = (s) => s; res.send('<p>' + DOMPurify.sanitize(q) + '</p>');`, filename: TS, errors: html },
+    {
+      code: "import { sanitize, setConfig } from 'isomorphic-dompurify'; setConfig(loadConfig()); res.send('<div>' + sanitize(q) + '</div>');",
+      filename: TS,
+      errors: html,
+    },
+    // DOMPurify options that skip the URI check, allow data URLs on documents, or parse another way.
+    { code: `${PURIFY} res.send('<p>' + DOMPurify.sanitize(q, { ADD_URI_SAFE_ATTR: ['href'] }) + '</p>');`, filename: TS, errors: html },
+    { code: `${PURIFY} res.send('<p>' + DOMPurify.sanitize(q, { ADD_URI_SAFE_ATTR: attrs }) + '</p>');`, filename: TS, errors: html },
+    { code: `${PURIFY} res.send('<p>' + DOMPurify.sanitize(q, { ADD_DATA_URI_TAGS: ['iframe'] }) + '</p>');`, filename: TS, errors: html },
+    { code: `${PURIFY} res.send('<p>' + DOMPurify.sanitize(q, { NAMESPACE: 'http://www.w3.org/2000/svg' }) + '</p>');`, filename: TS, errors: html },
+    { code: `${PURIFY} res.send('<p>' + DOMPurify.sanitize(q, { PARSER_MEDIA_TYPE: 'application/xhtml+xml' }) + '</p>');`, filename: TS, errors: html },
+    // Writes to the shared defaults of sanitize-html and xss.
+    { code: `${SANITIZE} sanitizeHtml.defaults.allowedAttributes = false; res.send('<p>' + sanitizeHtml(q) + '</p>');`, filename: TS, errors: html },
+    { code: `${SANITIZE} sanitizeHtml.defaults.allowedTags.push('script'); res.send('<p>' + sanitizeHtml(q) + '</p>');`, filename: TS, errors: html },
+    {
+      code: `${SANITIZE} sanitizeHtml.defaults.allowedAttributes['*'] = ['onerror']; res.send('<p>' + sanitizeHtml(q, { allowedTags: ['img'] }) + '</p>');`,
+      filename: TS,
+      errors: html,
+    },
+    { code: `${SANITIZE} const d = sanitizeHtml.defaults; d.allowedTags.push('script'); res.send('<p>' + sanitizeHtml(q) + '</p>');`, filename: TS, errors: html },
+    { code: `${SANITIZE} Object.assign(sanitizeHtml.defaults, overrides); res.send('<p>' + sanitizeHtml(q) + '</p>');`, filename: TS, errors: html },
+    {
+      code: `${SANITIZE} const tags = { list: sanitizeHtml.defaults.allowedTags }; tags.list.push('script'); res.send('<p>' + sanitizeHtml(q) + '</p>');`,
+      filename: TS,
+      errors: html,
+    },
+    { code: `${SANITIZE} setup(sanitizeHtml); res.send('<p>' + sanitizeHtml(q) + '</p>');`, filename: TS, errors: html },
+    { code: "const xss = require('xss'); xss.whiteList.img.push('onerror'); res.send('<p>' + xss(q) + '</p>');", filename: TS, errors: html },
+    {
+      code: "import { filterXSS, whiteList } from 'xss'; whiteList.img.push('onerror'); res.send('<p>' + filterXSS(q) + '</p>');",
+      filename: TS,
+      errors: html,
+    },
+    // sanitize-html globs and data URLs that reach event handlers or documents.
+    { code: `${SANITIZE} res.send('<p>' + sanitizeHtml(q, { allowedAttributes: { '*': ['o*'] } }) + '</p>');`, filename: TS, errors: html },
+    { code: `${SANITIZE} res.send('<p>' + sanitizeHtml(q, { allowedAttributes: { iframe: ['s*'] } }) + '</p>');`, filename: TS, errors: html },
+    {
+      code: `${SANITIZE} res.send('<p>' + sanitizeHtml(q, { allowedTags: ['iframe'], allowedSchemesByTag: { iframe: ['data'] } }) + '</p>');`,
+      filename: TS,
+      errors: html,
+    },
+    {
+      code: `${SANITIZE} res.send('<p>' + sanitizeHtml(q, { allowedTags: ['iframe'], allowedSchemes: ['https', 'data'] }) + '</p>');`,
+      filename: TS,
+      errors: html,
+    },
+    // React rendering writes `dangerouslySetInnerHTML` as is.
+    {
+      code: "import { renderToString } from 'react-dom/server'; export function h(req, res) { res.send('<div id=\"root\">' + renderToString(<div dangerouslySetInnerHTML={{ __html: req.query.q }} />) + '</div>'); }",
+      filename: TSX,
+      errors: html,
+    },
+    {
+      code: "import { renderToStaticMarkup } from 'react-dom/server'; function Bio({ bio }) { return <p dangerouslySetInnerHTML={{ __html: bio }} />; } res.send('<main>' + renderToStaticMarkup(<Bio bio={q} />) + '</main>');",
+      filename: TSX,
+      errors: html,
+    },
+    {
+      code: "import { createElement } from 'react'; import { renderToString } from 'react-dom/server'; const el = createElement('div', { dangerouslySetInnerHTML: { __html: q } }); res.send('<main>' + renderToString(el) + '</main>');",
+      filename: TS,
+      errors: html,
+    },
+    // EJS options and settings that switch escaping off or change the tags.
+    { code: "ejs.render('<p><%= bio %></p>', { bio: input }, { escape: (s) => s });", filename: TS, errors: raw },
+    { code: "ejs.render('<p><?- bio ?></p>', { bio: input }, { delimiter: '?' });", filename: TS, errors: raw },
+    { code: "ejs.render('<p><?- bio ?></p>', { bio: input, delimiter: '?' });", filename: TS, errors: raw },
+    { code: "ejs.render('<p>[%- bio %]</p>', { bio: input }, { openDelimiter: '[', closeDelimiter: ']' });", filename: TS, errors: raw },
+    { code: "ejs.render('<p><%- it.bio %></p>', { bio: input }, { localsName: 'it' });", filename: TS, errors: raw },
+    { code: "ejs.render('<p><%= bio %></p>', { bio: input }, options);", filename: TS, errors: raw },
+    { code: "ejs.render('<p><%= bio %></p>', { bio: input }, { outputFunctionName: 'echo' });", filename: TS, errors: raw },
+    { code: "ejs.escapeXML = (s) => s; ejs.render('<p><%= bio %></p>', { bio: input });", filename: TS, errors: raw },
+    { code: "ejs.delimiter = '?'; ejs.render('<p><?- bio ?></p>', { bio: input });", filename: TS, errors: raw },
   ],
 });
