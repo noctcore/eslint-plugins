@@ -296,7 +296,8 @@ ruleTester.run('no-unescaped-html-response', noUnescapedHtmlResponseRule, {
     // Markup through calls, tags, placeholders and accumulators, escaped.
     { code: "export function h(req, res) { res.send(layout(`<h1>${escapeHtml(req.query.q)}</h1>`)); }", filename: TS },
     { code: "import { safeHtml } from 'common-tags'; export function h(req, res) { res.send(safeHtml`<h1>${req.query.q}</h1>`); }", filename: TS },
-    // A replacer function's result is written as is, with no `$` patterns.
+    { code: `export function h(req, res) { res.send(\`<a href="${' '.repeat(300)}/s?q=\${encodeURIComponent(req.query.q)}">x</a>\`); }`, filename: TS },
+    { code: `export function h(req, res) { res.send(\`<a href="https${'\\t'.repeat(300)}://x.test/\${escapeHtml(req.query.q)}">x</a>\`); }`, filename: TS },    // A replacer function's result is written as is, with no `$` patterns.
     { code: "const TPL = '<h1>{{name}}</h1>'; export function h(req, res) { res.send(TPL.replace('{{name}}', () => escapeHtml(req.query.q))); }", filename: TS },
     { code: "const TPL = '<a href=\"/s?q={{q}}\">x</a>'; export function h(req, res) { res.send(TPL.replace('{{q}}', encodeURIComponent(req.query.q))); }", filename: TS },
     {
@@ -881,7 +882,11 @@ ruleTester.run('no-unescaped-html-response', noUnescapedHtmlResponseRule, {
       filename: TS,
       errors: where,
     },
-    // Only JSON and plain text never run; a library may compile and run any other type, and a character reference hides the type.
+    // A URL prefix past the length kept is shortened to what the browser reads, or counts as code.
+    { code: `export function h(req, res) { res.send(\`<a href="${' '.repeat(300)}\${escapeHtml(req.query.q)}">x</a>\`); }`, filename: TS, errors: where },
+    { code: `export function h(req, res) { res.send(\`<a href="${'\\n'.repeat(300)}\${escapeHtml(req.query.q)}">x</a>\`); }`, filename: TS, errors: where },
+    { code: `export function h(req, res) { res.send(\`<a href="java${'\\t'.repeat(300)}script:\${escapeHtml(req.query.q)}">x</a>\`); }`, filename: TS, errors: where },
+    { code: `export function h(req, res) { res.send(\`<a href="&#${'0'.repeat(300)}106;avascript:\${escapeHtml(req.query.q)}">x</a>\`); }`, filename: TS, errors: where },    // Only JSON and plain text never run; a library may compile and run any other type, and a character reference hides the type.
     { code: "import serialize from 'serialize-javascript'; export function h(req, res) { res.send(`<script type=\"text/x-template\">'${serialize(req.query.q)}'</script>`); }", filename: TS, errors: where },
     { code: "import serialize from 'serialize-javascript'; export function h(req, res) { res.send(`<script type=\"text/babel\">'${serialize(req.query.q)}'</script>`); }", filename: TS, errors: where },
     { code: "import serialize from 'serialize-javascript'; export function h(req, res) { res.send(`<script type=\"text/jsx\">'${serialize(req.query.q)}'</script>`); }", filename: TS, errors: where },
