@@ -12,7 +12,14 @@ import { AST_NODE_TYPES, type TSESLint, type TSESTree } from '@noctcore/eslint-u
  */
 
 const PATH_MODULES: ReadonlySet<string> = new Set(['path', 'node:path']);
-const FS_MODULES: ReadonlySet<string> = new Set(['fs', 'node:fs', 'fs/promises', 'node:fs/promises']);
+const FS_MODULES: ReadonlySet<string> = new Set([
+  'fs',
+  'node:fs',
+  'fs/promises',
+  'node:fs/promises',
+  'fs-extra',
+  'fs-extra/esm',
+]);
 /** Receivers that are the fs module by convention, when no import says so. */
 const CONVENTIONAL_FS: readonly string[] = ['fs', 'fsp', 'fsPromises'];
 /** Path functions this rule reads by name. */
@@ -101,6 +108,113 @@ export const FS_TWO_PATH_FUNCTIONS: ReadonlySet<string> = new Set([
   'symlink',
   'symlinkSync',
 ]);
+/** `fs-extra` functions whose first argument is a path, beside the ones it re-exports from `fs`. */
+const FS_EXTRA_PATH_FUNCTIONS: ReadonlySet<string> = new Set([
+  'emptyDir',
+  'emptyDirSync',
+  'emptydir',
+  'emptydirSync',
+  'ensureDir',
+  'ensureDirSync',
+  'mkdirp',
+  'mkdirpSync',
+  'mkdirs',
+  'mkdirsSync',
+  'ensureFile',
+  'ensureFileSync',
+  'createFile',
+  'createFileSync',
+  'outputFile',
+  'outputFileSync',
+  'outputJson',
+  'outputJsonSync',
+  'outputJSON',
+  'outputJSONSync',
+  'pathExists',
+  'pathExistsSync',
+  'readJson',
+  'readJsonSync',
+  'readJSON',
+  'readJSONSync',
+  'writeJson',
+  'writeJsonSync',
+  'writeJSON',
+  'writeJSONSync',
+  'remove',
+  'removeSync',
+]);
+/** `fs-extra` functions with a second path argument. */
+const FS_EXTRA_TWO_PATH_FUNCTIONS: ReadonlySet<string> = new Set([
+  'copy',
+  'copySync',
+  'move',
+  'moveSync',
+  'ensureLink',
+  'ensureLinkSync',
+  'createLink',
+  'createLinkSync',
+  'ensureSymlink',
+  'ensureSymlinkSync',
+  'createSymlink',
+  'createSymlinkSync',
+]);
+/**
+ * Functions that act on a directory as well as a file: removing, emptying,
+ * listing, copying, moving, changing the mode of or linking `..` or the base
+ * itself does damage, so a path segment must be refused as empty there too
+ * (`basename('')` and `basename('/')` are `''`, and `join(base, '')` is the base).
+ */
+const DIRECTORY_FUNCTIONS: ReadonlySet<string> = new Set([
+  'rm',
+  'rmSync',
+  'rmdir',
+  'rmdirSync',
+  'readdir',
+  'readdirSync',
+  'opendir',
+  'opendirSync',
+  'cp',
+  'cpSync',
+  'rename',
+  'renameSync',
+  'chmod',
+  'chmodSync',
+  'lchmod',
+  'lchmodSync',
+  'chown',
+  'chownSync',
+  'lchown',
+  'lchownSync',
+  'symlink',
+  'symlinkSync',
+  'emptyDir',
+  'emptyDirSync',
+  'emptydir',
+  'emptydirSync',
+  'remove',
+  'removeSync',
+  'copy',
+  'copySync',
+  'move',
+  'moveSync',
+  'ensureSymlink',
+  'ensureSymlinkSync',
+  'createSymlink',
+  'createSymlinkSync',
+]);
+
+/** True for an fs function that acts on a directory too (`rm`, `readdir`, `cp`, fs-extra `remove`). */
+export function actsOnDirectory(method: string): boolean {
+  return DIRECTORY_FUNCTIONS.has(method);
+}
+
+function isOnePathFunction(name: string): boolean {
+  return FS_PATH_FUNCTIONS.has(name) || FS_EXTRA_PATH_FUNCTIONS.has(name);
+}
+
+function isTwoPathFunction(name: string): boolean {
+  return FS_TWO_PATH_FUNCTIONS.has(name) || FS_EXTRA_TWO_PATH_FUNCTIONS.has(name);
+}
 /** Response methods that serve a file from disk (Express, and `@fastify/static` on `reply`). */
 const RESPONSE_FILE_METHODS: ReadonlySet<string> = new Set(['sendFile', 'download']);
 const RESPONSE_OBJECTS: ReadonlySet<string> = new Set(['res', 'response']);
@@ -215,7 +329,17 @@ function collectPattern(
           : null;
     const value =
       property.value.type === AST_NODE_TYPES.AssignmentPattern ? property.value.left : property.value;
-    if (imported === null || value.type !== AST_NODE_TYPES.Identifier) {
+    if (imported === null) {
+      continue;
+    }
+    // `const { promises: { readFile } } = require('fs')`, `{ default: { join } }`.
+    if (value.type === AST_NODE_TYPES.ObjectPattern) {
+      if (imported === 'default' || (kind === 'fs' && imported === 'promises')) {
+        collectPattern(value, kind, bindings);
+      }
+      continue;
+    }
+    if (value.type !== AST_NODE_TYPES.Identifier) {
       continue;
     }
     addName(value.name, imported, kind, bindings);
@@ -226,7 +350,7 @@ function addName(local: string, imported: string, kind: 'fs' | 'path', bindings:
   if (kind === 'fs') {
     if (imported === 'promises' || imported === 'default') {
       bindings.fsModules.add(local);
-    } else if (FS_PATH_FUNCTIONS.has(imported) || FS_TWO_PATH_FUNCTIONS.has(imported)) {
+    } else if (isOnePathFunction(imported) || isTwoPathFunction(imported)) {
       bindings.fsFunctions.set(local, imported);
     }
   } else if (imported === 'default') {
@@ -364,28 +488,41 @@ export function fsFunction(callee: TSESTree.Node, bindings: PathBindings): strin
     return null;
   }
   const name = propertyName(inner);
-  return name !== null && (FS_PATH_FUNCTIONS.has(name) || FS_TWO_PATH_FUNCTIONS.has(name))
-    ? name
-    : null;
+  return name !== null && (isOnePathFunction(name) || isTwoPathFunction(name)) ? name : null;
 }
 
-/** True when an options object literal sets `root` (`{ root: DIR }`). */
-function rootOption(node: TSESTree.Node | undefined): TSESTree.Node | null {
+/**
+ * The values that may set `root` in an options object literal, in order: the
+ * `root` property, and every spread or computed key written after it (any of
+ * which can set `root` again, `{ root: DIR, ...req.body }`). `explicit` is
+ * true when a `root` property is among them. Empty for anything else.
+ */
+function rootValues(node: TSESTree.Node | undefined): { values: TSESTree.Node[]; explicit: boolean } {
   const inner = node === undefined ? null : peel(node);
   if (inner?.type !== AST_NODE_TYPES.ObjectExpression) {
-    return null;
+    return { values: [], explicit: false };
   }
+  let values: TSESTree.Node[] = [];
+  let explicit = false;
   for (const property of inner.properties) {
+    if (property.type === AST_NODE_TYPES.SpreadElement) {
+      values.push(property.argument);
+      continue;
+    }
+    const key = property.key;
+    const literalKey = key.type === AST_NODE_TYPES.Literal ? key.value : undefined;
     if (
-      property.type === AST_NODE_TYPES.Property &&
-      !property.computed &&
-      ((property.key.type === AST_NODE_TYPES.Identifier && property.key.name === 'root') ||
-        (property.key.type === AST_NODE_TYPES.Literal && property.key.value === 'root'))
+      literalKey === 'root' ||
+      (!property.computed && key.type === AST_NODE_TYPES.Identifier && key.name === 'root')
     ) {
-      return property.value;
+      values = [property.value];
+      explicit = true;
+    } else if (property.computed && literalKey === undefined && key.type !== AST_NODE_TYPES.TemplateLiteral) {
+      // A computed key the rule cannot read may be `root`.
+      values.push(property.value);
     }
   }
-  return null;
+  return { values, explicit };
 }
 
 /**
@@ -393,37 +530,62 @@ function rootOption(node: TSESTree.Node | undefined): TSESTree.Node | null {
  * override the root registered with `@fastify/static`:
  * `reply.sendFile(f, rootPath)`, `reply.sendFile(f, { root })`,
  * `reply.sendFile(f, rootPath, opts)`, `reply.download(f, { root })` and
- * `reply.download(f, name, { root })`.
+ * `reply.download(f, name, { root })`, plus whatever a spread into the
+ * options can set it to.
  */
 function fastifyRoots(method: string, args: readonly TSESTree.Expression[]): TSESTree.Node[] {
   const roots: TSESTree.Node[] = [];
   const second = args[1];
-  if (method === 'sendFile' && second !== undefined) {
-    const inner = peel(second);
-    if (inner.type === AST_NODE_TYPES.ObjectExpression) {
-      const root = rootOption(inner);
-      if (root !== null) roots.push(root);
-    } else {
-      // A string root, or a value this rule cannot tell from an options object.
-      roots.push(second);
-    }
+  if (method === 'sendFile' && second !== undefined && peel(second).type !== AST_NODE_TYPES.ObjectExpression) {
+    // A string root, or a value this rule cannot tell from an options object.
+    roots.push(second);
   }
   for (const arg of args.slice(1)) {
-    const root = peel(arg).type === AST_NODE_TYPES.ObjectExpression ? rootOption(arg) : null;
-    if (root !== null && !roots.includes(root)) roots.push(root);
+    for (const root of rootValues(arg).values) {
+      if (!roots.includes(root)) roots.push(root);
+    }
   }
   return roots;
 }
 
 /**
+ * The arguments of a call by position: an array literal spread in place
+ * (`f(...[a, b])` is `f(a, b)`), and any other spread as the next position,
+ * after which positions are unknown.
+ */
+function positionalArguments(args: readonly TSESTree.CallExpressionArgument[]): TSESTree.Expression[] {
+  const result: TSESTree.Expression[] = [];
+  for (const arg of args) {
+    if (arg.type !== AST_NODE_TYPES.SpreadElement) {
+      result.push(arg);
+      continue;
+    }
+    const inner = peel(arg.argument);
+    if (
+      inner.type === AST_NODE_TYPES.ArrayExpression &&
+      inner.elements.every((element) => element !== null && element.type !== AST_NODE_TYPES.SpreadElement)
+    ) {
+      result.push(...(inner.elements as TSESTree.Expression[]));
+      continue;
+    }
+    return [...result, arg.argument];
+  }
+  return result;
+}
+
+/**
  * The path arguments of a filesystem call, with the name to report: an fs
- * function on an fs module or imported by name, Express's `res.sendFile` /
- * `res.download`, or Fastify's `reply.sendFile` / `reply.download`. With a
- * `root` option, Express (through `send`) refuses a path with a `..` segment
- * after decoding it and serves it under the root, so the root is the path that
- * matters there. `@fastify/static` always serves under a root (the one
- * registered with the plugin, or one the call passes) and refuses `..`
- * segments, so only a root the call passes is checked. `isResponse` also
+ * function on an fs module or imported by name (`fs-extra` included),
+ * Express's `res.sendFile` / `res.download`, or Fastify's `reply.sendFile` /
+ * `reply.download`. With a `root` option, Express (through `send`) refuses a
+ * path with a `..` segment after decoding it and serves it under the root, so
+ * the root is the path that matters there. `@fastify/static` always serves
+ * under a root (the one registered with the plugin, or one the call passes)
+ * and refuses `..` segments, so only a root the call passes is checked. A
+ * spread or unreadable computed key in the options may set the root too, so
+ * its value is checked like one. `confines` maps each root to the file
+ * argument it serves under it, which matters when the root does not confine
+ * anything (`'/'`, `''`, an unset environment variable). `isResponse` also
  * takes a receiver under another name as Express's response (a handler's
  * response parameter). Empty for any other call.
  */
@@ -431,14 +593,12 @@ export function fsPathArguments(
   node: TSESTree.CallExpression,
   bindings: PathBindings,
   isResponse?: (receiver: TSESTree.Identifier) => boolean,
-): { method: string; paths: TSESTree.Node[] } {
-  const none = { method: '', paths: [] };
+): { method: string; paths: TSESTree.Node[]; confines: Map<TSESTree.Node, TSESTree.Node> } {
+  const none = { method: '', paths: [], confines: new Map<TSESTree.Node, TSESTree.Node>() };
   const fsName = fsFunction(node.callee, bindings);
-  const args = node.arguments.filter(
-    (arg): arg is TSESTree.Expression => arg.type !== AST_NODE_TYPES.SpreadElement,
-  );
+  const args = positionalArguments(node.arguments);
   if (fsName !== null) {
-    return { method: fsName, paths: args.slice(0, FS_TWO_PATH_FUNCTIONS.has(fsName) ? 2 : 1) };
+    return { ...none, method: fsName, paths: args.slice(0, isTwoPathFunction(fsName) ? 2 : 1) };
   }
   const callee = peel(node.callee);
   if (callee.type !== AST_NODE_TYPES.MemberExpression || callee.object.type !== AST_NODE_TYPES.Identifier) {
@@ -449,15 +609,22 @@ export function fsPathArguments(
     return none;
   }
   const method = `${callee.object.name}.${name}`;
+  const file = args[0];
+  const confining = (roots: TSESTree.Node[]): Map<TSESTree.Node, TSESTree.Node> =>
+    new Map(file === undefined ? [] : roots.map((root) => [root, file]));
   if (FASTIFY_REPLY_OBJECTS.has(callee.object.name)) {
-    return { method, paths: fastifyRoots(name, args) };
+    const roots = fastifyRoots(name, args);
+    return { method, paths: roots, confines: confining(roots) };
   }
   if (!RESPONSE_OBJECTS.has(callee.object.name) && isResponse?.(callee.object) !== true) {
     return none;
   }
-  const root = args.slice(1).map(rootOption).find((value) => value !== null);
-  if (root != null) {
-    return { method, paths: [root] };
+  const options = args.slice(1).map(rootValues);
+  const roots = options.flatMap((option) => option.values);
+  if (roots.length === 0) {
+    return { ...none, method, paths: args.slice(0, 1) };
   }
-  return { method, paths: args.slice(0, 1) };
+  // Without a `root` property, a spread may leave the root unset: the file path is served as is.
+  const paths = options.some((option) => option.explicit) ? roots : [...args.slice(0, 1), ...roots];
+  return { method, paths, confines: confining(roots) };
 }

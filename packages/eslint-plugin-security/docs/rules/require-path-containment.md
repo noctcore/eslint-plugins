@@ -47,10 +47,30 @@ A test takes the joined value and a base the requester does not pick:
 
 - `full.startsWith(base + sep)`, where the base ends in a separator (`base + path.sep`,
   `` `${base}/` ``, a literal `'/srv/app/'`, or a `const` holding one of those);
-- a `path.relative(base, full)` result refused both when it climbs (`rel.startsWith('..')`) and when
-  it is absolute (`path.isAbsolute(rel)`): on Windows, `relative` across drives returns an absolute
-  path that does not start with `..`;
+- a `path.relative(base, full)` result refused both when it climbs and when it is absolute
+  (`path.isAbsolute(rel)`): on Windows, `relative` across drives returns an absolute path that does
+  not start with `..`. A climb is refused by `rel.startsWith('..')`, or by both `rel === '..'` and
+  `rel.startsWith('..' + path.sep)`;
 - a call to a helper named in `containmentGuards` that takes the joined value.
+
+A base every path is under proves nothing: `'/'`, `''`, `'.'`, `path.sep`, `process.cwd()` and
+`path.resolve()` are not bases, for `startsWith` and for `relative`.
+
+The test counts only when its result decides whether the joined value is used: an `if` that
+returns, throws, breaks or continues when the path is outside (all that follows it is checked), an `if`, `?:`, `&&` or
+`||` around the use, or a `containmentGuards` helper called as a statement before it. A test whose
+result is ignored (`full.startsWith(base + sep);`), one that guards some other statement
+(`if (inside) log()`), and one inside a nested function that may never run do not count:
+
+```ts bad
+import path from 'node:path';
+
+export function resolveUpload(req) {
+  const full = path.join(uploadsDir, req.params.file);
+  if (full.startsWith(uploadsDir + path.sep)) console.log('inside');
+  return full;
+}
+```
 
 The joined value is the variable the join is stored in, plus any variable initialised from it
 through `normalize`, `realpath`, or a one argument `join` / `resolve`. A join that adds another
@@ -66,9 +86,7 @@ function serve(req) {
 ```
 
 `path.normalize` on its own is not a test: it resolves `..` segments, so it happily returns a path
-outside the base directory. A test that runs on the joined value but does not guard anything
-(`full.startsWith(base + sep);` as a statement, or `if (...) log()`) silences the join report, but
-not a filesystem call (see below).
+outside the base directory.
 
 ### Filesystem sinks
 
@@ -82,8 +100,15 @@ paths of `copyFile`, `cp`, `rename`, `link` and `symlink`, and Express `res.send
 static import, `require`, dynamic `import()` (awaited or not) or `import fs = require(...)` of
 `fs`, `node:fs`, `fs/promises` or `node:fs/promises` under any name, also inside a function
 (`const { readFile } = await import('node:fs')`), with aliases (`const p = fs.promises`,
-`const { unlink } = p`), named imports, type wrappers (`(fs as any).readFileSync`) and string keys
-(`fs['readFileSync']`).
+`const { unlink } = p`), named imports, a nested destructure
+(`const { promises: { readFile } } = require('fs')`), type wrappers (`(fs as any).readFileSync`)
+and string keys (`fs['readFileSync']`).
+
+`fs-extra` (and `fs-extra/esm`) counts as an fs module too, with the functions it re-exports from
+`fs` and its own: `emptyDir`, `ensureDir`, `mkdirp`, `mkdirs`, `ensureFile`, `createFile`,
+`outputFile`, `outputJson`, `pathExists`, `readJson`, `writeJson`, `remove` and their `Sync`
+forms, and both paths of `copy`, `move`, `ensureLink`, `createLink`, `ensureSymlink` and
+`createSymlink`.
 
 `res.sendFile(path, { root })` and `res.download(path, name, { root })` are checked on the `root`
 instead: with a root, Express decodes the path, refuses any `..` segment and serves it under the
@@ -91,6 +116,19 @@ root. Fastify's `reply.sendFile` / `reply.download` (`@fastify/static`) serve un
 registered with the plugin and refuse `..` segments, so only a root the call passes is checked:
 `reply.sendFile(file, rootPath)`, `reply.sendFile(file, { root })` and
 `reply.download(file, name, { root })`.
+
+A root that confines nothing is not a root, and the served path is checked instead: `'/'`, `''`
+(Express then serves the path as given), `null`, `path.sep`, and an environment value that may be
+unset or empty (`process.env.FILES`, `process.env.FILES ?? '/srv'`; `process.env.FILES || '/srv'`
+falls back to a fixed root and counts). A spread after the root (`{ root: BASE, ...req.body.opts }`)
+can replace it, so the spread value is checked as a root too, as is a spread options object with no
+`root` (`reply.sendFile('a.txt', { ...req.query })`).
+
+```ts bad
+export function serve(req, res) {
+  res.sendFile(req.params.file, { root: process.env.FILES_DIR });
+}
+```
 
 The path is reported when request-shaped input reaches it through:
 
@@ -129,7 +167,12 @@ The flow stops at:
   match `.`, `..` or an empty value (`/^[\w-][\w.-]*$/` passes, `/^[\w.-]+$/` does not);
 - `path.basename(x)` stored in a binding that is refused as both `.` and `..` before the call
   (`if (name === '.' || name === '..') return`, `if (name.startsWith('.')) return`,
-  `if (['.', '..'].includes(name)) return`, or a regex test that matches both; a `g` or `y` regex
+  `if (['.', '..'].includes(name)) return`, or a regex test that matches both), and as `''` too
+  before a call that acts on a directory (`rm`, `rmdir`, `readdir`, `opendir`, `cp`, `rename`,
+  `chmod`, `chown`, `symlink`, fs-extra `remove`, `emptyDir`, `copy`, `move`): `basename('/')`
+  is `''` and `join(BASE, '')` is `BASE` itself, so `rmSync(join(BASE, name), { recursive: true })`
+  deletes the whole base. `!name`, `name === ''`, `name.length === 0`, `''` in the list, or a regex
+  that matches `''` (`/^\.{0,2}$/`) refuses it. A `g` or `y` regex
   counts only when it is written at the test, since a shared one keeps `lastIndex` between calls,
   and a `y` regex is read as anchored at the start: `/\.$/y.test('..')` is false).
   The check holds only for that binding read as it is: a part of it or a call on it is new text
@@ -154,12 +197,16 @@ clean. A regex check on a member does not count.
 A proof holds only for the text it checked. Below a call that is not known to keep its arguments'
 text, and below a member read of a checked value, the checks above no longer cut the flow. Calls
 that keep the text are `path.join`, `path.resolve`, `path.normalize`, a one argument
-`path.basename`, `String`, `encodeURIComponent`, `encodeURI`, and the methods `toLowerCase`,
-`toUpperCase`, `toLocaleLowerCase`, `toLocaleUpperCase`, `toString`, `valueOf`, `join` and `concat`. Everything else is new text: a decoder
-(`decodeURIComponent`, `atob`, `Buffer.from(x, 'base64')`), another string method (`replace`,
-`slice`, `trim`, `normalize('NFKC')`), `path.parse(x).name`, `basename(x, ext)`, `new URL(x)`,
-`fileURLToPath`, a library or local helper. `%2e%2e` passes a dot check and decodes to `..`, and
-`'a..'.slice(1)` is `..`. Decode first, then check.
+`path.basename`, the global `String`, `encodeURIComponent` and `encodeURI` (not a local function
+of that name), the checked value's own methods `toLowerCase`, `toUpperCase`, `toLocaleLowerCase`,
+`toLocaleUpperCase`, `toString` and `valueOf`, and `join` or `concat` on a literal
+(`[name, 'txt'].join('.')`, `'v1-'.concat(name)`). A method of any other object that takes the
+checked value (`qs.join(name)`, `lib.concat(name)`, `x.toString(name)`) is not known to be the
+string or array one. Everything else is new text: a decoder (`decodeURIComponent`, `atob`,
+`Buffer.from(x, 'base64')`, and `new URL(x)` and `fileURLToPath`, which read `%2e%2e` as `..`),
+another string method (`replace`, `slice`, `trim`, `normalize('NFKC')`), `path.parse(x).name`,
+`basename(x, ext)`, a library or local helper. `%2e%2e` passes a dot check and decodes to `..`,
+and `'a..'.slice(1)` is `..`. Decode first, then check.
 
 ```ts bad
 import fs from 'node:fs';
@@ -177,7 +224,8 @@ import path from 'node:path';
 
 export function remove(req) {
   const name = path.basename(String(req.query.file));
-  if (name === '.' || name === '..') return;
+  // basename('/') is '': join('/srv/files', '') would delete the whole folder
+  if (!name || name === '.' || name === '..') return;
   fs.rmSync(path.join('/srv/files', name), { recursive: true });
 }
 ```
@@ -198,10 +246,12 @@ A `join` with a direct `req.*` argument is reported once, at the join, not again
 
 ### Helpers
 
-A call to a local function (a declaration or a `const` holding one) that passes one of its
-parameters to an fs path with no containment check is reported at the call, with the message id
-`unguardedFsHelper`, when request input reaches that argument. One level only: a helper that hands
-the path to another helper is not followed, and neither is a method (`this.load(...)`).
+A call to a local function (a declaration, or a `const` or a `let` never reassigned that holds one)
+that passes one of its parameters to an fs path with no containment check is reported at the call,
+with the message id `unguardedFsHelper`, when request input reaches that argument. A destructured
+parameter (`function load({ name })`, `([name])`) counts too: for an object literal argument, only
+the keys whose bindings reach the path are checked. One level only: a helper that hands the path to
+another helper is not followed, and neither is a method (`this.load(...)`).
 
 ```ts bad
 import fs from 'node:fs';
@@ -263,7 +313,9 @@ points outside the base. Compare `fs.realpath` results when the directory can ho
 requester controls. `path.posix` and `path.win32` are never read as containment or as a sanitizer
 (`path.posix.basename` keeps `\`, which Windows reads as a separator). `path.extname` counts as a
 sanitizer even though it can return `.`, so gluing it to another lone `.` (`'.' + extname(x)`)
-can make `..`; that shape is not modelled.
+can make `..`; that shape is not modelled. On Windows, Win32 trims a trailing dot or space from a
+path segment, so `'.. '` passes a `..` check and then names the parent; the dot checks compare
+the text as written. A regex sanitizer that admits no space avoids it.
 
 Broader user-input sources (arbitrary handler parameters, decoded JWT or payload fields) are not
 tracked by default. Proving them user-shaped needs type or dataflow analysis this syntactic rule

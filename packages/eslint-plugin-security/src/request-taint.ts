@@ -52,8 +52,20 @@ const NUMERIC_CALLS: ReadonlySet<string> = new Set(['Number', 'parseInt', 'parse
 const NON_TEXT_PROPERTIES: ReadonlySet<string> = new Set(['length', 'size']);
 /** Methods that put a value into the array they are called on. */
 const ARRAY_WRITERS: ReadonlySet<string> = new Set(['push', 'unshift', 'splice', 'fill']);
-/** Global functions that decode text into characters a check on the input never saw. */
-const DECODERS: ReadonlySet<string> = new Set(['decodeURIComponent', 'decodeURI', 'unescape', 'atob']);
+/**
+ * Functions that decode text into characters a check on the input never saw.
+ * URL parsing reads `%2e%2e` as a `..` segment, and `fileURLToPath`
+ * percent-decodes the path, so `new URL(\`./${n}/\`, base)` climbs for an `n` that
+ * passed a dot check.
+ */
+const DECODERS: ReadonlySet<string> = new Set([
+  'decodeURIComponent',
+  'decodeURI',
+  'unescape',
+  'atob',
+  'fileURLToPath',
+  'URL',
+]);
 /**
  * Methods whose result keeps a checked value checked: case changes, a string
  * conversion and joining checked parts. Any other method on a checked value
@@ -101,6 +113,18 @@ export interface TaintOptions {
    * Any other call reshapes the value and its arguments' proofs no longer hold.
    */
   readonly preservingCalls?: ReadonlySet<string>;
+  /**
+   * Also require a segment sanitizer's result to be refused as empty, for a
+   * sink that acts on a directory (`basename('/')` is `''`, and
+   * `join(base, '')` is the base itself).
+   */
+  readonly refuseEmptySegment?: boolean;
+  /**
+   * True for a read the caller proves safe at the sink (a resolved path whose
+   * containment test decides whether the sink runs): the flow stops there,
+   * unless a decoder or a reshaping call sits between it and the sink.
+   */
+  readonly contained?: (node: TSESTree.Identifier) => boolean;
   /** Bindings that are themselves the input followed (a helper's parameter). */
   readonly sourceVariables?: ReadonlySet<Variable>;
   /**
@@ -343,7 +367,13 @@ function isDecoder(node: TSESTree.CallExpression | TSESTree.NewExpression): bool
   }
   const method = callee.property.name;
   const owner = callee.object.type === AST_NODE_TYPES.Identifier ? callee.object.name : null;
-  if (method === 'unescape' || method === 'fromCharCode' || method === 'fromCodePoint') {
+  if (
+    method === 'unescape' ||
+    method === 'fromCharCode' ||
+    method === 'fromCodePoint' ||
+    method === 'fileURLToPath' ||
+    method === 'URL'
+  ) {
     return true;
   }
   if (owner === 'Buffer' && method === 'from') {
@@ -365,9 +395,11 @@ const TEXT_KEEPING_GLOBALS: ReadonlySet<string> = new Set(['String', 'encodeURIC
  * True when a call's result keeps each argument's text, so a proof on an
  * argument still holds for it: a call in `preservingCalls` (`path.join`),
  * a segment sanitizer with one argument (`basename(x)`, not `basename(x, ext)`),
- * `String(x)` and URI encoding, or a method that keeps its receiver checked
- * (`parts.join(sep)`, `a.concat(b)`). Every other call, `path.parse`,
- * `_.trim`, `new URL` and local helpers included, may change the text.
+ * the global `String(x)` and URI encoding, or a text-keeping method of a
+ * literal (`'a'.concat(b)`, `['a', b].join(sep)`). A method on any other
+ * receiver (`qs.join(n)`, `lib.concat(n)`, `x.toString(n)`) is not known to
+ * be the string or array one. Every other call, `path.parse`, `_.trim`,
+ * `new URL`, a local `String` and local helpers included, may change the text.
  */
 function keepsArgumentText(
   node: TSESTree.CallExpression | TSESTree.NewExpression,
@@ -385,9 +417,76 @@ function keepsArgumentText(
     return node.arguments.length === 1;
   }
   if (callee.type === AST_NODE_TYPES.Identifier) {
-    return TEXT_KEEPING_GLOBALS.has(callee.name);
+    const variable = ASTUtils.findVariable(walk.sourceCode.getScope(callee), callee);
+    if (variable === null || variable.defs.length === 0) {
+      return TEXT_KEEPING_GLOBALS.has(callee.name);
+    }
+    return returnsItsParameter(variable);
   }
-  return callee.type === AST_NODE_TYPES.MemberExpression && !reshapesReceiver(callee);
+  return (
+    callee.type === AST_NODE_TYPES.MemberExpression &&
+    !reshapesReceiver(callee) &&
+    isLiteralReceiver(callee.object)
+  );
+}
+
+/**
+ * True for a local function that returns one of its parameters as it is on
+ * every return (`function forward(v) { return v; }`), a parameter nothing in
+ * it writes.
+ */
+function returnsItsParameter(variable: Variable): boolean {
+  const def = variable.defs[0];
+  if (variable.defs.length !== 1 || def === undefined) {
+    return false;
+  }
+  let fn: TSESTree.Node | null = null;
+  if (def.type === 'FunctionName') {
+    fn = def.node;
+  } else if (
+    def.type === 'Variable' &&
+    def.parent.kind === 'const' &&
+    def.node.init != null
+  ) {
+    fn = peelTypes(def.node.init);
+  }
+  if (
+    fn === null ||
+    (fn.type !== AST_NODE_TYPES.FunctionDeclaration &&
+      fn.type !== AST_NODE_TYPES.FunctionExpression &&
+      fn.type !== AST_NODE_TYPES.ArrowFunctionExpression) ||
+    fn.async ||
+    fn.generator
+  ) {
+    return false;
+  }
+  const parameters = new Set(
+    fn.params.flatMap((param) => (param.type === AST_NODE_TYPES.Identifier ? [param.name] : [])),
+  );
+  const isParameter = (node: TSESTree.Node | null): boolean => {
+    const inner = node === null ? null : peelTypes(node);
+    return inner?.type === AST_NODE_TYPES.Identifier && parameters.has(inner.name);
+  };
+  if (fn.body.type !== AST_NODE_TYPES.BlockStatement) {
+    return isParameter(fn.body);
+  }
+  // Only a body of plain returns: anything else may write the parameter first.
+  return (
+    fn.body.body.length > 0 &&
+    fn.body.body.every(
+      (statement) => statement.type === AST_NODE_TYPES.ReturnStatement && isParameter(statement.argument),
+    )
+  );
+}
+
+/** A string, template or array literal: its `concat` and `join` are the built-in ones. */
+function isLiteralReceiver(node: TSESTree.Node): boolean {
+  const inner = peelTypes(node);
+  return (
+    (inner.type === AST_NODE_TYPES.Literal && typeof inner.value === 'string') ||
+    inner.type === AST_NODE_TYPES.TemplateLiteral ||
+    inner.type === AST_NODE_TYPES.ArrayExpression
+  );
 }
 
 /**
@@ -458,7 +557,8 @@ function carriedByVariable(
   }
   if (
     !walk.reshaped &&
-    isProvenSafeValue(node, walk.sink, walk.options.context, walk.sourceCode)
+    (isProvenSafeValue(node, walk.sink, walk.options.context, walk.sourceCode) ||
+      walk.options.contained?.(node) === true)
   ) {
     return null;
   }
@@ -488,7 +588,7 @@ function carriedByVariable(
   const segmentChecked =
     !walk.reshaped &&
     (walk.options.segmentSanitizers?.size ?? 0) > 0 &&
-    isDotSegmentRefused(node, walk.sink, walk.sourceCode);
+    isDotSegmentRefused(node, walk.sink, walk.sourceCode, walk.options.refuseEmptySegment === true);
   walk.seen.add(variable);
   try {
     for (const reference of variable.references) {
@@ -580,7 +680,7 @@ const CASE_METHODS: ReadonlySet<string> = new Set([
  * a request field name: `query` in `({ query }) => ...`, `file` in
  * `({ params: { file } }) => ...`, `q` in `({ query: q }) => ...`.
  */
-function isRequestFieldParameter(variable: Variable): boolean {
+export function isRequestFieldParameter(variable: Variable): boolean {
   const def = variable.defs[0];
   if (def?.type !== 'Parameter') {
     return false;
