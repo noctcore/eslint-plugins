@@ -243,7 +243,7 @@ written with a character reference (`text&#47;javascript`). The HTML escape stat
   a `const` alias, or as the named `setConfig` export, also through `.call` or `.apply`) whose config fails the checks above, or
   cannot be read, makes every `sanitize` of that module untrusted in the file, the named
   `sanitize` export included. So does handing the module binding to a call, assigning it, or
-  writing one of its members. An instance made with `DOMPurify(window)` keeps its own config. A
+  writing one of its members (a destructuring target included). An instance made with `DOMPurify(window)` keeps its own config. A
   write to `sanitizeHtml.defaults` or `xss.whiteList` (an assignment, a `push`, `Object.assign`,
   a `const` alias or object that is then changed, or the module handed to a call) makes every call
   of that module untrusted; reading them is fine when the value is copied (`.concat()`,
@@ -264,7 +264,8 @@ written with a character reference (`text&#47;javascript`). The HTML escape stat
   entry (`utils.escapeHtml`) is trusted the same way, by the name it starts from: imported,
   `require`d or not declared in this file; an object, class or parameter of this file proves nothing.
   Either kind stops counting once the file writes it: a write to the name other than its
-  declaration, to a member on the way to the callee (`utils.escapeHtml = ...`, `utils[k] = ...`),
+  declaration, to a member on the way to the callee (`utils.escapeHtml = ...`, `utils[k] = ...`,
+  also as a destructuring target: `[utils.escapeHtml] = ...`),
   or `Object.assign` / `Object.defineProperty` on one of them. A reassigned `require` of an
   escaping module no longer counts as that module either.
 - **A `.replace` / `.replaceAll` chain** that encodes at least `&`, `<`, `>` and `"`. A step counts

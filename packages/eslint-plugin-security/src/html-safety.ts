@@ -1918,14 +1918,39 @@ function isObjectWrite(node: TSESTree.Node): boolean {
 
 const OBJECT_WRITES: ReadonlySet<string> = new Set(['assign', 'defineProperty', 'defineProperties', 'setPrototypeOf']);
 
-/** True when `node` is written: assigned, updated, deleted or a loop target. */
+const TYPE_WRAPPERS: ReadonlySet<AST_NODE_TYPES> = new Set([
+  AST_NODE_TYPES.TSAsExpression,
+  AST_NODE_TYPES.TSNonNullExpression,
+  AST_NODE_TYPES.TSSatisfiesExpression,
+  AST_NODE_TYPES.TSTypeAssertion,
+]);
+
+/**
+ * True when `node` is written: assigned (also as a destructuring target, at any
+ * depth: `[a.b] = ...`, `({ x: a.b = d } = ...)`), updated, deleted or a loop target.
+ */
 export function isWriteTarget(node: TSESTree.Node): boolean {
-  const parent = node.parent;
-  return (
-    (parent?.type === AST_NODE_TYPES.AssignmentExpression && parent.left === node) ||
-    parent?.type === AST_NODE_TYPES.UpdateExpression ||
-    (parent?.type === AST_NODE_TYPES.UnaryExpression && parent.operator === 'delete') ||
-    ((parent?.type === AST_NODE_TYPES.ForInStatement || parent?.type === AST_NODE_TYPES.ForOfStatement) &&
-      parent.left === node)
-  );
+  let target = node;
+  while (target.parent !== undefined && TYPE_WRAPPERS.has(target.parent.type)) {
+    target = target.parent;
+  }
+  const parent = target.parent;
+  switch (parent?.type) {
+    case AST_NODE_TYPES.AssignmentExpression:
+    case AST_NODE_TYPES.AssignmentPattern:
+    case AST_NODE_TYPES.ForInStatement:
+    case AST_NODE_TYPES.ForOfStatement:
+      return parent.left === target;
+    case AST_NODE_TYPES.UpdateExpression:
+    case AST_NODE_TYPES.ArrayPattern:
+      return true;
+    case AST_NODE_TYPES.UnaryExpression:
+      return parent.operator === 'delete';
+    case AST_NODE_TYPES.RestElement:
+      return parent.argument === target;
+    case AST_NODE_TYPES.Property:
+      return parent.value === target && parent.parent.type === AST_NODE_TYPES.ObjectPattern;
+    default:
+      return false;
+  }
 }
