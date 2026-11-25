@@ -118,7 +118,8 @@ check that comes after the call.
   `security/require-path-containment` accepts, on the `path.join` / `path.resolve` result:
   `full.startsWith(base + path.sep)` (the base must end in a separator, or `/srv/app-evil` passes
   a test for `/srv/app`), or a `path.relative(base, full)` result refused both when it climbs
-  (`rel.startsWith('..')`) and when it is absolute (`path.isAbsolute(rel)`). A test whose result is
+  (`rel.startsWith('..')`) and when it is absolute (`path.isAbsolute(rel)`), every refusal on the
+  same result (one binding, or inline `path.relative(...)` calls with the same arguments). A test whose result is
   ignored, one that guards another statement, one in a nested function, and one against `'/'`,
   `path.sep` or `process.cwd()` (every path is under those) do not count.
 - A call to a function in `sanitizers` that takes a binding the setting went through, before the
