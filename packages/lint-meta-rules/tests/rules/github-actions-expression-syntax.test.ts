@@ -487,6 +487,54 @@ describe('github-actions-expression-syntax', () => {
     expect(performance.now() - started).toBeLessThan(1000);
   });
 
+  test.each([
+    [
+      'an anchored quote holding " #" and "]"',
+      'on:\n  push:\n    branches: [\n  &a "x #y]", main]\njobs:\n  b:\n    runs-on: ubuntu-latest\n    steps:\n      - run: echo ]\n',
+    ],
+    [
+      'a quote right after a ":" holding "{"',
+      'jobs:\n  b:\n    strategy:\n      matrix: {\n  "os":"{ubuntu", "node": [20]\n      }\n    runs-on: ubuntu-latest\n    steps:\n      - run: echo }\n',
+    ],
+    [
+      'tagged quotes, an explicit key and adjacent values',
+      'on:\n  push:\n    branches: [\n  "a":"b", &x "c #d]", !!str "e{f", ? "g[" : h]\njobs:\n  b:\n    steps:\n      - run: echo ]\n',
+    ],
+    [
+      'a verbatim tag the range scan misreads, repaired line by line instead',
+      'on:\n  push:\n    branches: [\n  !<tag:yaml.org,2002:str> "x #y]", main]\njobs:\n  b:\n    runs-on: ubuntu-latest\n    steps:\n      - run: echo ]\n',
+    ],
+  ])('accepts an under-indented flow collection with %s', (_, text) => {
+    expect(checkWorkflowExpressionSyntax('w.yml', text)).toEqual([]);
+  });
+
+  test('still reports a real expression error after a repaired tagged quote', () => {
+    const text =
+      'on:\n  push:\n    branches: [\n  !!str "x #y]", main]\njobs:\n  b:\n    steps:\n      - run: echo ]\n      - run: echo ${{ a = b }}\n';
+    const violations = checkWorkflowExpressionSyntax('w.yml', text);
+
+    expect(violations).toHaveLength(1);
+    expect(violations[0]?.line).toBe(9);
+    expect(violations[0]?.message ?? '').toContain('uses `=`');
+  });
+
+  test('spaces 100 comments after flow commas in one pass', () => {
+    const lines = ['jobs:', '  b:', '    env:'];
+    for (let index = 0; index < 100; index += 1) lines.push(`      K${String(index)}: [x,#c`, '        y]');
+    for (let index = 0, size = lines.join('\n').length; size < 1_000_000; index += 1) {
+      const line = `      P${String(index)}: ${'v'.repeat(60)}`;
+      lines.push(line);
+      size += line.length + 1;
+    }
+    lines.push('    if: ${{ a = b }}', '');
+    const started = performance.now();
+    const violations = checkWorkflowExpressionSyntax('w.yml', lines.join('\n'));
+
+    expect(violations).toHaveLength(1);
+    expect(violations[0]?.message ?? '').toContain('uses `=`');
+    expect(performance.now() - started).toBeLessThan(2000);
+  });
+
   test('still checks expressions in a workflow whose flow or quoted indentation only yaml rejects', () => {
     const quoted = checkWorkflowExpressionSyntax('w.yml', 'jobs:\n  b:\n    run: "echo\n  ${{ a = b }}"\n');
 
