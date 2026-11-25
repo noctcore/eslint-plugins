@@ -101,6 +101,10 @@ describe('isContainedBefore', () => {
     ],
     ['a guard call as the test', 'if (!isInside(BASE, full)) return;\nsink(full);'],
     [
+      'one inline relative call spaced differently',
+      "if (path.relative(BASE,full) === '..' || path.relative(BASE, full).startsWith('..' + sep) || path.isAbsolute(path.relative(BASE, full))) return;\nsink(full);",
+    ],
+    [
       'one inline relative call refused three ways',
       "if (path.relative(BASE, full) === '..' || path.relative(BASE, full).startsWith('..' + sep) || path.isAbsolute(path.relative(BASE, full))) return;\nsink(full);",
     ],
@@ -144,6 +148,18 @@ describe('isContainedBefore', () => {
     [
       'refusals of two different inline relative calls',
       "if (path.relative(BASE + '/sub', full) === '..' || path.relative(BASE, full).startsWith('..' + sep) || path.isAbsolute(path.relative(BASE, full))) return;\nsink(full);",
+    ],
+    [
+      'a base binding written inside the test',
+      "let b = BASE + '/sub';\nif (path.relative(b, full) === '..' || (b = BASE) === '' || path.relative(b, full).startsWith('..' + sep) || path.isAbsolute(path.relative(b, full))) return;\nsink(full);",
+    ],
+    [
+      'a member read as the base',
+      "if (path.relative(o.b, full) === '..' || path.relative(o.b, full).startsWith('..' + sep) || path.isAbsolute(path.relative(o.b, full))) return;\nsink(full);",
+    ],
+    [
+      'string bases that differ only in spacing',
+      "if (path.relative('/srv/s ub', full) === '..' || path.relative('/srv/sub', full).startsWith('..' + sep) || path.isAbsolute(path.relative('/srv/sub', full))) return;\nsink(full);",
     ],
     [
       'refusals of inline relative calls that may differ on each run',
