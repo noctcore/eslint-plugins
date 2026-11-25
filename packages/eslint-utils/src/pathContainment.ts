@@ -260,16 +260,41 @@ const VARYING: ReadonlySet<string> = new Set([
   AST_NODE_TYPES.AssignmentExpression,
   AST_NODE_TYPES.AwaitExpression,
   AST_NODE_TYPES.CallExpression,
+  AST_NODE_TYPES.MemberExpression,
   AST_NODE_TYPES.NewExpression,
   AST_NODE_TYPES.TaggedTemplateExpression,
   AST_NODE_TYPES.UpdateExpression,
   AST_NODE_TYPES.YieldExpression,
 ]);
 
-/** True when evaluating `node` twice may give two values: it calls, awaits or writes something. */
+/**
+ * True for a name that may hold another value from one read to the next: a
+ * binding written anywhere after its declaration (`let b = x; ... b = y`,
+ * also inside a closure), or a global some code in the file writes.
+ */
+function isWrittenName(node: TSESTree.Identifier, sourceCode: SourceCode): boolean {
+  const variable = ASTUtils.findVariable(sourceCode.getScope(node), node);
+  if (variable === null) {
+    let scope: TSESLint.Scope.Scope | null = sourceCode.getScope(node);
+    while (scope?.upper != null) {
+      scope = scope.upper;
+    }
+    return scope?.through.some((reference) => reference.identifier.name === node.name && reference.isWrite()) ?? true;
+  }
+  return variable.references.some((reference) => reference.isWrite() && reference.init !== true);
+}
+
+/**
+ * True when evaluating `node` twice may give two values: it calls, awaits or
+ * writes something, reads a member (which may be a getter, or written between
+ * the reads), or reads a name that is written after its declaration.
+ */
 function mayVary(node: TSESTree.Node, sourceCode: SourceCode): boolean {
   if (VARYING.has(node.type)) {
     return true;
+  }
+  if (node.type === AST_NODE_TYPES.Identifier) {
+    return isWrittenName(node, sourceCode);
   }
   const keys = sourceCode.visitorKeys[node.type] ?? [];
   return keys.some((key) => {
@@ -287,15 +312,22 @@ function mayVary(node: TSESTree.Node, sourceCode: SourceCode): boolean {
 
 /**
  * The key of an inline `relative(base, resolved)` call: its base and target
- * text, so only tests of the same call pair up. A call that may differ on each
- * run (an argument with a call or a write in it) gets a key of its own.
+ * tokens (string text kept as written), so only tests of the same call pair
+ * up. A call that may differ from one run to the next (see `mayVary`) gets a
+ * key of its own and pairs with nothing.
  */
 function inlineKey(call: TSESTree.CallExpression, context: PathContainmentContext): RelativeKey {
   const parts = call.arguments.slice(0, 2);
   if (parts.some((part) => mayVary(part, context.sourceCode))) {
     return call;
   }
-  return `relative(${parts.map((part) => context.sourceCode.getText(part).replace(/\s+/gu, '')).join(',')})`;
+  const tokens = parts.map((part) =>
+    context.sourceCode
+      .getTokens(part)
+      .map((token) => token.value)
+      .join(' '),
+  );
+  return `relative(${JSON.stringify(tokens)})`;
 }
 
 /**
