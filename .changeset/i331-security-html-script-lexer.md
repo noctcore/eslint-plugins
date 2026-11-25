@@ -6,4 +6,4 @@
 
 A dotted `sanitizers` entry (`utils.escapeHtml`) is now trusted by the binding it starts from, as bare entries are: only when imported, `require`d or not declared in the file. An object, class or parameter of the file proves nothing. A helper that returns a parameter it also writes no longer counts as returning the argument.
 
-Report removed: a `<script>` whose first `type` attribute is a literal non-script type (`application/json`, `text/template`) is a data block the browser never runs. Its content is judged like `<textarea>` content, so serialize-javascript output inside a quote there is no longer reported; JSON.stringify output, which can write `</script>`, still is.
+Report removed: a `<script>` whose first `type` attribute is a literal non-script type (`application/json`, `text/template`) is a data block the browser never runs. Its content is judged like `<textarea>` content, so serialize-javascript output inside a quote there, and escaper output in markup there (``<script type="text/x-template"><p>${escapeHtml(q)}</p></script>``), are no longer reported; JSON.stringify output, which can write `</script>`, still is.
