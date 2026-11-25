@@ -1145,3 +1145,42 @@ ruleTester.run('no-user-controlled-redirect: protocol handler schemes', noUserCo
     { code: "res.set('Location', `ms-${req.query.p}`);", filename: TS, errors: [error] },
   ],
 });
+
+/** `r` and `x2` alias each other, `x2` is also `Location` and `r` is `x2` joined with more text. */
+const joinCycle = (start: string, join: string, sink: string): string =>
+  `function h(req, res) { let r = ${start}; let x2 = r; x2 = 'Location'; r = ${join}; ${sink} }`;
+
+// Bindings in a cycle that joins text: each keeps the shapes it can take,
+// whichever binding the sink reads first.
+ruleTester.run('no-user-controlled-redirect: cycles with joins', noUserControlledRedirectRule, {
+  valid: [
+    {
+      code: "function h(req, res) { let r = ''; let x2 = r; x2 = 'X-Trace'; r = x2 + '-B'; let N = r; N = x2; res.set(N, req.query.x); }",
+      filename: TS,
+    },
+    { code: joinCycle("''", "x2 + '-B'", 'res.set(r, req.query.x);'), filename: TS },
+  ],
+  invalid: [
+    { code: joinCycle("''", "x2 + '-B'", 'let N = r; N = x2; res.set(N, req.query.x);'), filename: TS, errors: [error] },
+    { code: joinCycle("''", "x2 + '-B'", 'let N = x2; N = r; res.set(N, req.query.x);'), filename: TS, errors: [error] },
+    { code: joinCycle("'X-'", "x2 + 'Y'", 'let N = r; N = x2; res.set(N, req.query.x);'), filename: TS, errors: [error] },
+    { code: joinCycle("'X-'", "x2 + 'Y'", 'let N = x2; N = r; res.set(N, req.query.x);'), filename: TS, errors: [error] },
+    { code: joinCycle("''", "x2 + '-B'", 'res.set(r + x2, req.query.x);'), filename: TS, errors: [error] },
+    { code: joinCycle("''", "x2 + '-B'", 'res.set(`${r}${x2}`, req.query.x);'), filename: TS, errors: [error] },
+    { code: joinCycle("''", "x2 + '-B'", 'res.writeHead(302, { [r + x2]: req.query.x });'), filename: TS, errors: [error] },
+    // A cycle of three bindings, each joined onto the next.
+    {
+      code: "function h(req, res) { let a = ''; let b = a; let c = b; c = 'Location'; a = c + '-B'; b = a + '-C'; let N = a; N = b; N = c; res.set(N, req.query.x); }",
+      filename: TS,
+      errors: [error],
+    },
+    {
+      code: "function h(req, res) { let a = ''; let b = a; let c = b; c = 'Location'; a = c + '-B'; b = a + '-C'; res.set(a + c, req.query.x); }",
+      filename: TS,
+      errors: [error],
+    },
+    // A template join.
+    { code: joinCycle("''", '`${x2}-B`', 'let N = r; N = x2; res.set(N, req.query.x);'), filename: TS, errors: [error] },
+    { code: joinCycle("''", '`${x2}-B`', 'res.set(`${r}${x2}`, req.query.x);'), filename: TS, errors: [error] },
+  ],
+});
