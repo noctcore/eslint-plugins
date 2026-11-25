@@ -1,0 +1,5 @@
+---
+'@noctcore/eslint-plugin-security': patch
+---
+
+`no-user-controlled-fetch-url` stops trusting a `trustedSources` binding in more cases, so these are reported again with the option on. A copy of the source or of anything under it in a local binding is followed and a write through it counts (`const c = config; c.url = x`, `const { sub } = config; sub.url = x`, `const m = config.mirrors; m[0] = x`, `for (const m of config.mirrors) m.url = x`, a callback parameter of `config.mirrors.forEach`, `config.mirrors.at(0).url = x`). Handing the source to any call other than the rule's own request calls and a few known readers ends the trust (`merge(config, req.body)`, `_.set(config, 'url', x)`, a destructured `defineProperty(config, ...)`, `Object.assign({}, config)`), and so does returning, throwing or exporting it. For an undeclared global, a write through `globalThis`, `global`, `window` or `self` counts (`globalThis.config = req.body`), and a source read off a handler's response (`const config = res.locals.cfg`) is not trusted. Without the option nothing changes.

@@ -109,6 +109,11 @@ export interface TaintOptions {
    * `handlerRole` in `./value-flow`).
    */
   readonly handlerRequests?: boolean;
+  /**
+   * Also take a handler's response parameter as input, whatever its name
+   * (`res.locals` holds what earlier middleware put there).
+   */
+  readonly handlerResponses?: boolean;
 }
 
 interface Walk {
@@ -162,7 +167,8 @@ function rootIdentifier(node: TSESTree.Node): TSESTree.Identifier | null {
 function isRequestObject(node: TSESTree.Identifier, walk: Walk): boolean {
   return (
     walk.options.requestObjects.has(node.name) ||
-    (walk.options.handlerRequests === true && handlerRole(node, walk.sourceCode) === 'request')
+    (walk.options.handlerRequests === true && handlerRole(node, walk.sourceCode) === 'request') ||
+    (walk.options.handlerResponses === true && handlerRole(node, walk.sourceCode) === 'response')
   );
 }
 

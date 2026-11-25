@@ -246,7 +246,7 @@ export function probe(input: string) {
 | `trustedOrigins` | `string[]` | `[]` | Expressions (source text) that are a fixed-origin URL. `name()` matches any call to `name`. |
 | `sanitizers` | `string[]` | `[]` | Functions whose result is a safe same-origin path. |
 | `trustedPaths` | `string[]` | `[]` | Expressions (source text) that hold a safe same-origin path, e.g. an imported constant. |
-| `trustedSources` | `string[]` | `[]` | For CLI and test code: variables whose value the person running the program picks, such as a CLI config or flag. The variable and every property read off it count as a trusted origin, and as a fixed host for `hostname` and `host`, unless the binding is a parameter, is written, or takes request data. |
+| `trustedSources` | `string[]` | `[]` | For CLI and test code: variables whose value the person running the program picks, such as a CLI config or flag. The variable and every property read off it count as a trusted origin, and as a fixed host for `hostname` and `host`, unless the binding is a parameter, is written (also through an alias or a global object), is handed to a call that may change it, or takes request data. Helpers are not followed: handing the source to one ends the trust. |
 | `allowLoopback` | `boolean` | `false` | Trust a URL whose author-written text names `localhost`, `127.0.0.1` or `[::1]`, followed by a port the rule can see is a number. |
 
 A `CalleeSpec` is `{ name, object?, urlArgument?, urlProperty? }`: `name` is the function or method
@@ -312,14 +312,25 @@ only when its root is a variable or an import, and:
 
 - it is not a function parameter (a caller fills it) and not rooted at `this` or a call result;
 - it never takes its value from request data along the value flow (`const config = req.body`,
-  `const { config } = req.body`);
-- it is never reassigned (`config = req.body`), and no property under it is written:
-  `config.url = x`, `delete config.url`, `({ url: config.url } = x)`, `Object.assign(config, x)`,
-  `config.mirrors.push(x)`.
+  `const { config } = req.body`), nor from a handler's response (`const config = res.locals.cfg`);
+- it is never reassigned (`config = req.body`, or `globalThis.config = x` for an undeclared
+  global), and no property under it is written: `config.url = x`, `delete config.url`,
+  `({ url: config.url } = x)`, `Object.assign(config, x)`, `config.mirrors.push(x)`;
+- it is never handed to a call that may change it. Only the rule's own request calls and a few
+  known readers (`String`, `Number`, `encodeURIComponent`, `new URL`, `JSON.stringify`,
+  `Object.keys`, `console.log`) count as reading; `merge(config, req.body)`, `_.set(config, ...)`,
+  `mutate(config.http)` and `Object.assign({}, config)` end the trust, since helpers are not
+  followed;
+- it never leaves through a `return`, a `throw`, a tagged template or an `export const`;
+- a copy of it or of anything under it in a local binding (`const c = config`,
+  `const { mirrors } = config`, `const m = config.mirrors`, `for (const m of config.mirrors)`, the
+  parameter of a callback such as `config.mirrors.forEach((m) => ...)`, `{ ...config }`) keeps to
+  the same rules: `const c = config; c.url = x` ends the trust in `config`.
 
-A helper that changes the object it is handed (`merge(config, req.body)`) or a write through an
-alias (`const c = config; c.url = x`) is not followed, which is why the option belongs only in code
-that never handles requests. Limit it to those files with a `files` override:
+The copy itself is not trusted: `fetch(c.url)` after `const c = config` is read like any other
+binding. The checks do not follow the order of statements, so a write anywhere in the file counts.
+Writes made in another module are not seen, which is why the option belongs only in code that never
+handles requests. Limit it to those files with a `files` override:
 
 ```js
 // eslint.config.js
