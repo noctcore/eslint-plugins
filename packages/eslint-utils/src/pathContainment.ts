@@ -256,11 +256,54 @@ function isGuard(term: TSESTree.Node, context: PathContainmentContext): boolean 
   return context.isGuardCall?.(peel(term)) === true;
 }
 
+const VARYING: ReadonlySet<string> = new Set([
+  AST_NODE_TYPES.AssignmentExpression,
+  AST_NODE_TYPES.AwaitExpression,
+  AST_NODE_TYPES.CallExpression,
+  AST_NODE_TYPES.NewExpression,
+  AST_NODE_TYPES.TaggedTemplateExpression,
+  AST_NODE_TYPES.UpdateExpression,
+  AST_NODE_TYPES.YieldExpression,
+]);
+
+/** True when evaluating `node` twice may give two values: it calls, awaits or writes something. */
+function mayVary(node: TSESTree.Node, sourceCode: SourceCode): boolean {
+  if (VARYING.has(node.type)) {
+    return true;
+  }
+  const keys = sourceCode.visitorKeys[node.type] ?? [];
+  return keys.some((key) => {
+    const child = (node as unknown as Record<string, unknown>)[key];
+    const children = Array.isArray(child) ? child : [child];
+    return children.some(
+      (item) =>
+        item !== null &&
+        typeof item === 'object' &&
+        typeof (item as { type?: unknown }).type === 'string' &&
+        mayVary(item as TSESTree.Node, sourceCode),
+    );
+  });
+}
+
 /**
- * What a `relative(base, resolved)` result is read through: the call itself
- * (`'inline'`) or the binding it is stored in. Null for anything else.
+ * The key of an inline `relative(base, resolved)` call: its base and target
+ * text, so only tests of the same call pair up. A call that may differ on each
+ * run (an argument with a call or a write in it) gets a key of its own.
  */
-function relativeOf(raw: TSESTree.Node, context: PathContainmentContext): Variable | 'inline' | null {
+function inlineKey(call: TSESTree.CallExpression, context: PathContainmentContext): RelativeKey {
+  const parts = call.arguments.slice(0, 2);
+  if (parts.some((part) => mayVary(part, context.sourceCode))) {
+    return call;
+  }
+  return `relative(${parts.map((part) => context.sourceCode.getText(part).replace(/\s+/gu, '')).join(',')})`;
+}
+
+/**
+ * What a `relative(base, resolved)` result is read through: the inline call
+ * (keyed by its base and target text) or the binding it is stored in. Null
+ * for anything else.
+ */
+function relativeOf(raw: TSESTree.Node, context: PathContainmentContext): RelativeKey | null {
   const node = peel(raw);
   const isRelative = (candidate: TSESTree.Node): boolean => {
     const inner = peel(candidate);
@@ -278,8 +321,8 @@ function relativeOf(raw: TSESTree.Node, context: PathContainmentContext): Variab
       !isBroadBase(base, context)
     );
   };
-  if (isRelative(node)) {
-    return 'inline';
+  if (isRelative(node) && node.type === AST_NODE_TYPES.CallExpression) {
+    return inlineKey(node, context);
   }
   if (node.type !== AST_NODE_TYPES.Identifier) {
     return null;
@@ -316,7 +359,8 @@ function isDotsSeparator(raw: TSESTree.Node, context: PathContainmentContext): b
 }
 
 type ParentRefusal = 'all' | 'exact' | 'nested';
-type RelativeKey = Variable | 'inline';
+/** A binding that holds a relative result, an inline call's text, or a call that pairs with nothing else. */
+type RelativeKey = Variable | string | TSESTree.CallExpression;
 interface Refusal {
   readonly key: RelativeKey;
   readonly kind: ParentRefusal | 'absolute';
