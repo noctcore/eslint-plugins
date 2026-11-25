@@ -660,3 +660,97 @@ ruleTester.run('no-user-controlled-fetch-url: relative scheme-shaped prefixes', 
     { code: 'fetch(`HTTPS${x}`);', filename: TS, errors: [error] },
   ],
 });
+
+// A trusted source copied into another binding, handed to a call that may
+// change it, written through a global object, or read off a response.
+ruleTester.run('no-user-controlled-fetch-url: trusted sources that leave', noUserControlledFetchUrlRule, {
+  valid: [
+    // Copies into local bindings that are only read.
+    ...[
+      'const url = config.url; fetch(url);',
+      'const { verbose, mirrors } = config; if (verbose) console.log(mirrors[0]);',
+      'const c = config; const t = `${c.url}/x`;',
+      'for (const m of config.mirrors) console.log(m.url);',
+      'config.mirrors.forEach((m) => console.log(m.url.trim()));',
+      'let c; c = config; if (c.verbose) {}',
+    ].map((setup) => ({
+      code: `${setup} fetch(config.url); https.get({ hostname: config.host, path: '/x' });`,
+      filename: TS,
+      options: [{ trustedSources: ['config'] }],
+    })),
+    // Known readers, string building, tests and the rule's own calls.
+    {
+      code: "console.log(config); String(config.port); JSON.stringify(config); Object.keys(config); new URL(config.base); if (config.verbose && typeof config === 'object') {} const t = `${config.url}`; fetch(config.url); axios.create({ baseURL: config.url }); https.get({ hostname: config.host, path: '/x' });",
+      filename: TS,
+      options: [{ trustedSources: ['config'] }],
+    },
+    // A global with a read through globalThis only.
+    {
+      code: 'log(globalThis.config.url.trim()); fetch(config.url);',
+      filename: TS,
+      options: [{ trustedSources: ['config'] }],
+    },
+  ],
+  invalid: [
+    ...[
+      // Copied into another binding, then written through it.
+      'const c = config; c.url = req.query.u;',
+      'const { sub } = config; sub.url = x;',
+      'const m = config.mirrors; m[0] = x;',
+      'let c; c = config; c.url = x;',
+      'const { ...rest } = config; rest.http.url = x;',
+      'const copy = { ...config }; copy.http.url = x;',
+      'const box = { config }; box.config.url = x;',
+      'const list = [config]; list[0].url = x;',
+      'for (const m of config.mirrors) m.url = x;',
+      'config.mirrors.forEach((m) => { m.url = x; });',
+      'config.mirrors.at(0).url = x;',
+      'config.servers.get(k).url = x;',
+      'export const c = config;',
+      // Handed to a call that may change it.
+      'mutate(config, req.body);',
+      '_.merge(config, req.body);',
+      'merge(config, req.body);',
+      "_.set(config, 'url', x);",
+      "const { defineProperty } = Object; defineProperty(config, 'url', { value: x });",
+      'register(config.http);',
+      'Object.assign({}, config);',
+      'helpers.push(config);',
+      'setup(...[config]);',
+      'tag`${config}`;',
+      'const String = (o) => { o.url = x; }; String(config);',
+      // Left through a return or a throw.
+      'function get() { return config; }',
+      'const get = () => config.http;',
+      // A write through a global object.
+      'globalThis.config = req.body;',
+      "window['config'] = req.body;",
+      'globalThis.config.url = x;',
+      'Object.assign(globalThis.config, req.body);',
+    ].map((setup) => ({
+      code: `${setup} fetch(config.url); https.get({ hostname: config.host, path: '/x' });`,
+      filename: TS,
+      options: [{ trustedSources: ['config'] }],
+      errors: [error, host],
+    })),
+    // A source read off the response, which earlier middleware filled.
+    {
+      code: "app.get('/x', (req, res) => { const config = res.locals.cfg; fetch(config.url); https.get({ hostname: config.host, path: '/x' }); });",
+      filename: TS,
+      options: [{ trustedSources: ['config'] }],
+      errors: [error, host],
+    },
+    {
+      code: "app.get('/x', (rq, rs) => { const config = rs.locals.cfg; fetch(config.url); });",
+      filename: TS,
+      options: [{ trustedSources: ['config'] }],
+      errors: [error],
+    },
+    // Without the option nothing is trusted, copies or not.
+    {
+      code: "const url = config.url; fetch(url); fetch(config.url); https.get({ hostname: config.host, path: '/x' });",
+      filename: TS,
+      errors: [error, error, host],
+    },
+  ],
+});
