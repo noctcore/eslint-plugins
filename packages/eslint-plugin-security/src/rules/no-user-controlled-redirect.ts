@@ -174,7 +174,7 @@ function staticText(
   node: TSESTree.Node,
   sourceCode: Readonly<TSESLint.SourceCode>,
 ): string | undefined {
-  const texts = nameShapes(node, sourceCode, new Map())?.filter((shape) => !shape.includes(RUNTIME_PIECE));
+  const texts = nameShapes(node, sourceCode, shapeWalk())?.filter((shape) => !shape.includes(RUNTIME_PIECE));
   return texts?.length === 1 ? texts[0] : undefined;
 }
 
@@ -310,23 +310,49 @@ function redirectTargets(
 /** Stands for a runtime piece of a header name in {@link nameShapes}. */
 const RUNTIME_PIECE = '\u0000';
 
-type ShapeMemo = Map<object, readonly string[] | null | 'pending'>;
+/** Bindings deeper than this in one alias chain make a name anything (null). */
+const MAX_ALIAS_CHAIN = 256;
+
+/**
+ * State of one {@link nameShapes} reading. Bindings are read once each, in
+ * the order of Tarjan's strongly connected components: a binding met again
+ * while it is still being read is part of a cycle with every binding read
+ * since, and they all end up with the shapes of the first one, so no result
+ * depends on the path or depth it was first reached by.
+ */
+interface ShapeWalk {
+  readonly done: Map<object, readonly string[] | null>;
+  readonly open: Map<object, number>;
+  readonly stack: object[];
+  /** Lowest stack index of an open binding the current reading met. */
+  low: number;
+  /** True once a chain passed {@link MAX_ALIAS_CHAIN}: results since then are not kept. */
+  capped: boolean;
+}
+
+function shapeWalk(): ShapeWalk {
+  return { done: new Map(), open: new Map(), stack: [], low: Number.POSITIVE_INFINITY, capped: false };
+}
 
 /**
  * The shapes a header name can take: its author text, with
  * {@link RUNTIME_PIECE} for each runtime piece (`'Loc' + n` is `Loc\0`).
  * Null when the shapes are too many to list, which may be anything. A binding
- * is read once per name; one met again inside its own values is runtime.
+ * met again inside its own values is a runtime piece there; `depth` bounds
+ * only the nesting of templates and `+` inside one expression.
  */
 function nameShapes(
   node: TSESTree.Node,
   sourceCode: Readonly<TSESLint.SourceCode>,
-  memo: ShapeMemo,
+  walk: ShapeWalk,
   depth = 0,
 ): readonly string[] | null {
   const inner = unwrapExpression(node as TSESTree.Expression);
   if (inner.type === AST_NODE_TYPES.Literal) {
     return typeof inner.value === 'string' ? [inner.value] : [String(inner.value)];
+  }
+  if (inner.type === AST_NODE_TYPES.Identifier) {
+    return bindingShapes(inner, sourceCode, walk);
   }
   if (depth >= MAX_NAME_DEPTH) {
     return [RUNTIME_PIECE];
@@ -340,34 +366,62 @@ function nameShapes(
         pieces.push(expression);
       }
     });
-    return joinedShapes(pieces, sourceCode, memo, depth);
+    return joinedShapes(pieces, sourceCode, walk, depth);
   }
   if (inner.type === AST_NODE_TYPES.BinaryExpression && inner.operator === '+') {
-    return joinedShapes([inner.left, inner.right], sourceCode, memo, depth);
+    return joinedShapes([inner.left, inner.right], sourceCode, walk, depth);
   }
-  if (inner.type !== AST_NODE_TYPES.Identifier) {
-    return [RUNTIME_PIECE];
-  }
-  const variable = findVariable(sourceCode.getScope(inner), inner);
-  const values = writtenValues(inner, sourceCode);
+  return [RUNTIME_PIECE];
+}
+
+/** The shapes of every value a binding is set to (see {@link ShapeWalk}). */
+function bindingShapes(
+  identifier: TSESTree.Identifier,
+  sourceCode: Readonly<TSESLint.SourceCode>,
+  walk: ShapeWalk,
+): readonly string[] | null {
+  const variable = findVariable(sourceCode.getScope(identifier), identifier);
+  const values = writtenValues(identifier, sourceCode);
   if (variable === null || values === undefined) {
     return [RUNTIME_PIECE];
   }
-  const known = memo.get(variable);
-  if (known !== undefined) {
-    return known === 'pending' ? [RUNTIME_PIECE] : known;
+  const done = walk.done.get(variable);
+  if (done !== undefined || walk.done.has(variable)) {
+    return done ?? null;
   }
-  memo.set(variable, 'pending');
+  const open = walk.open.get(variable);
+  if (open !== undefined) {
+    walk.low = Math.min(walk.low, open);
+    return [RUNTIME_PIECE];
+  }
+  if (walk.stack.length >= MAX_ALIAS_CHAIN) {
+    walk.capped = true;
+    return null;
+  }
+  const index = walk.stack.length;
+  walk.open.set(variable, index);
+  walk.stack.push(variable);
+  const outerLow = walk.low;
+  walk.low = index;
   let shapes: string[] | null = [];
   for (const value of values) {
-    const more = nameShapes(value, sourceCode, memo, depth + 1);
+    const more = nameShapes(value, sourceCode, walk);
     shapes = more === null ? null : [...new Set([...shapes, ...more])];
     if (shapes === null || shapes.length > MAX_JOINED_TEXTS) {
       shapes = null;
       break;
     }
   }
-  memo.set(variable, shapes);
+  const low = walk.low;
+  walk.low = Math.min(outerLow, low);
+  if (low >= index) {
+    for (const member of walk.stack.splice(index)) {
+      walk.open.delete(member);
+      if (!walk.capped) {
+        walk.done.set(member, shapes);
+      }
+    }
+  }
   return shapes;
 }
 
@@ -375,12 +429,12 @@ function nameShapes(
 function joinedShapes(
   pieces: readonly (string | TSESTree.Node)[],
   sourceCode: Readonly<TSESLint.SourceCode>,
-  memo: ShapeMemo,
+  walk: ShapeWalk,
   depth: number,
 ): readonly string[] | null {
   let shapes = [''];
   for (const piece of pieces) {
-    const options = typeof piece === 'string' ? [piece] : nameShapes(piece, sourceCode, memo, depth + 1);
+    const options = typeof piece === 'string' ? [piece] : nameShapes(piece, sourceCode, walk, depth + 1);
     if (options === null) {
       return null;
     }
@@ -409,7 +463,7 @@ function shapeCanBeLocation(shape: string): boolean {
  * is runtime as a whole (`res.set(name, value)`) is not read.
  */
 function isLocationName(node: TSESTree.Node, sourceCode: Readonly<TSESLint.SourceCode>): boolean {
-  const shapes = nameShapes(node, sourceCode, new Map());
+  const shapes = nameShapes(node, sourceCode, shapeWalk());
   return (
     shapes === null ||
     shapes.some((shape) => !/^\u0000*$/u.test(shape) && shapeCanBeLocation(shape))
