@@ -1,0 +1,11 @@
+---
+'@noctcore/eslint-plugin-security': patch
+---
+
+`no-unescaped-html-response` reads markup it used to skip. A call or template tag from elsewhere (``layout(`<h1>${q}</h1>`)``, `dedent`, the common-tags `html` tag, `page.trim()`) is taken to keep the markup it is given, which is judged where it is written; escaping modules and common-tags `safeHtml` stay values. A constant template filled by `.replace` / `.replaceAll` at a string or plain regex placeholder is read with the value in place (a placeholder the rule cannot find counts as anywhere), as are `.concat`, array accumulators (`rows.push(row)` then `rows.join('')`), every `return` of a `.map` callback or an in-file helper, and helper parameters only while the helper does not write them.
+
+New sinks: the return value of a Nest route handler (`@Get`, `@Post`, ...) without a non-HTML `Content-Type` header, `@Render`, `@Redirect`, `@Sse` or `@Res()`, since the Express platform sends a returned string as `text/html` (also reported on Fastify, which the rule cannot tell apart); the return value of a Fastify async handler once `reply.type('text/html')` is set; `new Response` whose headers are a `const` object or a `Headers` instance with `.set` / `.append`; a Koa body that starts with `<` on any branch of `?:`, `||` or `??`; and a write after `res.removeHeader('Content-Type')` or `ctx.remove('Content-Type')`.
+
+The tokenizer now ends a comment at `<!-->`, `<!--->` and `--!>`, decodes character references before reading a URL scheme (`&#106;avascript:`, `javascript&colon;`), counts a `data:` URL in an `iframe`, `frame` or `embed` `src` or an `object` `data` as code, and reads a URL in a meta refresh `content` (after an `http-equiv="refresh"`) and in SVG `animate` / `set` `to`, `from`, `by` and `values`. EJS `<%- locals["bio"] %>` and nunjucks `{% set b = bio | safe %}{{ b }}` are looked up like plain paths.
+
+Reports removed: a call or tag from elsewhere, an array accumulator's `join`, a `.map` callback or helper with several returns is no longer reported as a whole when the markup it is given or returns is safe (``'<div>' + layout(`<h1>${escapeHtml(q)}</h1>`)`` used to report the `layout` call); and a value after `<!-->`, `<!--->` or `--!>` is judged as element text, where it is, rather than as comment text.

@@ -109,10 +109,11 @@ export interface HtmlState {
   readonly js?: string;
   /**
    * In a `script` start tag, what its first `type` attribute makes it: `data`
-   * for a data block (`application/json`, ...) the browser never runs;
-   * kept on its raw content.
+   * for a data block (`application/json`, ...) the browser never runs,
+   * kept on its raw content. In a `meta` start tag, `refresh` when its first
+   * `http-equiv` is `refresh` (or unknown), so `content` holds a URL.
    */
-  readonly kind?: 'js' | 'data';
+  readonly kind?: 'js' | 'data' | 'refresh' | 'plain';
   /** In script content, the HTML escape state: `e` after `<!--`, `d` after a `<script` in that. */
   readonly esc?: 'e' | 'd';
 }
@@ -184,41 +185,111 @@ const SCRIPT_TYPES = new RegExp(
   'u',
 );
 const MAX_TYPE_LENGTH = 64;
+/** The longest URL prefix kept while it may still become a scheme. */
+const MAX_PREFIX = 256;
+/** The attribute that decides what a start tag is: a script's `type`, a meta's `http-equiv`. */
+const KIND_ATTRIBUTES: Readonly<Record<string, string>> = { script: 'type', meta: 'http-equiv' };
+/** Frame and embedding attributes, where a `data:` URL loads a page of its own. */
+const DOCUMENT_URLS: Readonly<Record<string, string>> = { iframe: 'src', frame: 'src', embed: 'src', object: 'data' };
+/** SVG animation elements and the attributes that can set a URL (`attributeName="href"`). */
+const ANIMATION_TAGS: ReadonlySet<string> = new Set(['animate', 'set']);
+const ANIMATION_VALUES: ReadonlySet<string> = new Set(['to', 'from', 'by', 'values']);
+/** A meta refresh `content` before its URL: the delay, a separator and `url=` (all optional). */
+const REFRESH_HEAD = /^[\t\n\f\r ]*[\d.]*[\t\n\f\r ]*[;,]?[\t\n\f\r ]*(?:url[\t\n\f\r ]*=[\t\n\f\r ]*)?['"]?/iu;
+/** A meta refresh `content` that may still be in its head. */
+const PARTIAL_REFRESH = /^[\t\n\f\r ]*[\d.]*[\t\n\f\r ]*(?:[;,][\t\n\f\r ]*)?(?:u(?:r(?:l[\t\n\f\r ]*)?)?)?$/iu;
+/** A character reference not finished yet at the end of the text. */
+const PARTIAL_REFERENCE = /&(?:#(?:x[\da-f]*|\d*)|[a-z\d]*)$/iu;
+const NAMED_REFERENCES: Readonly<Record<string, string>> = { colon: ':', Tab: '\t', NewLine: '\n' };
+
+/** True when the value of the current attribute is a URL. */
+function isUrlState(state: HtmlState): boolean {
+  return (
+    URL_ATTRIBUTES.has(state.attr) ||
+    (state.tag === 'meta' && state.attr === 'content' && state.kind === 'refresh') ||
+    (ANIMATION_TAGS.has(state.tag) && ANIMATION_VALUES.has(state.attr))
+  );
+}
+
+/** Decodes the character references that can spell a scheme: numeric ones, `&colon;`, `&Tab;`, `&NewLine;`. */
+function decodeReferences(text: string): string {
+  return text.replace(/&#(?:x([\da-f]+)|(\d+));?|&(colon|Tab|NewLine);/giu, (match, hex?: string, decimal?: string, name?: string) => {
+    if (name !== undefined) {
+      return NAMED_REFERENCES[name] ?? match;
+    }
+    const code = hex === undefined ? Number(decimal) : Number.parseInt(hex, 16);
+    return code > 0 && code <= 0x10ffff ? String.fromCodePoint(code) : '\uFFFD';
+  });
+}
+
+/**
+ * The URL a kept attribute value starts with, decoded and normalized the way
+ * the browser reads it, or null while a character reference or a meta
+ * refresh head may still change it.
+ */
+function urlPrefix(state: HtmlState, raw: string): string | null {
+  if (PARTIAL_REFERENCE.test(raw)) {
+    return null;
+  }
+  let url = decodeReferences(raw);
+  if (state.tag === 'meta') {
+    if (PARTIAL_REFRESH.test(url)) {
+      return null;
+    }
+    url = url.replace(REFRESH_HEAD, '');
+  }
+  // Browsers drop leading spaces and controls and every tab or newline.
+  return url.replace(/^[\u0000-\u0020]+/u, '').replace(/[\t\n\r]/gu, '');
+}
 
 /**
  * Appends to an attribute value, keeping only what decides its context: the
- * normalized prefix of a URL attribute while it may still become a scheme,
- * then `#` for a fixed scheme or a path, or `!` when the scheme is script or
- * was built from a runtime part (`${p}:...`), whose body is then code.
- * Nothing is kept for other attributes.
+ * raw text of a URL attribute while it may still become a scheme, then `#`
+ * for a fixed scheme or a path, or `!` when the scheme is script, a `data:`
+ * page in a frame, or was built from a runtime part (`${p}:...`), whose
+ * body is then code. Nothing is kept for other attributes, but a script's
+ * `type` and a meta's `http-equiv`.
  */
 function appendValue(state: HtmlState, text: string): HtmlState {
-  if (state.tag === 'script' && state.attr === 'type' && state.kind === undefined) {
+  if (KIND_ATTRIBUTES[state.tag] === state.attr && state.kind === undefined) {
     return { ...state, value: (state.value + text).slice(0, MAX_TYPE_LENGTH + 1) };
   }
-  if (!URL_ATTRIBUTES.has(state.attr) || state.value === '#' || state.value === '!') {
-    return state.value === '' || state.value === '#' || state.value === '!' ? state : { ...state, value: '' };
+  if (!isUrlState(state)) {
+    return state.value === '' ? state : { ...state, value: '' };
   }
-  // Browsers drop leading spaces and controls and every tab or newline.
-  const prefix = (state.value + text).replace(/^[\u0000-\u0020]+/u, '').replace(/[\t\n\r]/gu, '');
-  if (OPEN_SCHEME.test(prefix)) {
-    return { ...state, value: prefix };
+  let raw = state.value + text;
+  if (state.attr === 'values' && text.includes(';')) {
+    // Each `;` starts another value of the animation.
+    raw = text.slice(text.lastIndexOf(';') + 1);
+  } else if (state.value === '#' || state.value === '!') {
+    return state;
+  }
+  const prefix = urlPrefix(state, raw);
+  if (prefix === null || OPEN_SCHEME.test(prefix)) {
+    return { ...state, value: raw.length > MAX_PREFIX ? '#' : raw };
   }
   const scheme = CLOSED_SCHEME.exec(prefix)?.[1];
-  const code = scheme !== undefined && (scheme.includes(RUNTIME) || SCRIPT_SCHEMES.test(scheme));
+  const code =
+    scheme !== undefined &&
+    (scheme.includes(RUNTIME) ||
+      SCRIPT_SCHEMES.test(scheme) ||
+      (scheme.toLowerCase() === 'data' && DOCUMENT_URLS[state.tag] === state.attr));
   return { ...state, value: code ? '!' : '#' };
 }
 
-/** The state after an attribute value ends, a script's `type` read. */
+/** The state after an attribute value ends, a script's `type` or a meta's `http-equiv` read. */
 function endValue(state: HtmlState): HtmlState {
   const next: HtmlState = { ...state, value: '' };
-  if (state.tag !== 'script' || state.attr !== 'type' || state.kind !== undefined) {
+  if (KIND_ATTRIBUTES[state.tag] !== state.attr || state.kind !== undefined) {
     return next;
   }
-  // Browsers trim the value and ignore ASCII case; a runtime part may be any type.
+  // Browsers trim the value and ignore ASCII case; a runtime part may be anything.
   const type = state.value.replace(/^[\t\n\f\r ]+|[\t\n\f\r ]+$/gu, '').toLowerCase();
-  const data = !type.includes(RUNTIME) && type.length <= MAX_TYPE_LENGTH && !SCRIPT_TYPES.test(type);
-  return { ...next, kind: data ? 'data' : 'js' };
+  const known = !type.includes(RUNTIME) && type.length <= MAX_TYPE_LENGTH;
+  if (state.tag === 'meta') {
+    return { ...next, kind: known && type !== 'refresh' ? 'plain' : 'refresh' };
+  }
+  return { ...next, kind: known && !SCRIPT_TYPES.test(type) ? 'data' : 'js' };
 }
 
 function closeStartTag(state: HtmlState): HtmlState {
@@ -342,8 +413,11 @@ function step(state: HtmlState, char: string): HtmlState {
       }
       return appendValue(state, char);
     case 'comment': {
-      const recent = (state.value + char).slice(-3);
-      return recent === '-->' ? START_STATE : { ...state, value: recent };
+      // `value` keeps the last four characters, from the comment's start:
+      // `<!-->` and `<!--->` end it at once, then `-->` or `--!>`.
+      const recent = (state.value + char).slice(-4);
+      const ends = char === '>' && (recent === '>' || recent === '->' || recent.endsWith('-->') || recent === '--!>');
+      return ends ? START_STATE : { ...state, value: recent };
     }
     case 'raw': {
       // `value` keeps the recent text; a pending end tag (`attr` `end`) or
@@ -420,29 +494,34 @@ export function contextAt(state: HtmlState): HtmlContext {
     case 'comment':
       return 'rcdata';
     case 'before-value':
-      return attributeContext(state.attr, '', 'unquoted');
+      return attributeContext({ ...state, value: '' }, 'unquoted');
     case 'value-unq':
-      return attributeContext(state.attr, state.value, 'unquoted');
+      return attributeContext(state, 'unquoted');
     case 'value-dq':
-      return attributeContext(state.attr, state.value, 'dq');
+      return attributeContext(state, 'dq');
     case 'value-sq':
-      return attributeContext(state.attr, state.value, 'sq');
+      return attributeContext(state, 'sq');
     default:
       return 'tag';
   }
 }
 
-function attributeContext(attr: string, value: string, quoting: 'dq' | 'sq' | 'unquoted'): HtmlContext {
+function attributeContext(state: HtmlState, quoting: 'dq' | 'sq' | 'unquoted'): HtmlContext {
+  const { attr, value } = state;
   if (attr.includes('?') || attr.startsWith('on') || CODE_ATTRIBUTES.has(attr)) {
     return 'code-attr';
   }
-  if (URL_ATTRIBUTES.has(attr)) {
-    // `value` is the normalized prefix kept by `appendValue`.
+  if (isUrlState(state)) {
+    // `value` is the raw prefix kept by `appendValue`, or `#` / `!` once decided.
     if (value === '!') {
       return 'code-attr';
     }
-    if (value !== '#' && OPEN_SCHEME.test(value)) {
-      return `url-${quoting}`;
+    if (value !== '#') {
+      // A value written inside a character reference or a refresh head may still start the URL.
+      const prefix = urlPrefix(state, value);
+      if (prefix === null || OPEN_SCHEME.test(prefix)) {
+        return `url-${quoting}`;
+      }
     }
   }
   return `attr-${quoting}`;

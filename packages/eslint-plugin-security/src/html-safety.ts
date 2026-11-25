@@ -625,6 +625,22 @@ export class HtmlSafety {
     return MODULES[binding.module] ?? null;
   }
 
+  /**
+   * True when `node` (a callee or template tag) is an import of an escaping
+   * module, or common-tags `safeHtml`, which escapes what it is given.
+   */
+  isEscapingModule(node: TSESTree.Node): boolean {
+    let inner = unwrap(node);
+    if (inner.type === AST_NODE_TYPES.MemberExpression) {
+      inner = unwrap(inner.object);
+    }
+    const binding = this.moduleOf(inner);
+    return (
+      binding !== null &&
+      (this.specOf(binding) !== null || (binding.module === 'common-tags' && binding.imported === 'safeHtml'))
+    );
+  }
+
   /** True when `node` is a DOMPurify instance: a factory call, or a binding to one. */
   private isPurifier(node: TSESTree.Node): boolean {
     const inner = unwrap(node);

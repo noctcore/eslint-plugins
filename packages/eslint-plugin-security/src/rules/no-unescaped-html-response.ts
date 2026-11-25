@@ -68,11 +68,12 @@ type MessageIds = 'unescapedHtmlResponse' | 'unsafeContext' | 'rawTemplateValue'
  * lets `javascript:` through, and in `<script>` it stops nothing.
  *
  * Sinks: `res.send` / `res.end` / `res.write` (Express, Node), `reply.send`
- * with an HTML content type (Fastify), `ctx.body = ...` (Koa), `new
- * Response(body, { headers: { 'content-type': 'text/html' } })` (fetch, Next
- * route handlers), the return value of a Nest handler with
- * `@Header('Content-Type', 'text/html')`, and nunjucks `renderString` /
- * `ejs.render` with a literal template.
+ * and an async handler's return value with an HTML content type (Fastify),
+ * `ctx.body = ...` (Koa), `new Response(body, { headers: { 'content-type':
+ * 'text/html' } })` (fetch, Next route handlers), the return value of a Nest
+ * route handler (sent as `text/html` on Express unless a header says
+ * otherwise), and nunjucks `renderString` / `ejs.render` with a literal
+ * template.
  */
 
 export const DEFAULT_RESPONSE_OBJECTS: readonly string[] = ['res', 'response'];
@@ -98,11 +99,30 @@ const CHAINABLE: ReadonlySet<string> = new Set([
   'contentType',
 ]);
 const HEADER_SETTERS: ReadonlySet<string> = new Set(['set', 'header', 'setHeader', 'headers']);
+/** `@nestjs/common` route decorators. */
+const NEST_ROUTES: ReadonlySet<string> = new Set(['Get', 'Post', 'Put', 'Delete', 'Patch', 'All', 'Options', 'Head', 'Search']);
 const TAG = /<[a-z!/]/iu;
 /** Content types a browser renders as markup that can run script. */
 const SCRIPTABLE_TYPE = /htm|xml|svg/iu;
 const MAX_DEPTH = 8;
 const MAX_STATES = 24;
+/** String methods, whose arguments are not part of what they return. */
+const STRING_METHODS: ReadonlySet<string> = new Set([
+  'replace',
+  'replaceAll',
+  'split',
+  'padStart',
+  'padEnd',
+  'includes',
+  'startsWith',
+  'endsWith',
+  'indexOf',
+  'lastIndexOf',
+  'match',
+  'matchAll',
+  'search',
+  'localeCompare',
+]);
 /** Modules whose default export is a DOMPurify instance with shared config. */
 const PURIFY_MODULES: ReadonlySet<string> = new Set(['dompurify', 'isomorphic-dompurify']);
 
@@ -230,6 +250,71 @@ function buildsMarkup(node: TSESTree.Node, depth = 0): boolean {
   }
 }
 
+/** Every expression a function returns: its expression body, or each `return` outside nested functions. */
+function returnedExpressions(fn: FunctionLike): TSESTree.Node[] {
+  if (fn.body.type !== AST_NODE_TYPES.BlockStatement) {
+    return [fn.body];
+  }
+  const found: TSESTree.Node[] = [];
+  const walk = (node: TSESTree.Node): void => {
+    if (isFunction(node) || node.type === AST_NODE_TYPES.ClassBody) {
+      return;
+    }
+    if (node.type === AST_NODE_TYPES.ReturnStatement) {
+      if (node.argument !== null) {
+        found.push(node.argument);
+      }
+      return;
+    }
+    for (const [key, child] of Object.entries(node)) {
+      if (key === 'parent') {
+        continue;
+      }
+      for (const item of Array.isArray(child) ? child : [child]) {
+        if (item !== null && typeof item === 'object' && typeof (item as { type?: unknown }).type === 'string') {
+          walk(item as TSESTree.Node);
+        }
+      }
+    }
+  };
+  for (const statement of fn.body.body) {
+    walk(statement);
+  }
+  return found;
+}
+
+/** The text a `.replace` pattern matches, when it is a string or a regex of plain characters, and whether it is global. */
+function literalPattern(node: TSESTree.Node): { text: string; global: boolean } | null {
+  const text = staticString(node);
+  if (text !== null) {
+    return { text, global: false };
+  }
+  const inner = unwrap(node);
+  if (inner.type !== AST_NODE_TYPES.Literal || !('regex' in inner) || /[^gdsu]/u.test(inner.regex.flags)) {
+    return null;
+  }
+  let plain = '';
+  const source = inner.regex.pattern;
+  for (let index = 0; index < source.length; index += 1) {
+    const char = source[index] ?? '';
+    if (char === '\\') {
+      const next = source[index + 1] ?? '';
+      if (next === '' || /[\da-z]/iu.test(next)) {
+        return null;
+      }
+      plain += next;
+      index += 1;
+    } else if ('^$.*+?()[]{}|'.includes(char)) {
+      return null;
+    } else {
+      plain += char;
+    }
+  }
+  return { text: plain, global: inner.regex.flags.includes('g') };
+}
+
+/** A piece of a template filled by `.replace`: author text, or the value written in place of a placeholder. */
+type Segment = { readonly text: string } | { readonly node: TSESTree.Node };
 interface Part {
   readonly node: TSESTree.Node;
   readonly contexts: ReadonlySet<HtmlContext>;
@@ -293,6 +378,11 @@ class HtmlBuilder {
           this.judge.isGlobal(unwrap(tag.object), 'String')
         ) {
           return this.visitTemplate(inner.quasi, states, depth, true);
+        }
+        // A tag from elsewhere (`dedent`, common-tags `html`) is taken to keep the markup it is given;
+        // an escaping module, or a tag function of this file, stays a value.
+        if (!this.judge.isEscapingModule(tag) && this.judge.functionOf(tag) === null) {
+          return this.visitTemplate(inner.quasi, states, depth, false);
         }
         return this.dynamic(inner, states);
       }
@@ -408,6 +498,194 @@ class HtmlBuilder {
     }
   }
 
+  /** The text of a string or number built only from literals and `const` text, else null. */
+  private constantString(node: TSESTree.Node, depth: number): string | null {
+    if (depth > MAX_DEPTH) {
+      return null;
+    }
+    const inner = unwrap(node);
+    switch (inner.type) {
+      case AST_NODE_TYPES.Literal:
+        return typeof inner.value === 'string' || typeof inner.value === 'number' ? String(inner.value) : null;
+      case AST_NODE_TYPES.TemplateLiteral: {
+        let text = '';
+        for (const [index, quasi] of inner.quasis.entries()) {
+          text += quasi.value.cooked ?? quasi.value.raw;
+          const expression = inner.expressions[index];
+          const part = expression === undefined ? '' : this.constantString(expression, depth + 1);
+          if (part === null) {
+            return null;
+          }
+          text += part;
+        }
+        return text;
+      }
+      case AST_NODE_TYPES.BinaryExpression: {
+        if (inner.operator !== '+') {
+          return null;
+        }
+        const left = this.constantString(inner.left, depth + 1);
+        const right = left === null ? null : this.constantString(inner.right, depth + 1);
+        return left === null || right === null ? null : left + right;
+      }
+      case AST_NODE_TYPES.Identifier: {
+        const init = this.judge.constInit(inner);
+        return init === null ? null : this.constantString(init, depth + 1);
+      }
+      default:
+        return null;
+    }
+  }
+
+  /** True for a node that builds markup, directly or through a `const`. */
+  private carriesMarkup(node: TSESTree.Node): boolean {
+    const inner = unwrap(node);
+    if (inner.type === AST_NODE_TYPES.Identifier) {
+      const init = this.judge.constInit(inner);
+      return init !== null && buildsMarkup(init);
+    }
+    return buildsMarkup(inner);
+  }
+
+  /**
+   * A constant template filled by `.replace` / `.replaceAll` calls
+   * (`tpl.replace('{{name}}', q)`), split at each placeholder a string or a
+   * plain regex pattern matches: the first one, or all for a global replace.
+   */
+  private replaceSegments(call: TSESTree.CallExpression, depth: number): Segment[] | null {
+    const callee = unwrap(call.callee);
+    const method = callee.type === AST_NODE_TYPES.MemberExpression ? propertyName(callee) : null;
+    const [patternNode, replacement] = call.arguments;
+    if (
+      depth > MAX_DEPTH ||
+      callee.type !== AST_NODE_TYPES.MemberExpression ||
+      (method !== 'replace' && method !== 'replaceAll') ||
+      call.arguments.length !== 2 ||
+      patternNode === undefined ||
+      replacement === undefined ||
+      patternNode.type === AST_NODE_TYPES.SpreadElement ||
+      replacement.type === AST_NODE_TYPES.SpreadElement
+    ) {
+      return null;
+    }
+    const object = unwrap(callee.object);
+    const text = this.constantString(object, 0);
+    const base: Segment[] | null =
+      text !== null
+        ? [{ text }]
+        : object.type === AST_NODE_TYPES.CallExpression
+          ? this.replaceSegments(object, depth + 1)
+          : null;
+    const pattern = literalPattern(patternNode);
+    if (base === null || pattern === null || pattern.text === '') {
+      return null;
+    }
+    const global = method === 'replaceAll' || pattern.global;
+    const segments: Segment[] = [];
+    let done = false;
+    for (const segment of base) {
+      if (!('text' in segment) || done) {
+        segments.push(segment);
+        continue;
+      }
+      let pieces = segment.text.split(pattern.text);
+      if (!global && pieces.length > 1) {
+        pieces = [pieces[0] ?? '', pieces.slice(1).join(pattern.text)];
+        done = true;
+      }
+      pieces.forEach((piece, index) => {
+        if (index > 0) {
+          segments.push({ node: replacement });
+        }
+        segments.push({ text: piece });
+      });
+    }
+    return segments;
+  }
+
+  /** A `.replace` replacement: a value, or what a replacer function returns. */
+  private visitReplacement(node: TSESTree.Node, states: HtmlState[], depth: number): HtmlState[] {
+    const fn = this.judge.functionOf(node);
+    if (fn === null) {
+      return this.visit(node, states, depth + 1);
+    }
+    const bodies = returnedExpressions(fn);
+    if (bodies.length === 0) {
+      return this.dynamic(node, states);
+    }
+    return dedupe(bodies.flatMap((body) => this.visit(body, states, depth + 1)));
+  }
+
+  /**
+   * The pieces an array accumulator holds: its literal elements and every
+   * `push` / `unshift` argument. Null when the array is used any other way
+   * than those calls, `join` and `length`, so it may hold anything.
+   */
+  private arrayPieces(list: TSESTree.Identifier): TSESTree.Node[] | null {
+    const variable = this.judge.variableOf(list);
+    const def = variable?.defs[0];
+    if (
+      variable === null ||
+      variable.defs.length !== 1 ||
+      def?.type !== 'Variable' ||
+      def.node.id.type !== AST_NODE_TYPES.Identifier ||
+      def.node.init === null
+    ) {
+      return null;
+    }
+    const init = unwrap(def.node.init);
+    if (init.type !== AST_NODE_TYPES.ArrayExpression) {
+      return null;
+    }
+    const pieces: TSESTree.Node[] = [];
+    for (const element of init.elements) {
+      if (element !== null) {
+        pieces.push(element.type === AST_NODE_TYPES.SpreadElement ? element.argument : element);
+      }
+    }
+    for (const reference of variable.references) {
+      if (reference.init === true) {
+        continue;
+      }
+      const parent = reference.identifier.parent;
+      const method = parent?.type === AST_NODE_TYPES.MemberExpression && parent.object === reference.identifier ? propertyName(parent) : null;
+      if (method === 'length' || method === 'join') {
+        continue;
+      }
+      const call = parent?.parent;
+      if ((method !== 'push' && method !== 'unshift') || call?.type !== AST_NODE_TYPES.CallExpression || call.callee !== parent) {
+        return null;
+      }
+      for (const arg of call.arguments) {
+        pieces.push(arg.type === AST_NODE_TYPES.SpreadElement ? arg.argument : arg);
+      }
+    }
+    return pieces;
+  }
+
+  /** Pieces repeated any number of times in any order, each followed by `separator`. */
+  private visitRepeated(
+    pieces: readonly TSESTree.Node[],
+    states: HtmlState[],
+    separator: string,
+    depth: number,
+  ): HtmlState[] {
+    let all = dedupe(states);
+    let current = all;
+    for (let round = 0; round < 3 && pieces.length > 0; round += 1) {
+      const next = this.feed(
+        dedupe(pieces.flatMap((piece) => this.visit(piece, current, depth + 1))),
+        separator,
+      );
+      const merged = dedupe([...all, ...next]);
+      if (merged.length === all.length) {
+        break;
+      }
+      all = merged;
+      current = next;
+    }
+    return all;
+  }
   private startsWithSelf(node: TSESTree.Node, variable: TSESLint.Scope.Variable): boolean {
     let inner = unwrap(node);
     while (inner.type === AST_NODE_TYPES.BinaryExpression && inner.operator === '+') {
@@ -467,30 +745,77 @@ class HtmlBuilder {
         return joined;
       }
     }
-    const fn = this.judge.functionOf(callee);
-    const returned = fn === null ? null : returnedExpression(fn);
-    if (fn === null || returned === null || !buildsMarkup(returned) || this.active.has(fn)) {
-      return this.dynamic(call, states);
-    }
-    // A helper that returns markup: its parameters are the call's arguments.
-    const bound: TSESLint.Scope.Variable[] = [];
-    fn.params.forEach((param, index) => {
-      const argument = call.arguments[index];
-      if (param.type === AST_NODE_TYPES.Identifier && argument !== undefined && argument.type !== AST_NODE_TYPES.SpreadElement) {
-        const variable = this.judge.variableOf(param);
-        if (variable !== null) {
-          this.bound.set(variable, argument);
-          bound.push(variable);
+    if (callee.type === AST_NODE_TYPES.MemberExpression) {
+      const method = propertyName(callee);
+      if (method === 'replace' || method === 'replaceAll') {
+        const segments = this.replaceSegments(call, 0);
+        if (segments !== null) {
+          let current = states;
+          for (const segment of segments) {
+            current = 'text' in segment ? this.feed(current, segment.text) : this.visitReplacement(segment.node, current, depth);
+          }
+          return current;
+        }
+        const [, replacement] = call.arguments;
+        if (this.carriesMarkup(callee.object) && replacement !== undefined && replacement.type !== AST_NODE_TYPES.SpreadElement) {
+          // A placeholder the rule cannot find may be anywhere, a tag name included.
+          this.dynamic(replacement, [{ mode: 'tag-name', tag: '?', attr: '', value: '' }]);
+          return this.visit(callee.object, states, depth + 1);
         }
       }
-    });
-    this.active.add(fn);
-    const result = this.visit(returned, states, depth + 1);
-    this.active.delete(fn);
-    for (const variable of bound) {
-      this.bound.delete(variable);
+      if (method === 'concat' && this.carriesMarkup(callee.object)) {
+        let current = this.visit(callee.object, states, depth + 1);
+        for (const arg of call.arguments) {
+          current = arg.type === AST_NODE_TYPES.SpreadElement ? this.dynamic(arg.argument, current) : this.visit(arg, current, depth + 1);
+        }
+        return current;
+      }
     }
-    return result;
+    const fn = this.judge.functionOf(callee);
+    if (fn !== null) {
+      const returned = returnedExpression(fn);
+      const bodies = returned === null ? returnedExpressions(fn) : [returned];
+      if (this.active.has(fn) || !bodies.some((body) => buildsMarkup(body))) {
+        return this.dynamic(call, states);
+      }
+      // A helper that returns markup: its parameters, unless written in it, are the call's arguments.
+      const bound: TSESLint.Scope.Variable[] = [];
+      fn.params.forEach((param, index) => {
+        const argument = call.arguments[index];
+        if (param.type === AST_NODE_TYPES.Identifier && argument !== undefined && argument.type !== AST_NODE_TYPES.SpreadElement) {
+          const variable = this.judge.variableOf(param);
+          if (variable !== null && !variable.references.some((reference) => reference.isWrite())) {
+            this.bound.set(variable, argument);
+            bound.push(variable);
+          }
+        }
+      });
+      this.active.add(fn);
+      const result = dedupe(bodies.flatMap((body) => this.visit(body, states, depth + 1)));
+      this.active.delete(fn);
+      for (const variable of bound) {
+        this.bound.delete(variable);
+      }
+      return result;
+    }
+    // A call from elsewhere (``layout(`<h1>${q}</h1>`)``, `html.trim()`) is taken to keep the
+    // markup it is given; an escaper or sanitizer is judged as a value.
+    if (this.judge.encoderOf(call) === null && !this.judge.isEscapingModule(callee)) {
+      // A string method's arguments (`q.replace(/\n/g, '<br>')`) are not its result.
+      const method = callee.type === AST_NODE_TYPES.MemberExpression ? propertyName(callee) : null;
+      const carried = [
+        ...(callee.type === AST_NODE_TYPES.MemberExpression ? [callee.object] : []),
+        ...(STRING_METHODS.has(method ?? '') ? [] : call.arguments.filter((arg) => arg.type !== AST_NODE_TYPES.SpreadElement)),
+      ].filter((node) => this.carriesMarkup(node));
+      if (carried.length > 0) {
+        let current = states;
+        for (const node of carried) {
+          current = this.visit(node, current, depth + 1);
+        }
+        return current;
+      }
+    }
+    return this.dynamic(call, states);
   }
 
   /** `[a, b].join(sep)` and `list.map(fn).join(sep)`, the mapped markup repeated any number of times. */
@@ -505,7 +830,16 @@ class HtmlBuilder {
     if (separator === null) {
       return null;
     }
-    const list = unwrap(callee.object);
+    let list = unwrap(callee.object);
+    if (list.type === AST_NODE_TYPES.Identifier) {
+      const init = this.judge.constInit(list);
+      if (init !== null && unwrap(init).type === AST_NODE_TYPES.CallExpression) {
+        list = unwrap(init);
+      } else {
+        const pieces = this.arrayPieces(list);
+        return pieces === null ? null : this.visitRepeated(pieces, states, separator, depth);
+      }
+    }
     if (list.type === AST_NODE_TYPES.ArrayExpression) {
       let current = states;
       list.elements.forEach((element, index) => {
@@ -527,22 +861,11 @@ class HtmlBuilder {
     const mapCallee = unwrap(list.callee);
     const mapper = list.arguments[0];
     const fn = mapper === undefined || mapper.type === AST_NODE_TYPES.SpreadElement ? null : this.judge.functionOf(mapper);
-    const body = fn === null ? null : returnedExpression(fn);
-    if (mapCallee.type !== AST_NODE_TYPES.MemberExpression || propertyName(mapCallee) !== 'map' || body === null) {
+    const bodies = fn === null ? [] : returnedExpressions(fn);
+    if (mapCallee.type !== AST_NODE_TYPES.MemberExpression || propertyName(mapCallee) !== 'map' || bodies.length === 0) {
       return null;
     }
-    let all = dedupe(states);
-    let current = all;
-    for (let round = 0; round < 3; round += 1) {
-      const next = this.feed(this.visit(body, current, depth + 1), separator);
-      const merged = dedupe([...all, ...next]);
-      if (merged.length === all.length) {
-        break;
-      }
-      all = merged;
-      current = next;
-    }
-    return all;
+    return this.visitRepeated(bodies, states, separator, depth);
   }
 }
 
@@ -553,12 +876,63 @@ interface TemplateOutput {
   readonly contexts: ReadonlySet<HtmlContext>;
 }
 
-const PATH = /^\s*([A-Za-z_$][\w$]*(?:\.[A-Za-z_$][\w$]*)*)\s*/u;
+const PATH_HEAD = /^\s*([A-Za-z_$][\w$]*)/u;
+const PATH_STEP = /^\s*(?:\.\s*([A-Za-z_$][\w$]*)|\[\s*(?:"([^"\\]*)"|'([^'\\]*)')\s*\])/u;
 
-/** The outputs of a nunjucks template, with `{% autoescape %}` blocks and the `safe` / `escape` filters read. */
+/** A value path at the start of a template expression (`user.bio`, `locals["bio"]`), and the text after it. */
+function readPath(expression: string): { path: string[]; rest: string } | null {
+  const head = PATH_HEAD.exec(expression);
+  if (head?.[1] === undefined) {
+    return null;
+  }
+  const path = [head[1]];
+  let rest = expression.slice(head[0].length);
+  for (let step = PATH_STEP.exec(rest); step !== null; step = PATH_STEP.exec(rest)) {
+    path.push(step[1] ?? step[2] ?? step[3] ?? '');
+    rest = rest.slice(step[0].length);
+  }
+  return { path, rest: rest.trimStart() };
+}
+
+/** A nunjucks output expression: its value path and whether its filters mark it safe or escape it. */
+interface NunjucksValue {
+  readonly path: readonly string[];
+  /** A `safe` or escaping filter made it a safe string, which autoescape leaves alone. */
+  readonly marked: boolean;
+  readonly escaped: boolean;
+}
+
+function readNunjucksValue(expression: string): NunjucksValue | null {
+  const output = readPath(expression);
+  // A value path, then anything (`[0]`, `~ other`) up to the filters.
+  const [head = '', ...filters] = (output?.rest ?? '').split('|');
+  if (output === null || head.trimStart().startsWith('(')) {
+    return null;
+  }
+  let marked = false;
+  let escaped = false;
+  for (const filter of filters.map((part) => part.trim().replace(/\(.*$/u, ''))) {
+    if (filter === 'safe') {
+      marked = true;
+    } else if ((filter === 'escape' || filter === 'e') && !marked) {
+      escaped = true;
+      marked = true;
+    } else if (filter === 'forceescape') {
+      escaped = true;
+      marked = true;
+    }
+  }
+  return { path: output.path, marked, escaped };
+}
+
+/**
+ * The outputs of a nunjucks template, with `{% autoescape %}` blocks, the
+ * `safe` / `escape` filters and `{% set name = value %}` aliases read.
+ */
 function nunjucksOutputs(template: string, autoescape: boolean): TemplateOutput[] {
   const outputs: TemplateOutput[] = [];
   const escaping: boolean[] = [autoescape];
+  const aliases = new Map<string, NunjucksValue>();
   let state = START_STATE;
   let last = 0;
   for (const match of template.matchAll(/\{\{-?([\s\S]*?)-?\}\}|\{%-?([\s\S]*?)-?%\}|\{#[\s\S]*?#\}/gu)) {
@@ -567,11 +941,20 @@ function nunjucksOutputs(template: string, autoescape: boolean): TemplateOutput[
     const tag = match[2];
     if (tag !== undefined) {
       const block = /^\s*(autoescape|endautoescape)\b\s*(\S*)/u.exec(tag);
+      const set = /^\s*set\s+([A-Za-z_$][\w$]*)\s*=([\s\S]*)$/u.exec(tag);
       if (block?.[1] === 'autoescape') {
         // Anything but a literal `true` may switch escaping off.
         escaping.push(block[2] === 'true');
       } else if (block?.[1] === 'endautoescape' && escaping.length > 1) {
         escaping.pop();
+      } else if (set?.[1] !== undefined) {
+        const value = readNunjucksValue(set[2] ?? '');
+        if (value === null) {
+          aliases.delete(set[1]);
+        } else {
+          const alias = aliases.get(value.path[0] ?? '');
+          aliases.set(set[1], alias === undefined ? value : { ...alias, path: [...alias.path, ...value.path.slice(1)] });
+        }
       }
       continue;
     }
@@ -579,26 +962,14 @@ function nunjucksOutputs(template: string, autoescape: boolean): TemplateOutput[
     if (expression === undefined) {
       continue;
     }
-    // A value path, then anything (`["key"]`, `[0]`, `~ other`) up to the filters.
-    const output = PATH.exec(expression);
-    const [head = '', ...filters] = (output === null ? '' : expression.slice(output[0].length)).split('|');
-    if (output?.[1] !== undefined && !head.trimStart().startsWith('(')) {
-      let marked = false;
-      let escaped = false;
-      for (const filter of filters.map((part) => part.trim().replace(/\(.*$/u, ''))) {
-        if (filter === 'safe') {
-          marked = true;
-        } else if ((filter === 'escape' || filter === 'e') && !marked) {
-          escaped = true;
-          marked = true;
-        } else if (filter === 'forceescape') {
-          escaped = true;
-          marked = true;
-        }
-      }
+    const value = readNunjucksValue(expression);
+    if (value !== null) {
+      const alias = aliases.get(value.path[0] ?? '');
+      // An alias of a safe string stays one, unless this output adds its own filters.
+      const marks = alias !== undefined && !value.marked ? alias : value;
       outputs.push({
-        path: output[1].split('.'),
-        raw: !escaped && (marked || escaping.at(-1) !== true),
+        path: alias === undefined ? value.path : [...alias.path, ...value.path.slice(1)],
+        raw: !marks.escaped && (marks.marked || escaping.at(-1) !== true),
         contexts: new Set([contextAt(state)]),
       });
     }
@@ -606,7 +977,6 @@ function nunjucksOutputs(template: string, autoescape: boolean): TemplateOutput[
   }
   return outputs;
 }
-
 /** How an EJS render reads its template: the tag delimiters, whether `<%=` escapes, and the locals name. */
 interface EjsSettings {
   readonly open: string;
@@ -683,10 +1053,9 @@ function ejsOutputs(template: string, settings: EjsSettings): TemplateOutput[] {
     if (kind !== '=' && kind !== '-') {
       continue;
     }
-    const path = PATH.exec(match[2] ?? '');
-    const rest = path === null ? '' : (match[2] ?? '').slice(path[0].length);
-    if (path?.[1] !== undefined && !rest.startsWith('(')) {
-      const segments = path[1].split('.');
+    const path = readPath(match[2] ?? '');
+    if (path !== null && !path.rest.startsWith('(')) {
+      const segments = path.path;
       outputs.push({
         path: segments[0] === settings.localsName && segments.length > 1 ? segments.slice(1) : segments,
         raw: kind === '-' || !settings.escapes,
@@ -855,6 +1224,10 @@ export const noUnescapedHtmlResponseRule = createRule<RuleOptions, MessageIds>({
         return undefined;
       }
       const [first, second] = node.arguments;
+      // Removing the header leaves the type to the framework, which may pick HTML.
+      if ((method === 'removeHeader' || method === 'remove') && first !== undefined && staticString(first)?.toLowerCase() === 'content-type') {
+        return null;
+      }
       if (method === 'type' || method === 'contentType') {
         return first === undefined ? undefined : staticString(first);
       }
@@ -960,6 +1333,21 @@ export const noUnescapedHtmlResponseRule = createRule<RuleOptions, MessageIds>({
       }
     };
 
+    /** True when a Koa body may start with `<` on some branch (``ok ? 'Done' : `<p>${q}</p>` ``). */
+    const koaMayBeHtml = (body: TSESTree.Node, sink: TSESTree.Node, depth: number): boolean => {
+      const inner = unwrap(body);
+      if (depth <= MAX_DEPTH && inner.type === AST_NODE_TYPES.ConditionalExpression) {
+        return koaMayBeHtml(inner.consequent, sink, depth + 1) || koaMayBeHtml(inner.alternate, sink, depth + 1);
+      }
+      if (depth <= MAX_DEPTH && inner.type === AST_NODE_TYPES.LogicalExpression) {
+        return (inner.operator !== '&&' && koaMayBeHtml(inner.left, sink, depth + 1)) || koaMayBeHtml(inner.right, sink, depth + 1);
+      }
+      const builder = new HtmlBuilder(judge, sink);
+      builder.run(inner);
+      const leading = builder.leading.trimStart();
+      return leading === '' || leading.startsWith('<');
+    };
+
     const checkSink = (sink: WriteSink): void => {
       const setters = sink.kind === 'plain' ? [] : typeSetters(sink.node, sink.receiver);
       const htmlTyped = setters.some((setter) => setter.value !== null && SCRIPTABLE_TYPE.test(setter.value));
@@ -975,8 +1363,7 @@ export const noUnescapedHtmlResponseRule = createRule<RuleOptions, MessageIds>({
         return;
       }
       // Koa sends a string that does not start with `<` as text, unless a type is set.
-      const leading = builder.leading.trimStart();
-      if (sink.kind === 'koa' && !setters.some((setter) => setter.value !== null) && leading !== '' && !leading.startsWith('<')) {
+      if (sink.kind === 'koa' && !setters.some((setter) => setter.value !== null) && !koaMayBeHtml(sink.body, sink.node, 0)) {
         return;
       }
       judgeParts(builder.parts, sink.node);
@@ -1195,7 +1582,15 @@ export const noUnescapedHtmlResponseRule = createRule<RuleOptions, MessageIds>({
           continue;
         }
         let headers = unwrap(property.value);
+        const holder = headers.type === AST_NODE_TYPES.Identifier ? headers : null;
+        if (holder !== null) {
+          headers = unwrap(judge.constInit(holder) ?? holder);
+        }
         if (headers.type === AST_NODE_TYPES.NewExpression && judge.isGlobal(unwrap(headers.callee), 'Headers')) {
+          const set = holder === null ? undefined : headersSetType(holder);
+          if (set !== undefined) {
+            return set;
+          }
           const [first] = headers.arguments;
           headers = first === undefined ? headers : unwrap(first);
         }
@@ -1217,6 +1612,23 @@ export const noUnescapedHtmlResponseRule = createRule<RuleOptions, MessageIds>({
       return null;
     };
 
+    /** The content type a `Headers` const gets from `.set` / `.append`, null when unknown, undefined when none. */
+    const headersSetType = (holder: TSESTree.Identifier): string | null | undefined => {
+      const variable = judge.variableOf(holder);
+      for (const reference of variable?.references ?? []) {
+        const parent = reference.identifier.parent;
+        const method = parent?.type === AST_NODE_TYPES.MemberExpression && parent.object === reference.identifier ? propertyName(parent) : null;
+        const call = parent?.parent;
+        if ((method === 'set' || method === 'append') && call?.type === AST_NODE_TYPES.CallExpression && call.callee === parent) {
+          const [name, value] = call.arguments;
+          if (name !== undefined && staticString(name)?.toLowerCase() === 'content-type') {
+            return value === undefined ? null : staticString(value);
+          }
+        }
+      }
+      return undefined;
+    };
+
     const isResponseConstructor = (callee: TSESTree.Node): boolean => {
       const inner = unwrap(callee);
       if (judge.isGlobal(inner, 'Response')) {
@@ -1230,30 +1642,62 @@ export const noUnescapedHtmlResponseRule = createRule<RuleOptions, MessageIds>({
       return binding?.module === 'next/server' && binding.imported === 'NextResponse';
     };
 
-    /** True when a Nest handler carries `@Header('Content-Type', '<html type>')` from `@nestjs/common`. */
+    /** The `@nestjs/common` export a decorator calls, or null. */
+    const nestDecorator = (decorator: TSESTree.Decorator): { name: string; call: TSESTree.CallExpression } | null => {
+      const expression = unwrap(decorator.expression);
+      if (expression.type !== AST_NODE_TYPES.CallExpression) {
+        return null;
+      }
+      const callee = unwrap(expression.callee);
+      const variable = callee.type === AST_NODE_TYPES.Identifier ? judge.variableOf(callee) : null;
+      const binding = variable === null ? undefined : judge.bindings.get(variable);
+      return binding?.module === '@nestjs/common' ? { name: binding.imported, call: expression } : null;
+    };
+
+    /**
+     * True when a Nest handler's return value is sent as HTML: it carries
+     * `@Header('Content-Type', '<html type>')`, or it is a route handler
+     * (`@Get`, `@Post`, ...) with no content type header, which the Express
+     * platform sends a string as `text/html`. A handler that renders a view,
+     * redirects, streams events or takes the response (`@Res()`) does not
+     * send its return value as the body.
+     */
     const isHtmlNestHandler = (fn: FunctionLike): boolean => {
       const method = fn.parent;
       if (method?.type !== AST_NODE_TYPES.MethodDefinition || method.value !== fn) {
         return false;
       }
-      return method.decorators.some((decorator) => {
-        const expression = unwrap(decorator.expression);
-        if (expression.type !== AST_NODE_TYPES.CallExpression) {
-          return false;
+      let route = false;
+      let type: string | null | undefined;
+      for (const decorator of method.decorators) {
+        const nest = nestDecorator(decorator);
+        if (nest === null) {
+          continue;
         }
-        const callee = unwrap(expression.callee);
-        const variable = callee.type === AST_NODE_TYPES.Identifier ? judge.variableOf(callee) : null;
-        const binding = variable === null ? undefined : judge.bindings.get(variable);
-        const [name, value] = expression.arguments;
-        return (
-          binding?.module === '@nestjs/common' &&
-          binding.imported === 'Header' &&
-          name !== undefined &&
-          value !== undefined &&
-          staticString(name)?.toLowerCase() === 'content-type' &&
-          SCRIPTABLE_TYPE.test(staticString(value) ?? '')
-        );
-      });
+        if (NEST_ROUTES.has(nest.name)) {
+          route = true;
+        } else if (nest.name === 'Render' || nest.name === 'Redirect' || nest.name === 'Sse') {
+          return false;
+        } else if (nest.name === 'Header') {
+          const [name, value] = nest.call.arguments;
+          if (name !== undefined && staticString(name)?.toLowerCase() === 'content-type') {
+            type = value === undefined ? null : staticString(value);
+          }
+        }
+      }
+      if (type !== undefined) {
+        return isScriptable(type);
+      }
+      const takesResponse = fn.params.some((param) =>
+        (param.type === AST_NODE_TYPES.Identifier || param.type === AST_NODE_TYPES.TSParameterProperty
+          ? param.decorators
+          : []
+        ).some((decorator) => {
+          const name = nestDecorator(decorator)?.name;
+          return name === 'Res' || name === 'Response' || name === 'Next';
+        }),
+      );
+      return route && !takesResponse;
     };
 
     const returns: TSESTree.ReturnStatement[] = [];
@@ -1436,8 +1880,19 @@ export const noUnescapedHtmlResponseRule = createRule<RuleOptions, MessageIds>({
         }
         for (const node of returns) {
           const fn = enclosingFunction(node);
-          if (fn !== null && fn.type !== AST_NODE_TYPES.Program && isHtmlNestHandler(fn) && node.argument !== null) {
+          if (fn === null || fn.type === AST_NODE_TYPES.Program || node.argument === null) {
+            continue;
+          }
+          if (isHtmlNestHandler(fn)) {
             sinks.push({ kind: 'plain', node, body: node.argument, receiver: '' });
+            continue;
+          }
+          // A Fastify async handler sends what it returns, as HTML once the type is set on its reply.
+          const reply = fn.params.find(
+            (param): param is TSESTree.Identifier => param.type === AST_NODE_TYPES.Identifier && replyObjects.has(param.name),
+          );
+          if (reply !== undefined && fn.async) {
+            sinks.push({ kind: 'reply', node, body: node.argument, receiver: reply.name });
           }
         }
         for (const sink of sinks) {

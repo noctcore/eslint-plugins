@@ -61,20 +61,34 @@ The report is on that part. The bodies it reads:
 - `res.send(x)`, `res.end(x)` and `res.write(x)` on a receiver in `responseObjects` (`res`,
   `response`), also after calls that return the response (`res.status(200).send(x)`);
 - `reply.send(x)` on a receiver in `replyObjects` (`reply`) once an HTML content type is set on it:
-  Fastify sends a string as text otherwise;
-- `ctx.body = x` and `ctx.response.body = x` on a receiver in `contextObjects` (`ctx`), unless the
-  body starts with author text that is not `<` and no content type is set: Koa sends that as text;
-- `new Response(x, init)` and `new NextResponse(x, init)` (from `next/server`) whose literal `init`
-  sets an HTML content type, as in a Next route handler;
-- the return value of a Nest handler with `@Header('Content-Type', 'text/html')` from
-  `@nestjs/common`.
+  Fastify sends a string as text otherwise. The same goes for the return value of an async handler
+  that takes the reply as a parameter (`async (request, reply) => { reply.type('text/html'); return
+  html; }`);
+- `ctx.body = x` and `ctx.response.body = x` on a receiver in `contextObjects` (`ctx`), unless no
+  content type is set and the body starts with author text that is not `<` on every branch of a
+  `?:`, `||` or `??`: Koa sends that as text;
+- `new Response(x, init)` and `new NextResponse(x, init)` (from `next/server`) whose `init` sets an
+  HTML content type, as in a Next route handler: a literal, or a `const` headers object or
+  `Headers` instance (with its `.set` / `.append` calls);
+- the return value of a Nest route handler (`@Get`, `@Post`, ... from `@nestjs/common`): the
+  Express platform sends a returned string as `text/html`. A `@Header('Content-Type', ...)` with a
+  type that is not HTML, `@Render`, `@Redirect`, `@Sse` or a `@Res()` / `@Next()` parameter
+  leaves it alone. The Fastify platform sends a string as text, but the rule cannot tell the
+  platform from the handler, so it reports there too.
 
 The body is followed through templates and `+`, both sides of `?:` and `||` (the left side of `&&`
 is only written when falsy), `String.raw`, in-file `const` bindings that build markup or hold
 constant text (read as author text, so a quote in `const OPEN = "JSON.parse('"` opens a string in a
 script), `let` accumulators (`html += row`, `html = html + row`, in loops and callbacks too),
-`[...].join(sep)` and `list.map(fn).join(sep)`, and in-file helpers that return markup, with their
-parameters bound to the call's arguments.
+array accumulators (`rows.push(row)` then `rows.join('')`), `[...].join(sep)` and
+`list.map(fn).join(sep)` (every `return` of the mapper), `.concat`, a constant template filled by
+`.replace` / `.replaceAll` at a string or plain regex placeholder (`tpl.replace('{{name}}', q)`; a
+placeholder the rule cannot find may be anywhere, so the value must be safe in a tag), and in-file
+helpers that return markup (every `return`), with their parameters bound to the call's arguments
+unless the helper writes them. A call or template tag from elsewhere (``layout(`<h1>${q}</h1>`)``,
+`dedent`, the common-tags `html` tag, `page.trim()`) is taken to keep the markup it is given, which
+is judged where it is written; an escaping module (common-tags `safeHtml` included) is judged as a
+value.
 
 ```ts bad
 export function report(res, rows) {
@@ -96,7 +110,8 @@ export async function profile(res) {
 
 nunjucks `renderString(template, context)` and `ejs.render(template, data)` with a literal
 template, inline or in a `const`, and a literal context object: each output (`{{ user.bio }}`,
-`<%= bio %>`, `<%- locals.bio %>`) is looked up in the object, through nested literals. A raw
+`<%= bio %>`, `<%- locals.bio %>`, `<%- locals["bio"] %>`, a nunjucks `{% set b = bio | safe %}`
+alias) is looked up in the object, through nested literals. A raw
 output (`| safe`, also after other filters; inside `{% autoescape false %}`; any output once the
 file configures nunjucks with `autoescape` other than `true`; EJS `<%-`, and `<%=` too when the
 options replace `escape` or `escapeFunction`) is reported when its value is not safe where it
@@ -135,8 +150,8 @@ HTML (tags, attributes and their quoting, comments, and the elements whose conte
 | A double-quoted attribute | an escaper, `encodeURIComponent`, a guard that refuses `<>&"'` and backtick |
 | A single-quoted attribute | an escaper that also encodes `'` (escape-html, he, lodash `escape`, html-escaper, entities, a `.replace` chain covering `'`), a guard as above |
 | An unquoted attribute | `encodeURIComponent`, the global `escape`, a guard that refuses whitespace, quotes and `<>&` |
-| The start of a URL attribute (`href`, `src`, `action`, `formaction`, ...) before the author text fixes a scheme | `encodeURIComponent` (no `:` survives), a guard that also refuses `/`, `\` and `:` |
-| A tag or attribute name, `<script>`, `<style>`, an event handler (`on*`), a `style` or `srcdoc` attribute, a URL after `javascript:` or after a scheme built from a runtime part | only a constant, a number, or a literal allowlist; in `<script>` code, also serialize-javascript and htmlescape output |
+| The start of a URL attribute (`href`, `src`, `action`, `formaction`, ..., a meta refresh `content` after its delay, an SVG `animate` / `set` `to`, `from`, `by` or `values` item) before the author text fixes a scheme | `encodeURIComponent` (no `:` survives), a guard that also refuses `/`, `\` and `:` |
+| A tag or attribute name, `<script>`, `<style>`, an event handler (`on*`), a `style` or `srcdoc` attribute, a URL after `javascript:` or after a scheme built from a runtime part, a `data:` URL in an `iframe`, `frame` or `embed` `src` or an `object` `data` | only a constant, a number, or a literal allowlist; in `<script>` code, also serialize-javascript and htmlescape output |
 | Inside a `'`, `"` or backtick string, or a comment, in a `<script>` | only a constant, a number, or a literal allowlist |
 
 A number (`Number()`, `parseInt`, `Math.*`, `.toFixed()`, arithmetic, `Date.now()`,
@@ -164,6 +179,11 @@ cannot tell, a `/` that does not start a comment makes it stop treating anything
 script as code, so it reports: after `}` (a block, or an object or function expression), `++`,
 `--`, `.`, or a word that is a keyword only in some places (`of`, `await`, `yield`, `get`, `set`,
 `async`, `let`, `static`). A value inside a regex body (`/${q}/i`) is never code.
+
+Author text is read as the browser reads it: a comment also ends at `<!-->`, `<!--->` and `--!>`,
+and character references in a URL (`&#106;avascript:`, `javascript&colon;`) are decoded before
+the scheme is read. A meta `content` holds a URL when an earlier `http-equiv` is `refresh` (or not
+literal).
 
 A `<script>` whose first `type` attribute is a literal type that is not script (`application/json`,
 `text/template`) is a data block the browser never runs: only its `</script>` matters, as in a
@@ -265,7 +285,9 @@ export function note(req, res) {
 }
 ```
 
-Not read: a template string built at run time, a context object that is not a literal (or has a
+Not read: arguments of a call from elsewhere that build no markup (`layout(title, body)` judges
+`body` only), a meta `http-equiv` written after `content`, a nunjucks `{% set %}{% endset %}` block,
+a template string built at run time, a context object that is not a literal (or has a
 spread), a template loaded from a file (`res.render('page', ...)`), engines other than nunjucks and
 EJS, a nunjucks output that is a function call or a literal, HTML written over several
 `res.write` calls (each is judged alone), HTML built in one function and sent from another unless
