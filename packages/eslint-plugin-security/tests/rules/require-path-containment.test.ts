@@ -339,6 +339,21 @@ ruleTester.run('require-path-containment', requirePathContainmentRule, {
       code: "import fs from 'node:fs';\nimport path from 'node:path';\nfunction h(req, res) {\nconst full = path.resolve(BASE, req.params.f);\nif (path.relative(BASE, full) === '..' || path.relative(BASE, full).startsWith('..' + path.sep) || path.isAbsolute(path.relative(BASE, full))) return;\nreturn fs.readFileSync(full);\n}",
       filename: TS,
     },
+    // Relative calls with the same tokens pair up whatever the spacing between them.
+    {
+      code: "import fs from 'node:fs';\nimport path from 'node:path';\nfunction h(req, res) {\nconst full = path.resolve(BASE, req.params.f);\nif (path.relative(BASE,full) === '..' || path.relative(BASE, full).startsWith('..' + path.sep) || path.isAbsolute(path.relative(BASE, full))) return;\nreturn fs.readFileSync(full);\n}",
+      filename: TS,
+    },
+    // `full || literal` is the tested path or a fixed one.
+    {
+      code: "import fs from 'node:fs';\nimport path from 'node:path';\nfunction h(req, res) {\nconst full = path.resolve(BASE, req.params.f);\nif (!full.startsWith(BASE + path.sep)) return;\nreturn fs.readFileSync(full || '/srv/data/x');\n}",
+      filename: TS,
+    },
+    // A root built from a fixed directory still confines.
+    {
+      code: "import path from 'node:path';\nfunction h(req, res) {\nres.sendFile(req.params.f, { root: path.join(process.cwd(), 'public') });\n}",
+      filename: TS,
+    },
     // The tested value itself, read through a binding or a holder, still reaches the sink unchanged.
     {
       code: "import fs from 'node:fs';\nimport path from 'node:path';\nfunction h(req, res) {\nconst full = path.resolve(BASE, req.params.f);\nif (!full.startsWith(BASE + path.sep)) return;\nconst holder = { value: full };\nlet p = holder.value;\nfs.readFileSync(p);\n}",
@@ -1292,6 +1307,54 @@ ruleTester.run('require-path-containment', requirePathContainmentRule, {
     // A later key with the same name, computed or not, replaces the root.
     {
       code: "import fs from 'node:fs';\nimport path from 'node:path';\nfunction h(req, res) {\nres.sendFile('a.txt', { root: '/srv', [`root`]: req.query.r });\n}",
+      filename: TS,
+      errors: FS,
+    },
+    // A relative call pairs with another only when both read the same base: not when the base binding is
+    // written in between (in the test or in a call it makes), is a member read or a getter, or differs inside a string.
+    {
+      code: "import fs from 'node:fs';\nimport path from 'node:path';\nfunction h(req, res) {\nconst full = path.resolve(BASE, req.params.f);\nlet b = BASE + '/sub';\nif (path.relative(b, full) === '..' || (b = BASE) === '' || path.relative(b, full).startsWith('..' + path.sep) || path.isAbsolute(path.relative(b, full))) return;\nreturn fs.readFileSync(full);\n}",
+      filename: TS,
+      errors: ERR,
+    },
+    {
+      code: "import fs from 'node:fs';\nimport path from 'node:path';\nfunction h(req, res) {\nconst full = path.resolve(BASE, req.params.f);\nlet b = BASE + '/sub';\nconst set = () => { b = BASE; return false; };\nif (path.relative(b, full) === '..' || set() || path.relative(b, full).startsWith('..' + path.sep) || path.isAbsolute(path.relative(b, full))) return;\nreturn fs.readFileSync(full);\n}",
+      filename: TS,
+      errors: ERR,
+    },
+    {
+      code: "import fs from 'node:fs';\nimport path from 'node:path';\nfunction h(req, res) {\nconst full = path.resolve(BASE, req.params.f);\nconst o = { b: BASE };\nif (path.relative(o.b, full) === '..' || path.relative(o.b, full).startsWith('..' + path.sep) || path.isAbsolute(path.relative(o.b, full))) return;\nreturn fs.readFileSync(full);\n}",
+      filename: TS,
+      errors: ERR,
+    },
+    {
+      code: "import fs from 'node:fs';\nimport path from 'node:path';\nfunction h(req, res) {\nconst full = path.resolve(BASE, req.params.f);\nlet n = 0;\nconst o = { get b() { n += 1; return n === 1 ? BASE + '/sub' : BASE; } };\nif (path.relative(o.b, full) === '..' || path.relative(o.b, full).startsWith('..' + path.sep) || path.isAbsolute(path.relative(o.b, full))) return;\nreturn fs.readFileSync(full);\n}",
+      filename: TS,
+      errors: ERR,
+    },
+    {
+      code: "import fs from 'node:fs';\nimport path from 'node:path';\nfunction h(req, res) {\nconst full = path.resolve(BASE, req.params.f);\nif (path.relative('/srv/data/s ub', full) === '..' || path.relative('/srv/data/sub', full).startsWith('..' + path.sep) || path.isAbsolute(path.relative('/srv/data/sub', full))) return;\nreturn fs.readFileSync(full);\n}",
+      filename: TS,
+      errors: ERR,
+    },
+    // A root that normalises to the working directory or `/` confines nothing.
+    {
+      code: "import path from 'node:path';\nfunction h(req, res) {\nres.sendFile(req.params.f, { root: './/' });\n}",
+      filename: TS,
+      errors: FS,
+    },
+    {
+      code: "import path from 'node:path';\nfunction h(req, res) {\nres.sendFile(req.params.f, { root: '/.' });\n}",
+      filename: TS,
+      errors: FS,
+    },
+    {
+      code: "import path from 'node:path';\nfunction h(req, res) {\nres.sendFile(req.params.f, { root: path.resolve('.') });\n}",
+      filename: TS,
+      errors: FS,
+    },
+    {
+      code: "import path from 'node:path';\nfunction h(req, res) {\nres.sendFile(req.params.f, { root: path.join(process.cwd()) });\n}",
       filename: TS,
       errors: FS,
     },
