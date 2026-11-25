@@ -48,7 +48,7 @@
       "j": 0.5054,
       "extra": 1,
       "crossFp": 0,
-      "crossSafe": 179,
+      "crossSafe": 185,
       "enabledBy": "recommended",
       "categories": [
         "security/command-injection"
@@ -84,7 +84,7 @@
       "j": 0.5676,
       "extra": 0,
       "crossFp": 0,
-      "crossSafe": 181,
+      "crossSafe": 187,
       "enabledBy": "recommended",
       "categories": [
         "security/ssrf"
@@ -102,7 +102,7 @@
       "j": 0.5556,
       "extra": 0,
       "crossFp": 0,
-      "crossSafe": 182,
+      "crossSafe": 188,
       "enabledBy": "recommended",
       "categories": [
         "security/open-redirect"
