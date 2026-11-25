@@ -41,9 +41,11 @@ export interface NoUnescapedHtmlResponseOptions {
    * (`utils.escapeHtml`) matches that callee text when the name it starts
    * from is imported, `require`d or not declared in the file; an entry
    * without one (`escapeHtml`) matches a call by that bare name, never a
-   * method. Neither counts once the file writes the name, a member on the
-   * way to the callee, or one of them through `Object.assign` /
-   * `Object.defineProperty`. Modules
+   * method. Neither counts once the file may change it: a write to the
+   * name, to a member on the way to the callee (destructuring included), or
+   * to one of them through `Object.assign` / `Object.defineProperty` /
+   * `Reflect.set`, an alias or the global object, or the object handed on to
+   * a call, a property, a return or an export. Modules
    * that escape are recognized by their import whatever this says. Replaces
    * the defaults.
    */
@@ -163,7 +165,7 @@ const optionSchema: JSONSchema4 = {
     ),
     contextObjects: stringArray('Receivers whose `body` assignment is the response (Koa). Replaces the defaults (`ctx`).'),
     sanitizers: stringArray(
-      'Escapers trusted to encode `&`, `<`, `>` and `"`. An entry with a dot matches that callee when the name it starts from is imported, `require`d or not declared in the file; one without matches a call by that bare name, never a method. Neither counts once the file writes the name, a member on the way to the callee, or one of them through `Object.assign` / `Object.defineProperty`. Replaces the defaults.',
+      'Escapers trusted to encode `&`, `<`, `>` and `"`. An entry with a dot matches that callee when the name it starts from is imported, `require`d or not declared in the file; one without matches a call by that bare name, never a method. Neither counts once the file may change it: a write to the name, to a member on the way to the callee (destructuring included), or to one of them through `Object.assign` / `Object.defineProperty` / `Reflect.set`, an alias or the global object, or the object handed on to a call, a property, a return or an export. Replaces the defaults.',
     ),
   },
 };

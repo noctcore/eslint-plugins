@@ -739,27 +739,66 @@ export class HtmlSafety {
   /**
    * True when this file may replace what a configured sanitizer name points
    * at: a write to the name it starts from (other than its declaration), to
-   * the property path it calls (`utils.escapeHtml = ...`) or a part of it, or
-   * `Object.assign` / `Object.defineProperty` on one of those.
+   * the property path it calls (`utils.escapeHtml = ...`) or a part of it,
+   * `Object.assign` / `Object.defineProperty` / `Reflect.set` on one of those,
+   * the same through an alias (`const u = utils`) or, for a global name,
+   * through `globalThis.utils`; or one of those handed on to a call, a
+   * variable, a property or an export, where it may be changed unseen.
    */
   private changedHere(root: TSESTree.Identifier, path: readonly string[]): boolean {
     const variable = this.variableOf(root);
     const references =
-      variable?.references ??
-      (this.sourceCode.scopeManager?.globalScope?.through ?? []).filter((reference) => reference.identifier.name === root.name);
-    return references.some((reference) => {
-      if (reference.isWrite() && !reference.init) {
+      variable !== null && variable.defs.length > 0 ? variable.references : this.globalReferences(root.name);
+    if (references.some((reference) => reference.isWrite() && !reference.init)) {
+      return true;
+    }
+    const starts: TSESTree.Node[] = references.filter((reference) => !reference.init).map((reference) => reference.identifier);
+    if (variable === null || variable.defs.length === 0) {
+      for (const name of GLOBAL_OBJECTS) {
+        for (const reference of this.globalReferences(name)) {
+          const holder = outerOf(reference.identifier);
+          const parent = holder.parent;
+          if (parent?.type === AST_NODE_TYPES.MemberExpression && parent.object === holder) {
+            const property = propertyName(parent);
+            if (property === null || property === root.name) {
+              starts.push(parent);
+            }
+          } else if (isObjectWrite(holder)) {
+            return true;
+          }
+        }
+      }
+    }
+    const seen = new Set<Variable>();
+    return starts.some((start) => this.pathChanged(start, path, seen));
+  }
+
+  /** The references to a global name the file does not declare. */
+  private globalReferences(name: string): readonly TSESLint.Scope.Reference[] {
+    const global = this.sourceCode.scopeManager?.globalScope;
+    if (global === null || global === undefined) {
+      return [];
+    }
+    const variable = global.set.get(name);
+    if (variable !== undefined && variable.defs.length > 0) {
+      return [];
+    }
+    return [...(variable?.references ?? []), ...global.through.filter((reference) => reference.identifier.name === name)];
+  }
+
+  /** True when the member path read from `start` is written, or `start` or a member on the way is handed on. */
+  private pathChanged(start: TSESTree.Node, path: readonly string[], seen: Set<Variable>): boolean {
+    let node = start;
+    for (let index = 0; ; index += 1) {
+      const holder = outerOf(node);
+      if (isObjectWrite(holder)) {
         return true;
       }
-      let node: TSESTree.Node = reference.identifier;
-      for (let index = 0; ; index += 1) {
-        if (isObjectWrite(node)) {
-          return true;
-        }
-        const parent: TSESTree.Node | undefined = node.parent;
-        if (index >= path.length || parent?.type !== AST_NODE_TYPES.MemberExpression || parent.object !== node) {
-          return false;
-        }
+      if (index >= path.length) {
+        return false;
+      }
+      const parent = holder.parent;
+      if (parent?.type === AST_NODE_TYPES.MemberExpression && parent.object === holder) {
         const name = propertyName(parent);
         if (name !== null && name !== path[index]) {
           return false;
@@ -768,8 +807,63 @@ export class HtmlSafety {
           return true;
         }
         node = parent;
+        continue;
       }
-    });
+      return this.handedOn(holder, path.slice(index), seen);
+    }
+  }
+
+  /**
+   * True when an object a sanitizer is read from goes somewhere the rule
+   * cannot follow; a `const` or `let` alias is followed with the rest of the path.
+   */
+  private handedOn(node: TSESTree.Node, rest: readonly string[], seen: Set<Variable>): boolean {
+    const parent = node.parent;
+    if (parent === undefined) {
+      return false;
+    }
+    switch (parent.type) {
+      case AST_NODE_TYPES.CallExpression:
+      case AST_NODE_TYPES.NewExpression: {
+        if (parent.callee === node) {
+          return false;
+        }
+        // `Object.keys(utils)`, `Object.assign(copy, utils)`: read only (a write target was checked before).
+        const callee = unwrap(parent.callee);
+        const owner = callee.type === AST_NODE_TYPES.MemberExpression ? unwrap(callee.object) : null;
+        return !(owner?.type === AST_NODE_TYPES.Identifier && (owner.name === 'Object' || owner.name === 'Reflect'));
+      }
+      case AST_NODE_TYPES.VariableDeclarator: {
+        if (parent.init !== node || parent.id.type !== AST_NODE_TYPES.Identifier) {
+          return true;
+        }
+        const alias = this.variableOf(parent.id);
+        if (alias === null) {
+          return true;
+        }
+        if (seen.has(alias)) {
+          return false;
+        }
+        seen.add(alias);
+        return alias.references.some(
+          (reference) => (reference.isWrite() && !reference.init) || (!reference.init && this.pathChanged(reference.identifier, rest, seen)),
+        );
+      }
+      case AST_NODE_TYPES.UnaryExpression:
+        return parent.operator === 'delete';
+      // `utils || fallback` and `c ? utils : other` hand `utils` on wherever the result goes.
+      case AST_NODE_TYPES.LogicalExpression:
+        return this.handedOn(outerOf(parent), rest, seen);
+      case AST_NODE_TYPES.ConditionalExpression:
+        return parent.test !== node && this.handedOn(outerOf(parent), rest, seen);
+      case AST_NODE_TYPES.BinaryExpression:
+      case AST_NODE_TYPES.ExpressionStatement:
+      case AST_NODE_TYPES.IfStatement:
+      case AST_NODE_TYPES.TemplateLiteral:
+        return false;
+      default:
+        return true;
+    }
   }
 
   /**
@@ -1913,10 +2007,26 @@ function isObjectWrite(node: TSESTree.Node): boolean {
     return false;
   }
   const owner = unwrap(callee.object);
-  return owner.type === AST_NODE_TYPES.Identifier && owner.name === 'Object' && OBJECT_WRITES.has(propertyName(callee) ?? '');
+  if (owner.type !== AST_NODE_TYPES.Identifier) {
+    return false;
+  }
+  const method = propertyName(callee) ?? '';
+  return owner.name === 'Object' ? OBJECT_WRITES.has(method) : owner.name === 'Reflect' && REFLECT_WRITES.has(method);
 }
 
 const OBJECT_WRITES: ReadonlySet<string> = new Set(['assign', 'defineProperty', 'defineProperties', 'setPrototypeOf']);
+const REFLECT_WRITES: ReadonlySet<string> = new Set(['set', 'defineProperty', 'deleteProperty', 'setPrototypeOf']);
+/** Names of the global object, whose members are the global names. */
+const GLOBAL_OBJECTS: readonly string[] = ['globalThis', 'window', 'self', 'global'];
+
+/** `node` with the type-only wrappers around it (`x as T`, `x!`). */
+function outerOf(node: TSESTree.Node): TSESTree.Node {
+  let outer = node;
+  while (outer.parent !== undefined && TYPE_WRAPPERS.has(outer.parent.type)) {
+    outer = outer.parent;
+  }
+  return outer;
+}
 
 const TYPE_WRAPPERS: ReadonlySet<AST_NODE_TYPES> = new Set([
   AST_NODE_TYPES.TSAsExpression,
