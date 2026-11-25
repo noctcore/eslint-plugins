@@ -59,8 +59,9 @@ export interface UrlTrustOptions {
    * it (`config` covers `config.registryUrl` and `config.mirrors[0]`). Each
    * counts as a trusted origin, so what follows it must still close the
    * authority. The binding must be a variable or import that is never
-   * written and never takes request data. Read by
-   * `no-user-controlled-fetch-url` only.
+   * written (also through an alias or a global object), never handed to a
+   * call that may change it, and never takes request data; helpers are not
+   * followed. Read by `no-user-controlled-fetch-url` only.
    */
   readonly trustedSources?: readonly string[];
   /**
@@ -90,7 +91,7 @@ export const sourceTrustSchemaProperties: Record<string, JSONSchema4> = {
     items: { type: 'string' },
     uniqueItems: true,
     description:
-      'For CLI and test code: variables whose value the person running the program picks (a CLI config or flag). The variable and every property read off it count as a trusted origin, unless the binding is a parameter, is written, or takes request data.',
+      'For CLI and test code: variables whose value the person running the program picks (a CLI config or flag). The variable and every property read off it count as a trusted origin, unless the binding is a parameter, is written (also through an alias or a global object), is handed to a call that may change it, or takes request data. Helpers are not followed: handing the source to one ends the trust.',
   },
   allowLoopback: {
     type: 'boolean',
@@ -113,6 +114,13 @@ export interface UrlTrust {
    * without it, no source binding is taken to reach a request.
    */
   readonly sourceReachesRequest?: (root: TSESTree.Identifier) => boolean;
+  /**
+   * True for a call that only reads its arguments, such as one of the rule's
+   * own request calls: a trusted source handed to it stays trusted. Any other
+   * call a source is handed to, besides a few known readers (`String`,
+   * `new URL`, `JSON.stringify`), may change it.
+   */
+  readonly readsSource?: (call: TSESTree.CallExpression | TSESTree.NewExpression) => boolean;
 }
 
 /** Drops all whitespace so `this.shared.appUrl` matches however it is wrapped. */
@@ -301,6 +309,77 @@ function authorityClosedBy(rest: readonly Part[], originHead: boolean): boolean 
   return true;
 }
 
+/**
+ * Schemes that leave the page's origin, reach the file system, run script or
+ * launch an operating system protocol handler when a redirect or a request
+ * is sent to them. A relative prefix that can still grow into one of them
+ * (`h`, `java`, `dat`, `ms-`) does not pin the origin.
+ */
+const ORIGIN_MOVING_SCHEMES: readonly string[] = [
+  'http',
+  'https',
+  'ws',
+  'wss',
+  'ftp',
+  'ftps',
+  'sftp',
+  'file',
+  'data',
+  'blob',
+  'filesystem',
+  'javascript',
+  'vbscript',
+  'livescript',
+  'view-source',
+  'jar',
+  'intent',
+  'gopher',
+  'ldap',
+  'ldaps',
+  'dict',
+  'tftp',
+  'telnet',
+  'smb',
+  // Protocol handlers the operating system launches from a link or redirect.
+  'ms-msdt',
+  'ms-officecmd',
+  'ms-word',
+  'ms-excel',
+  'ms-powerpoint',
+  'ms-visio',
+  'ms-access',
+  'ms-appinstaller',
+  'ms-settings',
+  'ms-cxh',
+  'ms-cxh-full',
+  'ms-its',
+  'ms-help',
+  'search-ms',
+  'search',
+  'mhtml',
+  'mk',
+  'hcp',
+  'itms-services',
+  'itms-apps',
+  'vscode',
+  'vscode-insiders',
+];
+
+/**
+ * True when relative text made only of scheme characters can still become one
+ * of {@link ORIGIN_MOVING_SCHEMES} once the runtime part after it supplies the
+ * rest and a `:` (`h` then `ttps://evil.com`). Text no such scheme starts
+ * with (`page`, `users`, `api`) can only become a scheme the browser and
+ * `fetch` do not follow, or a path.
+ */
+function canStartOriginMovingScheme(prefix: string): boolean {
+  const lower = prefix.toLowerCase();
+  return (
+    /^[a-z][a-z0-9+.-]*$/u.test(lower) &&
+    ORIGIN_MOVING_SCHEMES.some((scheme) => scheme.startsWith(lower))
+  );
+}
+
 /** Whether author-written text before the first runtime part fully determines the origin. */
 function prefixPinsOrigin(rawPrefix: string): boolean {
   // Analyse the prefix the way the browser (WHATWG URL) will: leading spaces
@@ -327,9 +406,9 @@ function prefixPinsOrigin(rawPrefix: string): boolean {
     // Relative URL. Safe, except a lone `/` (the runtime part can begin with
     // `/` and turn it into a protocol-relative `//evil.com`) or nothing left
     // once the parser drops what it drops (`' '` then the whole URL), or text
-    // made only of scheme characters, which the runtime part can finish into a
-    // scheme (`h` then `ttps://evil.com`, `java` then `script:alert(1)`).
-    return prefix !== '/' && prefix !== '' && !/^[a-z][a-z0-9+.-]*$/iu.test(prefix);
+    // the runtime part can finish into a scheme that moves the origin
+    // (`h` then `ttps://evil.com`, `java` then `script:alert(1)`).
+    return prefix !== '/' && prefix !== '' && !canStartOriginMovingScheme(prefix);
   }
 
   // Absolute or protocol-relative: the authority must END inside the literal
@@ -442,8 +521,10 @@ function readsTrustedSource(
  * True when the binding a trusted source is read from holds what the person
  * running the program picked, and nothing can swap it for request data: its
  * root is a variable or import (not a parameter, which any caller fills, nor
- * `this` or a call result), it is never reassigned, no property under it is
- * written, and it never takes its value from a request.
+ * `this` or a call result), it is never reassigned, nothing under it is
+ * written, it never takes its value from a request, and it never leaves the
+ * reach of this check (see {@link letsGo}). For an undeclared global, a write
+ * through `globalThis`, `global`, `window` or `self` counts as a write.
  */
 function isSettledSource(
   source: TSESTree.Expression,
@@ -465,11 +546,12 @@ function isSettledSource(
   }
   const variable = ASTUtils.findVariable(sourceCode.getScope(root), root);
   let references: readonly TSESLint.Scope.Reference[];
-  if (variable === null) {
+  const starts: TSESTree.Node[] = [];
+  if (variable === null || variable.defs.length === 0) {
     const name = root.name;
-    references = sourceCode.scopeManager?.globalScope?.through.filter((ref) => ref.identifier.name === name) ?? [];
-  } else if (variable.defs.length === 0) {
-    references = variable.references;
+    const through = sourceCode.scopeManager?.globalScope?.through ?? [];
+    references = variable?.references ?? through.filter((ref) => ref.identifier.name === name);
+    starts.push(...globalPropertyReads(name, sourceCode));
   } else {
     const def = variable.defs[0];
     if (variable.defs.length !== 1 || (def?.type !== 'Variable' && def?.type !== 'ImportBinding')) {
@@ -477,20 +559,56 @@ function isSettledSource(
     }
     references = variable.references;
   }
-  return !references.some(writesThrough) && !(trust.sourceReachesRequest?.(root) ?? false);
+  if (references.some((reference) => reference.init !== true && reference.isWrite())) {
+    return false;
+  }
+  const walk: SourceWalk = { trust, sourceCode, seen: new Set(variable === null ? [] : [variable]) };
+  return (
+    !references.some((reference) => reference.init !== true && letsGo(reference.identifier, walk, false)) &&
+    !starts.some((start) => letsGo(start, walk, true)) &&
+    !(trust.sourceReachesRequest?.(root) ?? false)
+  );
 }
 
-/** Calls that change their first argument. */
-const MUTATING_CALLS = new Set([
-  'Object.assign',
-  'Object.defineProperty',
-  'Object.defineProperties',
-  'Object.setPrototypeOf',
-  'Reflect.set',
-  'Reflect.defineProperty',
-  'Reflect.setPrototypeOf',
-  'Reflect.deleteProperty',
-]);
+interface SourceWalk {
+  readonly trust: UrlTrust;
+  readonly sourceCode: Readonly<TSESLint.SourceCode>;
+  /** Bindings already followed, so a cycle of aliases ends. */
+  readonly seen: Set<TSESLint.Scope.Variable>;
+}
+
+/** Objects an undeclared global is also a property of. */
+const GLOBAL_OBJECTS: ReadonlySet<string> = new Set(['globalThis', 'global', 'window', 'self']);
+
+/** `globalThis.config` and `window['config']` for an undeclared global `config`. */
+function globalPropertyReads(name: string, sourceCode: Readonly<TSESLint.SourceCode>): TSESTree.Node[] {
+  const globalScope = sourceCode.scopeManager?.globalScope;
+  if (globalScope == null) {
+    return [];
+  }
+  const references = [
+    ...globalScope.through,
+    ...[...GLOBAL_OBJECTS].flatMap((object) => globalScope.set.get(object)?.references ?? []),
+  ];
+  return references.flatMap((reference) => {
+    const parent = reference.identifier.parent;
+    return GLOBAL_OBJECTS.has(reference.identifier.name) &&
+      parent?.type === AST_NODE_TYPES.MemberExpression &&
+      parent.object === reference.identifier &&
+      memberKey(parent) === name
+      ? [parent]
+      : [];
+  });
+}
+
+function memberKey(member: TSESTree.MemberExpression): string | undefined {
+  if (!member.computed && member.property.type === AST_NODE_TYPES.Identifier) {
+    return member.property.name;
+  }
+  return member.property.type === AST_NODE_TYPES.Literal && typeof member.property.value === 'string'
+    ? member.property.value
+    : undefined;
+}
 
 /** Methods that change the array, map or set they are called on. */
 const MUTATING_METHODS = new Set([
@@ -510,30 +628,98 @@ const MUTATING_METHODS = new Set([
 ]);
 
 /**
- * True when a reference reassigns the binding, or writes the object it holds
- * or anything under it: `config = x`, `config.url = x`, `delete config.url`,
- * `({ url: config.url } = x)`, `Object.assign(config, x)`,
- * `config.mirrors.push(x)`.
+ * Methods whose result is a new string, number or boolean, never an object
+ * held under the receiver: what is done with the result cannot change the
+ * source. The result of any other method (`at`, `find`, `get`, `values`)
+ * may be a nested object, so it is followed like the source itself.
  */
-function writesThrough(reference: TSESLint.Scope.Reference): boolean {
-  if (reference.init === true) {
-    return false;
-  }
-  if (reference.isWrite()) {
-    return true;
-  }
-  let chain: TSESTree.Node = reference.identifier;
+const DETACHED_RESULT_METHODS: ReadonlySet<string> = new Set([
+  'replace',
+  'replaceAll',
+  'slice',
+  'substring',
+  'substr',
+  'trim',
+  'trimStart',
+  'trimEnd',
+  'toLowerCase',
+  'toUpperCase',
+  'toLocaleLowerCase',
+  'toLocaleUpperCase',
+  'toString',
+  'toFixed',
+  'startsWith',
+  'endsWith',
+  'includes',
+  'indexOf',
+  'lastIndexOf',
+  'padStart',
+  'padEnd',
+  'charAt',
+  'charCodeAt',
+  'split',
+  'join',
+  'match',
+  'test',
+  'has',
+  'normalize',
+  'repeat',
+]);
+
+/** Global functions that only read their arguments, matched when not shadowed. */
+const READING_FUNCTIONS: ReadonlySet<string> = new Set([
+  'String',
+  'Number',
+  'Boolean',
+  'BigInt',
+  'parseInt',
+  'parseFloat',
+  'isNaN',
+  'isFinite',
+  'encodeURIComponent',
+  'encodeURI',
+  'decodeURIComponent',
+  'decodeURI',
+  'URL',
+  'URLSearchParams',
+]);
+
+/**
+ * Static methods of globals that only read their arguments, matched when not
+ * shadowed. `JSON.stringify` counts only without a replacer function, which
+ * is handed every value under its argument.
+ */
+const READING_METHODS: Readonly<Record<string, ReadonlySet<string> | 'any'>> = {
+  Object: new Set(['keys', 'freeze', 'isFrozen', 'getOwnPropertyNames', 'hasOwn']),
+  JSON: new Set(['stringify']),
+  Array: new Set(['isArray']),
+  Number: new Set(['isInteger', 'isFinite', 'isNaN', 'parseInt', 'parseFloat']),
+  console: 'any',
+  Math: 'any',
+};
+
+/**
+ * True when a reference lets the source go where this check cannot follow
+ * it, or changes it. Writes: a write under it (`config.url = x`,
+ * `delete config.url`, `({ url: config.url } = x)`, `config.mirrors.push(x)`)
+ * and, with `writeCounts`, a write of the start itself (`globalThis.config = x`).
+ * Leaving: being handed to any call that does not only read it
+ * (`merge(config, x)`, `Object.assign({}, config)`, `_.set(config, ...)`),
+ * thrown, returned or stored in something other than a local binding. A copy
+ * into a local binding (`const c = config`, `const { mirrors } = config`,
+ * `for (const m of config.mirrors)`, a callback parameter of
+ * `config.mirrors.forEach(...)`) is followed: every reference to it is checked
+ * the same way.
+ */
+function letsGo(start: TSESTree.Node, walk: SourceWalk, writeCounts: boolean): boolean {
+  let chain: TSESTree.Node = start;
   for (;;) {
     const parent: TSESTree.Node | undefined = chain.parent;
     if (
       (parent?.type === AST_NODE_TYPES.MemberExpression && parent.object === chain) ||
-      parent?.type === AST_NODE_TYPES.ChainExpression ||
-      parent?.type === AST_NODE_TYPES.TSNonNullExpression ||
-      parent?.type === AST_NODE_TYPES.TSAsExpression ||
-      parent?.type === AST_NODE_TYPES.TSSatisfiesExpression ||
-      parent?.type === AST_NODE_TYPES.TSTypeAssertion
+      isTransparent(parent)
     ) {
-      chain = parent;
+      chain = parent!;
     } else {
       break;
     }
@@ -542,45 +728,243 @@ function writesThrough(reference: TSESLint.Scope.Reference): boolean {
   if (parent === undefined) {
     return false;
   }
-  if (chain !== reference.identifier) {
+  if (isWriteTarget(chain, parent)) {
+    return chain !== start || writeCounts;
+  }
+  const last = unwrapChain(chain);
+  if (
+    parent.type === AST_NODE_TYPES.CallExpression &&
+    parent.callee === chain &&
+    last.type === AST_NODE_TYPES.MemberExpression
+  ) {
+    return methodLetsGo(parent, last, walk);
+  }
+  return valueLetsGo(chain, walk);
+}
+
+function isTransparent(node: TSESTree.Node | undefined): node is TSESTree.Node {
+  return (
+    node?.type === AST_NODE_TYPES.ChainExpression ||
+    node?.type === AST_NODE_TYPES.TSNonNullExpression ||
+    node?.type === AST_NODE_TYPES.TSAsExpression ||
+    node?.type === AST_NODE_TYPES.TSSatisfiesExpression ||
+    node?.type === AST_NODE_TYPES.TSTypeAssertion
+  );
+}
+
+/** True when `node` is where a value is stored, not read. */
+function isWriteTarget(node: TSESTree.Node, parent: TSESTree.Node): boolean {
+  return (
+    (parent.type === AST_NODE_TYPES.AssignmentExpression && parent.left === node) ||
+    parent.type === AST_NODE_TYPES.UpdateExpression ||
+    (parent.type === AST_NODE_TYPES.UnaryExpression && parent.operator === 'delete') ||
+    ((parent.type === AST_NODE_TYPES.ForInStatement || parent.type === AST_NODE_TYPES.ForOfStatement) &&
+      parent.left === node) ||
+    parent.type === AST_NODE_TYPES.ArrayPattern ||
+    parent.type === AST_NODE_TYPES.RestElement ||
+    (parent.type === AST_NODE_TYPES.AssignmentPattern && parent.left === node) ||
+    (parent.type === AST_NODE_TYPES.Property &&
+      parent.value === node &&
+      parent.parent.type === AST_NODE_TYPES.ObjectPattern)
+  );
+}
+
+/**
+ * A method called on the source or on something under it: a mutating one
+ * changes it; an inline callback's parameters receive its elements and are
+ * followed; a result that may be a nested object is followed too.
+ */
+function methodLetsGo(
+  call: TSESTree.CallExpression,
+  callee: TSESTree.MemberExpression,
+  walk: SourceWalk,
+): boolean {
+  const name = memberKey(callee);
+  if (name === undefined || MUTATING_METHODS.has(name)) {
+    return true;
+  }
+  for (const argument of call.arguments) {
     if (
-      (parent.type === AST_NODE_TYPES.AssignmentExpression && parent.left === chain) ||
-      parent.type === AST_NODE_TYPES.UpdateExpression ||
-      (parent.type === AST_NODE_TYPES.UnaryExpression && parent.operator === 'delete') ||
-      ((parent.type === AST_NODE_TYPES.ForInStatement || parent.type === AST_NODE_TYPES.ForOfStatement) &&
-        parent.left === chain) ||
-      parent.type === AST_NODE_TYPES.ArrayPattern ||
-      parent.type === AST_NODE_TYPES.RestElement ||
-      (parent.type === AST_NODE_TYPES.AssignmentPattern && parent.left === chain) ||
-      (parent.type === AST_NODE_TYPES.Property &&
-        parent.value === chain &&
-        parent.parent.type === AST_NODE_TYPES.ObjectPattern)
-    ) {
-      return true;
-    }
-    const last = unwrapChain(chain);
-    if (
-      parent.type === AST_NODE_TYPES.CallExpression &&
-      parent.callee === chain &&
-      last.type === AST_NODE_TYPES.MemberExpression &&
-      !last.computed &&
-      last.property.type === AST_NODE_TYPES.Identifier &&
-      MUTATING_METHODS.has(last.property.name)
+      (argument.type === AST_NODE_TYPES.ArrowFunctionExpression ||
+        argument.type === AST_NODE_TYPES.FunctionExpression) &&
+      walk.sourceCode.getDeclaredVariables(argument).some((variable) => aliasLetsGo(variable, walk))
     ) {
       return true;
     }
   }
-  return (
-    parent.type === AST_NODE_TYPES.CallExpression &&
-    parent.arguments[0] === chain &&
-    parent.callee.type === AST_NODE_TYPES.MemberExpression &&
-    !parent.callee.computed &&
-    parent.callee.object.type === AST_NODE_TYPES.Identifier &&
-    parent.callee.property.type === AST_NODE_TYPES.Identifier &&
-    MUTATING_CALLS.has(`${parent.callee.object.name}.${parent.callee.property.name}`)
+  return !DETACHED_RESULT_METHODS.has(name) && valueLetsGo(call, walk);
+}
+
+/**
+ * Where the value of `node` (the source, or something holding it) goes. It
+ * stays when it is only read: string building, comparisons, tests, a key, a
+ * reading call. A copy into a local binding is followed. Anything else lets
+ * it go.
+ */
+function valueLetsGo(node: TSESTree.Node, walk: SourceWalk): boolean {
+  const parent = node.parent;
+  if (parent === undefined) {
+    return true;
+  }
+  switch (parent.type) {
+    case AST_NODE_TYPES.ChainExpression:
+    case AST_NODE_TYPES.TSNonNullExpression:
+    case AST_NODE_TYPES.TSAsExpression:
+    case AST_NODE_TYPES.TSSatisfiesExpression:
+    case AST_NODE_TYPES.TSTypeAssertion:
+    case AST_NODE_TYPES.AwaitExpression:
+    case AST_NODE_TYPES.ArrayExpression:
+    case AST_NODE_TYPES.ObjectExpression:
+      return valueLetsGo(parent, walk);
+    case AST_NODE_TYPES.MemberExpression:
+      // A member of what holds the source may be the source or part of it, so
+      // a write to it counts; a computed key is only read.
+      return parent.object === node ? letsGo(parent, walk, true) : false;
+    case AST_NODE_TYPES.Property:
+      return parent.value === node && parent.parent.type === AST_NODE_TYPES.ObjectExpression
+        ? valueLetsGo(parent, walk)
+        : false;
+    case AST_NODE_TYPES.SpreadElement:
+      return parent.parent.type === AST_NODE_TYPES.CallExpression || parent.parent.type === AST_NODE_TYPES.NewExpression
+        ? !onlyReads(parent.parent, walk)
+        : valueLetsGo(parent, walk);
+    case AST_NODE_TYPES.LogicalExpression:
+      return valueLetsGo(parent, walk);
+    case AST_NODE_TYPES.ConditionalExpression:
+      return parent.test === node ? false : valueLetsGo(parent, walk);
+    case AST_NODE_TYPES.SequenceExpression:
+      return parent.expressions.at(-1) === node ? valueLetsGo(parent, walk) : false;
+    case AST_NODE_TYPES.TemplateLiteral:
+      return parent.parent.type === AST_NODE_TYPES.TaggedTemplateExpression;
+    case AST_NODE_TYPES.TaggedTemplateExpression:
+    case AST_NODE_TYPES.BinaryExpression:
+    case AST_NODE_TYPES.UnaryExpression:
+    case AST_NODE_TYPES.ExpressionStatement:
+    case AST_NODE_TYPES.IfStatement:
+    case AST_NODE_TYPES.WhileStatement:
+    case AST_NODE_TYPES.DoWhileStatement:
+    case AST_NODE_TYPES.ForStatement:
+    case AST_NODE_TYPES.ForInStatement:
+    case AST_NODE_TYPES.SwitchStatement:
+    case AST_NODE_TYPES.SwitchCase:
+      return false;
+    case AST_NODE_TYPES.CallExpression:
+    case AST_NODE_TYPES.NewExpression:
+      if (parent.callee === node) {
+        return false;
+      }
+      // `Object.values(config)` holds the very objects under the source.
+      return returnsParts(parent, walk) ? valueLetsGo(parent, walk) : !onlyReads(parent, walk);
+    case AST_NODE_TYPES.VariableDeclarator:
+      return parent.init === node && copyLetsGo(parent, walk);
+    case AST_NODE_TYPES.ForOfStatement:
+      return parent.right === node && copyLetsGo(parent.left, walk);
+    case AST_NODE_TYPES.AssignmentExpression:
+      if (parent.right !== node) {
+        return true;
+      }
+      if (!['=', '||=', '&&=', '??='].includes(parent.operator)) {
+        return false;
+      }
+      return parent.left.type !== AST_NODE_TYPES.Identifier || copyLetsGo(parent.left, walk);
+    default:
+      return true;
+  }
+}
+
+/** Follows every local binding a copy lands in (`const c = config`, `const { a, ...rest } = config`). */
+function copyLetsGo(target: TSESTree.Node, walk: SourceWalk): boolean {
+  if (target.type === AST_NODE_TYPES.Identifier) {
+    const variable = ASTUtils.findVariable(walk.sourceCode.getScope(target), target);
+    return variable === null || variable.defs.length === 0 || aliasLetsGo(variable, walk);
+  }
+  if (target.type !== AST_NODE_TYPES.VariableDeclarator && target.type !== AST_NODE_TYPES.VariableDeclaration) {
+    // A pattern assigned outside a declaration: `for ({ url } of config.mirrors)`.
+    return true;
+  }
+  const declaration = target.type === AST_NODE_TYPES.VariableDeclarator ? target.parent : target;
+  if (declaration.parent.type === AST_NODE_TYPES.ExportNamedDeclaration) {
+    // Another module can write the copy.
+    return true;
+  }
+  const variables = walk.sourceCode.getDeclaredVariables(target);
+  return variables.length === 0 || variables.some((variable) => aliasLetsGo(variable, walk));
+}
+
+/** True when a binding holding (part of) the source lets it go through any reference. */
+function aliasLetsGo(variable: TSESLint.Scope.Variable, walk: SourceWalk): boolean {
+  if (walk.seen.has(variable)) {
+    return false;
+  }
+  walk.seen.add(variable);
+  return variable.references.some(
+    (reference) => !(reference.isWrite() && !reference.isRead()) && letsGo(reference.identifier, walk, false),
   );
 }
 
+/** True for a call that only reads its arguments: one the rule itself reads, or a known reader. */
+function onlyReads(call: TSESTree.CallExpression | TSESTree.NewExpression, walk: SourceWalk): boolean {
+  if (walk.trust.readsSource?.(call) === true) {
+    return true;
+  }
+  const callee = unwrapChain(call.callee);
+  if (callee.type === AST_NODE_TYPES.Identifier) {
+    return READING_FUNCTIONS.has(callee.name) && isUnshadowedGlobal(callee, walk);
+  }
+  if (callee.type !== AST_NODE_TYPES.MemberExpression || callee.object.type !== AST_NODE_TYPES.Identifier) {
+    return false;
+  }
+  const methods = READING_METHODS[callee.object.name];
+  const name = memberKey(callee);
+  if (callee.object.name === 'JSON' && name === 'stringify' && !isNoReplacer(call.arguments[1], walk)) {
+    return false;
+  }
+  return (
+    methods !== undefined &&
+    name !== undefined &&
+    (methods === 'any' || methods.has(name)) &&
+    isUnshadowedGlobal(callee.object, walk)
+  );
+}
+
+/**
+ * True when a `JSON.stringify` replacer is absent or cannot be a function:
+ * an array, `null`, or `undefined` when no binding of that name shadows it.
+ */
+function isNoReplacer(argument: TSESTree.CallExpressionArgument | undefined, walk: SourceWalk): boolean {
+  if (argument === undefined) {
+    return true;
+  }
+  const inner = unwrapChain(argument);
+  return (
+    inner.type === AST_NODE_TYPES.ArrayExpression ||
+    (inner.type === AST_NODE_TYPES.Literal && inner.value === null) ||
+    (inner.type === AST_NODE_TYPES.Identifier && inner.name === 'undefined' && isUnshadowedGlobal(inner, walk))
+  );
+}
+
+/** Static methods whose result holds the objects under their argument: `Object.values`, `Object.entries`. */
+const PART_RETURNING_METHODS: Readonly<Record<string, ReadonlySet<string>>> = {
+  Object: new Set(['values', 'entries']),
+};
+
+function returnsParts(call: TSESTree.CallExpression | TSESTree.NewExpression, walk: SourceWalk): boolean {
+  const callee = unwrapChain(call.callee);
+  if (callee.type !== AST_NODE_TYPES.MemberExpression || callee.object.type !== AST_NODE_TYPES.Identifier) {
+    return false;
+  }
+  const name = memberKey(callee);
+  return (
+    name !== undefined &&
+    PART_RETURNING_METHODS[callee.object.name]?.has(name) === true &&
+    isUnshadowedGlobal(callee.object, walk)
+  );
+}
+
+function isUnshadowedGlobal(identifier: TSESTree.Identifier, walk: SourceWalk): boolean {
+  const variable = ASTUtils.findVariable(walk.sourceCode.getScope(identifier), identifier);
+  return variable === null || variable.defs.length === 0;
+}
 function unwrapChain(node: TSESTree.Node): TSESTree.Node {
   let current = node;
   while (

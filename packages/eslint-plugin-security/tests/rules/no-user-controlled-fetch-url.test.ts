@@ -645,3 +645,182 @@ ruleTester.run('no-user-controlled-fetch-url', noUserControlledFetchUrlRule, {
     { code: "fetch('h' + x);", filename: TS, errors: [error] },
   ],
 });
+
+// Relative prefixes no scheme that leaves the origin starts with.
+ruleTester.run('no-user-controlled-fetch-url: relative scheme-shaped prefixes', noUserControlledFetchUrlRule, {
+  valid: [
+    { code: 'fetch(`api${x}`);', filename: TS },
+    { code: "fetch('users' + id);", filename: TS },
+    { code: 'fetch(`page.html${x}`);', filename: TS },
+  ],
+  invalid: [
+    { code: 'fetch(`dat${x}`);', filename: TS, errors: [error] },
+    { code: 'fetch(`Ws${x}`);', filename: TS, errors: [error] },
+    { code: "fetch('fil' + x);", filename: TS, errors: [error] },
+    { code: 'fetch(`HTTPS${x}`);', filename: TS, errors: [error] },
+  ],
+});
+
+// A trusted source copied into another binding, handed to a call that may
+// change it, written through a global object, or read off a response.
+ruleTester.run('no-user-controlled-fetch-url: trusted sources that leave', noUserControlledFetchUrlRule, {
+  valid: [
+    // Copies into local bindings that are only read.
+    ...[
+      'const url = config.url; fetch(url);',
+      'const { verbose, mirrors } = config; if (verbose) console.log(mirrors[0]);',
+      'const c = config; const t = `${c.url}/x`;',
+      'for (const m of config.mirrors) console.log(m.url);',
+      'config.mirrors.forEach((m) => console.log(m.url.trim()));',
+      'let c; c = config; if (c.verbose) {}',
+    ].map((setup) => ({
+      code: `${setup} fetch(config.url); https.get({ hostname: config.host, path: '/x' });`,
+      filename: TS,
+      options: [{ trustedSources: ['config'] }],
+    })),
+    // Known readers, string building, tests and the rule's own calls.
+    {
+      code: "console.log(config); String(config.port); JSON.stringify(config); Object.keys(config); new URL(config.base); if (config.verbose && typeof config === 'object') {} const t = `${config.url}`; fetch(config.url); axios.create({ baseURL: config.url }); https.get({ hostname: config.host, path: '/x' });",
+      filename: TS,
+      options: [{ trustedSources: ['config'] }],
+    },
+    // A global with a read through globalThis only.
+    {
+      code: 'log(globalThis.config.url.trim()); fetch(config.url);',
+      filename: TS,
+      options: [{ trustedSources: ['config'] }],
+    },
+  ],
+  invalid: [
+    ...[
+      // Copied into another binding, then written through it.
+      'const c = config; c.url = req.query.u;',
+      'const { sub } = config; sub.url = x;',
+      'const m = config.mirrors; m[0] = x;',
+      'let c; c = config; c.url = x;',
+      'const { ...rest } = config; rest.http.url = x;',
+      'const copy = { ...config }; copy.http.url = x;',
+      'const box = { config }; box.config.url = x;',
+      'const list = [config]; list[0].url = x;',
+      'for (const m of config.mirrors) m.url = x;',
+      'config.mirrors.forEach((m) => { m.url = x; });',
+      'config.mirrors.at(0).url = x;',
+      'config.servers.get(k).url = x;',
+      'export const c = config;',
+      // Handed to a call that may change it.
+      'mutate(config, req.body);',
+      '_.merge(config, req.body);',
+      'merge(config, req.body);',
+      "_.set(config, 'url', x);",
+      "const { defineProperty } = Object; defineProperty(config, 'url', { value: x });",
+      'register(config.http);',
+      'Object.assign({}, config);',
+      'helpers.push(config);',
+      'setup(...[config]);',
+      'tag`${config}`;',
+      'const String = (o) => { o.url = x; }; String(config);',
+      // Left through a return or a throw.
+      'function get() { return config; }',
+      'const get = () => config.http;',
+      // A write through a global object.
+      'globalThis.config = req.body;',
+      "window['config'] = req.body;",
+      'globalThis.config.url = x;',
+      'Object.assign(globalThis.config, req.body);',
+    ].map((setup) => ({
+      code: `${setup} fetch(config.url); https.get({ hostname: config.host, path: '/x' });`,
+      filename: TS,
+      options: [{ trustedSources: ['config'] }],
+      errors: [error, host],
+    })),
+    // A source read off the response, which earlier middleware filled.
+    {
+      code: "app.get('/x', (req, res) => { const config = res.locals.cfg; fetch(config.url); https.get({ hostname: config.host, path: '/x' }); });",
+      filename: TS,
+      options: [{ trustedSources: ['config'] }],
+      errors: [error, host],
+    },
+    {
+      code: "app.get('/x', (rq, rs) => { const config = rs.locals.cfg; fetch(config.url); });",
+      filename: TS,
+      options: [{ trustedSources: ['config'] }],
+      errors: [error],
+    },
+    // Without the option nothing is trusted, copies or not.
+    {
+      code: "const url = config.url; fetch(url); fetch(config.url); https.get({ hostname: config.host, path: '/x' });",
+      filename: TS,
+      errors: [error, error, host],
+    },
+  ],
+});
+
+// `Object.values` and `Object.entries` hand out the objects under the source,
+// a `JSON.stringify` replacer function is handed every value, and an export
+// list lets the source go.
+ruleTester.run('no-user-controlled-fetch-url: trusted source readers', noUserControlledFetchUrlRule, {
+  valid: [
+    ...[
+      'Object.values(config.mirrors).forEach((m) => console.log(m.url));',
+      'for (const [k, m] of Object.entries(config.mirrors)) console.log(k, m.url);',
+      'const first = Object.values(config)[0]; log(first.url.trim());',
+      "JSON.stringify(config); JSON.stringify(config, null, 2); JSON.stringify(config, ['url']); JSON.stringify(config, undefined, 2);",
+      'Object.keys(config).forEach((k) => console.log(k));',
+    ].map((setup) => ({
+      code: `${setup} fetch(config.url); https.get({ hostname: config.host, path: '/x' });`,
+      filename: TS,
+      options: [{ trustedSources: ['config'] }],
+    })),
+  ],
+  invalid: [
+    ...[
+      'Object.values(config.mirrors).forEach((m) => { m.url = req.query.u; });',
+      'for (const [k, m] of Object.entries(config.mirrors)) m.url = req.query.u;',
+      'Object.values(config)[0][0].url = req.query.u;',
+      'const parts = Object.entries(config); parts[0][1].url = x;',
+      'mutate(Object.values(config));',
+      'JSON.stringify(config, (k, v) => { v.url = x; return v; });',
+      'JSON.stringify(config, replacer);',
+      'export { config };',
+      'export { config as settings };',
+    ].map((setup) => ({
+      code: `${setup} fetch(config.url); https.get({ hostname: config.host, path: '/x' });`,
+      filename: TS,
+      options: [{ trustedSources: ['config'] }],
+      errors: [error, host],
+    })),
+  ],
+});
+
+// Relative text that can still grow into a protocol handler scheme.
+ruleTester.run('no-user-controlled-fetch-url: protocol handler schemes', noUserControlledFetchUrlRule, {
+  valid: [{ code: 'fetch(`docs${x}`);', filename: TS }],
+  invalid: [
+    { code: 'fetch(`ms-${x}`);', filename: TS, errors: [error] },
+    { code: 'fetch(`m${x}`);', filename: TS, errors: [error] },
+    { code: "fetch('se' + x);", filename: TS, errors: [error] },
+    { code: 'fetch(`VSCODE${x}`);', filename: TS, errors: [error] },
+  ],
+});
+
+// `undefined` as a replacer counts only when no binding shadows it.
+ruleTester.run('no-user-controlled-fetch-url: shadowed undefined replacer', noUserControlledFetchUrlRule, {
+  valid: [
+    {
+      code: "JSON.stringify(config, undefined, 2); fetch(config.url); https.get({ hostname: config.host, path: '/x' });",
+      filename: TS,
+      options: [{ trustedSources: ['config'] }],
+    },
+  ],
+  invalid: [
+    ...[
+      'function dump(undefined) { JSON.stringify(config, undefined); }',
+      'function dump() { const undefined = (k, v) => { v.url = x; return v; }; JSON.stringify(config, undefined); }',
+    ].map((setup) => ({
+      code: `${setup} fetch(config.url); https.get({ hostname: config.host, path: '/x' });`,
+      filename: TS,
+      options: [{ trustedSources: ['config'] }],
+      errors: [error, host],
+    })),
+  ],
+});

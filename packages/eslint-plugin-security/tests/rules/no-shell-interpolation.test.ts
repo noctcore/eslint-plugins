@@ -1262,3 +1262,201 @@ ruleTester.run('no-shell-interpolation reading', noShellInterpolationRule, {
     { code: checked('exec(`git -C ${process.env.REPO_DIR} log ${t}`);'), filename: TS, options: [{ trustEnvironment: true }], errors: error },
   ],
 });
+
+/** A function whose `x` and `t` passed shell-inert regex checks before `body` runs. */
+const checkedTwo = (body: string): string =>
+  `function run(x: string, t: string) { if (!/^[a-z]+$/.test(x)) return; if (!/^[a-z][a-z0-9-]*$/.test(t)) return; ${body} }`;
+/** A joi schema `S` checked on `x`, then `value` used in `body` with a checked `t`. */
+const joiChecked = (schema: string, body: string): string =>
+  `const Joi = require('joi'); const S = ${schema}; function run(x: string, t: string) { if (!/^[a-z][a-z0-9-]*$/.test(t)) return; const { error, value } = S.validate(x); if (error) return; ${body} }`;
+
+// #360: case-changed schema literals, `sh -c` without a shell option and
+// value-built find actions or runner subcommands.
+ruleTester.run('no-shell-interpolation follow-ups', noShellInterpolationRule, {
+  valid: [
+    // A case change that leaves a plain program name.
+    { code: joiChecked("Joi.string().valid('LS').lowercase()", 'exec(`${value} ${t}`);'), filename: TS },
+    { code: joiChecked("Joi.string().valid('ls')", 'exec(`${value} ${t}`);'), filename: TS },
+    // `sh -c` with a static or proven command, or a script file.
+    { code: "spawn('sh', ['-c', 'ls -la']);", filename: TS },
+    { code: checked("spawn('sh', ['-c', `ls ${t}`]);"), filename: TS },
+    { code: "spawn('sh', ['./deploy.sh', target]);", filename: TS },
+    { code: "spawn('bash', ['-lc', 'echo \"$1\"', 'name', target]);", filename: TS },
+    { code: "spawn('node', ['-e', `console.log(${x})`]);", filename: TS },
+    // A command held whole in a binding is not built here, as with `exec(cmd)`.
+    { code: "spawn('sh', ['-c', cmd]);", filename: TS },
+    // A value-built word that cannot be a find action or a runner subcommand.
+    { code: checkedTwo('exec(`find . -name ${x} ${t}`);'), filename: TS },
+    { code: checkedTwo('exec(`git log -${x} ${t}`);'), filename: TS },
+    { code: checkedTwo('exec(`npm install ${x} ${t}`);'), filename: TS },
+  ],
+  invalid: [
+    // A literal that becomes a wrapper once its case changes.
+    { code: joiChecked("Joi.string().valid('SUDO').lowercase()", 'exec(`${value} ${t}`);'), filename: TS, errors: error },
+    { code: joiChecked("Joi.string().lowercase().valid('Sudo')", 'exec(`${value} ${t}`);'), filename: TS, errors: error },
+    { code: joiChecked("Joi.string().valid('ENV').trim().lowercase()", 'exec(`${value} ${t}`);'), filename: TS, errors: error },
+    // `sh -c` and friends with no shell option.
+    { code: "function dig(d: string) { spawn('sh', ['-c', `dig +short ${d} A`]); }", filename: TS, errors: error },
+    { code: "function dig(d: string) { const cmd = `dig +short ${d} A`; spawn('sh', ['-c', cmd]); }", filename: TS, errors: error },
+    { code: "function log(b: string) { execFile('/bin/bash', ['-lc', 'git log ' + b], cb); }", filename: TS, errors: error },
+    { code: "function pack(f: string) { spawnSync('bash', ['-e', '-c', `tar czf ${f}.tgz src`]); }", filename: TS, errors: error },
+    { code: "function pipe(x: string) { spawn('sh', ['-o', 'pipefail', '-c', `grep ${x} log | wc -l`]); }", filename: TS, errors: error },
+    { code: "function pipe(x: string) { spawn('sh', ['-c', `grep ${x} log`], { shell: false }); }", filename: TS, errors: error },
+    { code: "function show(f: string) { spawn('cmd.exe', ['/d', '/s', '/c', `type ${f}`]); }", filename: TS, errors: error },
+    { code: "function show(f: string) { spawn('cmd', ['/c', 'type', f]); }", filename: TS, errors: error },
+    { code: checked("spawn('sh', ['-c', `sudo ${t}`]);"), filename: TS, errors: error },
+    {
+      code: "import { execFile } from 'node:child_process'; import { promisify } from 'node:util'; const run = promisify(execFile); async function f(y: string) { await run('sh', ['-c', `ls ${y}`]); }",
+      filename: TS,
+      errors: error,
+    },
+    // A proven value that spells a find action or a runner subcommand.
+    { code: checkedTwo('exec(`find . -${x} ${t}`);'), filename: TS, errors: error },
+    { code: checkedTwo('exec(`find . -name a -e${x} ${t}`);'), filename: TS, errors: error },
+    { code: checkedTwo('exec(`npm ${x} ${t}`);'), filename: TS, errors: error },
+    { code: checkedTwo('exec(`pnpm ${x} ${t}`);'), filename: TS, errors: error },
+    { code: checkedTwo('exec(`npm --prefix /srv ${x} ${t}`);'), filename: TS, errors: error },
+  ],
+});
+
+/** A function whose `d` is unchecked and whose `cmd` is built from it before `body`. */
+const builtCmd = (body: string): string =>
+  `function run(d: string) { const cmd = \`dig +short \${d} A\`; ${body} } function forward<T>(value: T): T { return value; }`;
+/** The same with `d` checked against a shell-inert regex first. */
+const checkedCmd = (body: string): string =>
+  `function run(d: string) { if (!/^[a-z.]+$/.test(d)) return; const cmd = \`dig +short \${d} A\`; ${body} } function forward<T>(value: T): T { return value; }`;
+
+// The `sh -c` command moved through a holder, an element, a local identity
+// function, destructuring or a callback; shells started through `env`, long
+// valued options and args arrays held in a binding.
+ruleTester.run('no-shell-interpolation: sh -c command flows', noShellInterpolationRule, {
+  valid: [
+    // A proven command stays proven along an exact move.
+    ...[
+      "const holder = { value: cmd }; spawn('sh', ['-c', holder.value]);",
+      "const items = [cmd]; spawn('sh', ['-c', items[0]]);",
+      "const { value: picked } = { value: cmd }; spawn('sh', ['-c', picked]);",
+      "spawn('sh', ['-c', forward(cmd)]);",
+      "[cmd].forEach((relay) => { spawn('sh', ['-c', relay]); });",
+      "const args = ['-c', cmd]; spawn('sh', args);",
+      "spawn('/usr/bin/env', ['sh', '-c', cmd]);",
+    ].map((body) => ({ code: checkedCmd(body), filename: TS })),
+    // Static commands and programs that are not a shell.
+    { code: "const holder = { value: 'ls -la' }; spawn('sh', ['-c', holder.value]);", filename: TS },
+    { code: "const args = ['-c', 'dig +short example.com A']; spawn('sh', args);", filename: TS },
+    { code: "const args = ['./run.sh', target]; spawn('sh', args);", filename: TS },
+    { code: builtCmd("spawn('env', ['node', '-e', cmd]);"), filename: TS },
+    { code: builtCmd("spawn('env', ['-S', 'sh -c', cmd]);"), filename: TS },
+  ],
+  invalid: [
+    ...[
+      "const holder = { value: cmd }; spawn('sh', ['-c', holder.value]);",
+      "const items = [cmd]; execFile('bash', ['-lc', items[0]]);",
+      "const { value: picked } = { value: cmd }; spawn('sh', ['-c', picked]);",
+      "spawn('sh', ['-c', forward(cmd)]);",
+      "[cmd].forEach((relay) => { spawn('sh', ['-c', relay]); });",
+      "const args = ['-c', cmd]; spawn('sh', args);",
+      "const args = ['-c', `dig ${d}`] as const; spawnSync('bash', args);",
+      "spawn('/usr/bin/env', ['sh', '-c', cmd]);",
+      "spawn('env', ['-i', 'PATH=/bin', 'bash', '-lc', cmd]);",
+      "spawn('env', ['-u', 'HOME', '--', 'sh', '-c', cmd]);",
+      "spawn('bash', ['--rcfile', '/etc/app.rc', '-c', cmd]);",
+      "execFile('bash', ['--init-file', '/etc/app.rc', '-ic', cmd]);",
+    ].map((body) => ({ code: builtCmd(body), filename: TS, errors: error })),
+  ],
+});
+
+// An args binding changed in place, aliased or handed to a call before the
+// runner reads it: the command is whatever was put there.
+ruleTester.run('no-shell-interpolation: sh -c args changed in place', noShellInterpolationRule, {
+  valid: [
+    ...[
+      "const args = ['-c', 'ls']; spawn('sh', args);",
+      "const args = ['-c', 'ls']; spawn('sh', args); execFile('sh', args);",
+      "let args; args = ['-c', 'ls']; spawn('sh', args);",
+      "let args = ['-c', 'ls']; if (d) args = ['-c', 'pwd']; spawn('sh', args);",
+      "const holder = { args: ['-c', 'ls'] }; spawn('sh', holder.args);",
+      "const args = ['x']; args.push(d); spawn('node', args);",
+    ].map((body) => ({ code: `function run(d: string) { ${body} }`, filename: TS })),
+  ],
+  invalid: [
+    ...[
+      "const args = ['-c', 'ls']; args[1] = `dig ${d}`; spawn('sh', args);",
+      "const args = ['-c']; args.push(`dig ${d}`); spawn('sh', args);",
+      "const args = ['-c', 'ls']; args.splice(1, 1, `dig ${d}`); spawn('sh', args);",
+      "const args = ['-c', 'ls']; const a = args; a[1] = `dig ${d}`; spawn('sh', args);",
+      "const args = ['-c', 'ls']; fill(args, d); spawn('sh', args);",
+      "const args = ['-c', 'ls']; Object.assign(args, { 1: d }); execFile('bash', args);",
+      "let args = ['-c', 'ls']; if (d) args = ['-c', `dig ${d}`]; spawn('sh', args);",
+      "const holder = { args: ['-c', 'ls'] }; holder.args[1] = d; spawn('sh', holder.args);",
+    ].map((body) => ({ code: `function run(d: string) { ${body} }`, filename: TS, errors: error })),
+  ],
+});
+
+// Uses of an args binding that cannot change the array keep its fixed
+// command known; fixed text added in place is read with it.
+ruleTester.run('no-shell-interpolation: sh -c args read but not changed', noShellInterpolationRule, {
+  valid: [
+    ...[
+      "const args = ['-c', 'ls -la']; if (args.length) spawn('sh', args);",
+      "const args = ['-c', 'ls -la']; console.log(args); spawn('sh', args);",
+      "const args = ['-c']; args.push('ls -la'); spawn('sh', args);",
+      "const args = ['-c', 'ls -la']; log(args[1], args.at(0), `${args}`, 'run ' + args, String(args)); spawn('sh', args);",
+      "const args = ['-c', 'ls -la']; if (args.includes('-c') && args.indexOf('x') < 0) log(args.join(' ')); spawn('sh', args);",
+      "const args = ['-c', 'ls -la']; log(JSON.stringify(args), JSON.stringify(args, null, 2)); spawn('sh', args);",
+      "const args = ['-c', 'ls -la']; const copy = [...args, d]; copy.push(d); spawn('sh', args);",
+      "const args = ['ls -la']; args.unshift('-c'); spawn('sh', args);",
+      "const args = ['-c', 'ls']; args.splice(1, 1, 'pwd'); spawn('sh', args);",
+      // Fixed text pushed after a proven command.
+      "if (!/^[a-z.]+$/.test(d)) return; const args = ['-c', `dig ${d}`]; args.push('extra'); spawn('sh', args);",
+    ].map((body) => ({ code: `function run(d: string) { ${body} } function log(...v: unknown[]) {}`, filename: TS })),
+  ],
+  invalid: [
+    ...[
+      // A runtime value added, or fixed text that moves a runtime element into the command.
+      "const args = ['-c', 'ls']; args.push(d); spawn('sh', args);",
+      "const args = ['-c']; args.push('ls', `dig ${d}`); spawn('sh', args);",
+      "const args = ['-c']; args.push(...more); spawn('sh', args);",
+      "const args = [`dig ${d}`]; args.unshift('-c'); spawn('sh', args);",
+      "const args = ['-c', 'ls', `dig ${d}`]; args.splice(1, 1); spawn('sh', args);",
+      // Any other use may change the array.
+      "const args = ['-c', 'ls']; args.sort(); spawn('sh', args);",
+      "const args = ['-c', 'ls']; args.length = 0; spawn('sh', args);",
+      "const args = ['-c', 'ls']; args[1] += d; spawn('sh', args);",
+      "const args = ['-c', 'ls']; delete args[1]; spawn('sh', args);",
+      "const args = ['-c', 'ls']; [, args[1]] = ['', d]; spawn('sh', args);",
+      "const args = ['-c', 'ls']; args[d](d); spawn('sh', args);",
+      "const args = ['-c', 'ls']; JSON.stringify(args, (k, v) => v); spawn('sh', args);",
+      "const console = { log: fill }; const args = ['-c', 'ls']; console.log(args, d); spawn('sh', args);",
+      "const args = ['-c', 'ls']; const b = args || []; b.push(d); spawn('sh', args);",
+      "const args = ['-c', 'ls']; log(...args); fill(args, d); spawn('sh', args);",
+    ].map((body) => ({
+      code: `function run(d: string, more: string[]) { ${body} } function log(...v: unknown[]) {}`,
+      filename: TS,
+      errors: error,
+    })),
+  ],
+});
+
+// A tag gets the args array itself, and a `console` method the file writes
+// may change it: neither counts as a read.
+ruleTester.run('no-shell-interpolation: sh -c args handed to a tag or a written console', noShellInterpolationRule, {
+  valid: [
+    {
+      code: "function run(d: string) { const args = ['-c', 'ls']; console.log(args); console.warn(`${args}`); spawn('sh', args); }",
+      filename: TS,
+    },
+  ],
+  invalid: [
+    "function t(s: unknown, a: string[]) { a[1] = d; } const args = ['-c', 'ls']; t`${args}`; spawn('sh', args);",
+    "console.log = (a: string[]) => { a[1] = d; }; const args = ['-c', 'ls']; console.log(args); spawn('sh', args);",
+    "console['log'] = (a: string[]) => { a[1] = d; }; const args = ['-c', 'ls']; console.log(args); spawn('sh', args);",
+    "Object.assign(console, { log: (a: string[]) => { a[1] = d; } }); const args = ['-c', 'ls']; console.log(args); spawn('sh', args);",
+    "globalThis.console.log = (a: string[]) => { a[1] = d; }; const args = ['-c', 'ls']; console.log(args); spawn('sh', args);",
+    "const c = console; c.log = (a: string[]) => { a[1] = d; }; const args = ['-c', 'ls']; console.log(args); spawn('sh', args);",
+    // `console` renamed in a destructuring pattern.
+    "const { console: c } = globalThis; c.log = (a: string[]) => { a[1] = d + ' y'; }; const args = ['-c', 'ls']; console.log(args); spawn('sh', args);",
+    "const g = globalThis; const { console: c } = g; Object.assign(c, { log: mutate }); const args = ['-c', 'ls']; console.log(args); spawn('sh', args);",
+    "function f({ console: c } = globalThis) { c.log = mutate; } f(); const args = ['-c', 'ls']; console.log(args); spawn('sh', args);",
+  ].map((body) => ({ code: `function run(d: string) { ${body} }`, filename: TS, errors: error })),
+});

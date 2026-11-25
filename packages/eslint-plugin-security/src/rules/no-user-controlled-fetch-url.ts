@@ -107,6 +107,17 @@ const REQUEST_TAINT: TaintOptions = {
   sanitizers: new Set(),
 };
 
+/**
+ * What a handler's response carries from earlier middleware (`res.locals`):
+ * a trusted source built from it is not the person running the program's pick.
+ */
+const RESPONSE_TAINT: TaintOptions = {
+  requestObjects: new Set(['res', 'response', 'reply']),
+  handlerResponses: true,
+  context: 'path',
+  sanitizers: new Set(),
+};
+
 /** Node client receivers, whose options object picks the target key by key. */
 const NODE_CLIENTS: ReadonlySet<string> = new Set(['http', 'https']);
 
@@ -339,7 +350,14 @@ export const noUserControlledFetchUrlRule = createRule<RuleOptions, MessageIds>(
     const sockets = normalizeCallees(options.socketCallees ?? DEFAULT_SOCKET_CALLEES);
     const trust: UrlTrust = {
       ...normalizeTrust(options),
-      sourceReachesRequest: (root) => requestSourceOf(root, root, REQUEST_TAINT, sourceCode) !== null,
+      sourceReachesRequest: (root) =>
+        requestSourceOf(root, root, REQUEST_TAINT, sourceCode) !== null ||
+        requestSourceOf(root, root, RESPONSE_TAINT, sourceCode) !== null,
+      readsSource: (call) =>
+        call.type === AST_NODE_TYPES.CallExpression &&
+        (matchCallee(call, sockets, sourceCode) !== undefined ||
+          matchCallee(call, callees, sourceCode) !== undefined ||
+          axiosForm(call) !== undefined),
     };
     const sourceCode = context.sourceCode;
     const axiosSpecs = callees.filter(

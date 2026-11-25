@@ -1782,6 +1782,10 @@ const SCHEMA_NARROWING_METHODS: ReadonlySet<string> = new Set([
   'toUpperCase',
 ]);
 
+/** Schema methods that map a value to lower case, and to upper case. */
+const SCHEMA_LOWERCASE_METHODS: ReadonlySet<string> = new Set(['lowercase', 'toLowerCase']);
+const SCHEMA_UPPERCASE_METHODS: ReadonlySet<string> = new Set(['uppercase', 'toUpperCase']);
+
 function isStringLiteral(node: TSESTree.Node | undefined): boolean {
   const inner = node === undefined ? null : unwrap(node);
   return inner?.type === AST_NODE_TYPES.Literal && typeof inner.value === 'string';
@@ -1792,15 +1796,35 @@ function isStringLiteral(node: TSESTree.Node | undefined): boolean {
  * method is a constructor, a narrowing check, a `pattern` / `regex` the judge
  * approves (with no options argument, which could be `{ invert: true }`; a
  * string name or message is fine), or `valid` / `enum` / `literal` of literals.
+ *
+ * The judge is told each literal as written and, when the chain changes case
+ * anywhere (`.valid('SUDO').lowercase()`), as each case it can be mapped to:
+ * the value can hold the mapped text, whichever side of the check the map runs.
  */
 function schemaConfines(node: TSESTree.Node, judge: RegexJudge, sourceCode: SourceCode): boolean {
   let current = unwrap(node);
   let confined = false;
+  const literals: string[] = [];
+  const collect: LiteralObserver = (text) => literals.push(text);
+  let lowered = false;
+  let raised = false;
+  const confirm = (): true => {
+    for (const text of literals) {
+      judge.literal?.(text);
+      if (lowered) {
+        judge.literal?.(text.toLowerCase());
+      }
+      if (raised) {
+        judge.literal?.(text.toUpperCase());
+      }
+    }
+    return true;
+  };
   for (let depth = 0; depth < 32; depth += 1) {
     if (current.type === AST_NODE_TYPES.Identifier) {
       const variable = variableOf(current, sourceCode);
       if (isSchemaModule(current, sourceCode)) {
-        return confined && variable !== null && isUnchangedSchemaRoot(variable);
+        return confined && variable !== null && isUnchangedSchemaRoot(variable) && confirm();
       }
       // A `const` holding a chain is read on, under the same allowlist, as
       // long as nothing changes it (`S.parse = (v) => v`).
@@ -1848,15 +1872,17 @@ function schemaConfines(node: TSESTree.Node, judge: RegexJudge, sourceCode: Sour
       }
       for (const arg of args) {
         if (isStaticLiteral(arg)) {
-          judge.literal?.(literalText(arg));
+          collect(literalText(arg));
         } else {
-          isLiteralList(arg, sourceCode, judge.literal);
+          isLiteralList(arg, sourceCode, collect);
         }
       }
       confined = true;
     } else if (!SCHEMA_NARROWING_METHODS.has(method)) {
       return false;
     }
+    lowered ||= SCHEMA_LOWERCASE_METHODS.has(method);
+    raised ||= SCHEMA_UPPERCASE_METHODS.has(method);
     current = unwrap(callee.object);
   }
   return false;

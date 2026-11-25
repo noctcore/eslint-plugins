@@ -35,6 +35,27 @@ Precision is the whole point — this rule fires **only** on the genuinely dange
   array with spaces into the command string, so a dynamic element of the args array is checked the
   same way, read where it lands (`spawn('sudo', [tool], { shell: true })` runs `tool` as a
   program). An args value that is not an inline array (a binding, a call, a spread) is reported.
+- **A shell as the program**, with no `shell` option (or a statically off one): `sh`, `bash`, `zsh`,
+  `dash`, `ksh`, `mksh`, `ash` or `fish` (by basename, `/bin/sh` too, also started through `env`
+  as in `spawn('/usr/bin/env', ['sh', '-c', cmd])`) told to run a command with `-c` (also in a
+  cluster such as `-lc`, after other options such as `-e`, `-o pipefail` or `--rcfile file`), and
+  `cmd` / `cmd.exe` with `/c` or `/k`. The args may be an inline array or a binding that holds one
+  (`const args = ['-c', cmd]`). A binding that may change before the call (`args[1] = x`,
+  `args.push(x)`, a write through an alias, another write of a `let` that is not all fixed words,
+  or handed to a call other than a runner) is reported: the command is then whatever was put
+  there. Uses that cannot change the array keep its command known: `.length`, an index read,
+  `includes`, `indexOf`, `lastIndexOf`, `join`, `at`, `console.*` (unless the file uses
+  `console` in any other way, such as `console.log = f`, or names it through another object, as
+  a key such as `const { console: c } = globalThis`, or as text; a name built from split text
+  such as `globalThis['con' + 'sole']` is not followed), `JSON.stringify` with no replacer, a plain template (not a tagged one, whose tag gets
+  the array), `+` or `String(args)` use, and a spread into a new array literal. Fixed
+  text added with `push` is read after the elements; fixed text added with `unshift` or `splice`
+  keeps the command known only when every element is fixed text too. The element the shell runs is checked like an `exec` command when it is built from
+  runtime parts here or in the `const` it names, also after it moves through a holder
+  (`holder.value`), an element (`items[0]`), destructuring, a local function that returns its
+  parameter or a callback (`[cmd].forEach((c) => ...)`); for `cmd.exe` the elements after it are
+  more of the same line, so a runtime one there is checked too. The words after a POSIX shell's
+  command are its `$0`, `$1` ..., which it does not re-parse.
 
 ```ts bad
 // shell:true re-parses the interpolated command
@@ -48,6 +69,11 @@ only, which is exactly where a macOS developer never sees it fail:
 
 ```ts bad
 spawn(`git ${branch}`, { shell: process.platform === 'win32' });
+```
+
+```ts bad
+// no shell option, but the program is a shell running a built command
+spawn('sh', ['-c', `dig +short ${domain} A`]);
 ```
 
 ### Promisified runners
@@ -145,7 +171,9 @@ the rule can read:
   `require('joi')`), possibly through `const` chains read under the same rules, with `.pattern(re)`
   / `.regex(re)` (no options argument; a string name or message is fine) or `.valid(...)` /
   `.enum([...])` / `.literal(...)`, and every other method in the chain only narrows (`min`, `max`,
-  `length`, `required`, `optional`, `trim`, `lowercase` and the like). A chain with `default`,
+  `length`, `required`, `optional`, `trim`, `lowercase` and the like). A literal in a chain that
+  changes case is read as written and as each case it can be mapped to (`.valid('SUDO').lowercase()`
+  may hold `sudo`, a wrapper). A chain with `default`,
   `catch`, `failover`, `pipe`, `transform`, `allow` or any other method
   can let another value through and is not read. Every `const` in the chain must stay unchanged:
   not exported, and every use a type position (`z.infer<typeof S>`), a direct `parse` /
@@ -177,7 +205,11 @@ A value in a word that runs as a program is proven only by a literal allowlist, 
   the shells `sh`, `bash`, `zsh`, `dash`, `ksh`, `fish` and `busybox`, and the package runners
   `npx`, `bunx`, `uvx`, `pipx`, `npm exec`, `pnpm dlx` / `exec`, `yarn dlx` / `exec` and
   `bun x`, plus `find ... -exec` / `-execdir` / `-ok` / `-okdir`. They match by basename and with
-  quotes stripped (`/usr/bin/env`, `'sudo'`). A program word that holds a shell parameter
+  quotes stripped (`/usr/bin/env`, `'sudo'`). A word built from a proven value counts when it can
+  spell one: after `find`, a word that starts with a written `-` (`find . -${x}`, `x = 'exec'`), and
+  after a package runner, a word in the subcommand position (`npm ${x} ${t}`, also after options and
+  their values, `npm --prefix /srv ${x}`). A value that starts a word cannot start with `-`, so
+  `find . ${x}` is not an action, and `npm install ${x}` already has its subcommand. A program word that holds a shell parameter
   (`$SHELL`, `"$SHELL"`, `${SUDO:-sudo}`, bash's `$'env'`) counts as a wrapper too: it can name any program.
 
 An in-file `const` bound to a string (`const P = 'sudo'`, `const SEP = ';'`) is read as its text,
@@ -286,10 +318,10 @@ export function status() {
 
 ### What the rule does not see
 
-A wrapper command that is not on the list above is not seen, and neither is the `sh -c` form
-without a `shell` option (`spawn('sh', ['-c', cmd])`). A value a regex proves can still spell a
-`find` action or a package runner's subcommand (`find . -${x}` or `npm ${x} ${t}` with
-`x = 'exec'`): such a word is not read as one.
+A wrapper command that is not on the list above is not seen. A shell program whose args come from a
+call or a spread (`spawn('sh', buildArgs())`), `env -S`, and PowerShell (`pwsh -Command`,
+`powershell -c`) are not read, and neither is an `sh -c` command held whole in a binding the rule
+cannot read as built text (a parameter, as with `exec(cmd)`).
 
 A checked array changed in place after the check (`parts.push(y)`, `parts[0] = y`) cancels the
 check. Handing it to a function, or storing it in an array or object, after the check also cancels

@@ -134,6 +134,29 @@ describe('classifyShellParts', () => {
     expect(commandWords('$ $')).toEqual([true, false]);
   });
 
+  it.each([
+    ['find . -$ $', [false, true]],
+    ['find . -e$ $', [false, true]],
+    ['find . -name a -$ $', [false, true]],
+    ['/usr/bin/find . -$ $', [false, true]],
+    ['npm $ $', [false, true]],
+    ['pnpm $ $', [false, true]],
+    ['bun $ $', [false, true]],
+    ['npm --prefix /srv $ $', [false, true]],
+  ])('reads a value-built word as a find action or runner subcommand in `%s`', (command, expected) => {
+    expect(commandWords(command)).toEqual(expected);
+  });
+
+  it.each([
+    ['find . $ $', [false, false]],
+    ['git log -$ $', [false, false]],
+    ['npm install $ $', [false, false]],
+    ['npm run build $ $', [false, false]],
+    ['npm -$ $', [false, false]],
+  ])('keeps a value-built word that cannot be an action or subcommand in `%s`', (command, expected) => {
+    expect(commandWords(command)).toEqual(expected);
+  });
+
   it('marks a value glued after a slash as a path segment', () => {
     const parts = classifyShellParts(['rm -rf /srv/', VALUE, ' --x=', VALUE]);
     expect(parts.map((part) => [part.midWord, part.afterSlash])).toEqual([

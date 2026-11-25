@@ -1,4 +1,6 @@
 import { ruleTester } from '@noctcore/eslint-test-utils';
+import { Linter } from 'eslint';
+import { describe, expect, it } from 'vitest';
 
 import { noUserControlledRedirectRule } from '../../src/rules/no-user-controlled-redirect';
 
@@ -996,4 +998,290 @@ ruleTester.run('no-user-controlled-redirect: headers holders', noUserControlledR
     { code: "res.setHeader('Loc' + 'ation', target);", filename: TS, errors: [error] },
     { code: "res.setHeader(`Loc${'ation'}`, target);", filename: TS, errors: [error] },
   ],
+});
+
+/** `n` alias swaps between two bindings, the shape that made the walk exponential. */
+const cyclic = (first: string, n: number, sink: string): string =>
+  `function h(req, res) { let p = ${first}; let q = p; ${'q = p; p = q; '.repeat(n)}${sink} }`;
+
+// SvelteKit targets at argument 0, header names that can still be Location,
+// relative prefixes no origin moving scheme starts with, and cyclic aliases.
+ruleTester.run('no-user-controlled-redirect: kit targets, header names, prefixes', noUserControlledRedirectRule, {
+  valid: [
+    // A relative prefix no scheme that leaves the origin starts with.
+    { code: 'res.redirect(`page${x}`);', filename: TS },
+    { code: "res.redirect('users' + req.query.id);", filename: TS },
+    { code: 'res.redirect(`api${req.query.p}`);', filename: TS },
+    { code: 'res.redirect(`Profile.${req.query.tab}`);', filename: TS },
+    {
+      code: 'NextResponse.redirect(new URL(`settings${x}`, request.url));',
+      filename: TS,
+      options: [{ trustedOrigins: ['request.url'] }],
+    },
+    // A header name that cannot become Location, fixed or with a runtime piece.
+    { code: "res.set('X-' + n, req.query.u);", filename: TS },
+    { code: 'res.set(`Content-${n}`, req.query.u);', filename: TS },
+    // A kit call with a fixed target in either position.
+    {
+      code: "import { redirect } from '@sveltejs/kit'; export function load() { throw redirect('/login'); }",
+      filename: TS,
+    },
+    {
+      code: "import { redirect } from '@sveltejs/kit'; export function load() { throw redirect('/login', 302); }",
+      filename: TS,
+    },
+    {
+      code: "import { redirect } from '@sveltejs/kit'; export function load({ url }) { throw redirect(status, '/login'); }",
+      filename: TS,
+    },
+    // A cyclic alias of a fixed name or holder stays quiet.
+    { code: cyclic("'X-Trace'", 40, 'res.set(p, req.query.u);'), filename: TS },
+    { code: cyclic('{}', 40, "p.Location = '/home'; res.set(p);"), filename: TS },
+  ],
+  invalid: [
+    // A kit call with one argument or a number literal second names the target first.
+    {
+      code: "import { redirect } from '@sveltejs/kit'; export function load({ url }) { const next = url.searchParams.get('next'); throw redirect(next); }",
+      filename: TS,
+      errors: [{ ...error, data: { url: 'next' } }],
+    },
+    {
+      code: "import { redirect } from '@sveltejs/kit'; export function load({ url }) { throw redirect(url.searchParams.get('next'), 302); }",
+      filename: TS,
+      errors: [{ ...error, data: { url: "url.searchParams.get('next')" } }],
+    },
+    {
+      code: "import { redirect as go } from '@sveltejs/kit'; export function load({ url }) { go(url.searchParams.get('next')); }",
+      filename: TS,
+      errors: [{ ...error, data: { url: "url.searchParams.get('next')" } }],
+    },
+    {
+      code: "import * as kit from '@sveltejs/kit'; export function load() { kit.redirect(target); }",
+      filename: TS,
+      errors: [{ ...error, data: { url: 'target' } }],
+    },
+    {
+      code: "import * as kit from '@sveltejs/kit'; export function load() { kit.redirect(target, 307); }",
+      filename: TS,
+      errors: [{ ...error, data: { url: 'target' } }],
+    },
+    // A header name a runtime piece can finish into Location.
+    { code: "res.set('Loc' + n, req.query.u);", filename: TS, errors: [error] },
+    { code: 'res.setHeader(`loc${n}`, req.query.u);', filename: TS, errors: [error] },
+    { code: "res.header(n + 'ation', req.query.u);", filename: TS, errors: [error] },
+    { code: "res.set({ ['Loc' + n]: req.query.u });", filename: TS, errors: [error] },
+    // A header name joined from more than 16 possible texts.
+    {
+      code: "function h(req, res) { let a = 'L'; if (c) a = 'l'; let b = 'o'; if (c) b = 'O'; let d = 'c'; if (c) d = 'C'; let e = 'a'; if (c) e = 'A'; let f = 'tion'; if (c) f = 'TION'; res.set(a + b + d + e + f, req.query.u); }",
+      filename: TS,
+      errors: [error],
+    },
+    // A relative prefix that can still grow into a scheme that leaves the origin, in any case.
+    { code: 'res.redirect(`ht${x}`);', filename: TS, errors: [error] },
+    { code: 'res.redirect(`dat${x}`);', filename: TS, errors: [error] },
+    { code: "res.redirect('vb' + x);", filename: TS, errors: [error] },
+    { code: 'res.redirect(`File${x}`);', filename: TS, errors: [error] },
+    { code: 'res.redirect(`JAVASCRIPT${x}`);', filename: TS, errors: [error] },
+    { code: 'res.redirect(`view-sou${x}`);', filename: TS, errors: [error] },
+    { code: 'res.redirect(`w${x}`);', filename: TS, errors: [error] },
+    // A cyclic alias of a Location name or holder is still read, and read once.
+    { code: cyclic("'Location'", 40, 'res.set(p, req.query.u);'), filename: TS, errors: [error] },
+    { code: cyclic('{}', 40, 'p.Location = req.query.u; res.set(p);'), filename: TS, errors: [error] },
+    { code: cyclic('{}', 40, 'q.Location = req.query.u; res.writeHead(302, p);'), filename: TS, errors: [error] },
+  ],
+});
+
+/**
+ * A header name passed down six `const` aliases into `N`, then written into
+ * `N` again straight from `V`. `wrap` dresses each link (a template, a `+ ''`).
+ */
+const aliasChain = (name: string, sink: string, wrap = (link: string): string => link): string => {
+  const links = [6, 5, 4, 3, 2, 1].map((i) => `const c${i} = ${wrap(i === 6 ? 'V' : `c${i + 1}`)};`).join(' ');
+  return `function h(req, res) { const L = '${name}'; const V = L; ${links} let N = c1; N = V; ${sink} }`;
+};
+/** `a0` set to `name`, then `n` aliases each set to the one before. */
+const longAliases = (name: string, n: number, sink: string): string =>
+  `function h(req, res) { const a0 = '${name}'; ${Array.from({ length: n }, (_, i) => `const a${i + 1} = a${i};`).join(' ')} ${sink.replaceAll('NAME', `a${n}`)} }`;
+
+// A header name read through a long alias chain is the same name however
+// deep the binding was first met.
+ruleTester.run('no-user-controlled-redirect: long alias chains', noUserControlledRedirectRule, {
+  valid: [
+    { code: aliasChain('X-Trace', 'res.set(N, req.query.x);'), filename: TS },
+    { code: aliasChain('X-Trace', 'res.writeHead(302, { [N]: req.query.x });'), filename: TS },
+    { code: aliasChain('X-Trace', 'res.set(N, req.query.x);', (link) => `\`\${${link}}\``), filename: TS },
+    { code: longAliases('X-Trace', 100, 'res.set(NAME, req.query.x);'), filename: TS },
+  ],
+  invalid: [
+    { code: aliasChain('Location', 'res.set(N, req.query.x);'), filename: TS, errors: [error] },
+    { code: aliasChain('Location', 'res.writeHead(302, { [N]: req.query.x });'), filename: TS, errors: [error] },
+    { code: aliasChain('Location', 'res.set(N, req.query.x);', (link) => `\`\${${link}}\``), filename: TS, errors: [error] },
+    { code: aliasChain('Location', 'res.set(N, req.query.x);', (link) => `${link} + ''`), filename: TS, errors: [error] },
+    {
+      code: aliasChain('Location', 'res.writeHead(302, { [N]: req.query.x });', (link) => `\`\${${link}}\``),
+      filename: TS,
+      errors: [error],
+    },
+    { code: aliasChain('Location', 'res.setHeader(`${N}`, req.query.x);'), filename: TS, errors: [error] },
+    { code: aliasChain('Loc', "res.set(N + 'ation', req.query.x);", (link) => `${link} + ''`), filename: TS, errors: [error] },
+    { code: longAliases('Location', 100, 'res.set(NAME, req.query.x);'), filename: TS, errors: [error] },
+    // Past 256 aliases in one chain the name may be anything.
+    { code: longAliases('Location', 300, 'res.set(NAME, req.query.x);'), filename: TS, errors: [error] },
+  ],
+});
+
+// Relative text that can still grow into a scheme an operating system
+// protocol handler opens.
+ruleTester.run('no-user-controlled-redirect: protocol handler schemes', noUserControlledRedirectRule, {
+  valid: [
+    { code: 'res.redirect(`docs${req.query.p}`);', filename: TS },
+    { code: 'res.redirect(`about${req.query.p}`);', filename: TS },
+  ],
+  invalid: [
+    ...['m', 'ms', 'ms-', 'MS-MSDT', 'ms-officecmd', 'se', 'search', 'search-m', 'vscode', 'itms-', 'mk', 'hc', 'mhtml'].map((prefix) => ({
+      code: `res.redirect(\`${prefix}\${req.query.p}\`);`,
+      filename: TS,
+      errors: [error],
+    })),
+    { code: "res.redirect('ms-' + req.query.p);", filename: TS, errors: [error] },
+    { code: "res.set('Location', `ms-${req.query.p}`);", filename: TS, errors: [error] },
+  ],
+});
+
+/** `r` and `x2` alias each other, `x2` is also `Location` and `r` is `x2` joined with more text. */
+const joinCycle = (start: string, join: string, sink: string): string =>
+  `function h(req, res) { let r = ${start}; let x2 = r; x2 = 'Location'; r = ${join}; ${sink} }`;
+
+// Bindings in a cycle that joins text: each keeps the shapes it can take,
+// whichever binding the sink reads first.
+ruleTester.run('no-user-controlled-redirect: cycles with joins', noUserControlledRedirectRule, {
+  valid: [
+    {
+      code: "function h(req, res) { let r = ''; let x2 = r; x2 = 'X-Trace'; r = x2 + '-B'; let N = r; N = x2; res.set(N, req.query.x); }",
+      filename: TS,
+    },
+    { code: joinCycle("''", "x2 + '-B'", 'res.set(r, req.query.x);'), filename: TS },
+  ],
+  invalid: [
+    { code: joinCycle("''", "x2 + '-B'", 'let N = r; N = x2; res.set(N, req.query.x);'), filename: TS, errors: [error] },
+    { code: joinCycle("''", "x2 + '-B'", 'let N = x2; N = r; res.set(N, req.query.x);'), filename: TS, errors: [error] },
+    { code: joinCycle("'X-'", "x2 + 'Y'", 'let N = r; N = x2; res.set(N, req.query.x);'), filename: TS, errors: [error] },
+    { code: joinCycle("'X-'", "x2 + 'Y'", 'let N = x2; N = r; res.set(N, req.query.x);'), filename: TS, errors: [error] },
+    { code: joinCycle("''", "x2 + '-B'", 'res.set(r + x2, req.query.x);'), filename: TS, errors: [error] },
+    { code: joinCycle("''", "x2 + '-B'", 'res.set(`${r}${x2}`, req.query.x);'), filename: TS, errors: [error] },
+    { code: joinCycle("''", "x2 + '-B'", 'res.writeHead(302, { [r + x2]: req.query.x });'), filename: TS, errors: [error] },
+    // A cycle of three bindings, each joined onto the next.
+    {
+      code: "function h(req, res) { let a = ''; let b = a; let c = b; c = 'Location'; a = c + '-B'; b = a + '-C'; let N = a; N = b; N = c; res.set(N, req.query.x); }",
+      filename: TS,
+      errors: [error],
+    },
+    {
+      code: "function h(req, res) { let a = ''; let b = a; let c = b; c = 'Location'; a = c + '-B'; b = a + '-C'; res.set(a + c, req.query.x); }",
+      filename: TS,
+      errors: [error],
+    },
+    // A template join.
+    { code: joinCycle("''", '`${x2}-B`', 'let N = r; N = x2; res.set(N, req.query.x);'), filename: TS, errors: [error] },
+    { code: joinCycle("''", '`${x2}-B`', 'res.set(`${r}${x2}`, req.query.x);'), filename: TS, errors: [error] },
+  ],
+});
+
+/** `body` in a handler, with the two `[first, second]` writes in the order given. */
+const ordered = (head: string, writes: readonly [string, string], tail: string, swap: boolean): string =>
+  `function h(req, res) { ${head} ${(swap ? [writes[1], writes[0]] : writes).join(' ')} ${tail} }`;
+/** Both write orders of one shape. */
+const bothOrders = (head: string, writes: readonly [string, string], tail: string): string[] => [
+  ordered(head, writes, tail, false),
+  ordered(head, writes, tail, true),
+];
+
+// A cycle is computed to a fixed point: a binding read twice from inside its
+// own cycle keeps its shapes, so the answer does not depend on write order.
+ruleTester.run('no-user-controlled-redirect: cycles at a fixed point', noUserControlledRedirectRule, {
+  valid: [
+    // Cycles whose names can never be Location stay quiet, however they grow.
+    ...bothOrders("let a = 'X-Trace'; let b = ''; a = 'X-Trace' + b;", ["b = a + '-';", 'b = a;'], 'res.set(b, req.query.x);'),
+    ...bothOrders("let a = 'X'; let b = ''; let c = ''; a = 'X-Trace' + c;", ["b = a + '-';", 'b = a;'], 'c = b + "-"; c = b; res.set(c, req.query.x);'),
+    "function h(req, res) { let h = 'X-Trace'; h = h + '-1'; res.set(h, req.query.x); }",
+    "function h(req, res) { let h = 'X-Trace'; h = `${h}-${h}`; res.writeHead(302, { [h]: req.query.x }); }",
+    // A name that is runtime as a whole, also through a cycle, is still not read.
+    'function h(req, res) { let a = req.query.n; let b = a; a = b; res.set(b, req.query.x); }',
+  ].map((code) => ({ code, filename: TS })),
+  invalid: [
+    ...bothOrders("let a = 'X'; let b = ''; a = 'Location' + b;", ["b = a + '-';", 'b = a;'], 'res.set(b, req.query.x);'),
+    ...bothOrders("let a = 'X'; let b = ''; a = 'Location' + b;", ["b = a + '-';", 'b = a;'], 'res.writeHead(302, { [b]: req.query.x });'),
+    ...bothOrders("let a = 'X'; let b = ''; a = 'Location' + b;", ["b = a + '-';", 'b = a;'], 'res.setHeader(b, req.query.x);'),
+    ...bothOrders("let a = 'X'; let b = ''; a = 'Location' + b;", ["b = 'Y' + a;", 'b = a;'], 'res.set(b, req.query.x);'),
+    ...bothOrders("let a = 'X'; let b = ''; a = b; a = 'Location';", ["b = a + '-';", 'b = a;'], 'res.set(b, req.query.x);'),
+    ...bothOrders("let a = 'X'; let b = ''; a = 'Location'; a = b;", ["b = a + '-';", 'b = a;'], 'res.set(b, req.query.x);'),
+    ...bothOrders(
+      "let name = 'Location'; let prefix = ''; name = prefix + name;",
+      ["prefix = name + '-';", 'prefix = name;'],
+      'res.set(prefix, req.query.x);',
+    ),
+    ...bothOrders("let v0 = 'X'; let v1 = ''; v0 = `Location${v1}`;", ['v1 = `Y${v0}`;', 'v1 = v0;'], 'res.set(v1, req.query.x);'),
+    // A cycle of three bindings, each aliased and joined onto the next.
+    ...bothOrders(
+      "let a = 'X'; let b = ''; let c = ''; a = 'Location' + c;",
+      ["b = a + '-';", 'b = a;'],
+      "c = b + '-'; c = b; res.set(c, req.query.x);",
+    ),
+    ...bothOrders(
+      "let a = 'X'; let b = ''; let c = ''; a = 'Location' + c;",
+      ["b = a + '-';", 'b = a;'],
+      "c = b; c = b + '-'; res.writeHead(302, { [c]: req.query.x });",
+    ),
+    // Nested cycles: one feeding another, and two sharing a binding.
+    ...bothOrders(
+      "let a = 'X'; let b = ''; a = 'Location' + b; b = a + '-'; b = a; let c = ''; let d = '';",
+      ["c = d + '-';", 'c = d;'],
+      'd = c; d = a; res.set(d, req.query.x);',
+    ),
+    ...bothOrders(
+      "let a = ''; let b = ''; let c = ''; a = b + '-'; a = b; c = b + '-';",
+      ['b = a;', 'b = c;'],
+      "c = 'Location'; res.set(a, req.query.x);",
+    ),
+    // A cycle that grows past 16 shapes that can still be Location may be anything.
+    "function h(req, res) { let a = 'L'; a = a + n; res.set(a, req.query.x); }",
+    "function h(req, res) { let a = 'Loc'; a = a + 'ation'; res.set(a, req.query.x); }",
+  ].map((code) => ({ code, filename: TS, errors: [error] })),
+});
+
+/** A run of `n` runtime pieces in a template. */
+const pieces = (n: number): string => '${x}'.repeat(n);
+
+// A run of runtime pieces is one runtime piece, so a cycle that keeps adding
+// them settles and the name is matched in bounded time.
+const pieceRuns: readonly { readonly body: string; readonly reports: boolean }[] = [
+  { body: "let v1 = 'Loc'; v1 = x + x + x + v1; res.setHeader(v1, x);", reports: false },
+  { body: "let v1 = 'Location'; v1 = x + x + v1; res.setHeader(v1, x);", reports: true },
+  { body: `res.set(\`${pieces(28)}L\`, x);`, reports: false },
+  { body: `res.set(\`${pieces(28)}n\`, x);`, reports: true },
+  { body: "let v = 'Loc'; v = x + v; res.set(v, x);", reports: false },
+  { body: "let v = 'Lo'; v = x + v + x; res.set(v, x);", reports: true },
+  { body: `let v = 'ation'; v = \`${pieces(3)}\${v}\`; res.writeHead(302, { [v]: x });`, reports: true },
+];
+
+ruleTester.run('no-user-controlled-redirect: runs of runtime pieces', noUserControlledRedirectRule, {
+  valid: pieceRuns
+    .filter((item) => !item.reports)
+    .map((item) => ({ code: `function h(req, res) { const x = req.query.x; ${item.body} }`, filename: TS })),
+  invalid: pieceRuns
+    .filter((item) => item.reports)
+    .map((item) => ({ code: `function h(req, res) { const x = req.query.x; ${item.body} }`, filename: TS, errors: [error] })),
+});
+
+describe('no-user-controlled-redirect: runs of runtime pieces stay fast', () => {
+  const linter = new Linter({ configType: 'flat' });
+  const config = [{ plugins: { s: { rules: { redirect: noUserControlledRedirectRule } } }, rules: { 's/redirect': 'error' } }];
+  for (const item of pieceRuns) {
+    it(item.body, () => {
+      const started = performance.now();
+      const messages = linter.verify(`function h(req, res) { const x = req.query.x; ${item.body} }`, config as never);
+      expect(performance.now() - started).toBeLessThan(1000);
+      expect(messages.filter((message) => message.ruleId !== null).length > 0).toBe(item.reports);
+    });
+  }
 });
