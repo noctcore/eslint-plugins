@@ -70,10 +70,11 @@ The report is on that part. The bodies it reads:
   `@nestjs/common`.
 
 The body is followed through templates and `+`, both sides of `?:` and `||` (the left side of `&&`
-is only written when falsy), `String.raw`, in-file `const` bindings that build markup, `let`
-accumulators (`html += row`, `html = html + row`, in loops and callbacks too), `[...].join(sep)`
-and `list.map(fn).join(sep)`, and in-file helpers that return markup, with their parameters bound
-to the call's arguments.
+is only written when falsy), `String.raw`, in-file `const` bindings that build markup or hold
+constant text (read as author text, so a quote in `const OPEN = "JSON.parse('"` opens a string in a
+script), `let` accumulators (`html += row`, `html = html + row`, in loops and callbacks too),
+`[...].join(sep)` and `list.map(fn).join(sep)`, and in-file helpers that return markup, with their
+parameters bound to the call's arguments.
 
 ```ts bad
 export function report(res, rows) {
@@ -104,8 +105,8 @@ data object when there is none, as EJS does: `delimiter`, `openDelimiter`, `clos
 and `localsName` change how the template is read. When the options cannot be read in full (not a
 literal, a spread, `outputFunctionName`, `client` or another option that changes the output), or
 the file writes a setting on `ejs` (`ejs.escapeXML = ...`, `ejs.delimiter = ...`) or hands it to a
-call, every value in the data object is judged as raw element text. An escaped output is reported only where escaping is not enough
-(`<a href="{{ url }}">`, `<script>var u = <%= name %></script>`).
+call, every value in the data object is judged as raw element text. An escaped output is reported
+only where escaping is not enough (`<a href="{{ url }}">`, `<script>var u = <%= name %></script>`).
 
 ```ts bad
 import nunjucks from 'nunjucks';
@@ -130,7 +131,7 @@ HTML (tags, attributes and their quoting, comments, and the elements whose conte
 
 | Where | Safe there |
 | --- | --- |
-| Element text, `<textarea>`, `<title>`, a comment | an escaper, a sanitizer (element text only), `encodeURIComponent`, a guard that refuses `<` and `&` |
+| Element text, `<textarea>`, `<title>`, a comment, a script data block | an escaper, a sanitizer (element text only), `encodeURIComponent`, a guard that refuses `<` and `&` |
 | A double-quoted attribute | an escaper, `encodeURIComponent`, a guard that refuses `<>&"'` and backtick |
 | A single-quoted attribute | an escaper that also encodes `'` (escape-html, he, lodash `escape`, html-escaper, entities, a `.replace` chain covering `'`), a guard as above |
 | An unquoted attribute | `encodeURIComponent`, the global `escape`, a guard that refuses whitespace, quotes and `<>&` |
@@ -152,14 +153,23 @@ backticks and their own `"` closes a double-quoted string. The rule reads the sc
 the value to tell: a quote escaped with `\` does not open or close a string, and a quote inside a
 regex literal (`/'/g`, `/[a-z']/`) opens nothing. A `/` starts a regex at the start, after an
 operator or punctuation (`( , = : [ ! & | ? { ; + - * % < > ~ ^`), after a reserved word
-(`return`, `typeof`, `instanceof`, `in`, `new`, `delete`, `void`, `throw`, `case`, `do`, `else`),
-and after the `)` of an `if`, `while`, `for` or `with` head. After any other `)`, a `]`, a name, a
-number or a string it is division. Whitespace ends a word (`q` then a newline then `return` is two
-words), and a name right after `.` is never a keyword (`a.return / 2`, `a.if(x)`). Where the rule
+(`return`, `typeof`, `instanceof`, `in`, `new`, `delete`, `void`, `throw`, `case`, `do`, `else`,
+`default`, `extends`), after a spread `...`, and after the `)` of an `if`, `while`, `for` or
+`with` head. After any other `)`, a `]`, a name, a number (`1.` included) or a string it is
+division. Whitespace and comments end a word (`q` then a newline then `return` is two words), a
+name reads every identifier character (combining marks, ZWNJ, `·`), and a name right after `.`
+or `#`, or written with a `\u` escape, is never a keyword (`a.return / 2`, `a.if(x)`,
+`this.#in / 2`). Where the rule
 cannot tell, a `/` that does not start a comment makes it stop treating anything later in that
 script as code, so it reports: after `}` (a block, or an object or function expression), `++`,
 `--`, `.`, or a word that is a keyword only in some places (`of`, `await`, `yield`, `get`, `set`,
 `async`, `let`, `static`). A value inside a regex body (`/${q}/i`) is never code.
+
+A `<script>` whose first `type` attribute is a literal type that is not script (`application/json`,
+`text/template`) is a data block the browser never runs: only its `</script>` matters, as in a
+`<textarea>`. A JavaScript type, `module`, `importmap`, `speculationrules`, an empty type and a
+type with a runtime part stay script. The HTML escape states inside a script are followed: after
+`<!--` then `<script>`, a `</script>` does not end the element until a `-->` comes first.
 
 ### What makes a value safe
 
@@ -212,7 +222,9 @@ script as code, so it reports: after `}` (a block, or an object or function expr
   judged by its body alone, with the same proof as inline code, whether or not its name is in
   `sanitizers`: a `function escapeHtml(s) { return s.replace('<', '&lt;'); }` is reported, and one
   whose `.replace` chain also covers `'` is safe in single-quoted attributes too. Any other local
-  binding (a parameter, a reassigned function, a value built at run time) proves nothing.
+  binding (a parameter, a reassigned function, a value built at run time) proves nothing. A dotted
+  entry (`utils.escapeHtml`) is trusted the same way, by the name it starts from: imported,
+  `require`d or not declared in this file; an object, class or parameter of this file proves nothing.
 - **A `.replace` / `.replaceAll` chain** that encodes at least `&`, `<`, `>` and `"`. A step counts
   for a character only when it is global (`replaceAll`, or a regex with `g` and no `y`), its
   pattern consumes every occurrence of the character (`/</g`, `/[&<>"]/g`, `/&|</g`, not
@@ -257,7 +269,8 @@ Not read: a template string built at run time, a context object that is not a li
 spread), a template loaded from a file (`res.render('page', ...)`), engines other than nunjucks and
 EJS, a nunjucks output that is a function call or a literal, HTML written over several
 `res.write` calls (each is judged alone), HTML built in one function and sent from another unless
-through a helper that returns it, helpers with more than declarations and one `return`,
+through a helper that returns it (a parameter the helper writes no longer counts as the argument),
+helpers with more than declarations and one `return`,
 `DOMPurify.addHook`, a sanitizer config or default changed in another file, and whether a URL in `<script src>` or `<iframe src>` points at another host
 (a fixed scheme is all the rule checks there). `.replace` is taken to be the string method,
 without type information.
@@ -269,7 +282,7 @@ without type information.
 | `responseObjects` | `string[]` | `['res', 'response']` | Receivers whose `send`, `end` and `write` write an HTML-capable response body. Setting this replaces the defaults. |
 | `replyObjects` | `string[]` | `['reply']` | Receivers whose `send` sends a string as text unless an HTML content type is set on them (Fastify). Setting this replaces the defaults. |
 | `contextObjects` | `string[]` | `['ctx']` | Receivers whose `body` assignment is the response (Koa). Setting this replaces the defaults. |
-| `sanitizers` | `string[]` | `['escapeHtml', 'escapeHTML', 'htmlEscape', 'encodeHTML']` | Escapers trusted to encode `&`, `<`, `>` and `"`, for helpers imported from another file or not declared in this one; a function declared in this file is judged by its body instead. An entry with a dot (`utils.escapeHtml`) matches that callee; one without matches a call by that bare name, never a method. Setting this replaces the defaults. |
+| `sanitizers` | `string[]` | `['escapeHtml', 'escapeHTML', 'htmlEscape', 'encodeHTML']` | Escapers trusted to encode `&`, `<`, `>` and `"`, for helpers imported from another file or not declared in this one; a function declared in this file is judged by its body instead. An entry with a dot (`utils.escapeHtml`) matches that callee when the name it starts from is imported, `require`d or not declared in this file; one without matches a call by that bare name, never a method. Setting this replaces the defaults. |
 
 Escaping modules count by their import whatever `sanitizers` says (see above).
 

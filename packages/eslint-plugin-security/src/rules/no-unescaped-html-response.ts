@@ -38,8 +38,10 @@ export interface NoUnescapedHtmlResponseOptions {
   readonly contextObjects?: readonly string[];
   /**
    * Escapers trusted to encode `&`, `<`, `>` and `"`. An entry with a dot
-   * (`utils.escapeHtml`) matches that callee text; an entry without one
-   * (`escapeHtml`) matches a call by that bare name, never a method. Modules
+   * (`utils.escapeHtml`) matches that callee text when the name it starts
+   * from is imported, `require`d or not declared in the file; an entry
+   * without one (`escapeHtml`) matches a call by that bare name, never a
+   * method. Modules
    * that escape are recognized by their import whatever this says. Replaces
    * the defaults.
    */
@@ -123,7 +125,7 @@ const optionSchema: JSONSchema4 = {
     ),
     contextObjects: stringArray('Receivers whose `body` assignment is the response (Koa). Replaces the defaults (`ctx`).'),
     sanitizers: stringArray(
-      'Escapers trusted to encode `&`, `<`, `>` and `"`. An entry with a dot matches that callee; one without matches a call by that bare name, never a method. Replaces the defaults.',
+      'Escapers trusted to encode `&`, `<`, `>` and `"`. An entry with a dot matches that callee when the name it starts from is imported, `require`d or not declared in the file; one without matches a call by that bare name, never a method. Replaces the defaults.',
     ),
   },
 };
@@ -351,7 +353,8 @@ class HtmlBuilder {
       return result;
     }
     const init = this.judge.constInit(node);
-    if (init !== null && buildsMarkup(init) && variable !== null) {
+    // Constant text is author text too: a quote in it opens a string in a script.
+    if (init !== null && (buildsMarkup(init) || this.constantText(init, depth)) && variable !== null) {
       this.active.add(variable);
       const result = this.visit(init, states, depth + 1);
       this.active.delete(variable);
@@ -377,6 +380,32 @@ class HtmlBuilder {
     }
     this.active.delete(variable);
     return current;
+  }
+
+  /** True for a string or number built only from literals and `const` text, through `+` and templates. */
+  private constantText(node: TSESTree.Node, depth: number): boolean {
+    if (depth > MAX_DEPTH) {
+      return false;
+    }
+    const inner = unwrap(node);
+    switch (inner.type) {
+      case AST_NODE_TYPES.Literal:
+        return typeof inner.value === 'string' || typeof inner.value === 'number';
+      case AST_NODE_TYPES.TemplateLiteral:
+        return inner.expressions.every((expression) => this.constantText(expression, depth + 1));
+      case AST_NODE_TYPES.BinaryExpression:
+        return (
+          inner.operator === '+' &&
+          this.constantText(inner.left, depth + 1) &&
+          this.constantText(inner.right, depth + 1)
+        );
+      case AST_NODE_TYPES.Identifier: {
+        const init = this.judge.constInit(inner);
+        return init !== null && this.constantText(init, depth + 1);
+      }
+      default:
+        return false;
+    }
   }
 
   private startsWithSelf(node: TSESTree.Node, variable: TSESLint.Scope.Variable): boolean {

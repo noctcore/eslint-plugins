@@ -704,11 +704,45 @@ export class HtmlSafety {
     }
     if (object.type === AST_NODE_TYPES.Identifier || object.type === AST_NODE_TYPES.MemberExpression) {
       const text = `${squash(this.sourceCode.getText(object))}.${method}`;
-      if (this.options.sanitizerTexts.has(text)) {
+      if (this.options.sanitizerTexts.has(text) && !this.declaredHere(object)) {
         return { encoding: 'escape-quot' };
       }
     }
     return null;
+  }
+
+  /**
+   * True when the name a dotted callee starts from is declared in this file
+   * other than by an import or a `require`: an object or class the file
+   * defines, or a parameter, which a configured name says nothing about.
+   */
+  private declaredHere(object: TSESTree.Node): boolean {
+    let root = object;
+    while (root.type === AST_NODE_TYPES.MemberExpression) {
+      root = unwrap(root.object);
+    }
+    if (root.type !== AST_NODE_TYPES.Identifier) {
+      return false;
+    }
+    const variable = this.variableOf(root);
+    if (variable === null || variable.defs.length === 0 || this.bindings.has(variable)) {
+      return false;
+    }
+    return !variable.defs.every((def) => {
+      if (def.type === 'ImportBinding') {
+        return true;
+      }
+      if (def.type !== 'Variable' || def.node.init === null) {
+        return false;
+      }
+      const init = unwrap(def.node.init);
+      return (
+        init.type === AST_NODE_TYPES.CallExpression &&
+        init.callee.type === AST_NODE_TYPES.Identifier &&
+        init.callee.name === 'require' &&
+        def.node.id.type === AST_NODE_TYPES.Identifier
+      );
+    });
   }
 
   /** The encoding a call's result has, with options that switch protection off refused. */
@@ -1786,6 +1820,12 @@ export class HtmlSafety {
     );
     const arg = index === -1 ? undefined : call.arguments[index];
     if (index !== -1) {
+      // A parameter written in the body (`const t = (s = other)`) no longer holds the argument.
+      const param = fn.params[index];
+      const variable = param?.type === AST_NODE_TYPES.Identifier ? this.variableOf(param) : null;
+      if (variable === null || variable.references.some((reference) => reference.isWrite())) {
+        return false;
+      }
       return arg !== undefined && arg.type !== AST_NODE_TYPES.SpreadElement && this.safeIn(arg, context, sink, depth + 1);
     }
     return this.safeIn(returned, context, sink, depth + 1);

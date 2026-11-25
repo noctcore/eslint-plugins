@@ -107,6 +107,14 @@ export interface HtmlState {
   readonly value: string;
   /** In script content, the open JS strings, templates and comments (see `jsStep`); empty in code position. */
   readonly js?: string;
+  /**
+   * In a `script` start tag, what its first `type` attribute makes it: `data`
+   * for a data block (`application/json`, ...) the browser never runs;
+   * kept on its raw content.
+   */
+  readonly kind?: 'js' | 'data';
+  /** In script content, the HTML escape state: `e` after `<!--`, `d` after a `<script` in that. */
+  readonly esc?: 'e' | 'd';
 }
 
 export const START_STATE: HtmlState = { mode: 'data', tag: '', attr: '', value: '' };
@@ -166,6 +174,16 @@ const OPEN_SCHEME = /^(?:[a-z\uE000][a-z\d+.\-\uE000]*)?$/iu;
 const CLOSED_SCHEME = /^([a-z\uE000][a-z\d+.\-\uE000]*):/iu;
 /** Schemes whose URL body is script. */
 const SCRIPT_SCHEMES = /^(?:javascript|vbscript)$/iu;
+/**
+ * `type` values that leave a script to run: a JavaScript MIME type, `module`,
+ * and the JSON blocks the browser reads itself (`importmap`, `speculationrules`).
+ * Any other static type makes a data block.
+ */
+const SCRIPT_TYPES = new RegExp(
+  '^(?:|module|importmap|speculationrules|(?:application|text)/(?:x-)?(?:ecmascript|javascript)|text/javascript1\\.[0-5]|text/(?:jscript|livescript))$',
+  'u',
+);
+const MAX_TYPE_LENGTH = 64;
 
 /**
  * Appends to an attribute value, keeping only what decides its context: the
@@ -175,6 +193,9 @@ const SCRIPT_SCHEMES = /^(?:javascript|vbscript)$/iu;
  * Nothing is kept for other attributes.
  */
 function appendValue(state: HtmlState, text: string): HtmlState {
+  if (state.tag === 'script' && state.attr === 'type' && state.kind === undefined) {
+    return { ...state, value: (state.value + text).slice(0, MAX_TYPE_LENGTH + 1) };
+  }
   if (!URL_ATTRIBUTES.has(state.attr) || state.value === '#' || state.value === '!') {
     return state.value === '' || state.value === '#' || state.value === '!' ? state : { ...state, value: '' };
   }
@@ -188,10 +209,25 @@ function appendValue(state: HtmlState, text: string): HtmlState {
   return { ...state, value: code ? '!' : '#' };
 }
 
+/** The state after an attribute value ends, a script's `type` read. */
+function endValue(state: HtmlState): HtmlState {
+  const next: HtmlState = { ...state, value: '' };
+  if (state.tag !== 'script' || state.attr !== 'type' || state.kind !== undefined) {
+    return next;
+  }
+  // Browsers trim the value and ignore ASCII case; a runtime part may be any type.
+  const type = state.value.replace(/^[\t\n\f\r ]+|[\t\n\f\r ]+$/gu, '').toLowerCase();
+  const data = !type.includes(RUNTIME) && type.length <= MAX_TYPE_LENGTH && !SCRIPT_TYPES.test(type);
+  return { ...next, kind: data ? 'data' : 'js' };
+}
+
 function closeStartTag(state: HtmlState): HtmlState {
   const tag = state.tag;
   if (tag.includes('?')) {
     return { mode: 'raw', tag: '?', attr: '', value: '' };
+  }
+  if (tag === 'script' && state.kind === 'data') {
+    return { mode: 'raw', tag, attr: '', value: '', kind: 'data' };
   }
   if (CODE_ELEMENTS.has(tag) || TEXT_ELEMENTS.has(tag)) {
     return { mode: 'raw', tag, attr: '', value: '' };
@@ -294,15 +330,15 @@ function step(state: HtmlState, char: string): HtmlState {
       }
       return appendValue({ ...state, mode: 'value-unq', value: '' }, char);
     case 'value-dq':
-      return char === '"' ? { ...state, mode: 'before-attr', value: '' } : appendValue(state, char);
+      return char === '"' ? endValue({ ...state, mode: 'before-attr' }) : appendValue(state, char);
     case 'value-sq':
-      return char === "'" ? { ...state, mode: 'before-attr', value: '' } : appendValue(state, char);
+      return char === "'" ? endValue({ ...state, mode: 'before-attr' }) : appendValue(state, char);
     case 'value-unq':
       if (SPACE.test(char)) {
-        return { ...state, mode: 'before-attr', value: '' };
+        return endValue({ ...state, mode: 'before-attr' });
       }
       if (char === '>') {
-        return closeStartTag(state);
+        return closeStartTag(endValue(state));
       }
       return appendValue(state, char);
     case 'comment': {
@@ -310,11 +346,18 @@ function step(state: HtmlState, char: string): HtmlState {
       return recent === '-->' ? START_STATE : { ...state, value: recent };
     }
     case 'raw': {
-      // `value` keeps the recent text; a pending end tag waits for its delimiter.
-      // `</script>` ends the element even inside a JS string, so the lexer only
-      // runs alongside the end tag check.
-      const js = state.tag === 'script' || state.tag === '?' ? jsStep(state.js ?? '', char) : undefined;
+      // `value` keeps the recent text; a pending end tag (`attr` `end`) or
+      // `<script` (`open`) waits for its delimiter. `</script>` ends the
+      // element even inside a JS string, so the lexer only runs alongside the
+      // end tag check.
+      const js = runsScript(state) ? jsStep(state.js ?? '', char) : undefined;
+      const recent = (state.value + char).slice(-16);
+      const delimiter = SPACE.test(char) || char === '/' || char === '>';
       if (state.attr === 'end') {
+        if (state.esc === 'd') {
+          // In a double-escaped script, `</script>` only steps back to the escaped state.
+          return { ...state, attr: '', value: recent, js, esc: delimiter ? 'e' : 'd' };
+        }
         if (SPACE.test(char) || char === '/') {
           return { mode: 'end-tag', tag: '', attr: '', value: '' };
         }
@@ -324,15 +367,35 @@ function step(state: HtmlState, char: string): HtmlState {
         if (state.tag === '?') {
           return { mode: 'end-tag', tag: '', attr: '', value: '' };
         }
-        return { ...state, attr: '', value: (state.value + char).slice(-16), js };
+        return { ...state, attr: '', value: recent, js };
       }
-      const recent = (state.value + char).slice(-16);
+      if (state.attr === 'open') {
+        return { ...state, attr: '', value: recent, js, esc: delimiter ? 'd' : state.esc };
+      }
+      let esc = state.esc;
+      if (state.tag === 'script') {
+        // Script data escape states: `<!--` escapes, `-->` leaves either escaped state.
+        if (esc === undefined && recent.endsWith('<!--')) {
+          esc = 'e';
+        } else if (esc !== undefined && recent.endsWith('-->')) {
+          esc = undefined;
+        }
+      }
+      const next: HtmlState = { ...state, value: recent, js, esc };
+      if (esc === 'e' && recent.toLowerCase().endsWith('<script')) {
+        return { ...next, attr: 'open' };
+      }
       if (endsWithEndTagOpen(recent, state.tag)) {
-        return { ...state, attr: 'end', value: recent, js };
+        return { ...next, attr: 'end' };
       }
-      return { ...state, value: recent, js };
+      return next;
     }
   }
+}
+
+/** True for raw content the JS lexer reads: a script that runs, or an unknown element. */
+function runsScript(state: HtmlState): boolean {
+  return state.tag === '?' || (state.tag === 'script' && state.kind !== 'data');
 }
 
 /** The state after a run of author text. */
@@ -350,7 +413,7 @@ export function contextAt(state: HtmlState): HtmlContext {
     case 'data':
       return 'text';
     case 'raw':
-      if (state.tag === 'script' || state.tag === '?') {
+      if (runsScript(state)) {
         return jsCodePosition(state.js ?? '') ? 'script' : 'script-string';
       }
       return state.tag === 'style' ? 'style' : 'rcdata';
@@ -411,7 +474,7 @@ export function feedValue(state: HtmlState): HtmlState {
         ...state,
         attr: '',
         value: `${state.value}\u0000`,
-        js: state.tag === 'script' || state.tag === '?' ? jsValue(state.js ?? '') : state.js,
+        js: runsScript(state) ? jsValue(state.js ?? '') : state.js,
       };
     default:
       return state;
@@ -419,7 +482,7 @@ export function feedValue(state: HtmlState): HtmlState {
 }
 
 export function stateKey(state: HtmlState): string {
-  return `${state.mode}\u0001${state.tag}\u0001${state.attr}\u0001${state.value}\u0001${state.js ?? ''}`;
+  return `${state.mode}\u0001${state.tag}\u0001${state.attr}\u0001${state.value}\u0001${state.js ?? ''}\u0001${state.kind ?? ''}\u0001${state.esc ?? ''}`;
 }
 
 /*
@@ -440,6 +503,7 @@ export function stateKey(state: HtmlState): string {
  *   `U`            a `/` of unknown kind: a comment, or else lost track
  *   `R` `C`        a regex body, and a `[...]` class inside it
  *   `/` `*`        a line or block comment; `+` is a `*` inside a block comment
+ *   `E`            a `\u` escape in a name, which makes it no keyword
  *   `?`            lost track: never a code position again
  *
  * Previous token: `r` (a regex may follow: the start, an operator,
@@ -448,7 +512,7 @@ export function stateKey(state: HtmlState): string {
  * name), `w<word>` (a name or number still being read), `x<word>` (the same,
  * ended by whitespace, so the next word starts afresh), `W` (a name that
  * cannot be a keyword: too long, or a property after `.`), `.` (just after a
- * dot), `p+` / `p-` (one `+` or `-`), `u` (unknown: `++`, `--`, a `}`, and
+ * dot), `..` (two dots of a spread), `p+` / `p-` (one `+` or `-`), `u` (unknown: `++`, `--`, a `}`, and
  * the rest). A `/` after an unknown token, a `.` or a contextual keyword
  * (`of`, `await`, `yield`, `let`, ...) is of unknown kind: a comment is still
  * read, anything else loses track, so the rule reports rather than guess.
@@ -456,9 +520,12 @@ export function stateKey(state: HtmlState): string {
 const MAX_JS_DEPTH = 24;
 const LINE_ENDS = /[\n\r\u2028\u2029]/u;
 const JS_SPACE = /\s/u;
-const WORD_CHAR = /[\p{L}\p{N}_$]/u;
-/** Punctuators after which a `/` starts a regex. */
-const REGEX_AFTER: ReadonlySet<string> = new Set([...'(,=:[!&|?{};*%<>~^']);
+/** A character that continues a name or number: ID_Continue, `$`, ZWNJ and ZWJ. */
+const WORD_CHAR = /[\p{ID_Continue}$\u200C\u200D]/u;
+/** Characters a `\u` escape in a name is read through. */
+const ESCAPE_CHAR = /[\da-f{u]/iu;
+/** Punctuators after which a `/` starts a regex (`(`, `{` and `}` have their own cases). */
+const REGEX_AFTER: ReadonlySet<string> = new Set([...',=:[!&|?;*%<>~^']);
 /** Keywords after which a `/` starts a regex. */
 const REGEX_KEYWORDS: ReadonlySet<string> = new Set([
   'return',
@@ -472,6 +539,8 @@ const REGEX_KEYWORDS: ReadonlySet<string> = new Set([
   'case',
   'do',
   'else',
+  'default',
+  'extends',
 ]);
 /** Words that are keywords only in some places, so a `/` after them may be either. */
 const CONTEXTUAL_KEYWORDS: ReadonlySet<string> = new Set(['of', 'await', 'yield', 'get', 'set', 'async', 'let', 'static']);
@@ -509,6 +578,14 @@ function slashStartsRegex(prev: string): boolean | null {
   return null;
 }
 
+/** The previous token once a space or comment ends it: a name being read is finished. */
+function endWord(prev: string): string {
+  if (prev.startsWith('w')) {
+    return `x${prev.slice(1)}`;
+  }
+  return prev === 'W' ? 'd' : prev;
+}
+
 /** The name or number `prev` holds, read or finished, when it may still be a keyword. */
 function wordOf(prev: string): string | null {
   return prev.startsWith('w') || prev.startsWith('x') ? prev.slice(1) : null;
@@ -518,10 +595,7 @@ function wordOf(prev: string): string | null {
 function jsCode(stack: string, prev: string, char: string): string {
   if (JS_SPACE.test(char)) {
     // Whitespace ends a word: `q\nreturn` is two words, not `qreturn`.
-    if (prev.startsWith('w')) {
-      return joinJs(stack, `x${prev.slice(1)}`);
-    }
-    return joinJs(stack, prev === 'W' ? 'd' : prev);
+    return joinJs(stack, endWord(prev));
   }
   switch (char) {
     case "'":
@@ -560,7 +634,19 @@ function jsCode(stack: string, prev: string, char: string): string {
     case ']':
       return joinJs(stack, 'd');
     case '.':
+      // The dot of a number (`1.`) ends an operand; one of a spread (`...`) is an operator.
+      if (/^w\d/u.test(prev)) {
+        return joinJs(stack, 'd');
+      }
+      if (prev === '.') {
+        return joinJs(stack, '..');
+      }
+      return joinJs(stack, prev === '..' ? 'r' : '.');
+    case '#':
+      // A private name (`this.#in`) is never a keyword.
       return joinJs(stack, '.');
+    case '\\':
+      return joinJs(`${stack}E`, 'W');
     default:
       break;
   }
@@ -631,13 +717,18 @@ export function jsStep(js: string, char: string): string {
         return '?';
       }
       return char === ']' ? joinJs(rest, prev) : js;
+    case 'E':
+      if (char === '}') {
+        return joinJs(rest, 'W');
+      }
+      return ESCAPE_CHAR.test(char) ? js : jsStep(joinJs(rest, 'W'), char);
     case '/':
-      return LINE_ENDS.test(char) ? joinJs(rest, prev) : js;
+      return LINE_ENDS.test(char) ? joinJs(rest, endWord(prev)) : js;
     case '*':
       return char === '*' ? joinJs(`${stack}+`, prev) : js;
     case '+':
       if (char === '/') {
-        return joinJs(rest.slice(0, -1), prev);
+        return joinJs(rest.slice(0, -1), endWord(prev));
       }
       return char === '*' ? js : joinJs(rest, prev);
     default:
