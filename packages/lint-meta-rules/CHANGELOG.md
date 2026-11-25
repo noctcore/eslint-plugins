@@ -1,5 +1,46 @@
 # @noctcore/lint-meta-rules
 
+## 1.3.0
+
+### Minor Changes
+
+- [#357](https://github.com/noctcore/eslint-plugins/pull/357) [`32c387e`](https://github.com/noctcore/eslint-plugins/commit/32c387ecea03616491a75ecd7d444d4935994cb1) Thanks [@Shironex](https://github.com/Shironex)! - `node-version-parity` gets three opt-in options for the setups it passes by default, so a repo that has adopted the convention can close each gap. All default to today's behavior.
+  
+  - `requireVersionFile` (default `false`): report a missing version file instead of staying dormant. With no file there is no major, so nothing else is checked.
+  - `reportUnresolvableFrom` (default `false`): also report a variable `FROM` that does not mention node (`FROM $BASE`, `FROM ${BASE}`).
+  - `allowExpressionNodeVersion` (default `true`): set it to `false` to report a setup-node `node-version` written as an expression (`${{ vars.NODE_VERSION }}`, a matrix included), with a pointer to `node-version-file`.
+
+- [#357](https://github.com/noctcore/eslint-plugins/pull/357) [`591be4c`](https://github.com/noctcore/eslint-plugins/commit/591be4c90bd58f98a16957470b073a89109e65a0) Thanks [@Shironex](https://github.com/Shironex)! - `github-actions-expression-syntax` now checks the shape inside a closed `${{ }}`, and two `if:` mistakes. Workflows that passed before can now report.
+  
+  - Inside an expression: an empty `${{ }}`, unbalanced brackets (an unclosed call, an extra `)`), an operator with no left or right operand, two operands with no operator between them, an empty call argument, and `=`, `&` or `|` where `==`, `&&` or `||` was meant. A string that is never closed now gets its own message instead of "no closing `}}`". Names are not checked (an unknown function or context passes), and a `-` inside a name (`needs.build-job`) is part of the name.
+  - A job or step `if:` with any text outside its `${{ }}`, which GitHub reads as a string and so is always true, and an unquoted `if:` that starts with `!`, which YAML reads as a tag. The value is checked untrimmed, as GitHub reads it, so spaces inside quotes and the trailing newline of a `|`, `>`, `|+` or `>+` block are reported too (write `|-` or `>-`; spaces after the `}}` count as padding in any style). A core tag such as `!!str` is not reported, and an `if` key elsewhere (an action input under `with:`) is not a condition.
+  - Workflows are now read with a YAML parser (the `yaml` package, a new dependency with no dependencies of its own) instead of line by line. Each scalar, key or value, plain, quoted or block, is checked as GitHub gets it, at its exact source line: comments never reach the checks, a `''` in a single-quoted value is one quote, double-quoted escapes are decoded, and a `#` inside a quoted value or a `|` / `>` block scalar is text. In a plain value ` #` starts a comment, so `if: ${{ github.ref == 'a #b' }}` is reported as unclosed, with a hint to quote the value. A CRLF workflow is read like an LF one.
+  - A workflow GitHub fails to load is now reported: a duplicate key (compared without case; keys holding `${{` are skipped, as GitHub does), an alias to an undefined anchor, more than one document, a `---` or `...` line inside a quoted value or flow collection, an unclosed quote or bracket, a tab as indentation. It was passed silently before. Shapes GitHub's reader accepts are not reported: the parse is not strict, and a flow collection or quoted value continued below its parent's indent is read as GitHub reads it.
+
+- [#297](https://github.com/noctcore/eslint-plugins/pull/297) [`14e585e`](https://github.com/noctcore/eslint-plugins/commit/14e585ecffc624a0f92389bbcc0687194840c024) Thanks [@Shironex](https://github.com/Shironex)! - Two new opt-in factories, both listed in `OPT_IN_RULE_IDS`, so a bare `createAllRules()` builds neither and projects see no new violations until they name them in `optIn` or call the factory:
+  
+  - `createGithubActionsPackageCacheRule` (`github-actions-package-cache`): a job that installs with npm, pnpm or yarn must set the matching `cache:` on one of its `actions/setup-node` steps (inputs read as a block or a one-line flow mapping; npm with a `packageManager` field relies on the automatic cache of setup-node v6 and later), and a job that runs `bun install` must have an `actions/cache` step (the Bun setup action caches only the bun binary). Options `managers`, `setupActions`, `cacheActions`, `workflowGlobs`, `ciCritical`.
+  - `createSharedToolVersionParityRule` (`shared-tool-version-parity`): workspace packages that declare the same dev tool (default `eslint`, `typescript`, `prettier`, `typescript-eslint`, `@eslint/js`, plus any `toolPrefixes`) must declare the same version, compared as written; a tool declared by one package is never reported, and `workspace:` and `catalog:` specifiers are skipped. Options `tools`, `toolPrefixes`, `workspaces` (default the root `workspaces` or `pnpm-workspace.yaml`), `includeRoot`, `fields`, `ciCritical`.
+  
+  The shared YAML comment stripper used by every workflow rule is now a linear scan, and it now also strips a trailing comment on a CRLF line (the old pattern left `cache: pnpm # note\r` whole), so workflow rules read values in CRLF workflows the same as in LF ones.
+
+- [#298](https://github.com/noctcore/eslint-plugins/pull/298) [`b22c532`](https://github.com/noctcore/eslint-plugins/commit/b22c532bf635f252df32fce59d263a76db539134) Thanks [@Shironex](https://github.com/Shironex)! - Three new opt-in factories for Rust codebases, all text only (they never run cargo) and all listed in `OPT_IN_RULE_IDS`, so a bare `createAllRules()` builds none of them:
+  
+  - `createRustModuleShapeRule` (`rust-module-shape`): no `.rs` file over `maxCodeLines` code lines (blank, comment and `#[cfg(test)]` module lines excluded), and every `mod.rs` only declares and re-exports modules. Optional ratchet baseline through `baselineDir` (keys `size:<file>` and `manifest:<file>`) that tightens itself like `file-size-ratchet` (`tightenRatio`), `advisoryCodeLines`, `manifestItems`, `exclude`.
+  - `createRustLayerRankRule` (`rust-layer-rank`): a layer may depend only on strictly lower-ranked layers. `module` mode ranks the top-level modules of one crate from `crate::` paths (grouped imports included) and `super::` paths resolved from the file's module depth, with `facades`, `toleratedGroups`, `forbiddenEdges` and `exempt`; `crate` mode ranks the crates of a workspace from `<prefix>_<crate>` paths and `use` / `extern crate` declarations, and from `Cargo.toml` dependency tables (quoted keys, `[dependencies.<name>]` headers and renamed `package = "..."` entries included).
+  - `createRustCommandPlacementRule` (`rust-command-placement`): a command handler attribute (default `#[tauri::command]` or `#[command]`) only inside `allowIn` and never inside `denyIn`.
+  
+  Comments, doc comments and string contents are never read, so documentation that names a banned edge or spells the attribute is not reported.
+
+### Patch Changes
+
+- [#367](https://github.com/noctcore/eslint-plugins/pull/367) [`f5abaac`](https://github.com/noctcore/eslint-plugins/commit/f5abaacb1598a4f8128199cc0932680e84ca9014) Thanks [@Shironex](https://github.com/Shironex)! - `github-actions-expression-syntax` no longer reports a valid workflow as not valid YAML when an under-indented flow collection holds a quoted value after an anchor or tag (`&a "x #y]"`, `!!str "x"`) or right after a `:` (`"os":"{ubuntu"`). The repair of such a collection read the `[`, `{` or ` #` inside the quote as structure, re-indented the rest of the file and hid any real expression error behind a false load failure. When a whole-collection repair still leaves the file unparsed, it is now read again one line at a time, so a repair alone never makes a valid file fail. A comment written right after a flow indicator (`[x,#c`) is now spaced at every site in one pass instead of one parse each.
+
+- [#306](https://github.com/noctcore/eslint-plugins/pull/306) [`657e4a6`](https://github.com/noctcore/eslint-plugins/commit/657e4a6c6b921b00606e31de7b2c555c111bb759) Thanks [@Shironex](https://github.com/Shironex)! - Rule messages no longer use em dashes; the wording is otherwise unchanged.
+- Updated dependencies [[`0d7ff79`](https://github.com/noctcore/eslint-plugins/commit/0d7ff7956d0d2b34c2fc9c31b72c4fc0dd5ed5ba)]:
+  - @noctcore/eslint-plugin-contracts@1.2.1
+  - @noctcore/eslint-plugin-prisma@1.0.1
+
 ## 1.2.0
 
 ### Minor Changes

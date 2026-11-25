@@ -1,5 +1,13 @@
 # @noctcore/eslint-plugin-llm
 
+## 0.1.4
+
+### Patch Changes
+
+- [#367](https://github.com/noctcore/eslint-plugins/pull/367) [`8e17949`](https://github.com/noctcore/eslint-plugins/commit/8e1794911d3c00021e075e9d78433da893632603) Thanks [@Shironex](https://github.com/Shironex)! - `no-llm-output-to-sink` reads the text before model output in a `fetch` URL the way the URL parser does. Output after only spaces or control characters (`` fetch(` ${text}`) ``), after a lone `/` followed by a tab or a line break, after `https:///` or `////` with no host closed yet, or after relative text it can finish into a scheme that leaves the origin, runs script or opens an operating system protocol handler (`` fetch(`h${text}`) `` with `text = 'ttps://evil.com'`, `` fetch(`ms-${text}`) ``) is now reported.
+- Updated dependencies [[`88d49c9`](https://github.com/noctcore/eslint-plugins/commit/88d49c9f5dc6366018dcc2cda9351426d873add3), [`e3cab3e`](https://github.com/noctcore/eslint-plugins/commit/e3cab3e9964f045e3072eef4674a7972cd211d1c)]:
+  - @noctcore/eslint-utils@0.3.0
+
 ## 0.1.3
 
 ### Patch Changes

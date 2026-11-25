@@ -1,6 +1,6 @@
 {
   "name": "@noctcore/eslint-plugin-monorepo",
-  "version": "1.0.0",
+  "version": "1.0.1",
   "description": "ESLint rules for enforcing workspace / monorepo package boundaries.",
   "license": "MIT",
   "type": "module",
@@ -51,7 +51,7 @@
     "test": "vitest run"
   },
   "dependencies": {
-    "@noctcore/eslint-utils": "^0.2.0",
+    "@noctcore/eslint-utils": "^0.3.0",
     "@typescript-eslint/utils": "^8.72.1"
   },
   "peerDependencies": {

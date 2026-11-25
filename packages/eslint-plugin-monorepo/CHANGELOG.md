@@ -1,5 +1,13 @@
 # @noctcore/eslint-plugin-monorepo
 
+## 1.0.1
+
+### Patch Changes
+
+- [#306](https://github.com/noctcore/eslint-plugins/pull/306) [`033b71e`](https://github.com/noctcore/eslint-plugins/commit/033b71efc82eda581ccc3805d2a87cfcf9879c1b) Thanks [@Shironex](https://github.com/Shironex)! - Rule messages no longer use em dashes; the wording is otherwise unchanged.
+- Updated dependencies [[`88d49c9`](https://github.com/noctcore/eslint-plugins/commit/88d49c9f5dc6366018dcc2cda9351426d873add3), [`e3cab3e`](https://github.com/noctcore/eslint-plugins/commit/e3cab3e9964f045e3072eef4674a7972cd211d1c)]:
+  - @noctcore/eslint-utils@0.3.0
+
 ## 1.0.0
 
 ### Major Changes

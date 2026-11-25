@@ -1,5 +1,13 @@
 # @noctcore/eslint-utils
 
+## 0.3.0
+
+### Minor Changes
+
+- [#284](https://github.com/noctcore/eslint-plugins/pull/284) [`88d49c9`](https://github.com/noctcore/eslint-plugins/commit/88d49c9f5dc6366018dcc2cda9351426d873add3) Thanks [@Shironex](https://github.com/Shironex)! - `NoctcoreRuleDocs` accepts three optional fields, `cwe` (CWE ids as `CWE-<n>`), `owasp` (OWASP Top 10 ids as `A<nn>:<year>`) and `securitySeverity` (a CVSS-like score from 0 to 10), so a rule built with `makeCreateRule` can declare the weakness it reports. Nothing reads them at lint time.
+
+- [#366](https://github.com/noctcore/eslint-plugins/pull/366) [`e3cab3e`](https://github.com/noctcore/eslint-plugins/commit/e3cab3e9964f045e3072eef4674a7972cd211d1c) Thanks [@Shironex](https://github.com/Shironex)! - New `pathContainment` helpers, shared by the rules that accept a checked path: `isContainedBefore` tells whether a containment test decides that a sink runs (an `if` that exits when the path is outside, or an `if`, `?:`, `&&` or `||` around the sink, read through `!` and `const` booleans, in the function that holds the sink), with `isGuardedByBranchBefore`, `isGuardedByLogicalBefore`, `isAssertedBefore`, `containmentGuard`, `failsOutside` and `holdsInside` as its parts. The tests are `startsWith` against a base that ends in a separator, a `path.relative` result refused when it climbs and when it is absolute, and a configured guard call (relative refusals pair up only when they read the same binding, or inline `path.relative(...)` calls with the same argument tokens (string text as written) whose arguments read no member, call, await or write nothing, and name no binding written after its declaration); a base every path is under (`'/'`, `''`, `'.'`, `path.sep`, `process.cwd()`, `path.resolve()`) is refused (`isBroadBase`). Also exported: `isExitGuard`, `PathContainmentContext`, `singleInitializer`, `isProcessCwd`, `endsInSeparator` and `isStartsWithBase`.
+
 ## 0.2.0
 
 ### Minor Changes

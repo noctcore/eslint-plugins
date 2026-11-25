@@ -1,6 +1,6 @@
 {
   "name": "@noctcore/eslint-plugin-three",
-  "version": "0.0.0",
+  "version": "0.1.0",
   "description": "three.js and React Three Fiber rules: uncapped pixel ratios, undisposed GPU resources, stale camera projections, per-frame allocations and state updates, and instance buffers that never re-upload.",
   "license": "MIT",
   "type": "module",
@@ -54,7 +54,7 @@
     "test": "vitest run"
   },
   "dependencies": {
-    "@noctcore/eslint-utils": "^0.2.0",
+    "@noctcore/eslint-utils": "^0.3.0",
     "@typescript-eslint/utils": "^8.72.1"
   },
   "peerDependencies": {
