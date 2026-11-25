@@ -436,5 +436,12 @@ ruleTester.run('no-renderer-setting-to-fs', noRendererSettingToFsRule, {
       options: STORE,
       errors: [ERROR],
     },
+    // Refusals of two different inline relative calls do not pair up.
+    {
+      code: "import fs from 'node:fs';\nimport path from 'node:path';\nfunction read() {\nconst full = path.resolve(BASE, store.get('x'));\nif (path.relative(BASE + '/sub', full) === '..' || path.relative(BASE, full).startsWith('..' + path.sep) || path.isAbsolute(path.relative(BASE, full))) return;\nreturn fs.readFileSync(full);\n}",
+      filename: MAIN,
+      options: STORE,
+      errors: [ERROR],
+    },
   ],
 });
