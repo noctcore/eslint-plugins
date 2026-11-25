@@ -250,6 +250,9 @@ ruleTester.run('no-unescaped-html-response', noUnescapedHtmlResponseRule, {
       code: `import { renderToString } from 'react-dom/server'; ${PURIFY} function Bio({ bio }) { return <p dangerouslySetInnerHTML={{ __html: DOMPurify.sanitize(bio) }} />; } res.send('<div id="root">' + renderToString(<main><Bio bio={q} /><i dangerouslySetInnerHTML={{ __html: '<b>x</b>' }} /></main>) + '</div>');`,
       filename: TSX,
     },
+    { code: "import { renderToString } from 'react-dom/server'; res.send(renderToString(<p>{q}</p>));", filename: TSX },
+    { code: "import { renderToString } from 'react-dom/server'; res.send(renderToString(<i dangerouslySetInnerHTML={{ __html: '<b>x</b>' }} />));", filename: TSX },
+    { code: "import { renderToString } from 'react-dom/server'; res.json({ markup: renderToString(<p dangerouslySetInnerHTML={{ __html: q }} />) });", filename: TSX },
     // EJS options that keep escaping and read a custom delimiter.
     { code: "ejs.render('<p><?= bio ?></p>', { bio: input }, { delimiter: '?' });", filename: TS },
     { code: "ejs.render('<p><%= bio %></p>', { bio: input }, { cache: true, filename: 'bio.ejs', rmWhitespace: true });", filename: TS },
@@ -759,6 +762,22 @@ ruleTester.run('no-unescaped-html-response', noUnescapedHtmlResponseRule, {
     {
       code: "import { createElement } from 'react'; import { renderToString } from 'react-dom/server'; const el = createElement('div', { dangerouslySetInnerHTML: { __html: q } }); res.send('<main>' + renderToString(el) + '</main>');",
       filename: TS,
+      errors: html,
+    },
+    // A React render is markup on its own, with no author tag around it.
+    {
+      code: "import { renderToString } from 'react-dom/server'; export function h(req, res) { res.send(renderToString(<div dangerouslySetInnerHTML={{ __html: req.query.q }} />)); }",
+      filename: TSX,
+      errors: html,
+    },
+    {
+      code: "import { renderToString } from 'react-dom/server'; app.use(async (ctx) => { ctx.type = 'html'; ctx.body = renderToString(<p dangerouslySetInnerHTML={{ __html: ctx.query.q }} />); });",
+      filename: TSX,
+      errors: html,
+    },
+    {
+      code: "import { renderToStaticMarkup } from 'react-dom/server'; http.createServer((req, res) => { res.writeHead(200, { 'Content-Type': 'text/html' }); res.end(renderToStaticMarkup(<p dangerouslySetInnerHTML={{ __html: req.url }} />)); });",
+      filename: TSX,
       errors: html,
     },
     // EJS options and settings that switch escaping off or change the tags.
