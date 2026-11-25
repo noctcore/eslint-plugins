@@ -828,10 +828,14 @@ export class HtmlSafety {
         if (parent.callee === node) {
           return false;
         }
-        // `Object.keys(utils)`, `Object.assign(copy, utils)`: read only (a write target was checked before).
+        // `Object.keys(utils)`, `Object.assign(copy, utils)`: read only (a write target was checked
+        // before), unless the callee sits deeper, where a shallow copy or `Object.values` shares the
+        // object holding it.
         const callee = unwrap(parent.callee);
         const owner = callee.type === AST_NODE_TYPES.MemberExpression ? unwrap(callee.object) : null;
-        return !(owner?.type === AST_NODE_TYPES.Identifier && (owner.name === 'Object' || owner.name === 'Reflect'));
+        return (
+          rest.length > 1 || !(owner?.type === AST_NODE_TYPES.Identifier && (owner.name === 'Object' || owner.name === 'Reflect'))
+        );
       }
       case AST_NODE_TYPES.VariableDeclarator: {
         if (parent.init !== node || parent.id.type !== AST_NODE_TYPES.Identifier) {

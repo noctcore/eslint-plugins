@@ -271,7 +271,8 @@ written with a character reference (`text&#47;javascript`). The HTML escape stat
   (`const u = utils; u.escapeHtml = ...`) or, for a name the file does not declare, through the
   global object (`globalThis.utils = ...`, also `window`, `self`, `global`); or the object, or a
   member on the way, handed on: to a call (`patch(utils)`; `Object.keys(utils)` and other
-  `Object.*` / `Reflect.*` reads aside), to a property (`app.locals.u = utils`), a return or an
+  `Object.*` / `Reflect.*` reads aside, but not for `utils.html.escape`, whose `utils.html` a
+  shallow copy or `Object.values` shares), to a property (`app.locals.u = utils`), a return or an
   export. A reassigned `require` of an escaping module no longer counts as that module either.
 - **A `.replace` / `.replaceAll` chain** that encodes at least `&`, `<`, `>` and `"`. A step counts
   for a character only when it is global (`replaceAll`, or a regex with `g` and no `y`), its
