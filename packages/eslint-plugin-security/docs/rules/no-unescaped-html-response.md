@@ -131,7 +131,7 @@ options replace `escape` or `escapeFunction`) is reported when its value is not 
 lands. EJS options are read from a literal third argument (or a `const` holding one), and from the
 data object when there is none, as EJS does: `delimiter`, `openDelimiter`, `closeDelimiter`
 and `localsName` change how the template is read. When the options cannot be read in full (not a
-literal, a spread, `outputFunctionName`, `client` or another option that changes the output), or
+literal, a spread or computed key, in the data too when it holds the options, `outputFunctionName`, `client` or another option that changes the output), or
 the file writes a setting on `ejs` (`ejs.escapeXML = ...`, `ejs.delimiter = ...`) or hands it to a
 call, every value in the data object is judged as raw element text. An escaped output is reported
 only where escaping is not enough (`<a href="{{ url }}">`, `<script>var u = <%= name %></script>`).

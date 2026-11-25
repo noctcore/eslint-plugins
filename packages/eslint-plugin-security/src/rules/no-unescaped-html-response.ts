@@ -1621,10 +1621,7 @@ export const noUnescapedHtmlResponseRule = createRule<RuleOptions, MessageIds>({
       for (const property of object.properties) {
         const key = property.type === AST_NODE_TYPES.Property ? propertyKey(property) : null;
         if (key === null || property.type !== AST_NODE_TYPES.Property) {
-          // In the data, a spread or computed key is a value the template may read, not an option.
-          if (options === undefined) {
-            continue;
-          }
+          // A spread or computed key may hold any option, `escape` or a delimiter included.
           return null;
         }
         // Without an options argument, EJS reads only a few options from the data.
