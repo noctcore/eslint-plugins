@@ -802,3 +802,25 @@ ruleTester.run('no-user-controlled-fetch-url: protocol handler schemes', noUserC
     { code: 'fetch(`VSCODE${x}`);', filename: TS, errors: [error] },
   ],
 });
+
+// `undefined` as a replacer counts only when no binding shadows it.
+ruleTester.run('no-user-controlled-fetch-url: shadowed undefined replacer', noUserControlledFetchUrlRule, {
+  valid: [
+    {
+      code: "JSON.stringify(config, undefined, 2); fetch(config.url); https.get({ hostname: config.host, path: '/x' });",
+      filename: TS,
+      options: [{ trustedSources: ['config'] }],
+    },
+  ],
+  invalid: [
+    ...[
+      'function dump(undefined) { JSON.stringify(config, undefined); }',
+      'function dump() { const undefined = (k, v) => { v.url = x; return v; }; JSON.stringify(config, undefined); }',
+    ].map((setup) => ({
+      code: `${setup} fetch(config.url); https.get({ hostname: config.host, path: '/x' });`,
+      filename: TS,
+      options: [{ trustedSources: ['config'] }],
+      errors: [error, host],
+    })),
+  ],
+});
