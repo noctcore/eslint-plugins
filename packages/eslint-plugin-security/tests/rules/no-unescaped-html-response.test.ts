@@ -295,7 +295,15 @@ ruleTester.run('no-unescaped-html-response', noUnescapedHtmlResponseRule, {
     // Markup through calls, tags, placeholders and accumulators, escaped.
     { code: "export function h(req, res) { res.send(layout(`<h1>${escapeHtml(req.query.q)}</h1>`)); }", filename: TS },
     { code: "import { safeHtml } from 'common-tags'; export function h(req, res) { res.send(safeHtml`<h1>${req.query.q}</h1>`); }", filename: TS },
-    { code: "const TPL = '<h1>{{name}}</h1>'; export function h(req, res) { res.send(TPL.replace('{{name}}', escapeHtml(req.query.q))); }", filename: TS },
+    // A replacer function's result is written as is, with no `$` patterns.
+    { code: "const TPL = '<h1>{{name}}</h1>'; export function h(req, res) { res.send(TPL.replace('{{name}}', () => escapeHtml(req.query.q))); }", filename: TS },
+    { code: "const TPL = '<a href=\"/s?q={{q}}\">x</a>'; export function h(req, res) { res.send(TPL.replace('{{q}}', encodeURIComponent(req.query.q))); }", filename: TS },
+    {
+      code: "const TPL = '<p>{{a}}</p><p>{{b}}</p>'; export function h(req, res) { res.send(TPL.replace('{{a}}', () => escapeHtml(req.query.a)).replace('{{b}}', () => escapeHtml(req.query.b))); }",
+      filename: TS,
+    },
+    // A call from elsewhere given escaped markup and constants, with no author tag around it.
+    { code: "export function h(req, res) { res.send(layout(`<main>${escapeHtml(req.query.q)}</main>`, 'Title', 2)); }", filename: TS },
     {
       code: "export function h(res, list) { const rows = []; for (const r of list) rows.push('<li>' + escapeHtml(r.name) + '</li>'); res.send('<ul>' + rows.join('') + '</ul>'); }",
       filename: TS,
@@ -882,8 +890,38 @@ ruleTester.run('no-unescaped-html-response', noUnescapedHtmlResponseRule, {
     {
       code: "const TPL = '<a href=\"{{url}}\">{{name}}</a>'; export function h(req, res) { res.send(TPL.replace(/\\{\\{name\\}\\}/g, escapeHtml(req.query.n)).replace('{{url}}', escapeHtml(req.query.u))); }",
       filename: TS,
-      errors: where,
+      errors: [...where, ...where],
     },
+    // A string replacement applies `$` patterns, which escape-html leaves alone.
+    { code: "const TPL = '<h1>{{name}}</h1>'; export function h(req, res) { res.send(TPL.replace('{{name}}', escapeHtml(req.query.q))); }", filename: TS, errors: where },
+    { code: "export function h(req, res) { res.send('<div title=\"{{n}}\">x</div>'.replace('{{n}}', escapeHtml(req.query.q))); }", filename: TS, errors: where },
+    // A later placeholder may be found inside an earlier value, and the replacement then lands there.
+    {
+      code: "const TPL = '<a href=\"{{url}}\">{{name}}</a>'; export function h(req, res) { res.send(TPL.replace('{{url}}', () => escapeHtml(req.query.u)).replace('{{name}}', () => escapeHtml(req.query.n))); }",
+      filename: TS,
+      errors: [...where, ...where],
+    },
+    // A call that may move, decode or rewrite the markup it is given stays opaque, and every other value it is given may land anywhere.
+    { code: "export function h(req, res) { res.send('<div>' + layout(req.query.t, `<main>${escapeHtml(req.query.q)}</main>`)); }", filename: TS, errors: html },
+    { code: "export function h(req, res) { res.send('<div>' + layout(`<main>${escapeHtml(req.query.q)}</main>`, req.query.t)); }", filename: TS, errors: html },
+    { code: "export function h(req, res) { res.send(layout(`<main>${escapeHtml(req.query.q)}</main>`, req.query.t)); }", filename: TS, errors: html },
+    { code: "app.use(async (ctx) => { ctx.body = '<div>' + layout(ctx.query.t, `<main>${escapeHtml(ctx.query.q)}</main>`); });", filename: TS, errors: html },
+    { code: "export function h(req, res) { res.send('<div>' + `<p>${escapeHtml(req.query.q)}</p>`.padStart(100, req.query.t)); }", filename: TS, errors: html },
+    { code: "export function h(req, res) { res.send(`<p>${escapeHtml(req.query.q)}</p>`.padEnd(100, req.query.t)); }", filename: TS, errors: html },
+    { code: "export function h(req, res) { res.send('<div>' + decodeURIComponent(`<p>${escapeHtml(req.query.q)}</p>`)); }", filename: TS, errors: html },
+    { code: "export function h(req, res) { res.send('<div>' + unescape(`<p>${escapeHtml(req.query.q)}</p>`)); }", filename: TS, errors: html },
+    { code: "export function h(req, res) { res.send('<div>' + atob(`<p>${escapeHtml(req.query.q)}</p>`)); }", filename: TS, errors: html },
+    { code: "import { decode } from 'html-entities'; export function h(req, res) { res.send('<div>' + decode(`<p>${escapeHtml(req.query.q)}</p>`)); }", filename: TS, errors: html },
+    { code: "import { unesc } from './text'; export function h(req, res) { res.send('<div>' + unesc(`<p>${escapeHtml(req.query.q)}</p>`)); }", filename: TS, errors: html },
+    { code: "export function h(req, res) { res.send('<div>' + `<p>${escapeHtml(req.query.q)}</p>`.split('&lt;').join('<')); }", filename: TS, errors: html },
+    { code: "export function h(req, res) { res.send('<div>' + `<p>${escapeHtml(req.query.q)}</p>`.replace(/&lt;/g, '<')); }", filename: TS, errors: html },
+    { code: "export function h(req, res) { res.send('<div>' + `<p>${escapeHtml(req.query.q)}</p>`.replaceAll('&lt;', '<')); }", filename: TS, errors: html },
+    { code: "export function h(req, res) { res.send(`<p>${escapeHtml(req.query.q)}</p>`.replaceAll('&lt;', '<')); }", filename: TS, errors: html },
+    { code: "export function h(req, res) { res.send('<script>' + `</script><p>${escapeHtml(req.query.q)}</p>`.slice(9)); }", filename: TS, errors: html },
+    { code: "export function h(req, res) { res.send('<div>' + `<p>${escapeHtml(req.query.q)}</p>`.substring(0, 8)); }", filename: TS, errors: html },
+    { code: "export function h(req, res) { res.send('<div>' + req.query.render(`<p>${escapeHtml(req.query.q)}</p>`)); }", filename: TS, errors: html },
+    { code: "export function h(req, res, helpers) { res.send('<div>' + helpers[req.query.t](`<p>${escapeHtml(req.query.q)}</p>`)); }", filename: TS, errors: html },
+    { code: "import dedent from 'dedent'; export function h(req, res) { res.send('<div>' + dedent`<p>${escapeHtml(req.query.q)}</p>`); }", filename: TS, errors: html },
     {
       code: "const TPL = '<h1>{{name}}</h1>'; export function h(req, res, data) { res.send(TPL.replace(/\\{\\{(\\w+)\\}\\}/g, (m, k) => data[k])); }",
       filename: TS,
