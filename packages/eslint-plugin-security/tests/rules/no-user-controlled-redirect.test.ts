@@ -1,4 +1,6 @@
 import { ruleTester } from '@noctcore/eslint-test-utils';
+import { Linter } from 'eslint';
+import { describe, expect, it } from 'vitest';
 
 import { noUserControlledRedirectRule } from '../../src/rules/no-user-controlled-redirect';
 
@@ -1245,4 +1247,41 @@ ruleTester.run('no-user-controlled-redirect: cycles at a fixed point', noUserCon
     "function h(req, res) { let a = 'L'; a = a + n; res.set(a, req.query.x); }",
     "function h(req, res) { let a = 'Loc'; a = a + 'ation'; res.set(a, req.query.x); }",
   ].map((code) => ({ code, filename: TS, errors: [error] })),
+});
+
+/** A run of `n` runtime pieces in a template. */
+const pieces = (n: number): string => '${x}'.repeat(n);
+
+// A run of runtime pieces is one runtime piece, so a cycle that keeps adding
+// them settles and the name is matched in bounded time.
+const pieceRuns: readonly { readonly body: string; readonly reports: boolean }[] = [
+  { body: "let v1 = 'Loc'; v1 = x + x + x + v1; res.setHeader(v1, x);", reports: false },
+  { body: "let v1 = 'Location'; v1 = x + x + v1; res.setHeader(v1, x);", reports: true },
+  { body: `res.set(\`${pieces(28)}L\`, x);`, reports: false },
+  { body: `res.set(\`${pieces(28)}n\`, x);`, reports: true },
+  { body: "let v = 'Loc'; v = x + v; res.set(v, x);", reports: false },
+  { body: "let v = 'Lo'; v = x + v + x; res.set(v, x);", reports: true },
+  { body: `let v = 'ation'; v = \`${pieces(3)}\${v}\`; res.writeHead(302, { [v]: x });`, reports: true },
+];
+
+ruleTester.run('no-user-controlled-redirect: runs of runtime pieces', noUserControlledRedirectRule, {
+  valid: pieceRuns
+    .filter((item) => !item.reports)
+    .map((item) => ({ code: `function h(req, res) { const x = req.query.x; ${item.body} }`, filename: TS })),
+  invalid: pieceRuns
+    .filter((item) => item.reports)
+    .map((item) => ({ code: `function h(req, res) { const x = req.query.x; ${item.body} }`, filename: TS, errors: [error] })),
+});
+
+describe('no-user-controlled-redirect: runs of runtime pieces stay fast', () => {
+  const linter = new Linter({ configType: 'flat' });
+  const config = [{ plugins: { s: { rules: { redirect: noUserControlledRedirectRule } } }, rules: { 's/redirect': 'error' } }];
+  for (const item of pieceRuns) {
+    it(item.body, () => {
+      const started = performance.now();
+      const messages = linter.verify(`function h(req, res) { const x = req.query.x; ${item.body} }`, config as never);
+      expect(performance.now() - started).toBeLessThan(1000);
+      expect(messages.filter((message) => message.ruleId !== null).length > 0).toBe(item.reports);
+    });
+  }
 });
