@@ -148,8 +148,13 @@ const optionSchema: JSONSchema4 = {
   },
 };
 
-/** A root text that confines nothing: separators only, `''`, or the working directory `'.'`. */
-const WEAK_ROOT_TEXT = /^(?:\.[\\/]?|[\\/]*)$/u;
+/**
+ * True for a root text that confines nothing: every segment is empty or `.`,
+ * so it normalises to `''`, `/` or the working directory (`'.//'`, `'/.'`).
+ */
+function isWeakRootText(text: string): boolean {
+  return text.split(/[\\/]/u).every((segment) => segment === '' || segment === '.');
+}
 
 /** An fs sink a helper's parameter reaches. */
 interface HelperSink {
@@ -669,8 +674,9 @@ export const requirePathContainmentRule = createRule<RuleOptions, MessageIds>({
     /**
      * True for a root that confines nothing: `'/'`, `''` (Express then
      * serves the path as is), `null` or `undefined`, `path.sep`, the working
-     * directory (`'.'`, `process.cwd()`, `path.resolve()`, as `isBroadBase`
-     * reads a base), or an environment variable that may be unset or empty.
+     * directory (`'.'`, `'.//'`, `process.cwd()`, `path.resolve()`, a
+     * `resolve` / `join` / `normalize` of such parts only), or an
+     * environment variable that may be unset or empty.
      */
     const isWeakRoot = (raw: TSESTree.Node, current: PathBindings, depth = 0): boolean => {
       if (depth > MAX_DEPTH) {
@@ -679,14 +685,23 @@ export const requirePathContainmentRule = createRule<RuleOptions, MessageIds>({
       const node = peel(raw);
       switch (node.type) {
         case AST_NODE_TYPES.Literal:
-          return node.value === null || (typeof node.value === 'string' && WEAK_ROOT_TEXT.test(node.value));
+          return node.value === null || (typeof node.value === 'string' && isWeakRootText(node.value));
         case AST_NODE_TYPES.TemplateLiteral:
-          return node.expressions.length === 0 && WEAK_ROOT_TEXT.test(node.quasis[0]?.value.cooked ?? '');
-        case AST_NODE_TYPES.CallExpression:
+          return node.expressions.length === 0 && isWeakRootText(node.quasis[0]?.value.cooked ?? '');
+        case AST_NODE_TYPES.CallExpression: {
+          if (isProcessCwd(node, sourceCode)) {
+            return true;
+          }
+          // `path.resolve()`, `path.resolve('.')`, `path.join(process.cwd())`: built only from weak parts.
+          const fn = pathFunction(node.callee, current);
           return (
-            isProcessCwd(node, sourceCode) ||
-            (node.arguments.length === 0 && pathFunction(node.callee, current) === 'resolve')
+            (fn === 'resolve' || fn === 'join' || fn === 'normalize') &&
+            (fn === 'resolve' || node.arguments.length > 0) &&
+            node.arguments.every(
+              (arg) => arg.type !== AST_NODE_TYPES.SpreadElement && isWeakRoot(arg, current, depth + 1),
+            )
           );
+        }
         case AST_NODE_TYPES.Identifier: {
           if (node.name === 'undefined') {
             const variable = ASTUtils.findVariable(sourceCode.getScope(node), node);

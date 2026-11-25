@@ -51,7 +51,9 @@ A test takes the joined value and a base the requester does not pick:
   (`path.isAbsolute(rel)`): on Windows, `relative` across drives returns an absolute path that does
   not start with `..`. A climb is refused by `rel.startsWith('..')`, or by both `rel === '..'` and
   `rel.startsWith('..' + path.sep)`. Every refusal has to read the same result: one binding, or
-  inline `path.relative(...)` calls with the same base and path text and no call or write in them;
+  inline `path.relative(...)` calls with the same argument tokens (string text as written) whose
+  arguments read no member (it may be a getter), call, await or write nothing, and name no binding
+  written after its declaration;
 - a call to a helper named in `containmentGuards` that takes the joined value.
 
 A base every path is under proves nothing: `'/'`, `''`, `'.'`, `path.sep`, `process.cwd()` and
@@ -123,8 +125,9 @@ registered with the plugin and refuse `..` segments, so only a root the call pas
 `reply.download(file, name, { root })`.
 
 A root that confines nothing is not a root, and the served path is checked instead: `'/'`, `''`
-(Express then serves the path as given), `null`, `path.sep`, the working directory (`'.'`,
-`process.cwd()`, `path.resolve()`), and an environment value that may be
+(Express then serves the path as given), `null`, `path.sep`, the working directory or `/`
+written another way (`'.'`, `'.//'`, `'/.'`, `process.cwd()`, `path.resolve()`, `path.resolve('.')`,
+`path.join(process.cwd())`: a `resolve`, `join` or `normalize` of such parts only), and an environment value that may be
 unset or empty (`process.env.FILES`, `process.env.FILES ?? '/srv'`; `process.env.FILES || '/srv'`
 falls back to a fixed root and counts). A spread after the root (`{ root: BASE, ...req.body.opts }`)
 can replace it, so the spread value is checked as a root too, as is a spread options object with no
@@ -194,7 +197,8 @@ The flow stops at:
   call, or a call to a `containmentGuards` helper as a statement before it. The tested path has to
   reach the call as it is: directly, through bindings, read back from an array or object literal
   (`[full][0]`, `{ value: full }.value`), or through a local function that only returns its
-  parameter (plain parameters, never reassigned). A path built from it after the test
+  parameter (plain parameters, never reassigned), also as one branch of `||`, `??` or `?:` whose
+  other branch carries no request input (`full || '/srv/data/x'`). A path built from it after the test
   (`join(full, '..')`, `full + '/..'`, `` `${full}/..` ``, `[full, '..'].join('/')`,
   `p += '/..'`) is a new path the test says nothing about.
 
