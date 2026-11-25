@@ -645,3 +645,18 @@ ruleTester.run('no-user-controlled-fetch-url', noUserControlledFetchUrlRule, {
     { code: "fetch('h' + x);", filename: TS, errors: [error] },
   ],
 });
+
+// Relative prefixes no scheme that leaves the origin starts with.
+ruleTester.run('no-user-controlled-fetch-url: relative scheme-shaped prefixes', noUserControlledFetchUrlRule, {
+  valid: [
+    { code: 'fetch(`api${x}`);', filename: TS },
+    { code: "fetch('users' + id);", filename: TS },
+    { code: 'fetch(`page.html${x}`);', filename: TS },
+  ],
+  invalid: [
+    { code: 'fetch(`dat${x}`);', filename: TS, errors: [error] },
+    { code: 'fetch(`Ws${x}`);', filename: TS, errors: [error] },
+    { code: "fetch('fil' + x);", filename: TS, errors: [error] },
+    { code: 'fetch(`HTTPS${x}`);', filename: TS, errors: [error] },
+  ],
+});

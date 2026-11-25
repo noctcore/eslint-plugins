@@ -335,3 +335,53 @@ ruleTester.run('no-llm-output-to-sink', noLlmOutputToSinkRule, {
     },
   ],
 });
+
+// The text before the output, read the way the URL parser reads it.
+ruleTester.run('no-llm-output-to-sink: fetch prefixes', noLlmOutputToSinkRule, {
+  valid: [
+    { code: fn(`${OPENAI}\nawait fetch(\`notes/\${res.choices[0].message.content}\`);`), filename: TS },
+    { code: fn(`${OPENAI}\nawait fetch(\`api\${res.choices[0].message.content}\`);`), filename: TS },
+    { code: fn(`${OPENAI}\nawait fetch(\`https:///api.example.com/\${res.choices[0].message.content}\`);`), filename: TS },
+  ],
+  invalid: [
+    // Only spaces or control characters: the whole URL is output.
+    {
+      code: fn(`${OPENAI}\nawait fetch(\` \${res.choices[0].message.content}\`);`),
+      filename: TS,
+      errors: [error(OPENAI_CHAT, 'the origin of a `fetch` URL')],
+    },
+    {
+      code: fn(`${OPENAI}\nawait fetch('\\n' + res.choices[0].message.content);`),
+      filename: TS,
+      errors: [error(OPENAI_CHAT, 'the origin of a `fetch` URL')],
+    },
+    // A lone slash once the tab is dropped.
+    {
+      code: fn(`${OPENAI}\nawait fetch('/\\t' + res.choices[0].message.content);`),
+      filename: TS,
+      errors: [error(OPENAI_CHAT, 'the origin of a `fetch` URL')],
+    },
+    // Extra slashes still open the authority.
+    {
+      code: fn(`${OPENAI}\nawait fetch(\`https:///\${res.choices[0].message.content}\`);`),
+      filename: TS,
+      errors: [error(OPENAI_CHAT, 'the origin of a `fetch` URL')],
+    },
+    {
+      code: fn(`${OPENAI}\nawait fetch(\`///\${res.choices[0].message.content}\`);`),
+      filename: TS,
+      errors: [error(OPENAI_CHAT, 'the origin of a `fetch` URL')],
+    },
+    // Relative text the output can finish into a scheme.
+    {
+      code: fn(`${OPENAI}\nawait fetch(\`h\${res.choices[0].message.content}\`);`),
+      filename: TS,
+      errors: [error(OPENAI_CHAT, 'the origin of a `fetch` URL')],
+    },
+    {
+      code: fn(`${OPENAI}\nawait fetch('Fil' + res.choices[0].message.content);`),
+      filename: TS,
+      errors: [error(OPENAI_CHAT, 'the origin of a `fetch` URL')],
+    },
+  ],
+});

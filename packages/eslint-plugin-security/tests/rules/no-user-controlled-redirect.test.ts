@@ -997,3 +997,94 @@ ruleTester.run('no-user-controlled-redirect: headers holders', noUserControlledR
     { code: "res.setHeader(`Loc${'ation'}`, target);", filename: TS, errors: [error] },
   ],
 });
+
+/** `n` alias swaps between two bindings, the shape that made the walk exponential. */
+const cyclic = (first: string, n: number, sink: string): string =>
+  `function h(req, res) { let p = ${first}; let q = p; ${'q = p; p = q; '.repeat(n)}${sink} }`;
+
+// SvelteKit targets at argument 0, header names that can still be Location,
+// relative prefixes no origin moving scheme starts with, and cyclic aliases.
+ruleTester.run('no-user-controlled-redirect: kit targets, header names, prefixes', noUserControlledRedirectRule, {
+  valid: [
+    // A relative prefix no scheme that leaves the origin starts with.
+    { code: 'res.redirect(`page${x}`);', filename: TS },
+    { code: "res.redirect('users' + req.query.id);", filename: TS },
+    { code: 'res.redirect(`api${req.query.p}`);', filename: TS },
+    { code: 'res.redirect(`Profile.${req.query.tab}`);', filename: TS },
+    {
+      code: 'NextResponse.redirect(new URL(`settings${x}`, request.url));',
+      filename: TS,
+      options: [{ trustedOrigins: ['request.url'] }],
+    },
+    // A header name that cannot become Location, fixed or with a runtime piece.
+    { code: "res.set('X-' + n, req.query.u);", filename: TS },
+    { code: 'res.set(`Content-${n}`, req.query.u);', filename: TS },
+    // A kit call with a fixed target in either position.
+    {
+      code: "import { redirect } from '@sveltejs/kit'; export function load() { throw redirect('/login'); }",
+      filename: TS,
+    },
+    {
+      code: "import { redirect } from '@sveltejs/kit'; export function load() { throw redirect('/login', 302); }",
+      filename: TS,
+    },
+    {
+      code: "import { redirect } from '@sveltejs/kit'; export function load({ url }) { throw redirect(status, '/login'); }",
+      filename: TS,
+    },
+    // A cyclic alias of a fixed name or holder stays quiet.
+    { code: cyclic("'X-Trace'", 40, 'res.set(p, req.query.u);'), filename: TS },
+    { code: cyclic('{}', 40, "p.Location = '/home'; res.set(p);"), filename: TS },
+  ],
+  invalid: [
+    // A kit call with one argument or a number literal second names the target first.
+    {
+      code: "import { redirect } from '@sveltejs/kit'; export function load({ url }) { const next = url.searchParams.get('next'); throw redirect(next); }",
+      filename: TS,
+      errors: [{ ...error, data: { url: 'next' } }],
+    },
+    {
+      code: "import { redirect } from '@sveltejs/kit'; export function load({ url }) { throw redirect(url.searchParams.get('next'), 302); }",
+      filename: TS,
+      errors: [{ ...error, data: { url: "url.searchParams.get('next')" } }],
+    },
+    {
+      code: "import { redirect as go } from '@sveltejs/kit'; export function load({ url }) { go(url.searchParams.get('next')); }",
+      filename: TS,
+      errors: [{ ...error, data: { url: "url.searchParams.get('next')" } }],
+    },
+    {
+      code: "import * as kit from '@sveltejs/kit'; export function load() { kit.redirect(target); }",
+      filename: TS,
+      errors: [{ ...error, data: { url: 'target' } }],
+    },
+    {
+      code: "import * as kit from '@sveltejs/kit'; export function load() { kit.redirect(target, 307); }",
+      filename: TS,
+      errors: [{ ...error, data: { url: 'target' } }],
+    },
+    // A header name a runtime piece can finish into Location.
+    { code: "res.set('Loc' + n, req.query.u);", filename: TS, errors: [error] },
+    { code: 'res.setHeader(`loc${n}`, req.query.u);', filename: TS, errors: [error] },
+    { code: "res.header(n + 'ation', req.query.u);", filename: TS, errors: [error] },
+    { code: "res.set({ ['Loc' + n]: req.query.u });", filename: TS, errors: [error] },
+    // A header name joined from more than 16 possible texts.
+    {
+      code: "function h(req, res) { let a = 'L'; if (c) a = 'l'; let b = 'o'; if (c) b = 'O'; let d = 'c'; if (c) d = 'C'; let e = 'a'; if (c) e = 'A'; let f = 'tion'; if (c) f = 'TION'; res.set(a + b + d + e + f, req.query.u); }",
+      filename: TS,
+      errors: [error],
+    },
+    // A relative prefix that can still grow into a scheme that leaves the origin, in any case.
+    { code: 'res.redirect(`ht${x}`);', filename: TS, errors: [error] },
+    { code: 'res.redirect(`dat${x}`);', filename: TS, errors: [error] },
+    { code: "res.redirect('vb' + x);", filename: TS, errors: [error] },
+    { code: 'res.redirect(`File${x}`);', filename: TS, errors: [error] },
+    { code: 'res.redirect(`JAVASCRIPT${x}`);', filename: TS, errors: [error] },
+    { code: 'res.redirect(`view-sou${x}`);', filename: TS, errors: [error] },
+    { code: 'res.redirect(`w${x}`);', filename: TS, errors: [error] },
+    // A cyclic alias of a Location name or holder is still read, and read once.
+    { code: cyclic("'Location'", 40, 'res.set(p, req.query.u);'), filename: TS, errors: [error] },
+    { code: cyclic('{}', 40, 'p.Location = req.query.u; res.set(p);'), filename: TS, errors: [error] },
+    { code: cyclic('{}', 40, 'q.Location = req.query.u; res.writeHead(302, p);'), filename: TS, errors: [error] },
+  ],
+});
