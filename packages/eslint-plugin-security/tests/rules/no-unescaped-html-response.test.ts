@@ -297,7 +297,8 @@ ruleTester.run('no-unescaped-html-response', noUnescapedHtmlResponseRule, {
     { code: "export function h(req, res) { res.send(layout(`<h1>${escapeHtml(req.query.q)}</h1>`)); }", filename: TS },
     { code: "import { safeHtml } from 'common-tags'; export function h(req, res) { res.send(safeHtml`<h1>${req.query.q}</h1>`); }", filename: TS },
     { code: `export function h(req, res) { res.send(\`<a href="${' '.repeat(300)}/s?q=\${encodeURIComponent(req.query.q)}">x</a>\`); }`, filename: TS },
-    { code: `export function h(req, res) { res.send(\`<a href="https${'\\t'.repeat(300)}://x.test/\${escapeHtml(req.query.q)}">x</a>\`); }`, filename: TS },    // A replacer function's result is written as is, with no `$` patterns.
+    { code: `export function h(req, res) { res.send(\`<a href="https${'\\t'.repeat(300)}://x.test/\${escapeHtml(req.query.q)}">x</a>\`); }`, filename: TS },    { code: "ejs.render('<p><%= bio %></p>', { ...opts, bio: escapeHtml(input) });", filename: TS },
+    // A replacer function's result is written as is, with no `$` patterns.
     { code: "const TPL = '<h1>{{name}}</h1>'; export function h(req, res) { res.send(TPL.replace('{{name}}', () => escapeHtml(req.query.q))); }", filename: TS },
     { code: "const TPL = '<a href=\"/s?q={{q}}\">x</a>'; export function h(req, res) { res.send(TPL.replace('{{q}}', encodeURIComponent(req.query.q))); }", filename: TS },
     {
@@ -804,6 +805,9 @@ ruleTester.run('no-unescaped-html-response', noUnescapedHtmlResponseRule, {
     { code: "ejs.render('<p><?- bio ?></p>', { bio: input }, { delimiter: '?' });", filename: TS, errors: raw },
     { code: "ejs.render('<p><?- bio ?></p>', { bio: input, delimiter: '?' });", filename: TS, errors: raw },
     { code: "ejs.render('<p>[%- bio %]</p>', { bio: input }, { openDelimiter: '[', closeDelimiter: ']' });", filename: TS, errors: raw },
+    // With no options argument, a spread or computed key in the data may set `escape` or a delimiter.
+    { code: "ejs.render('<p><%= bio %></p>', { ...opts, bio: input });", filename: TS, errors: raw },
+    { code: "ejs.render('<p><%= bio %></p>', { [key]: fn, bio: input });", filename: TS, errors: raw },
     { code: "ejs.render('<p><%- it.bio %></p>', { bio: input }, { localsName: 'it' });", filename: TS, errors: raw },
     { code: "ejs.render('<p><%= bio %></p>', { bio: input }, options);", filename: TS, errors: raw },
     { code: "ejs.render('<p><%= bio %></p>', { bio: input }, { outputFunctionName: 'echo' });", filename: TS, errors: raw },
