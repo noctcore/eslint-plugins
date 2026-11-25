@@ -174,7 +174,7 @@ undici's `new Client(origin)` and `new Pool(origin)` (imported from `undici`) by
   `if` around it), and the URL was not written after the read. The allowlist is `includes` / `has`
   on in-file literals, `===` against literals, or a regex anchored at both ends, without the `m` flag
   or a `.` wildcard, whose every alternative ends in a literal domain. A domain that ends in a
-  common public suffix (`vercel.app`, `github.io`, `netlify.app`, `pages.dev`, `co.uk` and similar)
+  common public suffix (`vercel.app`, `github.io`, `netlify.app`, `pages.dev`, `s3.<region>.amazonaws.com`, `co.uk` and similar)
   needs one more literal label before it, since anyone can register `evil.vercel.app`; the list is
   short and built in. `new URL(pinned).hostname`
   passed as a socket host is pinned too. The host can also be checked inline

@@ -118,13 +118,58 @@ const PUBLIC_SUFFIXES: ReadonlySet<string> = new Set([
 ]);
 
 /**
+ * Public suffixes with a label that varies, as in the Public Suffix List: a
+ * `*` label is any one label (a region such as `us-east-1`), and a `*` inside
+ * a label is any run of characters in it (`s3-*` covers `s3-us-west-2`).
+ */
+const PUBLIC_SUFFIX_PATTERNS: readonly (readonly RegExp[])[] = [
+  's3.amazonaws.com',
+  's3.*.amazonaws.com',
+  's3-*.amazonaws.com',
+  's3-website.*.amazonaws.com',
+  's3.dualstack.*.amazonaws.com',
+  's3-accesspoint.*.amazonaws.com',
+  'compute.amazonaws.com',
+  '*.compute.amazonaws.com',
+  'compute-1.amazonaws.com',
+  '*.elb.amazonaws.com',
+  'execute-api.*.amazonaws.com',
+  '*.elasticbeanstalk.com',
+  'lambda-url.*.on.aws',
+  '*.awsapprunner.com',
+  'blob.core.windows.net',
+  'web.core.windows.net',
+  '*.web.core.windows.net',
+  'storage.googleapis.com',
+  'firebasestorage.app',
+].map((pattern) =>
+  pattern
+    .split('.')
+    .map((label) =>
+      label === '*'
+        ? /^[^.]+$/u
+        : new RegExp(`^${label.replace(/[.+?^${}()|[\]\\]/gu, '\\$&').replace(/\*/gu, '[^.]*')}$`, 'u'),
+    ),
+);
+
+function isPublicSuffix(labels: readonly string[]): boolean {
+  return (
+    PUBLIC_SUFFIXES.has(labels.join('.')) ||
+    PUBLIC_SUFFIX_PATTERNS.some(
+      (pattern) =>
+        pattern.length === labels.length && pattern.every((matcher, index) => matcher.test(labels[index] ?? '')),
+    )
+  );
+}
+
+/**
  * How many labels the longest listed public suffix at the end of `domain`
  * has, or 1 (the top-level domain) when none is listed.
  */
 export function publicSuffixLabels(domain: string): number {
   const labels = domain.toLowerCase().split('.');
   for (let start = 0; start < labels.length - 1; start += 1) {
-    if (PUBLIC_SUFFIXES.has(labels.slice(start).join('.'))) {
+    if (isPublicSuffix(labels.slice(start))) {
       return labels.length - start;
     }
   }

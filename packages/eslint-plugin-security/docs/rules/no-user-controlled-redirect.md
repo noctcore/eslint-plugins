@@ -130,7 +130,7 @@ export function GET(request: Request) {
   an `origin` holds one) (`^(app|docs)\.example\.com$`, `^([a-z]+\.)?example\.com$`,
   `^(?:[a-z0-9-]+\.)*example\.com$`). `^[a-z0-9.-]*example\.com$` accepts `evilexample.com` and
   `^[a-z]+\.com$` accepts any `.com` host, so neither counts. A domain that ends in a common
-  public suffix (`vercel.app`, `github.io`, `netlify.app`, `pages.dev`, `co.uk` and similar) needs
+  public suffix (`vercel.app`, `github.io`, `netlify.app`, `pages.dev`, `s3.<region>.amazonaws.com`, `co.uk` and similar) needs
   one more literal label before the suffix: `^[a-z0-9-]+\.vercel\.app$` accepts anyone's
   `evil.vercel.app`, while `^[a-z0-9-]+\.myapp\.vercel\.app$` counts. The list is short and built
   in; a public suffix it does not know is read like any other domain of two labels. `const` aliases and
