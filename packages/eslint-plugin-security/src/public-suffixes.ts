@@ -120,9 +120,10 @@ const PUBLIC_SUFFIXES: ReadonlySet<string> = new Set([
 /**
  * Public suffixes with a label that varies, as in the Public Suffix List: a
  * `*` label is any one label (a region such as `us-east-1`), and a `*` inside
- * a label is any run of characters in it (`s3-*` covers `s3-us-west-2`).
+ * a label is one or more characters in it (`s3-*` covers `s3-us-west-2`).
+ * Matched label by label, not through a regular expression.
  */
-const PUBLIC_SUFFIX_PATTERNS: readonly (readonly RegExp[])[] = [
+const PUBLIC_SUFFIX_PATTERNS: readonly (readonly string[])[] = [
   's3.amazonaws.com',
   's3.*.amazonaws.com',
   's3-*.amazonaws.com',
@@ -142,22 +143,29 @@ const PUBLIC_SUFFIX_PATTERNS: readonly (readonly RegExp[])[] = [
   '*.web.core.windows.net',
   'storage.googleapis.com',
   'firebasestorage.app',
-].map((pattern) =>
-  pattern
-    .split('.')
-    .map((label) =>
-      label === '*'
-        ? /^[^.]+$/u
-        : new RegExp(`^${label.replace(/[.+?^${}()|[\]\\]/gu, '\\$&').replace(/\*/gu, '[^.]*')}$`, 'u'),
-    ),
-);
+].map((pattern) => pattern.split('.'));
+
+/** True when one label of a suffix pattern matches a label of a domain. */
+function labelMatches(pattern: string, label: string): boolean {
+  const star = pattern.indexOf('*');
+  if (star === -1) {
+    return pattern === label;
+  }
+  const before = pattern.slice(0, star);
+  const after = pattern.slice(star + 1);
+  return (
+    label.length > before.length + after.length &&
+    label.startsWith(before) &&
+    label.endsWith(after)
+  );
+}
 
 function isPublicSuffix(labels: readonly string[]): boolean {
   return (
     PUBLIC_SUFFIXES.has(labels.join('.')) ||
     PUBLIC_SUFFIX_PATTERNS.some(
       (pattern) =>
-        pattern.length === labels.length && pattern.every((matcher, index) => matcher.test(labels[index] ?? '')),
+        pattern.length === labels.length && pattern.every((part, index) => labelMatches(part, labels[index] ?? '')),
     )
   );
 }
