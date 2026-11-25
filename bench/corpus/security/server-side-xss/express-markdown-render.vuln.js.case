@@ -12,7 +12,7 @@ app.post('/notes/render', (req, res) => {
     return;
   }
   res.type('html');
-  res.send('<div class="note">' + marked(source) + '</div>'); // expect: security/require-sanitized-html
+  res.send('<div class="note">' + marked(source) + '</div>'); // expect: security/require-sanitized-html, security/no-unescaped-html-response
 });
 
 app.listen(3002);

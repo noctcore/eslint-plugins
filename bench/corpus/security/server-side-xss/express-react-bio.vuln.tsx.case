@@ -17,7 +17,7 @@ const app = express();
 
 app.get('/profile/:id', async (req, res) => {
   const bio = await getBio(req.params.id);
-  res.send('<!doctype html>' + renderToString(<ProfilePage bio={bio} />));
+  res.send('<!doctype html>' + renderToString(<ProfilePage bio={bio} />)); // expect: security/no-unescaped-html-response
 });
 
 app.listen(3005);

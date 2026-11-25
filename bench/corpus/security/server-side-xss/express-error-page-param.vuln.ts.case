@@ -11,7 +11,7 @@ app.get('/pages/:page', (req: Request, res: Response) => {
     return;
   }
   res.status(404);
-  res.send(`<h1>Not found</h1><p>No page called "${page}" exists.</p>`); // expect: security/require-sanitized-html
+  res.send(`<h1>Not found</h1><p>No page called "${page}" exists.</p>`); // expect: security/require-sanitized-html, security/no-unescaped-html-response
 });
 
 app.listen(3000);

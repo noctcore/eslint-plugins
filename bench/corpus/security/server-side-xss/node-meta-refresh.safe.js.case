@@ -1,0 +1,11 @@
+// @bench category=server-side-xss cwe=CWE-79 framework=node pair=node-meta-refresh title="meta refresh fixes its URL path and encodes the next parameter as a query value"
+// ok
+const http = require('node:http');
+
+http
+  .createServer((req, res) => {
+    const next = new URL(req.url, 'http://x').searchParams.get('next') || '/';
+    res.writeHead(200, { 'Content-Type': 'text/html' });
+    res.end(`<meta http-equiv="refresh" content="0; url=/welcome?next=${encodeURIComponent(next)}"><p>Redirecting</p>`);
+  })
+  .listen(5007);

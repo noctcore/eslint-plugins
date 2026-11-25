@@ -17,6 +17,6 @@ http
   .createServer((req, res) => {
     const bio = new URL(req.url, 'http://x').searchParams.get('bio') || '';
     res.writeHead(200, { 'Content-Type': 'text/html' });
-    res.end(renderToString(<Profile bio={bio} />));
+    res.end(renderToString(<Profile bio={bio} />)); // expect: security/no-unescaped-html-response
   })
   .listen(5005);

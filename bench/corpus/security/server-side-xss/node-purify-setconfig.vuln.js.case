@@ -1,0 +1,14 @@
+// @bench category=server-side-xss cwe=CWE-79 framework=node pair=node-purify-setconfig title="shared DOMPurify config allows onerror before the preview is sanitized"
+const http = require('node:http');
+const DOMPurify = require('isomorphic-dompurify');
+
+DOMPurify.setConfig({ ADD_ATTR: ['onerror'] });
+
+http
+  .createServer(async (req, res) => {
+    let body = '';
+    for await (const chunk of req) body += chunk;
+    res.writeHead(200, { 'Content-Type': 'text/html' });
+    res.end(`<div class="preview">${DOMPurify.sanitize(body)}</div>`); // expect: security/no-unescaped-html-response
+  })
+  .listen(5006);
