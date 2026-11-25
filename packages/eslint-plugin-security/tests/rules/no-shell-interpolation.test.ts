@@ -1392,3 +1392,48 @@ ruleTester.run('no-shell-interpolation: sh -c args changed in place', noShellInt
     ].map((body) => ({ code: `function run(d: string) { ${body} }`, filename: TS, errors: error })),
   ],
 });
+
+// Uses of an args binding that cannot change the array keep its fixed
+// command known; fixed text added in place is read with it.
+ruleTester.run('no-shell-interpolation: sh -c args read but not changed', noShellInterpolationRule, {
+  valid: [
+    ...[
+      "const args = ['-c', 'ls -la']; if (args.length) spawn('sh', args);",
+      "const args = ['-c', 'ls -la']; console.log(args); spawn('sh', args);",
+      "const args = ['-c']; args.push('ls -la'); spawn('sh', args);",
+      "const args = ['-c', 'ls -la']; log(args[1], args.at(0), `${args}`, 'run ' + args, String(args)); spawn('sh', args);",
+      "const args = ['-c', 'ls -la']; if (args.includes('-c') && args.indexOf('x') < 0) log(args.join(' ')); spawn('sh', args);",
+      "const args = ['-c', 'ls -la']; log(JSON.stringify(args), JSON.stringify(args, null, 2)); spawn('sh', args);",
+      "const args = ['-c', 'ls -la']; const copy = [...args, d]; copy.push(d); spawn('sh', args);",
+      "const args = ['ls -la']; args.unshift('-c'); spawn('sh', args);",
+      "const args = ['-c', 'ls']; args.splice(1, 1, 'pwd'); spawn('sh', args);",
+      // Fixed text pushed after a proven command.
+      "if (!/^[a-z.]+$/.test(d)) return; const args = ['-c', `dig ${d}`]; args.push('extra'); spawn('sh', args);",
+    ].map((body) => ({ code: `function run(d: string) { ${body} } function log(...v: unknown[]) {}`, filename: TS })),
+  ],
+  invalid: [
+    ...[
+      // A runtime value added, or fixed text that moves a runtime element into the command.
+      "const args = ['-c', 'ls']; args.push(d); spawn('sh', args);",
+      "const args = ['-c']; args.push('ls', `dig ${d}`); spawn('sh', args);",
+      "const args = ['-c']; args.push(...more); spawn('sh', args);",
+      "const args = [`dig ${d}`]; args.unshift('-c'); spawn('sh', args);",
+      "const args = ['-c', 'ls', `dig ${d}`]; args.splice(1, 1); spawn('sh', args);",
+      // Any other use may change the array.
+      "const args = ['-c', 'ls']; args.sort(); spawn('sh', args);",
+      "const args = ['-c', 'ls']; args.length = 0; spawn('sh', args);",
+      "const args = ['-c', 'ls']; args[1] += d; spawn('sh', args);",
+      "const args = ['-c', 'ls']; delete args[1]; spawn('sh', args);",
+      "const args = ['-c', 'ls']; [, args[1]] = ['', d]; spawn('sh', args);",
+      "const args = ['-c', 'ls']; args[d](d); spawn('sh', args);",
+      "const args = ['-c', 'ls']; JSON.stringify(args, (k, v) => v); spawn('sh', args);",
+      "const console = { log: fill }; const args = ['-c', 'ls']; console.log(args, d); spawn('sh', args);",
+      "const args = ['-c', 'ls']; const b = args || []; b.push(d); spawn('sh', args);",
+      "const args = ['-c', 'ls']; log(...args); fill(args, d); spawn('sh', args);",
+    ].map((body) => ({
+      code: `function run(d: string, more: string[]) { ${body} } function log(...v: unknown[]) {}`,
+      filename: TS,
+      errors: error,
+    })),
+  ],
+});
