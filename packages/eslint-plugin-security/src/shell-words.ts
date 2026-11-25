@@ -150,8 +150,23 @@ function isAssignment(text: string): boolean {
   return ASSIGNMENT_WORD.test(text.replaceAll(VALUE_MARK, 'v'));
 }
 
+/**
+ * True when a word holding values can read as one of `names`: each value
+ * stands for any text, so `-${x}` can be `-exec` and `${x}` can be `exec`.
+ */
+function canSpell(word: string, names: ReadonlySet<string>): boolean {
+  const pattern = new RegExp(
+    `^${word
+      .split(VALUE_MARK)
+      .map((text) => text.replace(/[\\^$.*+?()[\]{}|]/gu, '\\$&'))
+      .join('[^]*')}$`,
+    'u',
+  );
+  return [...names].some((name) => pattern.test(name));
+}
+
 /** The basename of a word with its quotes and backslashes taken out. */
-function commandName(word: string): string {
+export function commandName(word: string): string {
   const bare = word.replace(/['"\\]/gu, '');
   return bare.slice(bare.lastIndexOf('/') + 1);
 }
@@ -180,6 +195,11 @@ export function classifyShellParts(
   const parts: ShellPart[] = [];
   let mode: 'command' | 'wrapped' | 'args' = 'command';
   let program: string | null = null;
+  // For a package runner: whether its subcommand is already known (a word
+  // that is not an option and not the value of the option before it), and
+  // whether the last word was an option.
+  let subcommandKnown = false;
+  let afterOption = false;
   let redirectTarget = false;
   // The current word as read (quotes and backslashes left out) and whether it
   // has anything in it.
@@ -243,12 +263,29 @@ export function classifyShellParts(
       } else {
         program = commandName(text);
         mode = 'args';
+        subcommandKnown = false;
+        afterOption = false;
       }
     } else if (mode === 'args') {
       const runner = program === null ? undefined : RUNNER_SUBCOMMANDS[program];
-      if (FIND_ACTIONS.has(text) || runner?.has(text) === true) {
+      // A word built from a proven value can still spell an action or a
+      // subcommand (`find . -${x}`, `npm ${x} ${t}` with `x = 'exec'`). A
+      // value that starts a word is proven not to start with `-`, so only
+      // static text can begin a `find` action.
+      const built = text.includes(VALUE_MARK);
+      if (
+        FIND_ACTIONS.has(text) ||
+        runner?.has(text) === true ||
+        (built && program === 'find' && text.startsWith('-') && canSpell(text, FIND_ACTIONS)) ||
+        (built && runner !== undefined && !subcommandKnown && canSpell(text, runner))
+      ) {
         mode = 'wrapped';
       }
+      const option = text.startsWith('-');
+      if (!option && !afterOption) {
+        subcommandKnown = true;
+      }
+      afterOption = option;
     }
   };
 

@@ -9,7 +9,7 @@ import type { JSONSchema4 } from '@typescript-eslint/utils/json-schema';
 
 import { createRule } from '../createRule';
 import { type GuardContext, isProvenSafeValue, peelStringWrappers } from '../guards';
-import { classifyShellParts, type ShellPart } from '../shell-words';
+import { classifyShellParts, commandName, type ShellPart } from '../shell-words';
 import { callArguments, conventionalCallee, stringPieces } from '../value-flow';
 
 const RULE_NAME = 'no-shell-interpolation';
@@ -38,8 +38,10 @@ type MessageIds = 'shellInterpolation';
  *    `false` (`true`, a shell path, or a runtime value such as
  *    `process.platform === 'win32'`, which is a shell on some machines). With
  *    a shell, Node joins the args array into the command, so its elements are
- *    read as command text too. The array-args, no-shell forms are safe and
- *    left entirely alone.
+ *    read as command text too. Without a shell option, a program that is
+ *    itself a shell told to run a command (`spawn('sh', ['-c', cmd])`,
+ *    `cmd /c`) has that command checked like `exec`. The other array-args,
+ *    no-shell forms are safe and left entirely alone.
  *  - A binding made with `promisify(exec)` (or `util.promisify(cp.exec)`) is
  *    followed through scope and checked like the runner it wraps.
  *  - A runtime part the function already proved harmless is accepted (see
@@ -394,6 +396,111 @@ function shellArgSegments(
   return { node: list, segments };
 }
 
+/** POSIX shells that run the text after `-c` as a command. */
+const POSIX_SHELLS: ReadonlySet<string> = new Set([
+  'sh',
+  'bash',
+  'zsh',
+  'dash',
+  'ksh',
+  'mksh',
+  'ash',
+  'fish',
+]);
+/** Shell options that take the next word as their value (`-o pipefail`). */
+const VALUED_SHELL_OPTIONS = /^[-+][a-zA-Z]*[oO]$/u;
+
+/** The static text of a string literal, a template without values or a `const` holding one; else null. */
+function staticWord(
+  node: TSESTree.Node,
+  sourceCode: Readonly<TSESLint.SourceCode>,
+): string | null {
+  const segments = commandSegments(node, sourceCode);
+  return segments.every((segment) => typeof segment === 'string') ? segments.join('') : null;
+}
+
+/**
+ * For `spawn('sh', ['-c', cmd])` (or `execFile`, `bash -lc`, `cmd /c`)
+ * run without a shell option, the element the shell reads as its command and,
+ * for `cmd.exe`, the elements after it, which it reads as the rest of the
+ * line. Null when the program is not a known shell, the args are not an
+ * inline array or no command element is found.
+ */
+function shellProgramCommand(
+  args: readonly TSESTree.CallExpressionArgument[],
+  sourceCode: Readonly<TSESLint.SourceCode>,
+): { readonly node: TSESTree.Node; readonly rest: readonly TSESTree.Node[] } | null {
+  const [program, list] = args;
+  if (program === undefined || program.type === AST_NODE_TYPES.SpreadElement) {
+    return null;
+  }
+  const text = staticWord(program, sourceCode);
+  const array = list === undefined ? null : unwrapTypeWrappers(list);
+  if (text === null || array?.type !== AST_NODE_TYPES.ArrayExpression) {
+    return null;
+  }
+  const name = commandName(text).toLowerCase().replace(/\.exe$/u, '');
+  const windows = name === 'cmd';
+  if (!windows && !POSIX_SHELLS.has(name)) {
+    return null;
+  }
+  const elements = array.elements;
+  let commandFlag = false;
+  for (let index = 0; index < elements.length; index += 1) {
+    const element = elements[index];
+    if (element === null || element === undefined) {
+      continue;
+    }
+    if (element.type === AST_NODE_TYPES.SpreadElement) {
+      return null;
+    }
+    const word = staticWord(element, sourceCode);
+    if (windows) {
+      if (word !== null && /^\/[ck]$/iu.test(word)) {
+        const rest = elements.slice(index + 1);
+        const first = rest[0];
+        return first === null ||
+          first === undefined ||
+          rest.some((item) => item === null || item.type === AST_NODE_TYPES.SpreadElement)
+          ? null
+          : { node: first, rest: rest.slice(1) as TSESTree.Node[] };
+      }
+      continue;
+    }
+    if (commandFlag && (word === null || !/^[-+]/u.test(word))) {
+      return { node: element, rest: [] };
+    }
+    if (word === null) {
+      // A runtime option before `-c` may be anything; nothing is read.
+      return null;
+    }
+    if (word === '--') {
+      continue;
+    }
+    if (/^-[a-zA-Z]*c[a-zA-Z]*$/u.test(word) || word === '--command') {
+      commandFlag = true;
+    } else if (VALUED_SHELL_OPTIONS.test(word)) {
+      index += 1;
+    } else if (!/^[-+]/u.test(word) && !commandFlag) {
+      // A script path: the shell runs a file, not text from the call.
+      return null;
+    }
+  }
+  return null;
+}
+
+/** True when `node` (or the in-file `const` it names) builds a string from runtime parts. */
+function buildsCommand(node: TSESTree.Node, sourceCode: Readonly<TSESLint.SourceCode>): boolean {
+  let current: TSESTree.Node | null = peelStringWrappers(node, sourceCode);
+  for (let depth = 0; current !== null && depth < MAX_CONST_DEPTH; depth += 1) {
+    if (isDynamicCommandString(current, sourceCode)) {
+      return true;
+    }
+    current = constStringInit(current, sourceCode);
+  }
+  return false;
+}
+
 /** True when `callee` is `promisify` or `<x>.promisify` (`util.promisify`). */
 function isPromisify(callee: TSESTree.Node, sourceCode: Readonly<TSESLint.SourceCode>): boolean {
   const info = resolvedCalleeInfo(callee, sourceCode);
@@ -498,21 +605,6 @@ export const noShellInterpolationRule = createRule<RuleOptions, MessageIds>({
           return;
         }
 
-        const runsShell =
-          alwaysShell.has(info.name) ||
-          (CONDITIONAL_SHELL.has(info.name) && argsRequestShell(args));
-        if (!runsShell) {
-          return;
-        }
-        const shellArgs = CONDITIONAL_SHELL.has(info.name)
-          ? shellArgSegments(args, context.sourceCode)
-          : null;
-        const dynamicCommand = isDynamicCommandString(command, context.sourceCode);
-        const dynamicArgs =
-          shellArgs !== null && shellArgs.segments.some((segment) => typeof segment !== 'string');
-        if (!dynamicCommand && !dynamicArgs) {
-          return;
-        }
         // Every runtime part already proven harmless: checked against an
         // allowlist or a shell-inert anchored regex, a schema with such a
         // pattern, an in-file constant, or (with `trustEnvironment`) a value
@@ -531,21 +623,61 @@ export const noShellInterpolationRule = createRule<RuleOptions, MessageIds>({
           }
           return known;
         };
+        const provenCommand = (segments: Segments): boolean =>
+          commandReadings(segments, node, context.sourceCode, trustEnvironment).every((reading) =>
+            classifyShellParts(reading.segments, reading.opaque).every((part) =>
+              partContexts(part).every((where) => provenAt(part.node, where)),
+            ),
+          );
+
+        const runsShell =
+          alwaysShell.has(info.name) ||
+          (CONDITIONAL_SHELL.has(info.name) && argsRequestShell(args));
+        if (!runsShell) {
+          // No shell option, but the program is a shell told to run a
+          // command: `spawn('sh', ['-c', cmd])`.
+          const program = CONDITIONAL_SHELL.has(info.name)
+            ? shellProgramCommand(args, context.sourceCode)
+            : null;
+          if (program === null) {
+            return;
+          }
+          // `cmd.exe` reads the elements after the command as more of the
+          // line, so a runtime one is command text like a joined args array.
+          const rest = program.rest.flatMap((part) => [
+            ' ',
+            ...commandSegments(part, context.sourceCode),
+          ]);
+          if (
+            !buildsCommand(program.node, context.sourceCode) &&
+            rest.every((segment) => typeof segment === 'string')
+          ) {
+            return;
+          }
+          const segments = [...commandSegments(program.node, context.sourceCode), ...rest];
+          if (!provenCommand(segments)) {
+            context.report({
+              node: program.node,
+              messageId: 'shellInterpolation',
+              data: { callee: direct.name },
+            });
+          }
+          return;
+        }
+        const shellArgs = CONDITIONAL_SHELL.has(info.name)
+          ? shellArgSegments(args, context.sourceCode)
+          : null;
+        const dynamicCommand = isDynamicCommandString(command, context.sourceCode);
+        const dynamicArgs =
+          shellArgs !== null && shellArgs.segments.some((segment) => typeof segment !== 'string');
+        if (!dynamicCommand && !dynamicArgs) {
+          return;
+        }
         const segments = [
           ...commandSegments(command, context.sourceCode),
           ...(shellArgs?.segments ?? []),
         ];
-        const provenSafe = commandReadings(
-          segments,
-          node,
-          context.sourceCode,
-          trustEnvironment,
-        ).every((reading) =>
-          classifyShellParts(reading.segments, reading.opaque).every((part) =>
-            partContexts(part).every((where) => provenAt(part.node, where)),
-          ),
-        );
-        if (provenSafe) {
+        if (provenCommand(segments)) {
           return;
         }
         context.report({
