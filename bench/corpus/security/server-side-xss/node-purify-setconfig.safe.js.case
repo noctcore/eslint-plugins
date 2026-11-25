@@ -1,0 +1,15 @@
+// @bench category=server-side-xss cwe=CWE-79 framework=node pair=node-purify-setconfig title="shared DOMPurify config narrows the allowed tags before the preview is sanitized"
+// ok
+const http = require('node:http');
+const DOMPurify = require('isomorphic-dompurify');
+
+DOMPurify.setConfig({ ALLOWED_TAGS: ['b', 'i', 'em', 'strong'] });
+
+http
+  .createServer(async (req, res) => {
+    let body = '';
+    for await (const chunk of req) body += chunk;
+    res.writeHead(200, { 'Content-Type': 'text/html' });
+    res.end(`<div class="preview">${DOMPurify.sanitize(body)}</div>`);
+  })
+  .listen(5006);

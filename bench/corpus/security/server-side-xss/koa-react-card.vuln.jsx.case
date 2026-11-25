@@ -16,7 +16,7 @@ const app = new Koa();
 app.use(async (ctx) => {
   const headline = String(ctx.query.headline || 'Untitled');
   ctx.type = 'html';
-  ctx.body = renderToString(<Card headline={headline} />);
+  ctx.body = renderToString(<Card headline={headline} />); // expect: security/no-unescaped-html-response
 });
 
 app.listen(4006);

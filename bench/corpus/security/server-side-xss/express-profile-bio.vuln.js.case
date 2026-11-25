@@ -10,7 +10,7 @@ app.get('/u/:name', async (req, res) => {
     return res.status(404).send('no such user');
   }
   const bio = user.bio || '';
-  const page = `<article><h2>Profile</h2><div class="bio">${bio}</div></article>`; // expect: security/require-sanitized-html
+  const page = `<article><h2>Profile</h2><div class="bio">${bio}</div></article>`; // expect: security/require-sanitized-html, security/no-unescaped-html-response
   res.send(page);
 });
 

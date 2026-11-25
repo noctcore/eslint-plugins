@@ -18,7 +18,7 @@ app.use(express.json());
 
 app.post('/comments/render', (req, res) => {
   const items = (req.body.comments || []).map((c, i) => <Comment key={i} text={c} />);
-  res.send(renderToString(<ul>{items}</ul>));
+  res.send(renderToString(<ul>{items}</ul>)); // expect: security/no-unescaped-html-response
 });
 
 app.listen(3006);

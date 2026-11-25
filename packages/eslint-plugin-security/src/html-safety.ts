@@ -1,7 +1,7 @@
 import { AST_NODE_TYPES, ASTUtils, type TSESLint, type TSESTree } from '@typescript-eslint/utils';
 
 import { type GuardContext, isProvenSafeValue } from './guards';
-import type { HtmlContext } from './html-context';
+import { type HtmlContext, isUrlAttribute } from './html-context';
 import { flowStep, stringPieces, withArguments } from './value-flow';
 
 /*
@@ -84,7 +84,7 @@ const HE_ENCODE: Encoder = { encoding: 'escape-all', options: (call, judge) => j
 const SANITIZE_HTML: Encoder = { encoding: 'sanitized', options: (call, judge) => judge.sanitizeHtmlOptionsSafe(call) };
 const XSS: Encoder = { encoding: 'sanitized', options: (call, judge) => judge.xssOptionsSafe(call) };
 const DOMPURIFY: Encoder = { encoding: 'sanitized', options: (call, judge) => judge.domPurifyOptionsSafe(call) };
-const REACT_RENDER: Encoder = { encoding: 'sanitized', options: () => true };
+const REACT_RENDER: Encoder = { encoding: 'sanitized', options: (call, judge) => judge.reactRenderSafe(call) };
 const SERIALIZE: Encoder = { encoding: 'script-json', options: (call, judge) => judge.serializeOptionsSafe(call) };
 const SCRIPT_JSON: Encoder = { encoding: 'script-json' };
 
@@ -130,6 +130,12 @@ const MODULES: Readonly<Record<string, ModuleSpec>> = {
   htmlescape: { callable: SCRIPT_JSON, named: { htmlescape: SCRIPT_JSON } },
 };
 
+/** Modules with shared default options that every call reads: where they hang, and the call that reads them. */
+const SHARED_DEFAULTS: Readonly<Record<string, { readonly fields: ReadonlySet<string>; readonly encoder: Encoder }>> = {
+  'sanitize-html': { fields: new Set(['defaults']), encoder: SANITIZE_HTML },
+  xss: { fields: new Set(['whiteList', 'allowList']), encoder: XSS },
+};
+
 /** Global functions that encode, called by name and not shadowed. */
 const GLOBAL_ENCODERS: Readonly<Record<string, Encoding>> = {
   encodeURIComponent: 'url-component',
@@ -164,6 +170,13 @@ const DOMPURIFY_DANGEROUS_TAGS: ReadonlySet<string> = new Set(
   [...DANGEROUS_TAGS].filter((tag) => tag !== 'style').concat(['iframe']),
 );
 const DANGEROUS_SCHEMES: ReadonlySet<string> = new Set(['javascript', 'vbscript']);
+/** Tags where a `data:` URL is only media, never a document or a script. */
+const DATA_URI_MEDIA_TAGS: ReadonlySet<string> = new Set(['img', 'audio', 'video', 'source', 'image', 'track']);
+/** Tags whose `src` loads a document, where a `data:text/html` URL runs script. */
+const FRAME_TAGS: ReadonlySet<string> = new Set(['iframe', 'frame']);
+/** Array methods that only read: they return a primitive or a new array of the same items. */
+const COPYING_METHODS: ReadonlySet<string> = new Set(['concat', 'slice', 'includes', 'indexOf', 'lastIndexOf', 'join', 'at']);
+const MAX_SCAN = 200_000;
 const NUMERIC_GLOBALS: ReadonlySet<string> = new Set(['Number', 'parseInt', 'parseFloat', 'Boolean', 'isNaN', 'isFinite']);
 const NUMERIC_METHODS: ReadonlySet<string> = new Set(['toFixed', 'toPrecision', 'toExponential']);
 /** `Date` methods whose result is a number or an ISO stamp. */
@@ -525,6 +538,14 @@ export class HtmlSafety {
   readonly purifiers: Set<TSESLint.Scope.Variable> = new Set();
   /** DOMPurify bindings given a config or hooks that switch protection off. */
   readonly weakenedPurifiers: Set<TSESLint.Scope.Variable> = new Set();
+  /**
+   * Modules whose shared state may switch protection off for every import of
+   * them: a `setConfig` on the isomorphic-dompurify singleton, a write to
+   * `sanitizeHtml.defaults` or `xss.whiteList`.
+   */
+  readonly weakenedModules: Set<string> = new Set();
+  private readonly reactActive = new Set<TSESTree.Node>();
+  private readonly reactCache = new Map<TSESTree.Node, boolean>();
 
   constructor(
     private readonly sourceCode: SourceCode,
@@ -597,11 +618,30 @@ export class HtmlSafety {
       return null;
     }
     const variable = this.variableOf(inner);
-    return variable === null ? null : (this.bindings.get(variable) ?? null);
+    if (variable === null || variable.references.some((reference) => reference.isWrite() && !reference.init)) {
+      return null;
+    }
+    return this.bindings.get(variable) ?? null;
   }
 
   private specOf(binding: ModuleBinding): ModuleSpec | null {
     return MODULES[binding.module] ?? null;
+  }
+
+  /**
+   * True when `node` (a callee or template tag) is an import of an escaping
+   * module, or common-tags `safeHtml`, which escapes what it is given.
+   */
+  isEscapingModule(node: TSESTree.Node): boolean {
+    let inner = unwrap(node);
+    if (inner.type === AST_NODE_TYPES.MemberExpression) {
+      inner = unwrap(inner.object);
+    }
+    const binding = this.moduleOf(inner);
+    return (
+      binding !== null &&
+      (this.specOf(binding) !== null || (binding.module === 'common-tags' && binding.imported === 'safeHtml'))
+    );
   }
 
   /** True when `node` is a DOMPurify instance: a factory call, or a binding to one. */
@@ -635,9 +675,12 @@ export class HtmlSafety {
     if (callee.type === AST_NODE_TYPES.Identifier) {
       const binding = this.moduleOf(callee);
       if (binding !== null) {
+        if (this.weakenedModules.has(binding.module)) {
+          return null;
+        }
         const spec = this.specOf(binding);
         if (spec === null) {
-          return this.options.sanitizerNames.has(callee.name) ? { encoding: 'escape-quot' } : null;
+          return this.options.sanitizerNames.has(callee.name) && !this.changedHere(callee, []) ? { encoding: 'escape-quot' } : null;
         }
         if (binding.imported === '*' || binding.imported === 'default') {
           return spec.callable ?? null;
@@ -655,7 +698,7 @@ export class HtmlSafety {
       if ((this.variableOf(callee)?.defs.length ?? 0) > 0) {
         return null;
       }
-      return this.options.sanitizerNames.has(callee.name) ? { encoding: 'escape-quot' } : null;
+      return this.options.sanitizerNames.has(callee.name) && !this.changedHere(callee, []) ? { encoding: 'escape-quot' } : null;
     }
     if (callee.type !== AST_NODE_TYPES.MemberExpression) {
       return null;
@@ -670,7 +713,9 @@ export class HtmlSafety {
       const spec = this.specOf(binding);
       const encoder = spec?.named[method];
       if (encoder !== undefined) {
-        return encoder === DOMPURIFY && this.isWeakened(object) ? null : encoder;
+        return (encoder === DOMPURIFY && this.isWeakened(object)) || this.weakenedModules.has(binding.module)
+          ? null
+          : encoder;
       }
     }
     if (method === 'sanitize' && this.isPurifier(object)) {
@@ -678,11 +723,190 @@ export class HtmlSafety {
     }
     if (object.type === AST_NODE_TYPES.Identifier || object.type === AST_NODE_TYPES.MemberExpression) {
       const text = `${squash(this.sourceCode.getText(object))}.${method}`;
-      if (this.options.sanitizerTexts.has(text)) {
-        return { encoding: 'escape-quot' };
+      if (this.options.sanitizerTexts.has(text) && !this.declaredHere(object)) {
+        const path = [method];
+        let root: TSESTree.Node = object;
+        while (root.type === AST_NODE_TYPES.MemberExpression) {
+          path.unshift(propertyName(root) ?? '');
+          root = unwrap(root.object);
+        }
+        return root.type === AST_NODE_TYPES.Identifier && this.changedHere(root, path) ? null : { encoding: 'escape-quot' };
       }
     }
     return null;
+  }
+
+  /**
+   * True when this file may replace what a configured sanitizer name points
+   * at: a write to the name it starts from (other than its declaration), to
+   * the property path it calls (`utils.escapeHtml = ...`) or a part of it,
+   * `Object.assign` / `Object.defineProperty` / `Reflect.set` on one of those,
+   * the same through an alias (`const u = utils`) or, for a global name,
+   * through `globalThis.utils`; or one of those handed on to a call, a
+   * variable, a property or an export, where it may be changed unseen.
+   */
+  private changedHere(root: TSESTree.Identifier, path: readonly string[]): boolean {
+    const variable = this.variableOf(root);
+    const references =
+      variable !== null && variable.defs.length > 0 ? variable.references : this.globalReferences(root.name);
+    if (references.some((reference) => reference.isWrite() && !reference.init)) {
+      return true;
+    }
+    const starts: TSESTree.Node[] = references.filter((reference) => !reference.init).map((reference) => reference.identifier);
+    if (variable === null || variable.defs.length === 0) {
+      for (const name of GLOBAL_OBJECTS) {
+        for (const reference of this.globalReferences(name)) {
+          const holder = outerOf(reference.identifier);
+          const parent = holder.parent;
+          if (parent?.type === AST_NODE_TYPES.MemberExpression && parent.object === holder) {
+            const property = propertyName(parent);
+            if (property === null || property === root.name) {
+              starts.push(parent);
+            }
+          } else if (isObjectWrite(holder)) {
+            return true;
+          }
+        }
+      }
+    }
+    const seen = new Set<Variable>();
+    return starts.some((start) => this.pathChanged(start, path, seen));
+  }
+
+  /** The references to a global name the file does not declare. */
+  private globalReferences(name: string): readonly TSESLint.Scope.Reference[] {
+    const global = this.sourceCode.scopeManager?.globalScope;
+    if (global === null || global === undefined) {
+      return [];
+    }
+    const variable = global.set.get(name);
+    if (variable !== undefined && variable.defs.length > 0) {
+      return [];
+    }
+    return [...(variable?.references ?? []), ...global.through.filter((reference) => reference.identifier.name === name)];
+  }
+
+  /** True when the member path read from `start` is written, or `start` or a member on the way is handed on. */
+  private pathChanged(start: TSESTree.Node, path: readonly string[], seen: Set<Variable>): boolean {
+    let node = start;
+    for (let index = 0; ; index += 1) {
+      const holder = outerOf(node);
+      if (isObjectWrite(holder)) {
+        return true;
+      }
+      if (index >= path.length) {
+        return false;
+      }
+      const parent = holder.parent;
+      if (parent?.type === AST_NODE_TYPES.MemberExpression && parent.object === holder) {
+        const name = propertyName(parent);
+        if (name !== null && name !== path[index]) {
+          return false;
+        }
+        if (isWriteTarget(parent)) {
+          return true;
+        }
+        node = parent;
+        continue;
+      }
+      return this.handedOn(holder, path.slice(index), seen);
+    }
+  }
+
+  /**
+   * True when an object a sanitizer is read from goes somewhere the rule
+   * cannot follow; a `const` or `let` alias is followed with the rest of the path.
+   */
+  private handedOn(node: TSESTree.Node, rest: readonly string[], seen: Set<Variable>): boolean {
+    const parent = node.parent;
+    if (parent === undefined) {
+      return false;
+    }
+    switch (parent.type) {
+      case AST_NODE_TYPES.CallExpression:
+      case AST_NODE_TYPES.NewExpression: {
+        if (parent.callee === node) {
+          return false;
+        }
+        // `Object.keys(utils)`, `Object.assign(copy, utils)`: read only (a write target was checked
+        // before), unless the callee sits deeper, where a shallow copy or `Object.values` shares the
+        // object holding it.
+        const callee = unwrap(parent.callee);
+        const owner = callee.type === AST_NODE_TYPES.MemberExpression ? unwrap(callee.object) : null;
+        return (
+          rest.length > 1 || !(owner?.type === AST_NODE_TYPES.Identifier && (owner.name === 'Object' || owner.name === 'Reflect'))
+        );
+      }
+      case AST_NODE_TYPES.VariableDeclarator: {
+        if (parent.init !== node || parent.id.type !== AST_NODE_TYPES.Identifier) {
+          return true;
+        }
+        const alias = this.variableOf(parent.id);
+        if (alias === null) {
+          return true;
+        }
+        if (seen.has(alias)) {
+          return false;
+        }
+        seen.add(alias);
+        return alias.references.some(
+          (reference) => (reference.isWrite() && !reference.init) || (!reference.init && this.pathChanged(reference.identifier, rest, seen)),
+        );
+      }
+      case AST_NODE_TYPES.UnaryExpression:
+        return parent.operator === 'delete';
+      // `utils || fallback` and `c ? utils : other` hand `utils` on wherever the result goes.
+      case AST_NODE_TYPES.LogicalExpression:
+        return this.handedOn(outerOf(parent), rest, seen);
+      case AST_NODE_TYPES.ConditionalExpression:
+        return parent.test !== node && this.handedOn(outerOf(parent), rest, seen);
+      case AST_NODE_TYPES.BinaryExpression:
+      case AST_NODE_TYPES.ExpressionStatement:
+      case AST_NODE_TYPES.IfStatement:
+      case AST_NODE_TYPES.TemplateLiteral:
+        return false;
+      default:
+        return true;
+    }
+  }
+
+  /**
+   * True when the name a dotted callee starts from is declared in this file
+   * other than by an import or a `require`: an object or class the file
+   * defines, or a parameter, which a configured name says nothing about.
+   */
+  private declaredHere(object: TSESTree.Node): boolean {
+    let root = object;
+    while (root.type === AST_NODE_TYPES.MemberExpression) {
+      root = unwrap(root.object);
+    }
+    if (root.type !== AST_NODE_TYPES.Identifier) {
+      return false;
+    }
+    const variable = this.variableOf(root);
+    if (variable === null || variable.defs.length === 0 || this.bindings.has(variable)) {
+      return false;
+    }
+    return !variable.defs.every((def) => {
+      if (def.type === 'ImportBinding') {
+        return true;
+      }
+      if (def.type !== 'Variable' || def.node.init === null) {
+        return false;
+      }
+      const init = unwrap(def.node.init);
+      return (
+        init.type === AST_NODE_TYPES.CallExpression &&
+        init.callee.type === AST_NODE_TYPES.Identifier &&
+        init.callee.name === 'require' &&
+        def.node.id.type === AST_NODE_TYPES.Identifier
+      );
+    });
+  }
+
+  /** True for a server render of React (`renderToString(<Page />)`), whose result is always markup. */
+  rendersMarkup(call: TSESTree.CallExpression): boolean {
+    return this.encoderOf(call) === REACT_RENDER;
   }
 
   /** The encoding a call's result has, with options that switch protection off refused. */
@@ -802,7 +1026,14 @@ export class HtmlSafety {
 
   private safeAttributeName(name: string): boolean {
     const lower = name.toLowerCase();
-    return !lower.startsWith('on') && lower !== 'srcdoc' && lower !== '*';
+    const star = lower.indexOf('*');
+    if (star !== -1) {
+      // A sanitize-html glob (`data-*`) matches any name with its literal start:
+      // `o*` matches `onerror`, `s*` matches `srcdoc`.
+      const prefix = lower.slice(0, star);
+      return !(prefix.startsWith('on') || 'on'.startsWith(prefix) || 'srcdoc'.startsWith(prefix));
+    }
+    return !lower.startsWith('on') && lower !== 'srcdoc';
   }
 
   /** An attribute map (`{ a: ['href'], '*': ['class'] }`) that allows no event handler or `srcdoc`. */
@@ -892,8 +1123,16 @@ export class HtmlSafety {
         case 'allowedSchemesByTag': {
           const byTag = unwrap(value);
           const tags = byTag.type === AST_NODE_TYPES.ObjectExpression ? this.optionEntries(byTag) : null;
-          if (tags === null || ![...tags.values()].every((schemes) => this.stringArray(schemes)?.every(schemeSafe) === true)) {
+          if (tags === null) {
             return false;
+          }
+          for (const [tag, schemes] of tags) {
+            // `data:` is media on an image, a document on an iframe or object.
+            const tagSchemeSafe = (scheme: string): boolean =>
+              schemeSafe(scheme) && (scheme.toLowerCase() !== 'data' || DATA_URI_MEDIA_TAGS.has(tag.toLowerCase()));
+            if (this.stringArray(schemes)?.every(tagSchemeSafe) !== true) {
+              return false;
+            }
           }
           break;
         }
@@ -907,7 +1146,13 @@ export class HtmlSafety {
           break;
       }
     }
-    return true;
+    // A `data:` scheme for every tag reaches an allowed iframe's `src`.
+    const schemes = entries.get('allowedSchemes');
+    const allowsData =
+      schemes !== undefined && this.stringArray(schemes)?.some((scheme) => scheme.toLowerCase() === 'data') !== false;
+    const tags = entries.get('allowedTags');
+    const frames = tags === undefined ? false : this.stringArray(tags)?.some((tag) => FRAME_TAGS.has(tag.toLowerCase())) ?? true;
+    return !(allowsData && frames);
   }
 
   xssOptionsSafe(call: TSESTree.CallExpression): boolean {
@@ -994,6 +1239,28 @@ export class HtmlSafety {
             return false;
           }
           break;
+        // A URI-safe attribute skips the scheme check, so `href` would keep `javascript:`.
+        case 'ADD_URI_SAFE_ATTR':
+          if (this.stringArray(value)?.every((name) => this.safeAttributeName(name) && !isUrlAttribute(name)) !== true) {
+            return false;
+          }
+          break;
+        case 'ADD_DATA_URI_TAGS':
+          if (this.stringArray(value)?.every((tag) => DATA_URI_MEDIA_TAGS.has(tag.toLowerCase())) !== true) {
+            return false;
+          }
+          break;
+        // Another namespace or the XHTML parser read the markup differently from the page.
+        case 'NAMESPACE':
+          if (staticString(value) !== 'http://www.w3.org/1999/xhtml') {
+            return false;
+          }
+          break;
+        case 'PARSER_MEDIA_TYPE':
+          if (staticString(value)?.toLowerCase() !== 'text/html') {
+            return false;
+          }
+          break;
         case 'ALLOWED_URI_REGEXP':
         case 'CUSTOM_ELEMENT_HANDLING':
           return false;
@@ -1002,6 +1269,232 @@ export class HtmlSafety {
       }
     }
     return true;
+  }
+
+  /* ---- shared module state ------------------------------------------ */
+
+  /** Adds to {@link weakenedModules} each module whose shared defaults this file may change. */
+  findChangedDefaults(): void {
+    for (const [variable, binding] of this.bindings) {
+      const shared = SHARED_DEFAULTS[binding.module];
+      const whole = binding.imported === '*' || binding.imported === 'default';
+      if (shared === undefined || (!whole && !shared.fields.has(binding.imported))) {
+        continue;
+      }
+      if (this.moduleDefaultsChanged(variable, whole ? shared.fields : null, shared.encoder)) {
+        this.weakenedModules.add(binding.module);
+      }
+    }
+  }
+
+  /**
+   * True when a module's shared defaults (`sanitizeHtml.defaults`,
+   * `xss.whiteList`) may be changed through `variable`: a binding of the
+   * module, whose `fields` hold the defaults, or of the defaults object
+   * itself (`fields` null). A call of the module, a method call on it and a
+   * `const` alias are followed. A read of the defaults leaves them unchanged
+   * only when it is copied (`.concat()`, `.slice()`, `.length`) or handed
+   * straight to a call of `encoder`; a write, any other use, or the binding
+   * handed on may change them.
+   */
+  private moduleDefaultsChanged(
+    variable: Variable,
+    fields: ReadonlySet<string> | null,
+    encoder: Encoder,
+    seen: Set<Variable> = new Set(),
+  ): boolean {
+    if (seen.has(variable)) {
+      return false;
+    }
+    seen.add(variable);
+    for (const reference of variable.references) {
+      if (reference.init === true) {
+        continue;
+      }
+      const id = reference.identifier;
+      const parent = id.parent;
+      if (fields === null) {
+        if (!this.defaultsReadOnly(id, encoder)) {
+          return true;
+        }
+      } else if (parent?.type === AST_NODE_TYPES.CallExpression && parent.callee === id) {
+        continue;
+      } else if (parent?.type === AST_NODE_TYPES.MemberExpression && parent.object === id) {
+        const name = propertyName(parent);
+        if (name === null || (fields.has(name) && !this.defaultsReadOnly(parent, encoder))) {
+          return true;
+        }
+      } else if (
+        parent?.type === AST_NODE_TYPES.VariableDeclarator &&
+        parent.init === id &&
+        parent.id.type === AST_NODE_TYPES.Identifier &&
+        parent.parent.kind === 'const'
+      ) {
+        const alias = this.variableOf(parent.id);
+        if (alias === null || this.moduleDefaultsChanged(alias, fields, encoder, seen)) {
+          return true;
+        }
+      } else {
+        return true;
+      }
+    }
+    return false;
+  }
+
+  /** True when a read of shared defaults at `node` neither writes them nor lets them escape. */
+  private defaultsReadOnly(node: TSESTree.Node, encoder: Encoder): boolean {
+    let top: TSESTree.Node = node;
+    while (top.parent?.type === AST_NODE_TYPES.MemberExpression && top.parent.object === top) {
+      top = top.parent;
+    }
+    const parent = top.parent;
+    if (parent === undefined || isWriteTarget(top)) {
+      return false;
+    }
+    if (top !== node && top.type === AST_NODE_TYPES.MemberExpression) {
+      const name = propertyName(top) ?? '';
+      if (parent.type === AST_NODE_TYPES.CallExpression && parent.callee === top) {
+        return COPYING_METHODS.has(name);
+      }
+      if (name === 'length') {
+        return true;
+      }
+    }
+    // Handed to the sanitizer inline, or in a `const` only ever handed to it.
+    let current: TSESTree.Node = top;
+    for (;;) {
+      const holder: TSESTree.Node | undefined = current.parent;
+      if (holder === undefined) {
+        return false;
+      }
+      if (
+        holder.type === AST_NODE_TYPES.SpreadElement ||
+        holder.type === AST_NODE_TYPES.ObjectExpression ||
+        holder.type === AST_NODE_TYPES.ArrayExpression ||
+        (holder.type === AST_NODE_TYPES.Property && holder.value === current)
+      ) {
+        current = holder;
+        continue;
+      }
+      if (holder.type === AST_NODE_TYPES.CallExpression && holder.callee !== current) {
+        return this.encoderOf(holder) === encoder;
+      }
+      if (
+        holder.type === AST_NODE_TYPES.VariableDeclarator &&
+        holder.init === current &&
+        current.type === AST_NODE_TYPES.ObjectExpression &&
+        holder.id.type === AST_NODE_TYPES.Identifier
+      ) {
+        return this.optionsObject(holder.id) !== null;
+      }
+      return false;
+    }
+  }
+
+  /* ---- React rendering ----------------------------------------------- */
+
+  /**
+   * True when a React render call writes no `dangerouslySetInnerHTML` that is
+   * not safe as element text. The element is read with every component,
+   * element and object it names in this file; what is imported or received
+   * as a parameter cannot be read.
+   */
+  reactRenderSafe(call: TSESTree.CallExpression): boolean {
+    const cached = this.reactCache.get(call);
+    if (cached !== undefined) {
+      return cached;
+    }
+    const [element] = call.arguments;
+    if (element === undefined) {
+      return true;
+    }
+    if (element.type === AST_NODE_TYPES.SpreadElement || this.reactActive.has(call)) {
+      return false;
+    }
+    this.reactActive.add(call);
+    const safe = this.markupTreeSafe(element, call);
+    this.reactActive.delete(call);
+    this.reactCache.set(call, safe);
+    return safe;
+  }
+
+  private markupTreeSafe(root: TSESTree.Node, sink: TSESTree.Node): boolean {
+    const seen = new Set<TSESTree.Node>();
+    const stack: TSESTree.Node[] = [root];
+    const follow = (variable: Variable | null): void => {
+      for (const def of variable?.defs ?? []) {
+        if (def.type === 'Variable' && def.node.init !== null) {
+          stack.push(def.node.init);
+        } else if (def.type === 'FunctionName' || def.type === 'ClassName') {
+          stack.push(def.node);
+        }
+      }
+    };
+    for (let node = stack.pop(); node !== undefined; node = stack.pop()) {
+      if (seen.has(node)) {
+        continue;
+      }
+      seen.add(node);
+      if (seen.size > MAX_SCAN) {
+        return false;
+      }
+      if (
+        node.type === AST_NODE_TYPES.JSXAttribute &&
+        node.name.type === AST_NODE_TYPES.JSXIdentifier &&
+        node.name.name === 'dangerouslySetInnerHTML'
+      ) {
+        const value = node.value?.type === AST_NODE_TYPES.JSXExpressionContainer ? node.value.expression : null;
+        if (value === null || value.type === AST_NODE_TYPES.JSXEmptyExpression || !this.innerHtmlSafe(value, sink)) {
+          return false;
+        }
+        continue;
+      }
+      if (node.type === AST_NODE_TYPES.Property && propertyKey(node) === 'dangerouslySetInnerHTML') {
+        if (!this.innerHtmlSafe(node.value, sink)) {
+          return false;
+        }
+        continue;
+      }
+      if (node.type === AST_NODE_TYPES.JSXOpeningElement) {
+        let name: TSESTree.JSXTagNameExpression = node.name;
+        while (name.type === AST_NODE_TYPES.JSXMemberExpression) {
+          name = name.object;
+        }
+        if (name.type === AST_NODE_TYPES.JSXIdentifier) {
+          follow(ASTUtils.findVariable(this.sourceCode.getScope(node), name.name));
+        }
+      } else if (node.type === AST_NODE_TYPES.Identifier) {
+        follow(this.variableOf(node));
+      }
+      for (const key of this.sourceCode.visitorKeys[node.type] ?? []) {
+        const child = (node as unknown as Record<string, unknown>)[key];
+        for (const item of Array.isArray(child) ? child : [child]) {
+          if (item !== null && typeof item === 'object' && 'type' in item) {
+            stack.push(item as TSESTree.Node);
+          }
+        }
+      }
+    }
+    return true;
+  }
+
+  /** `{ __html: value }` whose value is safe as element text. */
+  private innerHtmlSafe(node: TSESTree.Node, sink: TSESTree.Node): boolean {
+    let object = unwrap(node);
+    if (object.type === AST_NODE_TYPES.Identifier) {
+      const init = this.constInit(object);
+      object = init === null ? object : unwrap(init);
+    }
+    if (object.type !== AST_NODE_TYPES.ObjectExpression) {
+      return false;
+    }
+    return object.properties.every((property) => {
+      if (property.type !== AST_NODE_TYPES.Property) {
+        return false;
+      }
+      const key = propertyKey(property);
+      return key !== null && (key !== '__html' || this.safeIn(property.value, 'text', sink));
+    });
   }
 
   /* ---- `.replace` chains --------------------------------------------- */
@@ -1491,6 +1984,12 @@ export class HtmlSafety {
     );
     const arg = index === -1 ? undefined : call.arguments[index];
     if (index !== -1) {
+      // A parameter written in the body (`const t = (s = other)`) no longer holds the argument.
+      const param = fn.params[index];
+      const variable = param?.type === AST_NODE_TYPES.Identifier ? this.variableOf(param) : null;
+      if (variable === null || variable.references.some((reference) => reference.isWrite())) {
+        return false;
+      }
       return arg !== undefined && arg.type !== AST_NODE_TYPES.SpreadElement && this.safeIn(arg, context, sink, depth + 1);
     }
     return this.safeIn(returned, context, sink, depth + 1);
@@ -1499,4 +1998,73 @@ export class HtmlSafety {
 
 function squash(text: string): string {
   return text.replace(/\s+/gu, '');
+}
+
+/** True when `node` is the target of `Object.assign`, `Object.defineProperty` or a similar call that writes its members. */
+function isObjectWrite(node: TSESTree.Node): boolean {
+  const parent = node.parent;
+  if (parent?.type !== AST_NODE_TYPES.CallExpression || parent.arguments[0] !== node) {
+    return false;
+  }
+  const callee = unwrap(parent.callee);
+  if (callee.type !== AST_NODE_TYPES.MemberExpression) {
+    return false;
+  }
+  const owner = unwrap(callee.object);
+  if (owner.type !== AST_NODE_TYPES.Identifier) {
+    return false;
+  }
+  const method = propertyName(callee) ?? '';
+  return owner.name === 'Object' ? OBJECT_WRITES.has(method) : owner.name === 'Reflect' && REFLECT_WRITES.has(method);
+}
+
+const OBJECT_WRITES: ReadonlySet<string> = new Set(['assign', 'defineProperty', 'defineProperties', 'setPrototypeOf']);
+const REFLECT_WRITES: ReadonlySet<string> = new Set(['set', 'defineProperty', 'deleteProperty', 'setPrototypeOf']);
+/** Names of the global object, whose members are the global names. */
+const GLOBAL_OBJECTS: readonly string[] = ['globalThis', 'window', 'self', 'global'];
+
+/** `node` with the type-only wrappers around it (`x as T`, `x!`). */
+function outerOf(node: TSESTree.Node): TSESTree.Node {
+  let outer = node;
+  while (outer.parent !== undefined && TYPE_WRAPPERS.has(outer.parent.type)) {
+    outer = outer.parent;
+  }
+  return outer;
+}
+
+const TYPE_WRAPPERS: ReadonlySet<AST_NODE_TYPES> = new Set([
+  AST_NODE_TYPES.TSAsExpression,
+  AST_NODE_TYPES.TSNonNullExpression,
+  AST_NODE_TYPES.TSSatisfiesExpression,
+  AST_NODE_TYPES.TSTypeAssertion,
+]);
+
+/**
+ * True when `node` is written: assigned (also as a destructuring target, at any
+ * depth: `[a.b] = ...`, `({ x: a.b = d } = ...)`), updated, deleted or a loop target.
+ */
+export function isWriteTarget(node: TSESTree.Node): boolean {
+  let target = node;
+  while (target.parent !== undefined && TYPE_WRAPPERS.has(target.parent.type)) {
+    target = target.parent;
+  }
+  const parent = target.parent;
+  switch (parent?.type) {
+    case AST_NODE_TYPES.AssignmentExpression:
+    case AST_NODE_TYPES.AssignmentPattern:
+    case AST_NODE_TYPES.ForInStatement:
+    case AST_NODE_TYPES.ForOfStatement:
+      return parent.left === target;
+    case AST_NODE_TYPES.UpdateExpression:
+    case AST_NODE_TYPES.ArrayPattern:
+      return true;
+    case AST_NODE_TYPES.UnaryExpression:
+      return parent.operator === 'delete';
+    case AST_NODE_TYPES.RestElement:
+      return parent.argument === target;
+    case AST_NODE_TYPES.Property:
+      return parent.value === target && parent.parent.type === AST_NODE_TYPES.ObjectPattern;
+    default:
+      return false;
+  }
 }

@@ -11,6 +11,6 @@ export class DocsController {
     if (text.length > 20000) {
       return '<p>too long</p>';
     }
-    return `<main>${marked(text)}</main>`; // expect: security/require-sanitized-html
+    return `<main>${marked(text)}</main>`; // expect: security/require-sanitized-html, security/no-unescaped-html-response
   }
 }

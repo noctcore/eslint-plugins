@@ -3,9 +3,11 @@ import { ruleTester } from '@noctcore/eslint-test-utils';
 import { noUnescapedHtmlResponseRule } from '../../src/rules/no-unescaped-html-response';
 
 const TS = 'handler.ts';
+const TSX = 'page.tsx';
 const html = [{ messageId: 'unescapedHtmlResponse' as const }];
 const where = [{ messageId: 'unsafeContext' as const }];
 const raw = [{ messageId: 'rawTemplateValue' as const }];
+const dollar = [{ messageId: 'dollarReplacement' as const }];
 
 const PURIFY = "import DOMPurify from 'isomorphic-dompurify';";
 const SANITIZE = "import sanitizeHtml from 'sanitize-html';";
@@ -220,11 +222,139 @@ ruleTester.run('no-unescaped-html-response', noUnescapedHtmlResponseRule, {
     { code: "function h(reply, name) { reply.send('<p>' + name + '</p>'); }", filename: TS },
     { code: "function h(ctx, name) { ctx.body = 'Hello ' + name + '<br>'; }", filename: TS },
     { code: "export function GET(req) { return new Response(`<p>${req.url}</p>`); }", filename: TS },
+    // A global sanitizer config that keeps protection on, or set on another instance.
     {
-      code: "import { Controller, Get, Query } from '@nestjs/common'; @Controller() class C { @Get() find(@Query('q') q: string) { return `<h1>${q}</h1>`; } }",
+      code: "import { sanitize, setConfig } from 'isomorphic-dompurify'; setConfig({ ALLOWED_TAGS: ['b'], ADD_URI_SAFE_ATTR: ['title'], ADD_DATA_URI_TAGS: ['img'] }); res.send('<div>' + sanitize(q) + '</div>');",
       filename: TS,
     },
-  ],
+    {
+      code: `${PURIFY} res.send('<p>' + DOMPurify.sanitize(q, { NAMESPACE: 'http://www.w3.org/1999/xhtml', PARSER_MEDIA_TYPE: 'text/html' }) + '</p>');`,
+      filename: TS,
+    },
+    {
+      code: "import createDOMPurify from 'dompurify'; const purify = createDOMPurify(window); const loose = createDOMPurify(window); loose.setConfig({ ADD_TAGS: ['script'] }); res.send('<p>' + purify.sanitize(q) + '</p>');",
+      filename: TS,
+    },
+    // Shared defaults only read, copied or handed to the sanitizer.
+    {
+      code: `${SANITIZE} const count = sanitizeHtml.defaults.allowedTags.length; res.send('<p>' + count + sanitizeHtml(q, { allowedTags: sanitizeHtml.defaults.allowedTags.concat(['img']) }) + '</p>');`,
+      filename: TS,
+    },
+    {
+      code: "const xss = require('xss'); const list = xss.getDefaultWhiteList(); list.img.push('onerror'); res.send('<p>' + xss(q) + '</p>');",
+      filename: TS,
+    },
+    { code: `${SANITIZE} res.send('<p>' + sanitizeHtml(q, { allowedAttributes: { '*': ['data-*'] }, allowedSchemesByTag: { img: ['data'] } }) + '</p>');`, filename: TS },
+    { code: `${SANITIZE} res.send('<p>' + sanitizeHtml(q, { allowedSchemes: ['data', 'https'] }) + '</p>');`, filename: TS },
+    // React rendering with inner HTML that is constant or sanitized.
+    {
+      code: `import { renderToString } from 'react-dom/server'; ${PURIFY} function Bio({ bio }) { return <p dangerouslySetInnerHTML={{ __html: DOMPurify.sanitize(bio) }} />; } res.send('<div id="root">' + renderToString(<main><Bio bio={q} /><i dangerouslySetInnerHTML={{ __html: '<b>x</b>' }} /></main>) + '</div>');`,
+      filename: TSX,
+    },
+    { code: "import { renderToString } from 'react-dom/server'; res.send(renderToString(<p>{q}</p>));", filename: TSX },
+    { code: "import { renderToString } from 'react-dom/server'; res.send(renderToString(<i dangerouslySetInnerHTML={{ __html: '<b>x</b>' }} />));", filename: TSX },
+    { code: "import { renderToString } from 'react-dom/server'; res.json({ markup: renderToString(<p dangerouslySetInnerHTML={{ __html: q }} />) });", filename: TSX },
+    // EJS options that keep escaping and read a custom delimiter.
+    { code: "ejs.render('<p><?= bio ?></p>', { bio: input }, { delimiter: '?' });", filename: TS },
+    { code: "ejs.render('<p><%= bio %></p>', { bio: input }, { cache: true, filename: 'bio.ejs', rmWhitespace: true });", filename: TS },
+    { code: "ejs.render('<p><?= bio ?></p>', { bio: input, delimiter: '?' });", filename: TS },
+    // Constant text, dotted escapers that are imported, and data blocks.
+    {
+      code: "import serialize from 'serialize-javascript'; const OPEN = 'window.S = '; export function h(req, res) { res.send(`<script>${OPEN}${serialize(req.query.q)}</script>`); }",
+      filename: TS,
+    },
+    {
+      code: "import utils from './utils'; res.send('<p>' + utils.escapeHtml(q) + '</p>');",
+      filename: TS,
+      options: [{ sanitizers: ['utils.escapeHtml'] }],
+    },
+    {
+      code: "const utils = require('./utils'); res.send('<p>' + utils.escapeHtml(q) + '</p>');",
+      filename: TS,
+      options: [{ sanitizers: ['utils.escapeHtml'] }],
+    },
+    {
+      code: "import serialize from 'serialize-javascript';\nexport function h(req, res) { res.send(`<script>var a = 1// n\nb / 2; var s = ${serialize(req.query.q)};</script>`); }",
+      filename: TS,
+    },
+    {
+      code: "import serialize from 'serialize-javascript';\nexport function h(req, res) { res.send(`<script>var a = [...b], c = 1.5 / 2, d = x\u00B7y / 2; var s = ${serialize(req.query.q)};</script>`); }",
+      filename: TS,
+    },
+    {
+      code: "import serialize from 'serialize-javascript'; export function h(req, res) { res.send(`<script type=\"application/json\" id=\"state\">${serialize(req.query.q)}</script>`); }",
+      filename: TS,
+    },
+    {
+      code: "import serialize from 'serialize-javascript'; export function h(req, res) { res.send(`<script type=\"application/ld+json\">'${serialize(req.query.q)}'</script>`); }",
+      filename: TS,
+    },
+    { code: "export function h(req, res) { res.send(`<script type=\"text/plain\"><p>${escapeHtml(req.query.q)}</p></script>`); }", filename: TS },
+    {
+      code: "export function h(req, res) { res.send(`<script><!-- a --></script><p>${escapeHtml(req.query.q)}</p>`); }",
+      filename: TS,
+    },
+    // Markup through calls, tags, placeholders and accumulators, escaped.
+    { code: "export function h(req, res) { res.send(layout(`<h1>${escapeHtml(req.query.q)}</h1>`)); }", filename: TS },
+    { code: "import { safeHtml } from 'common-tags'; export function h(req, res) { res.send(safeHtml`<h1>${req.query.q}</h1>`); }", filename: TS },
+    { code: `export function h(req, res) { res.send(\`<a href="${' '.repeat(300)}/s?q=\${encodeURIComponent(req.query.q)}">x</a>\`); }`, filename: TS },
+    { code: `export function h(req, res) { res.send(\`<a href="https${'\\t'.repeat(300)}://x.test/\${escapeHtml(req.query.q)}">x</a>\`); }`, filename: TS },    { code: "ejs.render('<p><%= bio %></p>', { ...opts, bio: escapeHtml(input) });", filename: TS },
+    { code: "import utils from './utils'; utils.cache = new Map(); res.send('<p>' + utils.escapeHtml(q) + '</p>');", filename: TS, options: [{ sanitizers: ['utils.escapeHtml'] }] },
+    { code: "const utils = require('./utils'); Object.assign(other, utils); res.send('<p>' + utils.escapeHtml(q) + '</p>');", filename: TS, options: [{ sanitizers: ['utils.escapeHtml'] }] },
+    { code: `${PURIFY} DOMPurify.setConfig.apply(null, [{ ALLOWED_TAGS: ['b'] }]); res.send('<p>' + DOMPurify.sanitize(q) + '</p>');`, filename: TS },
+    { code: "import utils from './utils'; if (utils) { res.send('<p>' + utils.escapeHtml(q) + '</p>'); }", filename: TS, options: [{ sanitizers: ['utils.escapeHtml'] }] },
+    { code: "import utils from './utils'; const keys = Object.keys(utils); log(typeof utils, keys); res.send('<p>' + utils.escapeHtml(q) + '</p>');", filename: TS, options: [{ sanitizers: ['utils.escapeHtml'] }] },
+    { code: "import utils from './utils'; const u2 = utils; log(u2.version, u2.escapeHtml.name); res.send('<p>' + utils.escapeHtml(q) + '</p>');", filename: TS, options: [{ sanitizers: ['utils.escapeHtml'] }] },
+    { code: "globalThis.config = load(); res.send('<p>' + utils.escapeHtml(q) + '</p>');", filename: TS, options: [{ sanitizers: ['utils.escapeHtml'] }] },
+    { code: "import utils from './utils'; const n = Object.keys(utils.html).length; log(n); res.send('<p>' + utils.html.escape(q) + '</p>');", filename: TS, options: [{ sanitizers: ['utils.html.escape'] }] },
+    // A replacer function's result is written as is, with no `$` patterns.
+    { code: "const TPL = '<h1>{{name}}</h1>'; export function h(req, res) { res.send(TPL.replace('{{name}}', () => escapeHtml(req.query.q))); }", filename: TS },
+    { code: "const TPL = '<a href=\"/s?q={{q}}\">x</a>'; export function h(req, res) { res.send(TPL.replace('{{q}}', encodeURIComponent(req.query.q))); }", filename: TS },
+    {
+      code: "const TPL = '<p>{{a}}</p><p>{{b}}</p>'; export function h(req, res) { res.send(TPL.replace('{{a}}', () => escapeHtml(req.query.a)).replace('{{b}}', () => escapeHtml(req.query.b))); }",
+      filename: TS,
+    },
+    // A call from elsewhere given escaped markup and constants, with no author tag around it.
+    { code: "export function h(req, res) { res.send(layout(`<main>${escapeHtml(req.query.q)}</main>`, 'Title', 2)); }", filename: TS },
+    {
+      code: "export function h(res, list) { const rows = []; for (const r of list) rows.push('<li>' + escapeHtml(r.name) + '</li>'); res.send('<ul>' + rows.join('') + '</ul>'); }",
+      filename: TS,
+    },
+    {
+      code: "export function h(res, items) { res.send(`<ul>${items.map((i) => { if (i.hidden) return ''; return `<li>${escapeHtml(i.name)}</li>`; }).join('')}</ul>`); }",
+      filename: TS,
+    },
+    // Nest handlers that do not send their return value as HTML.
+    {
+      code: "import { Controller, Get, Header, Query } from '@nestjs/common'; @Controller() class C { @Get() @Header('Content-Type', 'text/plain') find(@Query('q') q: string) { return `<h1>${q}</h1>`; } }",
+      filename: TS,
+    },
+    {
+      code: "import { Controller, Get, Query, Render } from '@nestjs/common'; @Controller() class C { @Get() @Render('page') find(@Query('q') q: string) { return { q }; } }",
+      filename: TS,
+    },
+    {
+      code: "import { Controller, Get, Query, Res } from '@nestjs/common'; @Controller() class C { @Get() find(@Query('q') q: string, @Res() res) { res.json({ q }); return `<h1>${q}</h1>`; } }",
+      filename: TS,
+    },
+    {
+      code: "import * as common from '@nestjs/common'; @common.Controller() class C { @common.Get() @common.Header('Content-Type', 'application/json') find(@common.Query('q') q = '') { return `<h1>${q}</h1>`; } }",
+      filename: TS,
+    },
+    {
+      code: "import * as common from '@nestjs/common'; @common.Controller() class C { @common.Get() find(@common.Query('q') q = '', @common.Res() res = null) { res.json({ q }); return `<h1>${q}</h1>`; } }",
+      filename: TS,
+    },
+    { code: "export function h(req, res) { res.send(layout('<h1>'.concat(escapeHtml(req.query.q), '</h1>'))); }", filename: TS },
+    { code: "class C { find(q: string) { return `<h1>${q}</h1>`; } }", filename: TS },
+    // URLs, comments and meta content where the value is safe.
+    { code: "export function h(req, res) { res.send(`<img src=\"data:image/png;base64,${encodeURIComponent(req.query.b)}\"><iframe src=\"https://x.test/?q=${encodeURIComponent(req.query.q)}\"></iframe>`); }", filename: TS },
+    { code: "export function h(req, res) { res.send(`<!-- ${escapeHtml(req.query.q)} --><a href=\"/s?a=1&amp;q=${encodeURIComponent(req.query.q)}\">s</a>`); }", filename: TS },
+    { code: "export function h(req, res) { res.send(`<meta name=\"description\" content=\"${escapeHtml(req.query.d)}\"><meta http-equiv=\"refresh\" content=\"5;url=/home?q=${encodeURIComponent(req.query.q)}\">`); }", filename: TS },
+    { code: `${NUNJUCKS} nunjucks.renderString('{% set b = bio %}<p>{{ b }}</p>', { bio: input });`, filename: TS },
+    // Other frameworks: no HTML type, or no branch that starts with markup.
+    { code: "fastify.get('/', async (request, reply) => { return `<h1>${request.query.q}</h1>`; });", filename: TS },
+    { code: "function h(ctx, ok) { ctx.body = ok ? 'Done' : 'Failed: ' + ctx.query.q + '<br>'; }", filename: TS },  ],
   invalid: [
     // A same-file function with a configured name is judged by its body, not its name.
     {
@@ -578,5 +708,358 @@ ruleTester.run('no-unescaped-html-response', noUnescapedHtmlResponseRule, {
       filename: TS,
       errors: html,
     },
-  ],
+    // A global DOMPurify config reaches every import of the module.
+    {
+      code: "import { sanitize, setConfig } from 'isomorphic-dompurify'; setConfig({ ADD_TAGS: ['script'] }); export function h(req, res) { res.send('<div>' + sanitize(req.query.q) + '</div>'); }",
+      filename: TS,
+      errors: html,
+    },
+    {
+      code: "import DOMPurify, { sanitize } from 'isomorphic-dompurify'; DOMPurify.setConfig({ ADD_TAGS: ['script'] }); res.send('<div>' + sanitize(q) + '</div>');",
+      filename: TS,
+      errors: html,
+    },
+    {
+      code: "const { sanitize, setConfig: configure } = require('isomorphic-dompurify'); configure({ ALLOWED_URI_REGEXP: /.*/ }); res.send('<div>' + sanitize(q) + '</div>');",
+      filename: TS,
+      errors: html,
+    },
+    {
+      code: `${PURIFY} const P = DOMPurify; P.setConfig({ ADD_ATTR: ['onerror'] }); res.send('<p>' + DOMPurify.sanitize(q) + '</p>');`,
+      filename: TS,
+      errors: html,
+    },
+    { code: `${PURIFY} configure(DOMPurify); res.send('<p>' + DOMPurify.sanitize(q) + '</p>');`, filename: TS, errors: html },
+    { code: `${PURIFY} DOMPurify.sanitize = (s) => s; res.send('<p>' + DOMPurify.sanitize(q) + '</p>');`, filename: TS, errors: html },
+    {
+      code: "import { sanitize, setConfig } from 'isomorphic-dompurify'; setConfig(loadConfig()); res.send('<div>' + sanitize(q) + '</div>');",
+      filename: TS,
+      errors: html,
+    },
+    // `setConfig` invoked through `.call` or `.apply`.
+    { code: `${PURIFY} DOMPurify.setConfig.call(null, { ADD_TAGS: ['script'] }); res.send('<p>' + DOMPurify.sanitize(q) + '</p>');`, filename: TS, errors: html },
+    { code: `${PURIFY} DOMPurify.setConfig.apply(null, [{ ADD_ATTR: ['onerror'] }]); res.send('<p>' + DOMPurify.sanitize(q) + '</p>');`, filename: TS, errors: html },
+    { code: `${PURIFY} DOMPurify.setConfig.apply(null, configs); res.send('<p>' + DOMPurify.sanitize(q) + '</p>');`, filename: TS, errors: html },
+    { code: "import { sanitize, setConfig } from 'isomorphic-dompurify'; setConfig.call(undefined, { ADD_TAGS: ['script'] }); res.send('<div>' + sanitize(q) + '</div>');", filename: TS, errors: html },
+    { code: "import { sanitize, setConfig } from 'isomorphic-dompurify'; setConfig.apply(undefined, [{ ADD_TAGS: ['script'] }]); res.send('<div>' + sanitize(q) + '</div>');", filename: TS, errors: html },
+    // DOMPurify options that skip the URI check, allow data URLs on documents, or parse another way.
+    { code: `${PURIFY} res.send('<p>' + DOMPurify.sanitize(q, { ADD_URI_SAFE_ATTR: ['href'] }) + '</p>');`, filename: TS, errors: html },
+    { code: `${PURIFY} res.send('<p>' + DOMPurify.sanitize(q, { ADD_URI_SAFE_ATTR: attrs }) + '</p>');`, filename: TS, errors: html },
+    { code: `${PURIFY} res.send('<p>' + DOMPurify.sanitize(q, { ADD_DATA_URI_TAGS: ['iframe'] }) + '</p>');`, filename: TS, errors: html },
+    { code: `${PURIFY} res.send('<p>' + DOMPurify.sanitize(q, { NAMESPACE: 'http://www.w3.org/2000/svg' }) + '</p>');`, filename: TS, errors: html },
+    { code: `${PURIFY} res.send('<p>' + DOMPurify.sanitize(q, { PARSER_MEDIA_TYPE: 'application/xhtml+xml' }) + '</p>');`, filename: TS, errors: html },
+    // Writes to the shared defaults of sanitize-html and xss.
+    { code: `${SANITIZE} sanitizeHtml.defaults.allowedAttributes = false; res.send('<p>' + sanitizeHtml(q) + '</p>');`, filename: TS, errors: html },
+    { code: `${SANITIZE} sanitizeHtml.defaults.allowedTags.push('script'); res.send('<p>' + sanitizeHtml(q) + '</p>');`, filename: TS, errors: html },
+    {
+      code: `${SANITIZE} sanitizeHtml.defaults.allowedAttributes['*'] = ['onerror']; res.send('<p>' + sanitizeHtml(q, { allowedTags: ['img'] }) + '</p>');`,
+      filename: TS,
+      errors: html,
+    },
+    { code: `${SANITIZE} const d = sanitizeHtml.defaults; d.allowedTags.push('script'); res.send('<p>' + sanitizeHtml(q) + '</p>');`, filename: TS, errors: html },
+    { code: `${SANITIZE} Object.assign(sanitizeHtml.defaults, overrides); res.send('<p>' + sanitizeHtml(q) + '</p>');`, filename: TS, errors: html },
+    {
+      code: `${SANITIZE} const tags = { list: sanitizeHtml.defaults.allowedTags }; tags.list.push('script'); res.send('<p>' + sanitizeHtml(q) + '</p>');`,
+      filename: TS,
+      errors: html,
+    },
+    { code: `${SANITIZE} setup(sanitizeHtml); res.send('<p>' + sanitizeHtml(q) + '</p>');`, filename: TS, errors: html },
+    { code: "const xss = require('xss'); xss.whiteList.img.push('onerror'); res.send('<p>' + xss(q) + '</p>');", filename: TS, errors: html },
+    {
+      code: "import { filterXSS, whiteList } from 'xss'; whiteList.img.push('onerror'); res.send('<p>' + filterXSS(q) + '</p>');",
+      filename: TS,
+      errors: html,
+    },
+    // sanitize-html globs and data URLs that reach event handlers or documents.
+    { code: `${SANITIZE} res.send('<p>' + sanitizeHtml(q, { allowedAttributes: { '*': ['o*'] } }) + '</p>');`, filename: TS, errors: html },
+    { code: `${SANITIZE} res.send('<p>' + sanitizeHtml(q, { allowedAttributes: { iframe: ['s*'] } }) + '</p>');`, filename: TS, errors: html },
+    {
+      code: `${SANITIZE} res.send('<p>' + sanitizeHtml(q, { allowedTags: ['iframe'], allowedSchemesByTag: { iframe: ['data'] } }) + '</p>');`,
+      filename: TS,
+      errors: html,
+    },
+    {
+      code: `${SANITIZE} res.send('<p>' + sanitizeHtml(q, { allowedTags: ['iframe'], allowedSchemes: ['https', 'data'] }) + '</p>');`,
+      filename: TS,
+      errors: html,
+    },
+    // React rendering writes `dangerouslySetInnerHTML` as is.
+    {
+      code: "import { renderToString } from 'react-dom/server'; export function h(req, res) { res.send('<div id=\"root\">' + renderToString(<div dangerouslySetInnerHTML={{ __html: req.query.q }} />) + '</div>'); }",
+      filename: TSX,
+      errors: html,
+    },
+    {
+      code: "import { renderToStaticMarkup } from 'react-dom/server'; function Bio({ bio }) { return <p dangerouslySetInnerHTML={{ __html: bio }} />; } res.send('<main>' + renderToStaticMarkup(<Bio bio={q} />) + '</main>');",
+      filename: TSX,
+      errors: html,
+    },
+    {
+      code: "import { createElement } from 'react'; import { renderToString } from 'react-dom/server'; const el = createElement('div', { dangerouslySetInnerHTML: { __html: q } }); res.send('<main>' + renderToString(el) + '</main>');",
+      filename: TS,
+      errors: html,
+    },
+    // A React render is markup on its own, with no author tag around it.
+    {
+      code: "import { renderToString } from 'react-dom/server'; export function h(req, res) { res.send(renderToString(<div dangerouslySetInnerHTML={{ __html: req.query.q }} />)); }",
+      filename: TSX,
+      errors: html,
+    },
+    {
+      code: "import { renderToString } from 'react-dom/server'; app.use(async (ctx) => { ctx.type = 'html'; ctx.body = renderToString(<p dangerouslySetInnerHTML={{ __html: ctx.query.q }} />); });",
+      filename: TSX,
+      errors: html,
+    },
+    {
+      code: "import { renderToStaticMarkup } from 'react-dom/server'; http.createServer((req, res) => { res.writeHead(200, { 'Content-Type': 'text/html' }); res.end(renderToStaticMarkup(<p dangerouslySetInnerHTML={{ __html: req.url }} />)); });",
+      filename: TSX,
+      errors: html,
+    },
+    // EJS options and settings that switch escaping off or change the tags.
+    { code: "ejs.render('<p><%= bio %></p>', { bio: input }, { escape: (s) => s });", filename: TS, errors: raw },
+    { code: "ejs.render('<p><?- bio ?></p>', { bio: input }, { delimiter: '?' });", filename: TS, errors: raw },
+    { code: "ejs.render('<p><?- bio ?></p>', { bio: input, delimiter: '?' });", filename: TS, errors: raw },
+    { code: "ejs.render('<p>[%- bio %]</p>', { bio: input }, { openDelimiter: '[', closeDelimiter: ']' });", filename: TS, errors: raw },
+    // With no options argument, a spread or computed key in the data may set `escape` or a delimiter.
+    { code: "ejs.render('<p><%= bio %></p>', { ...opts, bio: input });", filename: TS, errors: raw },
+    { code: "ejs.render('<p><%= bio %></p>', { [key]: fn, bio: input });", filename: TS, errors: raw },
+    { code: "ejs.render('<p><%- it.bio %></p>', { bio: input }, { localsName: 'it' });", filename: TS, errors: raw },
+    { code: "ejs.render('<p><%= bio %></p>', { bio: input }, options);", filename: TS, errors: raw },
+    { code: "ejs.render('<p><%= bio %></p>', { bio: input }, { outputFunctionName: 'echo' });", filename: TS, errors: raw },
+    { code: "ejs.escapeXML = (s) => s; ejs.render('<p><%= bio %></p>', { bio: input });", filename: TS, errors: raw },
+    { code: "ejs.delimiter = '?'; ejs.render('<p><?- bio ?></p>', { bio: input });", filename: TS, errors: raw },
+    // Constant text read as author text in a script.
+    {
+      code: "import serialize from 'serialize-javascript'; const OPEN = \"window.S = JSON.parse('\"; export function h(req, res) { res.send(`<script>${OPEN}${serialize(req.query.q)}')</script>`); }",
+      filename: TS,
+      errors: where,
+    },
+    {
+      code: "import serialize from 'serialize-javascript'; const Q = \"'\"; const OPEN = 'var s = ' + Q; export function h(req, res) { res.send(`<script>${OPEN}${serialize(req.query.q)}${Q}</script>`); }",
+      filename: TS,
+      errors: where,
+    },
+    // A dotted escaper name says nothing about an object, class or parameter of this file.
+    {
+      code: "const utils = { escapeHtml: (s) => s }; res.send('<p>' + utils.escapeHtml(q) + '</p>');",
+      filename: TS,
+      options: [{ sanitizers: ['utils.escapeHtml'] }],
+      errors: html,
+    },
+    {
+      code: "class Utils { static escapeHtml(s) { return s; } } res.send('<p>' + Utils.escapeHtml(q) + '</p>');",
+      filename: TS,
+      options: [{ sanitizers: ['Utils.escapeHtml'] }],
+      errors: html,
+    },
+    {
+      code: "function h(utils, q, res) { res.send('<p>' + utils.escapeHtml(q) + '</p>'); }",
+      filename: TS,
+      options: [{ sanitizers: ['utils.escapeHtml'] }],
+      errors: html,
+    },
+    // A configured escaper name says nothing once this file writes it, the object it is read from, or that object's members.
+    { code: "let utils = require('./utils'); utils = { escapeHtml: (s) => s }; res.send('<p>' + utils.escapeHtml(q) + '</p>');", filename: TS, options: [{ sanitizers: ['utils.escapeHtml'] }], errors: html },
+    { code: "const utils = require('./utils'); utils.escapeHtml = (s) => s; res.send('<p>' + utils.escapeHtml(q) + '</p>');", filename: TS, options: [{ sanitizers: ['utils.escapeHtml'] }], errors: html },
+    { code: "import utils from './utils'; utils.escapeHtml = (s) => s; res.send('<p>' + utils.escapeHtml(q) + '</p>');", filename: TS, options: [{ sanitizers: ['utils.escapeHtml'] }], errors: html },
+    { code: "import utils from './utils'; Object.assign(utils, { escapeHtml: (s) => s }); res.send('<p>' + utils.escapeHtml(q) + '</p>');", filename: TS, options: [{ sanitizers: ['utils.escapeHtml'] }], errors: html },
+    { code: "import utils from './utils'; Object.defineProperty(utils, 'escapeHtml', { value: (s) => s }); res.send('<p>' + utils.escapeHtml(q) + '</p>');", filename: TS, options: [{ sanitizers: ['utils.escapeHtml'] }], errors: html },
+    { code: "utils.escapeHtml = (s) => s; res.send('<p>' + utils.escapeHtml(q) + '</p>');", filename: TS, options: [{ sanitizers: ['utils.escapeHtml'] }], errors: html },
+    { code: "import utils from './utils'; utils['escapeHtml'] = (s) => s; res.send('<p>' + utils.escapeHtml(q) + '</p>');", filename: TS, options: [{ sanitizers: ['utils.escapeHtml'] }], errors: html },
+    { code: "let escapeHtml = require('escape-html'); escapeHtml = (s) => s; res.send('<p>' + escapeHtml(q) + '</p>');", filename: TS, errors: html },
+    { code: "let escapeHtml = require('./esc'); escapeHtml = (s) => s; res.send('<p>' + escapeHtml(q) + '</p>');", filename: TS, errors: html },
+    { code: "escapeHtml = (s) => s; res.send('<p>' + escapeHtml(q) + '</p>');", filename: TS, errors: html },
+    // A member written by destructuring assignment, at any depth.
+    { code: "import utils from './utils'; [utils.escapeHtml] = [(s) => s]; res.send('<p>' + utils.escapeHtml(q) + '</p>');", filename: TS, options: [{ sanitizers: ['utils.escapeHtml'] }], errors: html },
+    { code: "import utils from './utils'; ({ x: utils.escapeHtml } = { x: (s) => s }); res.send('<p>' + utils.escapeHtml(q) + '</p>');", filename: TS, options: [{ sanitizers: ['utils.escapeHtml'] }], errors: html },
+    { code: "import utils from './utils'; ({ x: utils.escapeHtml = (s) => s } = {}); res.send('<p>' + utils.escapeHtml(q) + '</p>');", filename: TS, options: [{ sanitizers: ['utils.escapeHtml'] }], errors: html },
+    { code: "import utils from './utils'; ({ a: [, ...utils.escapeHtml] } = { a: [] }); res.send('<p>' + utils.escapeHtml(q) + '</p>');", filename: TS, options: [{ sanitizers: ['utils.escapeHtml'] }], errors: html },
+    { code: `${PURIFY} [DOMPurify.sanitize] = [(s) => s]; res.send('<p>' + DOMPurify.sanitize(q) + '</p>');`, filename: TS, errors: html },
+    { code: `${PURIFY} ({ s: DOMPurify.sanitize } = { s: (s) => s }); res.send('<p>' + DOMPurify.sanitize(q) + '</p>');`, filename: TS, errors: html },
+    // Writes through a type assertion, an alias, `Reflect`, the global object, or the object handed on.
+    { code: "import utils from './utils'; ((utils as any).escapeHtml as unknown) = (s) => s; res.send('<p>' + utils.escapeHtml(q) + '</p>');", filename: TS, options: [{ sanitizers: ['utils.escapeHtml'] }], errors: html },
+    { code: "import utils from './utils'; const u2 = utils; u2.escapeHtml = (s) => s; res.send('<p>' + utils.escapeHtml(q) + '</p>');", filename: TS, options: [{ sanitizers: ['utils.escapeHtml'] }], errors: html },
+    { code: "import utils from './utils'; let u2; u2 = utils; u2.escapeHtml = (s) => s; res.send('<p>' + utils.escapeHtml(q) + '</p>');", filename: TS, options: [{ sanitizers: ['utils.escapeHtml'] }], errors: html },
+    { code: "import utils from './utils'; const u2 = utils || {}; u2.escapeHtml = (s) => s; res.send('<p>' + utils.escapeHtml(q) + '</p>');", filename: TS, options: [{ sanitizers: ['utils.escapeHtml'] }], errors: html },
+    { code: "import utils from './utils'; Reflect.set(utils, 'escapeHtml', (s) => s); res.send('<p>' + utils.escapeHtml(q) + '</p>');", filename: TS, options: [{ sanitizers: ['utils.escapeHtml'] }], errors: html },
+    { code: "import utils from './utils'; patch(utils); res.send('<p>' + utils.escapeHtml(q) + '</p>');", filename: TS, options: [{ sanitizers: ['utils.escapeHtml'] }], errors: html },
+    { code: "import utils from './utils'; app.locals.helpers = utils; res.send('<p>' + utils.escapeHtml(q) + '</p>');", filename: TS, options: [{ sanitizers: ['utils.escapeHtml'] }], errors: html },
+    { code: "globalThis.utils = { escapeHtml: (s) => s }; res.send('<p>' + utils.escapeHtml(q) + '</p>');", filename: TS, options: [{ sanitizers: ['utils.escapeHtml'] }], errors: html },
+    { code: "window.utils.escapeHtml = (s) => s; res.send('<p>' + utils.escapeHtml(q) + '</p>');", filename: TS, options: [{ sanitizers: ['utils.escapeHtml'] }], errors: html },
+    { code: "Object.assign(globalThis, { utils: { escapeHtml: (s) => s } }); res.send('<p>' + utils.escapeHtml(q) + '</p>');", filename: TS, options: [{ sanitizers: ['utils.escapeHtml'] }], errors: html },
+    // A shallow copy or `Object.values` shares the nested object a dotted escaper is read from.
+    { code: "import utils from './utils'; const copy = Object.assign({}, utils); copy.html.escape = (s) => s; res.send('<p>' + utils.html.escape(q) + '</p>');", filename: TS, options: [{ sanitizers: ['utils.html.escape'] }], errors: html },
+    { code: "import utils from './utils'; Object.values(utils)[0].escape = (s) => s; res.send('<p>' + utils.html.escape(q) + '</p>');", filename: TS, options: [{ sanitizers: ['utils.html.escape'] }], errors: html },
+    { code: "import utils from './utils'; const copy = { ...utils }; copy.html.escape = (s) => s; res.send('<p>' + utils.html.escape(q) + '</p>');", filename: TS, options: [{ sanitizers: ['utils.html.escape'] }], errors: html },
+    // A helper's parameter written in its body.
+    {
+      code: "function wrap(s) { const t = (s = other.q); return s; } res.send('<p>' + wrap(escapeHtml(q)) + '</p>');",
+      filename: TS,
+      errors: html,
+    },
+    // A `<script>` inside an escaped script keeps the element open past `</script>`.
+    {
+      code: "export function h(req, res) { res.send(`<script><!--<script></script>\n${escapeHtml(req.query.q)}\n</script>`); }",
+      filename: TS,
+      errors: where,
+    },
+    {
+      code: "export function h(req, res) { res.send(`<script>/*<!--<SCRIPT>*/</script >${escapeHtml(req.query.q)}--></script>`); }",
+      filename: TS,
+      errors: where,
+    },
+    // Script lexer corners: comment ends, spreads, number dots, private names, name characters and escapes.
+    { code: "import serialize from 'serialize-javascript';\nexport function h(req, res) { res.send(`<script>var a = 1// n\ntypeof /'/; var s = '${serialize(req.query.q)}'</script>`); }", filename: TS, errors: where },
+    { code: "import serialize from 'serialize-javascript';\nexport function h(req, res) { res.send(`<script>a/**/in /'/; var s = '${serialize(req.query.q)}'</script>`); }", filename: TS, errors: where },
+    { code: "import serialize from 'serialize-javascript';\nexport function h(req, res) { res.send(`<script>var a = [...typeof /'/, '${serialize(req.query.q)}']</script>`); }", filename: TS, errors: where },
+    { code: "import serialize from 'serialize-javascript';\nexport function h(req, res) { res.send(`<script>var x = 1.\ntypeof /'/; var s = '${serialize(req.query.q)}'</script>`); }", filename: TS, errors: where },
+    { code: "import serialize from 'serialize-javascript';\nexport function h(req, res) { res.send(`<script>class A { #in = 4; f() { return this.#in / 2, '/ ${serialize(req.query.q)} ' } }</script>`); }", filename: TS, errors: where },
+    { code: "import serialize from 'serialize-javascript';\nexport function h(req, res) { res.send(`<script>var x\u00B7in = 4, r = x\u00B7in / 2, s = '/ ${serialize(req.query.q)} '</script>`); }", filename: TS, errors: where },
+    { code: "import serialize from 'serialize-javascript';\nexport function h(req, res) { res.send(`<script>var \\\\u{62}do = 4, r = \\\\u{62}do / 2, s = '/ ${serialize(req.query.q)} '</script>`); }", filename: TS, errors: where },
+    { code: "import serialize from 'serialize-javascript';\nexport function h(req, res) { res.send(`<script type=\"module\">export default /'/; var s = '${serialize(req.query.q)}'</script>`); }", filename: TS, errors: where },
+    { code: "import serialize from 'serialize-javascript';\nexport function h(req, res) { res.send(`<script>class A extends /'/.constructor {} var s = '${serialize(req.query.q)}'</script>`); }", filename: TS, errors: where },
+    // A data block still ends at `</script>`; a type the rule cannot read may be script.
+    {
+      code: "export function h(req, res) { res.send(`<script type=\"application/json\">${JSON.stringify(req.query.q)}</script>`); }",
+      filename: TS,
+      errors: html,
+    },
+    {
+      code: "import serialize from 'serialize-javascript'; export function h(req, res) { res.send(`<script type=\"${escapeHtml(type)}\">'${serialize(req.query.q)}'</script>`); }",
+      filename: TS,
+      errors: where,
+    },
+    {
+      code: "import serialize from 'serialize-javascript'; export function h(req, res) { res.send(`<script type=\" text/JavaScript \" type=\"application/json\">'${serialize(req.query.q)}'</script>`); }",
+      filename: TS,
+      errors: where,
+    },
+    // A URL prefix past the length kept is shortened to what the browser reads, or counts as code.
+    { code: `export function h(req, res) { res.send(\`<a href="${' '.repeat(300)}\${escapeHtml(req.query.q)}">x</a>\`); }`, filename: TS, errors: where },
+    { code: `export function h(req, res) { res.send(\`<a href="${'\\n'.repeat(300)}\${escapeHtml(req.query.q)}">x</a>\`); }`, filename: TS, errors: where },
+    { code: `export function h(req, res) { res.send(\`<a href="java${'\\t'.repeat(300)}script:\${escapeHtml(req.query.q)}">x</a>\`); }`, filename: TS, errors: where },
+    { code: `export function h(req, res) { res.send(\`<a href="&#${'0'.repeat(300)}106;avascript:\${escapeHtml(req.query.q)}">x</a>\`); }`, filename: TS, errors: where },    // Only JSON and plain text never run; a library may compile and run any other type, and a character reference hides the type.
+    { code: "import serialize from 'serialize-javascript'; export function h(req, res) { res.send(`<script type=\"text/x-template\">'${serialize(req.query.q)}'</script>`); }", filename: TS, errors: where },
+    { code: "import serialize from 'serialize-javascript'; export function h(req, res) { res.send(`<script type=\"text/babel\">'${serialize(req.query.q)}'</script>`); }", filename: TS, errors: where },
+    { code: "import serialize from 'serialize-javascript'; export function h(req, res) { res.send(`<script type=\"text/jsx\">'${serialize(req.query.q)}'</script>`); }", filename: TS, errors: where },
+    { code: "import serialize from 'serialize-javascript'; export function h(req, res) { res.send(`<script type=\"text/typescript\">'${serialize(req.query.q)}'</script>`); }", filename: TS, errors: where },
+    { code: "import serialize from 'serialize-javascript'; export function h(req, res) { res.send(`<script type=\"text/javascript; charset=utf-8\">'${serialize(req.query.q)}'</script>`); }", filename: TS, errors: where },
+    { code: "import serialize from 'serialize-javascript'; export function h(req, res) { res.send(`<script type=\"text&#47;javascript\">'${serialize(req.query.q)}'</script>`); }", filename: TS, errors: where },
+    { code: "import serialize from 'serialize-javascript'; export function h(req, res) { res.send(`<script type=\"&#109;odule\">'${serialize(req.query.q)}'</script>`); }", filename: TS, errors: where },
+    { code: "import serialize from 'serialize-javascript'; export function h(req, res) { res.send(`<script type=\"text&sol;javascript\">'${serialize(req.query.q)}'</script>`); }", filename: TS, errors: where },
+    { code: "import serialize from 'serialize-javascript'; export function h(req, res) { res.send(`<script type=\"application&#47;json\">'${serialize(req.query.q)}'</script>`); }", filename: TS, errors: where },
+    { code: "export function h(req, res) { res.send(`<script type='text/x-template'><p>${escapeHtml(req.query.q)}</p></script>`); }", filename: TS, errors: where },
+    // Markup passed through a call or tag from elsewhere, a placeholder, or an array accumulator.
+    { code: "export function h(req, res) { res.send(layout(`<h1>${req.query.q}</h1>`)); }", filename: TS, errors: html },
+    { code: "import dedent from 'dedent'; export function h(req, res) { res.send(dedent`<h1>${req.query.q}</h1>`); }", filename: TS, errors: html },
+    { code: "import { html } from 'common-tags'; export function h(req, res) { res.send(html`<h1>${req.query.q}</h1>`); }", filename: TS, errors: html },
+    { code: "export function h(req, res) { const page = `<h1>${req.query.q}</h1>`; res.send(page.trim()); }", filename: TS, errors: html },
+    { code: "export function h(req, res) { res.send('<li>'.concat(req.query.q, '</li>')); }", filename: TS, errors: html },
+    { code: "const TPL = '<h1>{{name}}</h1>'; export function h(req, res) { res.send(TPL.replace('{{name}}', req.query.q)); }", filename: TS, errors: html },
+    {
+      code: "const TPL = '<a href=\"{{url}}\">{{name}}</a>'; export function h(req, res) { res.send(TPL.replace(/\\{\\{name\\}\\}/g, escapeHtml(req.query.n)).replace('{{url}}', escapeHtml(req.query.u))); }",
+      filename: TS,
+      errors: [...dollar, ...dollar],
+    },
+    // A string replacement applies `$` patterns, which escape-html leaves alone.
+    { code: "const TPL = '<h1>{{name}}</h1>'; export function h(req, res) { res.send(TPL.replace('{{name}}', escapeHtml(req.query.q))); }", filename: TS, errors: dollar },
+    { code: "export function h(req, res) { res.send('<div title=\"{{n}}\">x</div>'.replace('{{n}}', escapeHtml(req.query.q))); }", filename: TS, errors: dollar },
+    { code: "export function h(req, res) { res.send(`<p>${escapeHtml(req.query.a)}</p>`.replace('{{n}}', escapeHtml(req.query.q))); }", filename: TS, errors: dollar },
+    // A later placeholder may be found inside an earlier value, and the replacement then lands there.
+    {
+      code: "const TPL = '<a href=\"{{url}}\">{{name}}</a>'; export function h(req, res) { res.send(TPL.replace('{{url}}', () => escapeHtml(req.query.u)).replace('{{name}}', () => escapeHtml(req.query.n))); }",
+      filename: TS,
+      errors: [...where, ...where],
+    },
+    // A call that may move, decode or rewrite the markup it is given stays opaque, and every other value it is given may land anywhere.
+    { code: "export function h(req, res) { res.send('<div>' + layout(req.query.t, `<main>${escapeHtml(req.query.q)}</main>`)); }", filename: TS, errors: html },
+    { code: "export function h(req, res) { res.send('<div>' + layout(`<main>${escapeHtml(req.query.q)}</main>`, req.query.t)); }", filename: TS, errors: html },
+    { code: "export function h(req, res) { res.send(layout(`<main>${escapeHtml(req.query.q)}</main>`, req.query.t)); }", filename: TS, errors: html },
+    { code: "app.use(async (ctx) => { ctx.body = '<div>' + layout(ctx.query.t, `<main>${escapeHtml(ctx.query.q)}</main>`); });", filename: TS, errors: html },
+    { code: "export function h(req, res) { res.send('<div>' + `<p>${escapeHtml(req.query.q)}</p>`.padStart(100, req.query.t)); }", filename: TS, errors: html },
+    { code: "export function h(req, res) { res.send(`<p>${escapeHtml(req.query.q)}</p>`.padEnd(100, req.query.t)); }", filename: TS, errors: html },
+    { code: "export function h(req, res) { res.send('<div>' + decodeURIComponent(`<p>${escapeHtml(req.query.q)}</p>`)); }", filename: TS, errors: html },
+    { code: "export function h(req, res) { res.send('<div>' + unescape(`<p>${escapeHtml(req.query.q)}</p>`)); }", filename: TS, errors: html },
+    { code: "export function h(req, res) { res.send('<div>' + atob(`<p>${escapeHtml(req.query.q)}</p>`)); }", filename: TS, errors: html },
+    { code: "import { decode } from 'html-entities'; export function h(req, res) { res.send('<div>' + decode(`<p>${escapeHtml(req.query.q)}</p>`)); }", filename: TS, errors: html },
+    { code: "import { unesc } from './text'; export function h(req, res) { res.send('<div>' + unesc(`<p>${escapeHtml(req.query.q)}</p>`)); }", filename: TS, errors: html },
+    { code: "export function h(req, res) { res.send('<div>' + `<p>${escapeHtml(req.query.q)}</p>`.split('&lt;').join('<')); }", filename: TS, errors: html },
+    { code: "export function h(req, res) { res.send('<div>' + `<p>${escapeHtml(req.query.q)}</p>`.replace(/&lt;/g, '<')); }", filename: TS, errors: html },
+    { code: "export function h(req, res) { res.send('<div>' + `<p>${escapeHtml(req.query.q)}</p>`.replaceAll('&lt;', '<')); }", filename: TS, errors: html },
+    { code: "export function h(req, res) { res.send(`<p>${escapeHtml(req.query.q)}</p>`.replaceAll('&lt;', '<')); }", filename: TS, errors: html },
+    { code: "export function h(req, res) { res.send('<script>' + `</script><p>${escapeHtml(req.query.q)}</p>`.slice(9)); }", filename: TS, errors: html },
+    { code: "export function h(req, res) { res.send('<div>' + `<p>${escapeHtml(req.query.q)}</p>`.substring(0, 8)); }", filename: TS, errors: html },
+    { code: "export function h(req, res) { res.send('<div>' + req.query.render(`<p>${escapeHtml(req.query.q)}</p>`)); }", filename: TS, errors: html },
+    { code: "export function h(req, res, helpers) { res.send('<div>' + helpers[req.query.t](`<p>${escapeHtml(req.query.q)}</p>`)); }", filename: TS, errors: html },
+    { code: "import dedent from 'dedent'; export function h(req, res) { res.send('<div>' + dedent`<p>${escapeHtml(req.query.q)}</p>`); }", filename: TS, errors: html },
+    {
+      code: "const TPL = '<h1>{{name}}</h1>'; export function h(req, res, data) { res.send(TPL.replace(/\\{\\{(\\w+)\\}\\}/g, (m, k) => data[k])); }",
+      filename: TS,
+      errors: html,
+    },
+    {
+      code: "export function h(res, list) { const rows = []; for (const r of list) rows.push('<li>' + r.name + '</li>'); res.send('<ul>' + rows.join('') + '</ul>'); }",
+      filename: TS,
+      errors: html,
+    },
+    {
+      code: "export function h(res, items) { res.send(`<ul>${items.map((i) => { if (i.hidden) return ''; return `<li>${i.name}</li>`; }).join('')}</ul>`); }",
+      filename: TS,
+      errors: html,
+    },
+    // A Nest route handler's string is sent as text/html on the Express platform.
+    {
+      code: "import { Controller, Get, Query } from '@nestjs/common'; @Controller() class C { @Get() find(@Query('q') q: string) { return `<h1>${q}</h1>`; } }",
+      filename: TS,
+      errors: html,
+    },
+    {
+      code: "import { Controller, Header, Post, Body } from '@nestjs/common'; @Controller() class C { @Post() @Header('Content-Type', type) save(@Body() b) { return `<p>${b.name}</p>`; } }",
+      filename: TS,
+      errors: html,
+    },
+    {
+      code: "import * as common from '@nestjs/common'; @common.Controller() class C { @common.Get() find(@common.Query('q') q = '') { return `<h1>${q}</h1>`; } }",
+      filename: TS,
+      errors: html,
+    },
+    { code: "export function h(req, res) { res.send(layout('<h1>'.concat(req.query.q, '</h1>'))); }", filename: TS, errors: html },
+    // A `data:` page in a frame, comment ends browsers accept, and URL text written with character references.
+    { code: "export function h(req, res) { res.send(`<iframe src=\"data:text/html,${escapeHtml(req.query.q)}\"></iframe>`); }", filename: TS, errors: where },
+    { code: "export function h(req, res) { res.send(`<object data=\"data:text/html;base64,${encodeURIComponent(req.query.q)}\"></object>`); }", filename: TS, errors: where },
+    { code: "export function h(req, res) { res.send(`<!--><script>${escapeHtml(req.query.q)}</script>`); }", filename: TS, errors: where },
+    { code: "export function h(req, res) { res.send(`<!---><script>${escapeHtml(req.query.q)}</script>`); }", filename: TS, errors: where },
+    { code: "export function h(req, res) { res.send(`<!-- a --!><script>${escapeHtml(req.query.q)}</script>`); }", filename: TS, errors: where },
+    { code: "export function h(req, res) { res.send(`<a href=\"&#106;avascript:${escapeHtml(req.query.q)}\">x</a>`); }", filename: TS, errors: where },
+    { code: "export function h(req, res) { res.send(`<a href=\"javascript&colon;${escapeHtml(req.query.q)}\">x</a>`); }", filename: TS, errors: where },
+    { code: "export function h(req, res) { res.send(`<a href=\"&#x6A${escapeHtml(req.query.q)}\">x</a>`); }", filename: TS, errors: where },
+    // Meta refresh URLs and SVG animation values.
+    { code: "export function h(req, res) { res.send(`<meta http-equiv=\"refresh\" content=\"0;url=${escapeHtml(req.query.q)}\">`); }", filename: TS, errors: where },
+    { code: "export function h(req, res) { res.send(`<meta http-equiv=\"Refresh\" content=\"0; URL='${escapeHtml(req.query.q)}'\">`); }", filename: TS, errors: where },
+    { code: "export function h(req, res) { res.send(`<svg><a><animate attributeName=\"href\" values=\"#;${escapeHtml(req.query.q)}\"/><set attributeName=\"href\" to=\"${escapeHtml(req.query.q)}\"/></a></svg>`); }", filename: TS, errors: [...where, ...where] },
+    // Template outputs read through a bracket key or a `set` alias.
+    { code: "ejs.render('<p><%- locals[\"bio\"] %></p>', { bio: input });", filename: TS, errors: raw },
+    { code: `${NUNJUCKS} nunjucks.renderString('{% set b = bio | safe %}<p>{{ b }}</p>', { bio: input });`, filename: TS, errors: raw },
+    // Response headers in a const or a Headers instance, a Fastify return, Koa branches, a removed type.
+    {
+      code: "export function GET(req) { const q = new URL(req.url).searchParams.get('q'); const headers = { 'Content-Type': 'text/html' }; return new Response(`<p>${q}</p>`, { headers }); }",
+      filename: TS,
+      errors: html,
+    },
+    {
+      code: "export function GET(req) { const q = new URL(req.url).searchParams.get('q'); const headers = new Headers(); headers.set('Content-Type', 'text/html; charset=utf-8'); return new Response(`<p>${q}</p>`, { headers }); }",
+      filename: TS,
+      errors: html,
+    },
+    {
+      code: "fastify.get('/', async (request, reply) => { reply.type('text/html'); return `<h1>${request.query.q}</h1>`; });",
+      filename: TS,
+      errors: html,
+    },
+    { code: "function h(ctx, ok) { ctx.body = ok ? 'Done' : `<p>${ctx.query.q}</p>`; }", filename: TS, errors: html },
+    {
+      code: "function h(res, q) { res.type('text/plain'); res.removeHeader('Content-Type'); res.send('<p>' + q + '</p>'); }",
+      filename: TS,
+      errors: html,
+    },  ],
 });

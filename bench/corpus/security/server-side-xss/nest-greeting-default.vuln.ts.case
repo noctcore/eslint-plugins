@@ -1,0 +1,10 @@
+// @bench category=server-side-xss cwe=CWE-79 framework=nest pair=nest-greeting-default title="handler with no Header decorator returns markup with the raw name"
+import { Controller, Get, Query } from '@nestjs/common';
+
+@Controller('greet')
+export class GreetController {
+  @Get()
+  hello(@Query('name') name = 'guest'): string {
+    return `<p>Hello, ${name}!</p>`; // expect: security/no-unescaped-html-response
+  }
+}

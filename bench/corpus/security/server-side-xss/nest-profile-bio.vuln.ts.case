@@ -10,6 +10,6 @@ export class PeopleController {
   @Header('Content-Type', 'text/html')
   async profile(@Param('slug') slug: string): Promise<string> {
     const person = await this.users.bySlug(slug);
-    return `<section class="bio"><h1>Profile</h1>${person.bio}</section>`; // expect: security/require-sanitized-html
+    return `<section class="bio"><h1>Profile</h1>${person.bio}</section>`; // expect: security/require-sanitized-html, security/no-unescaped-html-response
   }
 }

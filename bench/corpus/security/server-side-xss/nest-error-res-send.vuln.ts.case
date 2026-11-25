@@ -14,6 +14,6 @@ export class OrdersController {
       res.json(order);
       return;
     }
-    res.status(404).send(`<h1>Order ${id} was not found</h1>`); // expect: security/require-sanitized-html
+    res.status(404).send(`<h1>Order ${id} was not found</h1>`); // expect: security/require-sanitized-html, security/no-unescaped-html-response
   }
 }

@@ -13,7 +13,7 @@ app.get('/reports/orders', async (req: Request, res: Response) => {
   const safeName = sanitizeHtml(customer, { allowedTags: [], allowedAttributes: {} });
   html += '<h2>Customer: ' + safeName + '</h2><ul>';
   for (const order of orders) {
-    html += '<li>' + order.id + ': ' + order.total + '</li>';
+    html += '<li>' + Number(order.id) + ': ' + Number(order.total) + '</li>';
   }
   html += '</ul></body></html>';
   res.send(html);

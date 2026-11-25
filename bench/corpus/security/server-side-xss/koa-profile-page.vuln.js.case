@@ -13,7 +13,7 @@ router.get('/members/:handle', async (ctx) => {
     return;
   }
   ctx.type = 'html';
-  ctx.body = `<div class="card"><h2>${member.handle}</h2><p>${member.bio}</p></div>`; // expect: security/require-sanitized-html
+  ctx.body = `<div class="card"><h2>${member.handle}</h2><p>${member.bio}</p></div>`; // expect: security/require-sanitized-html, security/no-unescaped-html-response
 });
 
 app.use(router.routes());
