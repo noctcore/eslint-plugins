@@ -149,6 +149,11 @@ const URL_ATTRIBUTES: ReadonlySet<string> = new Set([
   'profile',
   'itemtype',
 ]);
+/** True for an attribute whose value is a URL (`href`, `src`, ...). */
+export function isUrlAttribute(name: string): boolean {
+  return URL_ATTRIBUTES.has(name.toLowerCase());
+}
+
 /** Attributes whose value runs as code once decoded: CSS and an inline document. */
 const CODE_ATTRIBUTES: ReadonlySet<string> = new Set(['style', 'srcdoc']);
 const SPACE = /[\t\n\f\r ]/u;

@@ -97,8 +97,14 @@ nunjucks `renderString(template, context)` and `ejs.render(template, data)` with
 template, inline or in a `const`, and a literal context object: each output (`{{ user.bio }}`,
 `<%= bio %>`, `<%- locals.bio %>`) is looked up in the object, through nested literals. A raw
 output (`| safe`, also after other filters; inside `{% autoescape false %}`; any output once the
-file configures nunjucks with `autoescape` other than `true`; EJS `<%-`) is reported when its value
-is not safe where it lands. An escaped output is reported only where escaping is not enough
+file configures nunjucks with `autoescape` other than `true`; EJS `<%-`, and `<%=` too when the
+options replace `escape` or `escapeFunction`) is reported when its value is not safe where it
+lands. EJS options are read from a literal third argument (or a `const` holding one), and from the
+data object when there is none, as EJS does: `delimiter`, `openDelimiter`, `closeDelimiter`
+and `localsName` change how the template is read. When the options cannot be read in full (not a
+literal, a spread, `outputFunctionName`, `client` or another option that changes the output), or
+the file writes a setting on `ejs` (`ejs.escapeXML = ...`, `ejs.delimiter = ...`) or hands it to a
+call, every value in the data object is judged as raw element text. An escaped output is reported only where escaping is not enough
 (`<a href="{{ url }}">`, `<script>var u = <%= name %></script>`).
 
 ```ts bad
@@ -169,16 +175,37 @@ script as code, so it reports: after `}` (a block, or an object or function expr
   `DOMPurify.sanitize(marked.parse(x))` is safe, `marked.parse(DOMPurify.sanitize(x))` is not.
 - **Options that keep the protection on.** sanitize-html with `allowedTags: false`,
   `allowedAttributes: false`, `allowVulnerableTags`, a `script`, `style`, `textarea`, `option`,
-  `svg` or similar tag, an `on*` or `srcdoc` attribute, a `javascript:` scheme, `transformTags` or
+  `svg` or similar tag, an `on*` or `srcdoc` attribute (also through a glob such as `o*` or
+  `s*`, which match `onerror` and `srcdoc`), a `javascript:` scheme, a `data:` scheme for a tag
+  in `allowedSchemesByTag` other than `img`, `audio`, `video`, `source`, `image` and `track`, a
+  `data:` scheme in `allowedSchemes` with `iframe` or `frame` allowed, `transformTags` or
   `textFilter`; DOMPurify with `RETURN_DOM`, `RETURN_DOM_FRAGMENT`, `RETURN_DOM_IMPORT`,
   `IN_PLACE`, `ALLOW_UNKNOWN_PROTOCOLS`, `SAFE_FOR_XML: false`, `ALLOWED_URI_REGEXP`,
-  `CUSTOM_ELEMENT_HANDLING`, a `script`, `iframe` or similar tag in `ADD_TAGS` / `ALLOWED_TAGS`, or
-  an `on*` attribute in `ADD_ATTR` / `ALLOWED_ATTR` (also through `setConfig`); xss with
-  `onTag`, `onTagAttr`, `onIgnoreTag`, `onIgnoreTagAttr`, `safeAttrValue`, `escapeHtml` or a
-  dangerous tag in `whiteList`; he with `allowUnsafeSymbols`; serialize-javascript with `unsafe`:
-  each of these counts as no sanitizer. Options must be an object literal, inline or in a `const`
-  that is not exported and is only handed to sanitizer calls; anything else (a spread, a shared
-  config from another file) counts as unknown, so as unsafe.
+  `CUSTOM_ELEMENT_HANDLING`, a `script`, `iframe` or similar tag in `ADD_TAGS` / `ALLOWED_TAGS`,
+  an `on*` attribute in `ADD_ATTR` / `ALLOWED_ATTR`, a URL attribute (`href`, `src`, ...) in
+  `ADD_URI_SAFE_ATTR`, a tag other than those media tags in `ADD_DATA_URI_TAGS`, a `NAMESPACE`
+  other than XHTML or a `PARSER_MEDIA_TYPE` other than `text/html`; xss with `onTag`,
+  `onTagAttr`, `onIgnoreTag`, `onIgnoreTagAttr`, `safeAttrValue`, `escapeHtml` or a dangerous
+  tag in `whiteList`; he with `allowUnsafeSymbols`; serialize-javascript with `unsafe`: each of
+  these counts as no sanitizer. Options must be an object literal, inline or in a `const` that is
+  not exported and is only handed to sanitizer calls; anything else (a spread, a shared config from
+  another file) counts as unknown, so as unsafe.
+- **No shared config that switches protection off.** The default export of `dompurify` and
+  `isomorphic-dompurify` is one instance: a `setConfig` on it (as `DOMPurify.setConfig`, through
+  a `const` alias, or as the named `setConfig` export) whose config fails the checks above, or
+  cannot be read, makes every `sanitize` of that module untrusted in the file, the named
+  `sanitize` export included. So does handing the module binding to a call, assigning it, or
+  writing one of its members. An instance made with `DOMPurify(window)` keeps its own config. A
+  write to `sanitizeHtml.defaults` or `xss.whiteList` (an assignment, a `push`, `Object.assign`,
+  a `const` alias or object that is then changed, or the module handed to a call) makes every call
+  of that module untrusted; reading them is fine when the value is copied (`.concat()`,
+  `.slice()`, `.length`) or handed straight to the sanitizer.
+- **React rendering without unsafe inner HTML.** `renderToString` and `renderToStaticMarkup`
+  escape text, but write `dangerouslySetInnerHTML` as is. The rendered element is read, with every
+  component, element and object it names in this file, and a `dangerouslySetInnerHTML` (JSX or a
+  `createElement` props object) counts only when its `__html` is safe as element text (a
+  constant, or sanitized). A component imported from another file or received as a parameter
+  cannot be read, and counts as safe.
 - **A configured escaper** in `sanitizers`, trusted to encode `&`, `<`, `>` and `"`: element text
   and double-quoted attributes. The name is trusted only for a helper the rule cannot read: one
   imported from another file, or not declared in this file. A function declared in this file is
@@ -231,7 +258,7 @@ spread), a template loaded from a file (`res.render('page', ...)`), engines othe
 EJS, a nunjucks output that is a function call or a literal, HTML written over several
 `res.write` calls (each is judged alone), HTML built in one function and sent from another unless
 through a helper that returns it, helpers with more than declarations and one `return`,
-`DOMPurify.addHook`, and whether a URL in `<script src>` or `<iframe src>` points at another host
+`DOMPurify.addHook`, a sanitizer config or default changed in another file, and whether a URL in `<script src>` or `<iframe src>` points at another host
 (a fixed scheme is all the rule checks there). `.replace` is taken to be the string method,
 without type information.
 

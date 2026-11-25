@@ -1,0 +1,11 @@
+---
+'@noctcore/eslint-plugin-security': patch
+---
+
+`no-unescaped-html-response` now reports sanitizers weakened by shared config or by options it used to miss. A `setConfig` on the default export of `dompurify` or `isomorphic-dompurify` (also through a `const` alias, and the named `setConfig` export) whose config fails the checks or cannot be read makes every `sanitize` of that module untrusted in the file, the named `sanitize` export included; so does handing that module binding to a call or writing one of its members. A write to `sanitizeHtml.defaults` or `xss.whiteList` (assignment, `push`, `Object.assign`, a changed `const` alias, or the module handed to a call) makes every call of that module untrusted. DOMPurify `ADD_URI_SAFE_ATTR` with a URL attribute, `ADD_DATA_URI_TAGS` with a tag other than `img`, `audio`, `video`, `source`, `image` or `track`, a `NAMESPACE` other than XHTML and a `PARSER_MEDIA_TYPE` other than `text/html` count as unsafe, as do a sanitize-html attribute glob that matches `on*` or `srcdoc` (`o*`, `s*`), a `data:` scheme in `allowedSchemesByTag` for a tag other than those media tags, and a `data:` scheme in `allowedSchemes` with `iframe` or `frame` allowed.
+
+`renderToString` and `renderToStaticMarkup` count as safe only when the rendered element, read with every component, element and object it names in the file, sets no `dangerouslySetInnerHTML` whose `__html` is unsafe as element text.
+
+`ejs.render` now reads its options: a literal third argument (or a `const` holding one), or the data object when there is none. Replacing `escape` or `escapeFunction` makes `<%=` raw, and `delimiter`, `openDelimiter`, `closeDelimiter` and `localsName` change how the template is read. Options that cannot be read in full, or a file that writes a setting on `ejs` or hands it to a call, make every value in the data object count as raw element text.
+
+Report removed: an EJS `<%-` output is no longer reported when the options (or the data, with no options argument) set another `delimiter`, since EJS does not read it as a tag then.

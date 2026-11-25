@@ -1,7 +1,7 @@
 import { AST_NODE_TYPES, ASTUtils, type TSESLint, type TSESTree } from '@typescript-eslint/utils';
 
 import { type GuardContext, isProvenSafeValue } from './guards';
-import type { HtmlContext } from './html-context';
+import { type HtmlContext, isUrlAttribute } from './html-context';
 import { flowStep, stringPieces, withArguments } from './value-flow';
 
 /*
@@ -84,7 +84,7 @@ const HE_ENCODE: Encoder = { encoding: 'escape-all', options: (call, judge) => j
 const SANITIZE_HTML: Encoder = { encoding: 'sanitized', options: (call, judge) => judge.sanitizeHtmlOptionsSafe(call) };
 const XSS: Encoder = { encoding: 'sanitized', options: (call, judge) => judge.xssOptionsSafe(call) };
 const DOMPURIFY: Encoder = { encoding: 'sanitized', options: (call, judge) => judge.domPurifyOptionsSafe(call) };
-const REACT_RENDER: Encoder = { encoding: 'sanitized', options: () => true };
+const REACT_RENDER: Encoder = { encoding: 'sanitized', options: (call, judge) => judge.reactRenderSafe(call) };
 const SERIALIZE: Encoder = { encoding: 'script-json', options: (call, judge) => judge.serializeOptionsSafe(call) };
 const SCRIPT_JSON: Encoder = { encoding: 'script-json' };
 
@@ -130,6 +130,12 @@ const MODULES: Readonly<Record<string, ModuleSpec>> = {
   htmlescape: { callable: SCRIPT_JSON, named: { htmlescape: SCRIPT_JSON } },
 };
 
+/** Modules with shared default options that every call reads: where they hang, and the call that reads them. */
+const SHARED_DEFAULTS: Readonly<Record<string, { readonly fields: ReadonlySet<string>; readonly encoder: Encoder }>> = {
+  'sanitize-html': { fields: new Set(['defaults']), encoder: SANITIZE_HTML },
+  xss: { fields: new Set(['whiteList', 'allowList']), encoder: XSS },
+};
+
 /** Global functions that encode, called by name and not shadowed. */
 const GLOBAL_ENCODERS: Readonly<Record<string, Encoding>> = {
   encodeURIComponent: 'url-component',
@@ -164,6 +170,13 @@ const DOMPURIFY_DANGEROUS_TAGS: ReadonlySet<string> = new Set(
   [...DANGEROUS_TAGS].filter((tag) => tag !== 'style').concat(['iframe']),
 );
 const DANGEROUS_SCHEMES: ReadonlySet<string> = new Set(['javascript', 'vbscript']);
+/** Tags where a `data:` URL is only media, never a document or a script. */
+const DATA_URI_MEDIA_TAGS: ReadonlySet<string> = new Set(['img', 'audio', 'video', 'source', 'image', 'track']);
+/** Tags whose `src` loads a document, where a `data:text/html` URL runs script. */
+const FRAME_TAGS: ReadonlySet<string> = new Set(['iframe', 'frame']);
+/** Array methods that only read: they return a primitive or a new array of the same items. */
+const COPYING_METHODS: ReadonlySet<string> = new Set(['concat', 'slice', 'includes', 'indexOf', 'lastIndexOf', 'join', 'at']);
+const MAX_SCAN = 200_000;
 const NUMERIC_GLOBALS: ReadonlySet<string> = new Set(['Number', 'parseInt', 'parseFloat', 'Boolean', 'isNaN', 'isFinite']);
 const NUMERIC_METHODS: ReadonlySet<string> = new Set(['toFixed', 'toPrecision', 'toExponential']);
 /** `Date` methods whose result is a number or an ISO stamp. */
@@ -525,6 +538,14 @@ export class HtmlSafety {
   readonly purifiers: Set<TSESLint.Scope.Variable> = new Set();
   /** DOMPurify bindings given a config or hooks that switch protection off. */
   readonly weakenedPurifiers: Set<TSESLint.Scope.Variable> = new Set();
+  /**
+   * Modules whose shared state may switch protection off for every import of
+   * them: a `setConfig` on the isomorphic-dompurify singleton, a write to
+   * `sanitizeHtml.defaults` or `xss.whiteList`.
+   */
+  readonly weakenedModules: Set<string> = new Set();
+  private readonly reactActive = new Set<TSESTree.Node>();
+  private readonly reactCache = new Map<TSESTree.Node, boolean>();
 
   constructor(
     private readonly sourceCode: SourceCode,
@@ -635,6 +656,9 @@ export class HtmlSafety {
     if (callee.type === AST_NODE_TYPES.Identifier) {
       const binding = this.moduleOf(callee);
       if (binding !== null) {
+        if (this.weakenedModules.has(binding.module)) {
+          return null;
+        }
         const spec = this.specOf(binding);
         if (spec === null) {
           return this.options.sanitizerNames.has(callee.name) ? { encoding: 'escape-quot' } : null;
@@ -670,7 +694,9 @@ export class HtmlSafety {
       const spec = this.specOf(binding);
       const encoder = spec?.named[method];
       if (encoder !== undefined) {
-        return encoder === DOMPURIFY && this.isWeakened(object) ? null : encoder;
+        return (encoder === DOMPURIFY && this.isWeakened(object)) || this.weakenedModules.has(binding.module)
+          ? null
+          : encoder;
       }
     }
     if (method === 'sanitize' && this.isPurifier(object)) {
@@ -802,7 +828,14 @@ export class HtmlSafety {
 
   private safeAttributeName(name: string): boolean {
     const lower = name.toLowerCase();
-    return !lower.startsWith('on') && lower !== 'srcdoc' && lower !== '*';
+    const star = lower.indexOf('*');
+    if (star !== -1) {
+      // A sanitize-html glob (`data-*`) matches any name with its literal start:
+      // `o*` matches `onerror`, `s*` matches `srcdoc`.
+      const prefix = lower.slice(0, star);
+      return !(prefix.startsWith('on') || 'on'.startsWith(prefix) || 'srcdoc'.startsWith(prefix));
+    }
+    return !lower.startsWith('on') && lower !== 'srcdoc';
   }
 
   /** An attribute map (`{ a: ['href'], '*': ['class'] }`) that allows no event handler or `srcdoc`. */
@@ -892,8 +925,16 @@ export class HtmlSafety {
         case 'allowedSchemesByTag': {
           const byTag = unwrap(value);
           const tags = byTag.type === AST_NODE_TYPES.ObjectExpression ? this.optionEntries(byTag) : null;
-          if (tags === null || ![...tags.values()].every((schemes) => this.stringArray(schemes)?.every(schemeSafe) === true)) {
+          if (tags === null) {
             return false;
+          }
+          for (const [tag, schemes] of tags) {
+            // `data:` is media on an image, a document on an iframe or object.
+            const tagSchemeSafe = (scheme: string): boolean =>
+              schemeSafe(scheme) && (scheme.toLowerCase() !== 'data' || DATA_URI_MEDIA_TAGS.has(tag.toLowerCase()));
+            if (this.stringArray(schemes)?.every(tagSchemeSafe) !== true) {
+              return false;
+            }
           }
           break;
         }
@@ -907,7 +948,13 @@ export class HtmlSafety {
           break;
       }
     }
-    return true;
+    // A `data:` scheme for every tag reaches an allowed iframe's `src`.
+    const schemes = entries.get('allowedSchemes');
+    const allowsData =
+      schemes !== undefined && this.stringArray(schemes)?.some((scheme) => scheme.toLowerCase() === 'data') !== false;
+    const tags = entries.get('allowedTags');
+    const frames = tags === undefined ? false : this.stringArray(tags)?.some((tag) => FRAME_TAGS.has(tag.toLowerCase())) ?? true;
+    return !(allowsData && frames);
   }
 
   xssOptionsSafe(call: TSESTree.CallExpression): boolean {
@@ -994,6 +1041,28 @@ export class HtmlSafety {
             return false;
           }
           break;
+        // A URI-safe attribute skips the scheme check, so `href` would keep `javascript:`.
+        case 'ADD_URI_SAFE_ATTR':
+          if (this.stringArray(value)?.every((name) => this.safeAttributeName(name) && !isUrlAttribute(name)) !== true) {
+            return false;
+          }
+          break;
+        case 'ADD_DATA_URI_TAGS':
+          if (this.stringArray(value)?.every((tag) => DATA_URI_MEDIA_TAGS.has(tag.toLowerCase())) !== true) {
+            return false;
+          }
+          break;
+        // Another namespace or the XHTML parser read the markup differently from the page.
+        case 'NAMESPACE':
+          if (staticString(value) !== 'http://www.w3.org/1999/xhtml') {
+            return false;
+          }
+          break;
+        case 'PARSER_MEDIA_TYPE':
+          if (staticString(value)?.toLowerCase() !== 'text/html') {
+            return false;
+          }
+          break;
         case 'ALLOWED_URI_REGEXP':
         case 'CUSTOM_ELEMENT_HANDLING':
           return false;
@@ -1002,6 +1071,232 @@ export class HtmlSafety {
       }
     }
     return true;
+  }
+
+  /* ---- shared module state ------------------------------------------ */
+
+  /** Adds to {@link weakenedModules} each module whose shared defaults this file may change. */
+  findChangedDefaults(): void {
+    for (const [variable, binding] of this.bindings) {
+      const shared = SHARED_DEFAULTS[binding.module];
+      const whole = binding.imported === '*' || binding.imported === 'default';
+      if (shared === undefined || (!whole && !shared.fields.has(binding.imported))) {
+        continue;
+      }
+      if (this.moduleDefaultsChanged(variable, whole ? shared.fields : null, shared.encoder)) {
+        this.weakenedModules.add(binding.module);
+      }
+    }
+  }
+
+  /**
+   * True when a module's shared defaults (`sanitizeHtml.defaults`,
+   * `xss.whiteList`) may be changed through `variable`: a binding of the
+   * module, whose `fields` hold the defaults, or of the defaults object
+   * itself (`fields` null). A call of the module, a method call on it and a
+   * `const` alias are followed. A read of the defaults leaves them unchanged
+   * only when it is copied (`.concat()`, `.slice()`, `.length`) or handed
+   * straight to a call of `encoder`; a write, any other use, or the binding
+   * handed on may change them.
+   */
+  private moduleDefaultsChanged(
+    variable: Variable,
+    fields: ReadonlySet<string> | null,
+    encoder: Encoder,
+    seen: Set<Variable> = new Set(),
+  ): boolean {
+    if (seen.has(variable)) {
+      return false;
+    }
+    seen.add(variable);
+    for (const reference of variable.references) {
+      if (reference.init === true) {
+        continue;
+      }
+      const id = reference.identifier;
+      const parent = id.parent;
+      if (fields === null) {
+        if (!this.defaultsReadOnly(id, encoder)) {
+          return true;
+        }
+      } else if (parent?.type === AST_NODE_TYPES.CallExpression && parent.callee === id) {
+        continue;
+      } else if (parent?.type === AST_NODE_TYPES.MemberExpression && parent.object === id) {
+        const name = propertyName(parent);
+        if (name === null || (fields.has(name) && !this.defaultsReadOnly(parent, encoder))) {
+          return true;
+        }
+      } else if (
+        parent?.type === AST_NODE_TYPES.VariableDeclarator &&
+        parent.init === id &&
+        parent.id.type === AST_NODE_TYPES.Identifier &&
+        parent.parent.kind === 'const'
+      ) {
+        const alias = this.variableOf(parent.id);
+        if (alias === null || this.moduleDefaultsChanged(alias, fields, encoder, seen)) {
+          return true;
+        }
+      } else {
+        return true;
+      }
+    }
+    return false;
+  }
+
+  /** True when a read of shared defaults at `node` neither writes them nor lets them escape. */
+  private defaultsReadOnly(node: TSESTree.Node, encoder: Encoder): boolean {
+    let top: TSESTree.Node = node;
+    while (top.parent?.type === AST_NODE_TYPES.MemberExpression && top.parent.object === top) {
+      top = top.parent;
+    }
+    const parent = top.parent;
+    if (parent === undefined || isWriteTarget(top)) {
+      return false;
+    }
+    if (top !== node && top.type === AST_NODE_TYPES.MemberExpression) {
+      const name = propertyName(top) ?? '';
+      if (parent.type === AST_NODE_TYPES.CallExpression && parent.callee === top) {
+        return COPYING_METHODS.has(name);
+      }
+      if (name === 'length') {
+        return true;
+      }
+    }
+    // Handed to the sanitizer inline, or in a `const` only ever handed to it.
+    let current: TSESTree.Node = top;
+    for (;;) {
+      const holder: TSESTree.Node | undefined = current.parent;
+      if (holder === undefined) {
+        return false;
+      }
+      if (
+        holder.type === AST_NODE_TYPES.SpreadElement ||
+        holder.type === AST_NODE_TYPES.ObjectExpression ||
+        holder.type === AST_NODE_TYPES.ArrayExpression ||
+        (holder.type === AST_NODE_TYPES.Property && holder.value === current)
+      ) {
+        current = holder;
+        continue;
+      }
+      if (holder.type === AST_NODE_TYPES.CallExpression && holder.callee !== current) {
+        return this.encoderOf(holder) === encoder;
+      }
+      if (
+        holder.type === AST_NODE_TYPES.VariableDeclarator &&
+        holder.init === current &&
+        current.type === AST_NODE_TYPES.ObjectExpression &&
+        holder.id.type === AST_NODE_TYPES.Identifier
+      ) {
+        return this.optionsObject(holder.id) !== null;
+      }
+      return false;
+    }
+  }
+
+  /* ---- React rendering ----------------------------------------------- */
+
+  /**
+   * True when a React render call writes no `dangerouslySetInnerHTML` that is
+   * not safe as element text. The element is read with every component,
+   * element and object it names in this file; what is imported or received
+   * as a parameter cannot be read.
+   */
+  reactRenderSafe(call: TSESTree.CallExpression): boolean {
+    const cached = this.reactCache.get(call);
+    if (cached !== undefined) {
+      return cached;
+    }
+    const [element] = call.arguments;
+    if (element === undefined) {
+      return true;
+    }
+    if (element.type === AST_NODE_TYPES.SpreadElement || this.reactActive.has(call)) {
+      return false;
+    }
+    this.reactActive.add(call);
+    const safe = this.markupTreeSafe(element, call);
+    this.reactActive.delete(call);
+    this.reactCache.set(call, safe);
+    return safe;
+  }
+
+  private markupTreeSafe(root: TSESTree.Node, sink: TSESTree.Node): boolean {
+    const seen = new Set<TSESTree.Node>();
+    const stack: TSESTree.Node[] = [root];
+    const follow = (variable: Variable | null): void => {
+      for (const def of variable?.defs ?? []) {
+        if (def.type === 'Variable' && def.node.init !== null) {
+          stack.push(def.node.init);
+        } else if (def.type === 'FunctionName' || def.type === 'ClassName') {
+          stack.push(def.node);
+        }
+      }
+    };
+    for (let node = stack.pop(); node !== undefined; node = stack.pop()) {
+      if (seen.has(node)) {
+        continue;
+      }
+      seen.add(node);
+      if (seen.size > MAX_SCAN) {
+        return false;
+      }
+      if (
+        node.type === AST_NODE_TYPES.JSXAttribute &&
+        node.name.type === AST_NODE_TYPES.JSXIdentifier &&
+        node.name.name === 'dangerouslySetInnerHTML'
+      ) {
+        const value = node.value?.type === AST_NODE_TYPES.JSXExpressionContainer ? node.value.expression : null;
+        if (value === null || value.type === AST_NODE_TYPES.JSXEmptyExpression || !this.innerHtmlSafe(value, sink)) {
+          return false;
+        }
+        continue;
+      }
+      if (node.type === AST_NODE_TYPES.Property && propertyKey(node) === 'dangerouslySetInnerHTML') {
+        if (!this.innerHtmlSafe(node.value, sink)) {
+          return false;
+        }
+        continue;
+      }
+      if (node.type === AST_NODE_TYPES.JSXOpeningElement) {
+        let name: TSESTree.JSXTagNameExpression = node.name;
+        while (name.type === AST_NODE_TYPES.JSXMemberExpression) {
+          name = name.object;
+        }
+        if (name.type === AST_NODE_TYPES.JSXIdentifier) {
+          follow(ASTUtils.findVariable(this.sourceCode.getScope(node), name.name));
+        }
+      } else if (node.type === AST_NODE_TYPES.Identifier) {
+        follow(this.variableOf(node));
+      }
+      for (const key of this.sourceCode.visitorKeys[node.type] ?? []) {
+        const child = (node as unknown as Record<string, unknown>)[key];
+        for (const item of Array.isArray(child) ? child : [child]) {
+          if (item !== null && typeof item === 'object' && 'type' in item) {
+            stack.push(item as TSESTree.Node);
+          }
+        }
+      }
+    }
+    return true;
+  }
+
+  /** `{ __html: value }` whose value is safe as element text. */
+  private innerHtmlSafe(node: TSESTree.Node, sink: TSESTree.Node): boolean {
+    let object = unwrap(node);
+    if (object.type === AST_NODE_TYPES.Identifier) {
+      const init = this.constInit(object);
+      object = init === null ? object : unwrap(init);
+    }
+    if (object.type !== AST_NODE_TYPES.ObjectExpression) {
+      return false;
+    }
+    return object.properties.every((property) => {
+      if (property.type !== AST_NODE_TYPES.Property) {
+        return false;
+      }
+      const key = propertyKey(property);
+      return key !== null && (key !== '__html' || this.safeIn(property.value, 'text', sink));
+    });
   }
 
   /* ---- `.replace` chains --------------------------------------------- */
@@ -1499,4 +1794,16 @@ export class HtmlSafety {
 
 function squash(text: string): string {
   return text.replace(/\s+/gu, '');
+}
+
+/** True when `node` is written: assigned, updated, deleted or a loop target. */
+export function isWriteTarget(node: TSESTree.Node): boolean {
+  const parent = node.parent;
+  return (
+    (parent?.type === AST_NODE_TYPES.AssignmentExpression && parent.left === node) ||
+    parent?.type === AST_NODE_TYPES.UpdateExpression ||
+    (parent?.type === AST_NODE_TYPES.UnaryExpression && parent.operator === 'delete') ||
+    ((parent?.type === AST_NODE_TYPES.ForInStatement || parent?.type === AST_NODE_TYPES.ForOfStatement) &&
+      parent.left === node)
+  );
 }

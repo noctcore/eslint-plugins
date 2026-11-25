@@ -15,6 +15,8 @@ import {
 import {
   encodingSafeIn,
   HtmlSafety,
+  isWriteTarget,
+  type ModuleBinding,
   propertyKey,
   propertyName,
   returnedExpression,
@@ -99,6 +101,8 @@ const TAG = /<[a-z!/]/iu;
 const SCRIPTABLE_TYPE = /htm|xml|svg/iu;
 const MAX_DEPTH = 8;
 const MAX_STATES = 24;
+/** Modules whose default export is a DOMPurify instance with shared config. */
+const PURIFY_MODULES: ReadonlySet<string> = new Set(['dompurify', 'isomorphic-dompurify']);
 
 const stringArray = (description: string): JSONSchema4 => ({
   type: 'array',
@@ -574,18 +578,77 @@ function nunjucksOutputs(template: string, autoescape: boolean): TemplateOutput[
   return outputs;
 }
 
-/** The outputs of an EJS template: `<%=` escaped, `<%-` raw. */
-function ejsOutputs(template: string): TemplateOutput[] {
+/** How an EJS render reads its template: the tag delimiters, whether `<%=` escapes, and the locals name. */
+interface EjsSettings {
+  readonly open: string;
+  readonly close: string;
+  readonly delimiter: string;
+  readonly escapes: boolean;
+  readonly localsName: string;
+}
+
+const EJS_DEFAULTS: EjsSettings = { open: '<', close: '>', delimiter: '%', escapes: true, localsName: 'locals' };
+/** EJS options that change neither the tags nor the escaping of a literal template. */
+const EJS_NEUTRAL_OPTIONS: ReadonlySet<string> = new Set([
+  'cache',
+  'filename',
+  'root',
+  'views',
+  'context',
+  'scope',
+  'compileDebug',
+  'debug',
+  'strict',
+  '_with',
+  'rmWhitespace',
+  'async',
+  'destructuredLocals',
+]);
+
+/** EJS options a render also reads from the data object when no options are passed. */
+const EJS_DATA_OPTIONS: ReadonlySet<string> = new Set([
+  'delimiter',
+  'scope',
+  'context',
+  'debug',
+  'compileDebug',
+  'client',
+  '_with',
+  'rmWhitespace',
+  'strict',
+  'filename',
+  'async',
+]);
+/** EJS options with a text value the rule reads, and the setting each fills. */
+const EJS_TEXT_OPTIONS: ReadonlyMap<string, 'delimiter' | 'open' | 'close' | 'localsName'> = new Map([
+  ['delimiter', 'delimiter'],
+  ['openDelimiter', 'open'],
+  ['closeDelimiter', 'close'],
+  ['localsName', 'localsName'],
+]);
+
+function escapeRegex(text: string): string {
+  return text.replace(/[.*+?^${}()|[\]\\/]/gu, '\\$&');
+}
+
+/** The outputs of an EJS template: `<%=` escaped (unless `escape` is replaced), `<%-` raw. */
+function ejsOutputs(template: string, settings: EjsSettings): TemplateOutput[] {
   const outputs: TemplateOutput[] = [];
+  const open = settings.open + settings.delimiter;
+  const literal = open + settings.delimiter;
+  const tags = new RegExp(
+    `${escapeRegex(literal)}|${escapeRegex(open)}([=\\-_#]?)([\\s\\S]*?)[-_]?${escapeRegex(settings.delimiter + settings.close)}`,
+    'gu',
+  );
   let state = START_STATE;
   let last = 0;
-  for (const match of template.matchAll(/<%%|<%([=\-_#]?)([\s\S]*?)[-_]?%>/gu)) {
+  for (const match of template.matchAll(tags)) {
     state = feedText(state, template.slice(last, match.index));
     last = match.index + match[0].length;
     const kind = match[1];
-    if (match[0] === '<%%') {
+    if (match[0] === literal) {
       // A literal `<%`.
-      state = feedText(state, '<%');
+      state = feedText(state, open);
       continue;
     }
     if (kind !== '=' && kind !== '-') {
@@ -596,14 +659,22 @@ function ejsOutputs(template: string): TemplateOutput[] {
     if (path?.[1] !== undefined && !rest.startsWith('(')) {
       const segments = path[1].split('.');
       outputs.push({
-        path: segments[0] === 'locals' && segments.length > 1 ? segments.slice(1) : segments,
-        raw: kind === '-',
+        path: segments[0] === settings.localsName && segments.length > 1 ? segments.slice(1) : segments,
+        raw: kind === '-' || !settings.escapes,
         contexts: new Set([contextAt(state)]),
       });
     }
     state = feedValue(state);
   }
   return outputs;
+}
+
+/** Every top-level value of a context object, as raw output in element text: for a template the rule cannot read. */
+function everyValueRaw(object: TSESTree.ObjectExpression): TemplateOutput[] {
+  return object.properties.flatMap((property) => {
+    const key = property.type === AST_NODE_TYPES.Property ? propertyKey(property) : null;
+    return key === null ? [] : [{ path: [key], raw: true, contexts: new Set<HtmlContext>(['text']) }];
+  });
 }
 
 interface WriteSink {
@@ -658,6 +729,9 @@ export const noUnescapedHtmlResponseRule = createRule<RuleOptions, MessageIds>({
     const factoryDeclarators: TSESTree.VariableDeclarator[] = [];
     const purifierConfigs: TSESTree.CallExpression[] = [];
     let nunjucksRawEverywhere = false;
+    /** Nodes that may change the `ejs` module's settings: assignment targets and call arguments. */
+    const ejsWrites: TSESTree.Node[] = [];
+    let ejsChanged = false;
     const reported = new Set<string>();
 
     const report = (node: TSESTree.Node, messageId: MessageIds, data: Record<string, string>): void => {
@@ -907,6 +981,104 @@ export const noUnescapedHtmlResponseRule = createRule<RuleOptions, MessageIds>({
       );
     };
 
+    /** The module binding a variable holds, directly or through `const` aliases. */
+    const aliasedBinding = (variable: TSESLint.Scope.Variable, depth = 0): ModuleBinding | null => {
+      const binding = judge.bindings.get(variable);
+      const def = variable.defs[0];
+      if (binding !== undefined || depth > MAX_DEPTH) {
+        return binding ?? null;
+      }
+      if (variable.defs.length !== 1 || def?.type !== 'Variable' || def.parent.kind !== 'const' || def.node.init === null) {
+        return null;
+      }
+      const init = unwrap(def.node.init);
+      const next = init.type === AST_NODE_TYPES.Identifier ? judge.variableOf(init) : null;
+      return next === null ? null : aliasedBinding(next, depth + 1);
+    };
+
+    /**
+     * True when a DOMPurify module binding is handed on (passed to a call,
+     * assigned, exported) or has a member written, so its shared config may
+     * change where the rule cannot see.
+     */
+    const purifierHandedOn = (variable: TSESLint.Scope.Variable, seen: Set<TSESLint.Scope.Variable> = new Set()): boolean => {
+      if (seen.has(variable)) {
+        return false;
+      }
+      seen.add(variable);
+      return variable.references.some((reference) => {
+        const id = reference.identifier;
+        const parent = id.parent;
+        if (reference.init === true || (parent?.type === AST_NODE_TYPES.CallExpression && parent.callee === id)) {
+          return false;
+        }
+        if (parent?.type === AST_NODE_TYPES.MemberExpression && parent.object === id) {
+          return isWriteTarget(parent);
+        }
+        if (
+          parent?.type === AST_NODE_TYPES.VariableDeclarator &&
+          parent.init === id &&
+          parent.id.type === AST_NODE_TYPES.Identifier &&
+          parent.parent.kind === 'const'
+        ) {
+          const alias = judge.variableOf(parent.id);
+          return alias === null || purifierHandedOn(alias, seen);
+        }
+        return true;
+      });
+    };
+
+    /** How `ejs.render` reads its literal template, or null when its options cannot be read in full. */
+    const ejsSettings = (call: TSESTree.CallExpression, data: TSESTree.ObjectExpression): EjsSettings | null => {
+      if (ejsChanged) {
+        return null;
+      }
+      const options = call.arguments[2];
+      let object = data;
+      if (options !== undefined) {
+        let inner = options.type === AST_NODE_TYPES.SpreadElement ? null : unwrap(options);
+        if (inner?.type === AST_NODE_TYPES.Identifier) {
+          inner = unwrap(judge.constInit(inner) ?? inner);
+        }
+        if (inner?.type !== AST_NODE_TYPES.ObjectExpression) {
+          return null;
+        }
+        object = inner;
+      }
+      let settings = EJS_DEFAULTS;
+      for (const property of object.properties) {
+        const key = property.type === AST_NODE_TYPES.Property ? propertyKey(property) : null;
+        if (key === null || property.type !== AST_NODE_TYPES.Property) {
+          // In the data, a spread or computed key is a value the template may read, not an option.
+          if (options === undefined) {
+            continue;
+          }
+          return null;
+        }
+        // Without an options argument, EJS reads only a few options from the data.
+        if (options === undefined && !EJS_DATA_OPTIONS.has(key)) {
+          continue;
+        }
+        if (key === 'escape' || key === 'escapeFunction') {
+          settings = { ...settings, escapes: false };
+          continue;
+        }
+        const setting = EJS_TEXT_OPTIONS.get(key);
+        if (setting !== undefined) {
+          const text = staticString(property.value);
+          if (text === null || text === '') {
+            return null;
+          }
+          settings = { ...settings, [setting]: text };
+          continue;
+        }
+        if (!EJS_NEUTRAL_OPTIONS.has(key)) {
+          return null;
+        }
+      }
+      return settings;
+    };
+
     const templateEngine = (call: TSESTree.CallExpression): 'nunjucks' | 'ejs' | null => {
       const callee = unwrap(call.callee);
       if (callee.type === AST_NODE_TYPES.Identifier) {
@@ -948,7 +1120,13 @@ export const noUnescapedHtmlResponseRule = createRule<RuleOptions, MessageIds>({
       if (text === null || object.type !== AST_NODE_TYPES.ObjectExpression) {
         return;
       }
-      const outputs = engine === 'nunjucks' ? nunjucksOutputs(text, !nunjucksRawEverywhere) : ejsOutputs(text);
+      let outputs: TemplateOutput[];
+      if (engine === 'nunjucks') {
+        outputs = nunjucksOutputs(text, !nunjucksRawEverywhere);
+      } else {
+        const settings = ejsSettings(call, object);
+        outputs = settings === null ? everyValueRaw(object) : ejsOutputs(text, settings);
+      }
       for (const output of outputs) {
         const value = lookup(object, output.path);
         if (value === null || value.type === AST_NODE_TYPES.AssignmentPattern || !('type' in value)) {
@@ -1113,6 +1291,7 @@ export const noUnescapedHtmlResponseRule = createRule<RuleOptions, MessageIds>({
           }
         }
         templateCalls.push(node);
+        ejsWrites.push(...node.arguments);
       },
       NewExpression(node): void {
         responses.push(node);
@@ -1126,6 +1305,13 @@ export const noUnescapedHtmlResponseRule = createRule<RuleOptions, MessageIds>({
       },
       AssignmentExpression(node): void {
         const left = unwrap(node.left);
+        if (left.type === AST_NODE_TYPES.MemberExpression) {
+          let root: TSESTree.Node = left;
+          while (root.type === AST_NODE_TYPES.MemberExpression) {
+            root = unwrap(root.object);
+          }
+          ejsWrites.push(root);
+        }
         if (node.operator !== '=' || left.type !== AST_NODE_TYPES.MemberExpression || propertyName(left) !== 'body') {
           return;
         }
@@ -1156,12 +1342,42 @@ export const noUnescapedHtmlResponseRule = createRule<RuleOptions, MessageIds>({
         for (const call of purifierConfigs) {
           const object = unwrap((unwrap(call.callee) as TSESTree.MemberExpression).object);
           const variable = object.type === AST_NODE_TYPES.Identifier ? judge.variableOf(object) : null;
-          if (variable !== null && (judge.purifiers.has(variable) || judge.bindings.get(variable)?.module.includes('dompurify') === true)) {
-            if (!judge.domPurifyConfigSafe(call.arguments[0])) {
-              judge.weakenedPurifiers.add(variable);
+          const binding = variable === null ? null : aliasedBinding(variable);
+          if (
+            variable !== null &&
+            (judge.purifiers.has(variable) || binding?.module.includes('dompurify') === true) &&
+            !judge.domPurifyConfigSafe(call.arguments[0])
+          ) {
+            judge.weakenedPurifiers.add(variable);
+            // The default export is the module's one instance: every import of it shares the config.
+            if (binding !== null && (binding.imported === '*' || binding.imported === 'default')) {
+              judge.weakenedModules.add(binding.module);
             }
           }
         }
+        for (const call of templateCalls) {
+          const callee = unwrap(call.callee);
+          const variable = callee.type === AST_NODE_TYPES.Identifier ? judge.variableOf(callee) : null;
+          const binding = variable === null ? null : aliasedBinding(variable);
+          if (
+            binding?.imported === 'setConfig' &&
+            PURIFY_MODULES.has(binding.module) &&
+            !judge.domPurifyConfigSafe(call.arguments[0])
+          ) {
+            judge.weakenedModules.add(binding.module);
+          }
+        }
+        for (const [variable, binding] of judge.bindings) {
+          if (
+            PURIFY_MODULES.has(binding.module) &&
+            (binding.imported === '*' || binding.imported === 'default') &&
+            purifierHandedOn(variable)
+          ) {
+            judge.weakenedModules.add(binding.module);
+          }
+        }
+        judge.findChangedDefaults();
+        ejsChanged = ejsWrites.some((node) => isEjs(node));
         nunjucksRawEverywhere = environmentCalls.some((call) =>
           call.arguments.some((arg) => {
             const object = unwrap(arg);
