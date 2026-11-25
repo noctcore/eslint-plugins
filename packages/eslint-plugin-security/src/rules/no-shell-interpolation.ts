@@ -425,18 +425,107 @@ const ENV_FLAGS: ReadonlySet<string> = new Set(['-', '-i', '--ignore-environment
 /** Long shell options that take the next word as their value (`--rcfile x`). */
 const VALUED_LONG_SHELL_OPTIONS: ReadonlySet<string> = new Set(['--rcfile', '--init-file']);
 
-/** The array literal an args list is, or (as in `const args = ['-c', cmd]`) holds. */
+/** The identifier a member chain starts at (`holder` in `holder.args`), else null. */
+function chainRoot(node: TSESTree.Node): TSESTree.Identifier | null {
+  let current = unwrapTypeWrappers(node);
+  while (current.type === AST_NODE_TYPES.MemberExpression || current.type === AST_NODE_TYPES.ChainExpression) {
+    current = unwrapTypeWrappers(current.type === AST_NODE_TYPES.MemberExpression ? current.object : current.expression);
+  }
+  return current.type === AST_NODE_TYPES.Identifier ? current : null;
+}
+
+/**
+ * The array literal an args list is, or (as in `const args = ['-c', cmd]`)
+ * holds. `changed` when a binding it passed through is used anywhere but on
+ * that path (`args[1] = x`, `args.push(x)`, `const a = args`, `log(args)`):
+ * the elements at the call may then differ from the literal.
+ */
 function argsArray(
   list: TSESTree.Node,
   sourceCode: Readonly<TSESLint.SourceCode>,
-): TSESTree.ArrayExpression | null {
-  for (const step of flowSteps(list, list, sourceCode, 'taint')) {
+): { readonly array: TSESTree.ArrayExpression; readonly changed: boolean } | null {
+  const steps = flowSteps(list, list, sourceCode, 'taint');
+  const onPath = new Set<TSESTree.Node>(steps.map((step) => step.node));
+  let changed = false;
+  for (const step of steps) {
     const value = unwrapTypeWrappers(step.node);
     if (value.type === AST_NODE_TYPES.ArrayExpression) {
-      return value;
+      return { array: value, changed };
+    }
+    const root = chainRoot(step.node);
+    const variable = root === null ? null : ASTUtils.findVariable(sourceCode.getScope(root), root);
+    if (root !== null && variable === null) {
+      changed = true;
+    }
+    for (const reference of variable?.references ?? []) {
+      const write = reference.writeExpr;
+      const onlyThePath =
+        reference.identifier === root ||
+        (reference.init === true && write !== null && write !== undefined) ||
+        (write !== null && write !== undefined && onPath.has(write)) ||
+        isRunnerArgs(reference.identifier, sourceCode);
+      if (!onlyThePath) {
+        changed = true;
+      }
     }
   }
-  return null;
+  // The walk stops at a binding written more than once (`let args = [...]`,
+  // then `args = [...]`) or a holder written in place: any array written
+  // there is the list as far as the program goes, with unknown elements.
+  const last = steps.at(-1)?.node;
+  const root = last === undefined ? null : chainRoot(last);
+  const variable = root === null ? null : ASTUtils.findVariable(sourceCode.getScope(root), root);
+  const key = last?.type === AST_NODE_TYPES.MemberExpression && !last.computed && last.property.type === AST_NODE_TYPES.Identifier
+    ? last.property.name
+    : null;
+  let found: TSESTree.ArrayExpression | null = null;
+  let unknown = false;
+  for (const reference of variable?.references ?? []) {
+    if (reference.identifier === root || isRunnerArgs(reference.identifier, sourceCode)) {
+      continue;
+    }
+    const write = reference.writeExpr === null || reference.writeExpr === undefined ? null : unwrapTypeWrappers(reference.writeExpr);
+    const array = writtenArray(write, last === root ? null : key);
+    if (array === null) {
+      unknown = true;
+      continue;
+    }
+    found ??= array;
+    // Arrays of fixed words written in turn run nothing from the request.
+    if (!array.elements.every((element) => element !== null && element.type !== AST_NODE_TYPES.SpreadElement && staticWord(element, sourceCode) !== null)) {
+      unknown = true;
+    }
+  }
+  return found === null || !unknown ? null : { array: found, changed: true };
+}
+
+/** The array a write puts in the binding, or under `key` of the object it puts there. */
+function writtenArray(write: TSESTree.Node | null, key: string | null): TSESTree.ArrayExpression | null {
+  if (key === null) {
+    return write?.type === AST_NODE_TYPES.ArrayExpression ? write : null;
+  }
+  if (write?.type !== AST_NODE_TYPES.ObjectExpression) {
+    return null;
+  }
+  const entry = write.properties.find(
+    (property): property is TSESTree.Property =>
+      property.type === AST_NODE_TYPES.Property &&
+      !property.computed &&
+      ((property.key.type === AST_NODE_TYPES.Identifier && property.key.name === key) ||
+        (property.key.type === AST_NODE_TYPES.Literal && property.key.value === key)),
+  );
+  const value = entry === undefined ? null : unwrapTypeWrappers(entry.value);
+  return value?.type === AST_NODE_TYPES.ArrayExpression ? value : null;
+}
+
+/** True when `identifier` is the args list of another runner call, which only reads it. */
+function isRunnerArgs(identifier: TSESTree.Node, sourceCode: Readonly<TSESLint.SourceCode>): boolean {
+  const call = identifier.parent;
+  if (call?.type !== AST_NODE_TYPES.CallExpression || call.arguments[1] !== identifier) {
+    return false;
+  }
+  const info = resolvedCalleeInfo(call.callee, sourceCode);
+  return info !== null && CONDITIONAL_SHELL.has(info.name);
 }
 
 /**
@@ -471,8 +560,10 @@ function envProgramIndex(
  * `/usr/bin/env sh -c`) run without a shell option, the element the shell
  * reads as its command and, for `cmd.exe`, the elements after it, which it
  * reads as the rest of the line. The args may be an array literal or a
- * binding that holds one. Null when the program is not a known shell, the
- * args are not such an array or no command element is found.
+ * binding that holds one; `unknown` when that binding may have been changed
+ * before the call, so the command is whatever was put there. Null when the
+ * program is not a known shell, the args are not such an array or no command
+ * element is found.
  */
 function shellProgramCommand(
   args: readonly TSESTree.CallExpressionArgument[],
@@ -481,16 +572,18 @@ function shellProgramCommand(
   readonly node: TSESTree.Node;
   readonly rest: readonly TSESTree.Node[];
   readonly reportAt: TSESTree.Node;
+  readonly unknown?: boolean;
 } | null {
   const [program, list] = args;
   if (program === undefined || program.type === AST_NODE_TYPES.SpreadElement) {
     return null;
   }
   const text = staticWord(program, sourceCode);
-  const array = list === undefined || list.type === AST_NODE_TYPES.SpreadElement ? null : argsArray(list, sourceCode);
-  if (text === null || list === undefined || array === null) {
+  const held = list === undefined || list.type === AST_NODE_TYPES.SpreadElement ? null : argsArray(list, sourceCode);
+  if (text === null || list === undefined || held === null) {
     return null;
   }
+  const array = held.array;
   // A list held in a binding is reported where the call reads it.
   const inline = unwrapTypeWrappers(list) === array;
   const at = (node: TSESTree.Node): TSESTree.Node => (inline ? node : list);
@@ -509,6 +602,9 @@ function shellProgramCommand(
   const windows = name === 'cmd';
   if (!windows && !POSIX_SHELLS.has(name)) {
     return null;
+  }
+  if (held.changed) {
+    return { node: list, rest: [], reportAt: list, unknown: true };
   }
   const elements = array.elements;
   let commandFlag = false;
@@ -706,6 +802,10 @@ export const noShellInterpolationRule = createRule<RuleOptions, MessageIds>({
             ? shellProgramCommand(args, context.sourceCode)
             : null;
           if (program === null) {
+            return;
+          }
+          if (program.unknown === true) {
+            context.report({ node: program.reportAt, messageId: 'shellInterpolation', data: { callee: direct.name } });
             return;
           }
           // `cmd.exe` reads the elements after the command as more of the
