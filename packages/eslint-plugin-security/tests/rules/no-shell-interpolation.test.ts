@@ -1437,3 +1437,22 @@ ruleTester.run('no-shell-interpolation: sh -c args read but not changed', noShel
     })),
   ],
 });
+
+// A tag gets the args array itself, and a `console` method the file writes
+// may change it: neither counts as a read.
+ruleTester.run('no-shell-interpolation: sh -c args handed to a tag or a written console', noShellInterpolationRule, {
+  valid: [
+    {
+      code: "function run(d: string) { const args = ['-c', 'ls']; console.log(args); console.warn(`${args}`); spawn('sh', args); }",
+      filename: TS,
+    },
+  ],
+  invalid: [
+    "function t(s: unknown, a: string[]) { a[1] = d; } const args = ['-c', 'ls']; t`${args}`; spawn('sh', args);",
+    "console.log = (a: string[]) => { a[1] = d; }; const args = ['-c', 'ls']; console.log(args); spawn('sh', args);",
+    "console['log'] = (a: string[]) => { a[1] = d; }; const args = ['-c', 'ls']; console.log(args); spawn('sh', args);",
+    "Object.assign(console, { log: (a: string[]) => { a[1] = d; } }); const args = ['-c', 'ls']; console.log(args); spawn('sh', args);",
+    "globalThis.console.log = (a: string[]) => { a[1] = d; }; const args = ['-c', 'ls']; console.log(args); spawn('sh', args);",
+    "const c = console; c.log = (a: string[]) => { a[1] = d; }; const args = ['-c', 'ls']; console.log(args); spawn('sh', args);",
+  ].map((body) => ({ code: `function run(d: string) { ${body} }`, filename: TS, errors: error })),
+});
