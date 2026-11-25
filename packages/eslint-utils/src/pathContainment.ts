@@ -527,7 +527,7 @@ export function isExitGuard(
  * function that holds the sink count: a function can run before the checks
  * around its definition, and a test in another function runs who knows when.
  */
-export function isGuardedBefore(
+export function isGuardedByBranchBefore(
   sink: TSESTree.Node,
   isGuard: (test: TSESTree.Node, negated: boolean) => boolean,
   sourceCode: SourceCode,
@@ -638,6 +638,6 @@ export function isAssertedBefore(sink: TSESTree.Node, context: PathContainmentCo
 /** True when a containment test decides whether `sink` runs (see the top of this module). */
 export function isContainedBefore(sink: TSESTree.Node, context: PathContainmentContext): boolean {
   return (
-    isGuardedBefore(sink, containmentGuard(context), context.sourceCode) || isAssertedBefore(sink, context)
+    isGuardedByBranchBefore(sink, containmentGuard(context), context.sourceCode) || isAssertedBefore(sink, context)
   );
 }

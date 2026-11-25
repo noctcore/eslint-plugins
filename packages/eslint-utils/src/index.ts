@@ -45,7 +45,7 @@ export {
   isBroadBase,
   isContainedBefore,
   isExitGuard,
-  isGuardedBefore,
+  isGuardedByBranchBefore,
   isGuardedByLogicalBefore,
   isProcessCwd,
   isStartsWithBase,

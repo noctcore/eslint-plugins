@@ -67,7 +67,7 @@ Path containment:
   (the base must end in a separator), a `path.relative(base, full)` result refused when it climbs
   and when it is absolute, and a guard call. `PathContainmentContext` tells it how the rule names
   `path` functions, the separator, the resolved value, a fixed base and guard calls.
-- Its parts: `isGuardedBefore`, `isGuardedByLogicalBefore`, `isAssertedBefore`,
+- Its parts: `isGuardedByBranchBefore`, `isGuardedByLogicalBefore`, `isAssertedBefore`,
   `containmentGuard`, `failsOutside`, `holdsInside`, `isStartsWithBase`, `endsInSeparator`,
   `isBroadBase` (`'/'`, `''`, `'.'`, `path.sep`, `process.cwd()` and `path.resolve()` are not
   bases), `isProcessCwd` and `singleInitializer`.
