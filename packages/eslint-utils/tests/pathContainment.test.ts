@@ -100,6 +100,10 @@ describe('isContainedBefore', () => {
       "const rel = path.relative(BASE, full);\nif (rel === '..' || rel.startsWith('..' + path.sep) || path.isAbsolute(rel)) return;\nsink(full);",
     ],
     ['a guard call as the test', 'if (!isInside(BASE, full)) return;\nsink(full);'],
+    [
+      'one inline relative call refused three ways',
+      "if (path.relative(BASE, full) === '..' || path.relative(BASE, full).startsWith('..' + sep) || path.isAbsolute(path.relative(BASE, full))) return;\nsink(full);",
+    ],
     ['a guard call as a statement', 'isInside(BASE, full);\nsink(full);'],
   ])('accepts %s', (_name, body) => {
     expect(contained(body)).toBe(true);
@@ -137,6 +141,14 @@ describe('isContainedBefore', () => {
       "const rel = path.relative(process.cwd(), full);\nif (rel.startsWith('..') || path.isAbsolute(rel)) return;\nsink(full);",
     ],
     ['an if that does not exit', "if (!full.startsWith(BASE + path.sep)) log('outside');\nsink(full);"],
+    [
+      'refusals of two different inline relative calls',
+      "if (path.relative(BASE + '/sub', full) === '..' || path.relative(BASE, full).startsWith('..' + sep) || path.isAbsolute(path.relative(BASE, full))) return;\nsink(full);",
+    ],
+    [
+      'refusals of inline relative calls that may differ on each run',
+      "if (path.relative(next(), full).startsWith('..') || path.isAbsolute(path.relative(next(), full))) return;\nsink(full);",
+    ],
   ])('rejects %s', (_name, body) => {
     expect(contained(body)).toBe(false);
   });
