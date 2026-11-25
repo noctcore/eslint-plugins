@@ -761,6 +761,11 @@ export class HtmlSafety {
     });
   }
 
+  /** True for a server render of React (`renderToString(<Page />)`), whose result is always markup. */
+  rendersMarkup(call: TSESTree.CallExpression): boolean {
+    return this.encoderOf(call) === REACT_RENDER;
+  }
+
   /** The encoding a call's result has, with options that switch protection off refused. */
   encodingOf(call: TSESTree.CallExpression): Encoding | null {
     const encoder = this.encoderOf(call);

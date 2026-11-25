@@ -333,6 +333,8 @@ class HtmlBuilder {
   text = '';
   /** Author text before the first runtime part on the first path, which decides Koa's content type. */
   leading = '';
+  /** True when a runtime part is a React server render, so the body is markup without an author tag. */
+  rendered = false;
   private sawDynamic = false;
   private readonly active = new Set<unknown>();
   private readonly bound = new Map<TSESLint.Scope.Variable, TSESTree.Node>();
@@ -356,6 +358,9 @@ class HtmlBuilder {
 
   private dynamic(node: TSESTree.Node, states: readonly HtmlState[]): HtmlState[] {
     this.sawDynamic = true;
+    if (node.type === AST_NODE_TYPES.CallExpression && this.judge.rendersMarkup(node)) {
+      this.rendered = true;
+    }
     this.parts.push({ node, contexts: new Set(states.map(contextAt)) });
     return dedupe(states.map(feedValue));
   }
@@ -1359,7 +1364,7 @@ export const noUnescapedHtmlResponseRule = createRule<RuleOptions, MessageIds>({
       }
       const builder = new HtmlBuilder(judge, sink.node);
       builder.run(sink.body);
-      if (!TAG.test(builder.text)) {
+      if (!TAG.test(builder.text) && !builder.rendered) {
         return;
       }
       // Koa sends a string that does not start with `<` as text, unless a type is set.

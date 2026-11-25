@@ -55,7 +55,8 @@ counts the same as one read from the request.
 ## What it flags
 
 A body that, followed through the code that builds it, has author text containing a tag (`<`
-followed by a letter, `/` or `!`) and a runtime part that is not safe where it lands (see below).
+followed by a letter, `/` or `!`) or a React server render (`renderToString`,
+`renderToStaticMarkup`), and a runtime part that is not safe where it lands (see below).
 The report is on that part. The bodies it reads:
 
 - `res.send(x)`, `res.end(x)` and `res.write(x)` on a receiver in `responseObjects` (`res`,
