@@ -195,7 +195,9 @@ script as code, so it reports: after `}` (a block, or an object or function expr
 
 Author text is read as the browser reads it: a comment also ends at `<!-->`, `<!--->` and `--!>`,
 and character references in a URL (`&#106;avascript:`, `javascript&colon;`) are decoded before
-the scheme is read. A meta `content` holds a URL when an earlier `http-equiv` is `refresh` (or not
+the scheme is read, with the leading spaces and the tabs and newlines the browser drops left out.
+A URL start the rule cannot shorten below 256 characters that way (a long character reference, a
+meta refresh head) counts as a script URL. A meta `content` holds a URL when an earlier `http-equiv` is `refresh` (or not
 literal).
 
 A `<script>` whose first `type` attribute is a literal JSON or plain text type

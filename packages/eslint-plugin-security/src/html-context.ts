@@ -266,7 +266,13 @@ function appendValue(state: HtmlState, text: string): HtmlState {
   }
   const prefix = urlPrefix(state, raw);
   if (prefix === null || OPEN_SCHEME.test(prefix)) {
-    return { ...state, value: raw.length > MAX_PREFIX ? '#' : raw };
+    if (raw.length <= MAX_PREFIX) {
+      return { ...state, value: raw };
+    }
+    // The decoded prefix reads the same once the spaces and references it dropped are gone; a
+    // prefix that cannot be shortened that way may still become any scheme, so it counts as code.
+    const short = prefix !== null && state.tag !== 'meta' ? prefix : raw;
+    return { ...state, value: short.length > MAX_PREFIX ? '!' : short };
   }
   const scheme = CLOSED_SCHEME.exec(prefix)?.[1];
   const code =
