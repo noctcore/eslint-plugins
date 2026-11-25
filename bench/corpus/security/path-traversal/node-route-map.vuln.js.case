@@ -7,8 +7,8 @@ const ROUTES = { '/': 'index.html', '/about': 'about.html', '/pricing': 'pricing
 
 http.createServer((req, res) => {
   const { pathname } = new URL(req.url, 'http://localhost');
-  const file = PAGES + pathname + '.html'; // expect: security/require-path-containment
-  fs.readFile(file, 'utf8', (err, html) => {
+  const file = PAGES + pathname + '.html';
+  fs.readFile(file, 'utf8', (err, html) => { // expect: security/require-path-containment
     res.writeHead(err ? 500 : 200, { 'content-type': 'text/html' });
     res.end(err ? 'error' : html);
   });

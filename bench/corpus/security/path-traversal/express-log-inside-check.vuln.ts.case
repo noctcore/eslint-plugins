@@ -1,0 +1,15 @@
+// @bench category=path-traversal cwe=CWE-22 framework=express pair=express-log-inside-check title="containment test only logs, the log file is read either way"
+import fs from 'node:fs';
+import path from 'node:path';
+import express, { Request, Response } from 'express';
+
+const LOG_DIR = path.resolve('/var/log/myapp');
+const app = express();
+
+app.get('/logs/:name', (req: Request, res: Response) => {
+  const full = path.resolve(LOG_DIR, req.params.name);
+  if (!full.startsWith(LOG_DIR + path.sep)) console.warn('log path outside the log dir', full);
+  fs.createReadStream(full).pipe(res); // expect: security/require-path-containment
+});
+
+export default app;

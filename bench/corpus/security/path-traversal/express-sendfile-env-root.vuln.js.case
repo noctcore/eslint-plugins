@@ -1,0 +1,10 @@
+// @bench category=path-traversal cwe=CWE-22 framework=express pair=express-sendfile-env-root title="sendFile root read from an env var that may be unset, so the path is served as given"
+const express = require('express');
+
+const app = express();
+
+app.get('/files/:name', (req, res) => {
+  res.sendFile(req.params.name, { root: process.env.FILES_DIR }); // expect: security/require-path-containment
+});
+
+app.listen(3000);

@@ -7,9 +7,9 @@ const PROFILES = '/etc/app/profiles';
 const server = http.createServer((req, res) => {
   const url = new URL(req.url ?? '/', 'http://localhost');
   const profile = url.searchParams.get('profile') ?? 'default';
-  const file = `${PROFILES}/${profile}.json`; // expect: security/require-path-containment
+  const file = `${PROFILES}/${profile}.json`;
   res.setHeader('content-type', 'application/json');
-  res.end(readFileSync(file));
+  res.end(readFileSync(file)); // expect: security/require-path-containment
 });
 
 server.listen(8003);
