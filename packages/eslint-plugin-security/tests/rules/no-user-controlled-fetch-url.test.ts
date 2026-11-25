@@ -202,6 +202,12 @@ ruleTester.run('no-user-controlled-fetch-url', noUserControlledFetchUrlRule, {
       code: "const base = { hostname: 'api.example.com', port: 443, path: `/v1`, agent: undefined, family: null }; const copy = Object.assign({}, base); copy.path = '/v2'; https.get(base);",
       filename: TS,
     },
+    // A trusted source read from a binding nothing rewrites and no request fills.
+    {
+      code: "import config from './config'; const cli = loadConfig(); fetch(config.url); fetch(cli.url); https.get({ hostname: cli.host, path: '/x' }); log(config.url.replace(a, b));",
+      filename: TS,
+      options: [{ trustedSources: ['config', 'cli'] }],
+    },
     // A host regex over a public suffix with one more literal label pinned.
     {
       code: "async function h(src: string) { if (!/^[a-z0-9-]+\\.assets\\.github\\.io$/.test(new URL(src).hostname)) return; await fetch(src); }",
@@ -572,6 +578,48 @@ ruleTester.run('no-user-controlled-fetch-url', noUserControlledFetchUrlRule, {
       code: "const cfg = { headers: { host: 'api.example.com' } }; const t = {}; https.get('https://api.example.com/x', Object.assign(t, cfg)); t.headers.host = req.query.h;",
       filename: TS,
       errors: [option, option],
+    },
+    // A trusted source name is matched by binding: request data, a parameter or a write keeps the report.
+    ...[
+      'const config = req.body;',
+      'const { config } = req.body;',
+      'let config = load(); config = req.body;',
+      'config.url = req.query.u; config.host = req.query.h;',
+      'Object.assign(config, req.body);',
+      'Object.assign(config.http, req.body);',
+      '({ url: config.url, host: config.host } = req.query);',
+      'config.mirrors.push(req.query.u);',
+      'delete config.url;',
+      'const config = req.body.settings ?? {};',
+    ].map((setup) => ({
+      code: `${setup} fetch(config.url); https.get({ hostname: config.host, path: '/x' });`,
+      filename: TS,
+      options: [{ trustedSources: ['config'] }],
+      errors: [error, host],
+    })),
+    {
+      code: "function handler(config) { fetch(config.url); https.get({ hostname: config.host, path: '/x' }); }",
+      filename: TS,
+      options: [{ trustedSources: ['config'] }],
+      errors: [error, host],
+    },
+    {
+      code: "app.post('/x', async (req, res) => { const config = req.body; await fetch(config.url); https.get({ hostname: config.host, path: '/x' }); });",
+      filename: TS,
+      options: [{ trustedSources: ['config'] }],
+      errors: [error, host],
+    },
+    {
+      code: "app.post('/x', async ({ body: config }, res) => { await fetch(config.url); });",
+      filename: TS,
+      options: [{ trustedSources: ['config'] }],
+      errors: [error],
+    },
+    {
+      code: "class Cli { run() { fetch(this.config.url); fetch(getConfig().url); } }",
+      filename: TS,
+      options: [{ trustedSources: ['this.config', 'getConfig()'] }],
+      errors: [error, error],
     },
     // A host regex over a public suffix: anyone can register a name under it.
     ...['vercel\\.app', 'github\\.io', 'netlify\\.app', 'pages\\.dev', 'co\\.uk'].map((suffix) => ({
