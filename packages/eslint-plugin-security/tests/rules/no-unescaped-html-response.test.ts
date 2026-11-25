@@ -300,6 +300,7 @@ ruleTester.run('no-unescaped-html-response', noUnescapedHtmlResponseRule, {
     { code: `export function h(req, res) { res.send(\`<a href="https${'\\t'.repeat(300)}://x.test/\${escapeHtml(req.query.q)}">x</a>\`); }`, filename: TS },    { code: "ejs.render('<p><%= bio %></p>', { ...opts, bio: escapeHtml(input) });", filename: TS },
     { code: "import utils from './utils'; utils.cache = new Map(); res.send('<p>' + utils.escapeHtml(q) + '</p>');", filename: TS, options: [{ sanitizers: ['utils.escapeHtml'] }] },
     { code: "const utils = require('./utils'); Object.assign(other, utils); res.send('<p>' + utils.escapeHtml(q) + '</p>');", filename: TS, options: [{ sanitizers: ['utils.escapeHtml'] }] },
+    { code: `${PURIFY} DOMPurify.setConfig.apply(null, [{ ALLOWED_TAGS: ['b'] }]); res.send('<p>' + DOMPurify.sanitize(q) + '</p>');`, filename: TS },
     // A replacer function's result is written as is, with no `$` patterns.
     { code: "const TPL = '<h1>{{name}}</h1>'; export function h(req, res) { res.send(TPL.replace('{{name}}', () => escapeHtml(req.query.q))); }", filename: TS },
     { code: "const TPL = '<a href=\"/s?q={{q}}\">x</a>'; export function h(req, res) { res.send(TPL.replace('{{q}}', encodeURIComponent(req.query.q))); }", filename: TS },
@@ -729,6 +730,12 @@ ruleTester.run('no-unescaped-html-response', noUnescapedHtmlResponseRule, {
       filename: TS,
       errors: html,
     },
+    // `setConfig` invoked through `.call` or `.apply`.
+    { code: `${PURIFY} DOMPurify.setConfig.call(null, { ADD_TAGS: ['script'] }); res.send('<p>' + DOMPurify.sanitize(q) + '</p>');`, filename: TS, errors: html },
+    { code: `${PURIFY} DOMPurify.setConfig.apply(null, [{ ADD_ATTR: ['onerror'] }]); res.send('<p>' + DOMPurify.sanitize(q) + '</p>');`, filename: TS, errors: html },
+    { code: `${PURIFY} DOMPurify.setConfig.apply(null, configs); res.send('<p>' + DOMPurify.sanitize(q) + '</p>');`, filename: TS, errors: html },
+    { code: "import { sanitize, setConfig } from 'isomorphic-dompurify'; setConfig.call(undefined, { ADD_TAGS: ['script'] }); res.send('<div>' + sanitize(q) + '</div>');", filename: TS, errors: html },
+    { code: "import { sanitize, setConfig } from 'isomorphic-dompurify'; setConfig.apply(undefined, [{ ADD_TAGS: ['script'] }]); res.send('<div>' + sanitize(q) + '</div>');", filename: TS, errors: html },
     // DOMPurify options that skip the URI check, allow data URLs on documents, or parse another way.
     { code: `${PURIFY} res.send('<p>' + DOMPurify.sanitize(q, { ADD_URI_SAFE_ATTR: ['href'] }) + '</p>');`, filename: TS, errors: html },
     { code: `${PURIFY} res.send('<p>' + DOMPurify.sanitize(q, { ADD_URI_SAFE_ATTR: attrs }) + '</p>');`, filename: TS, errors: html },
