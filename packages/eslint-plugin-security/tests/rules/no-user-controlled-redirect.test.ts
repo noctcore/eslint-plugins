@@ -1184,3 +1184,65 @@ ruleTester.run('no-user-controlled-redirect: cycles with joins', noUserControlle
     { code: joinCycle("''", '`${x2}-B`', 'res.set(`${r}${x2}`, req.query.x);'), filename: TS, errors: [error] },
   ],
 });
+
+/** `body` in a handler, with the two `[first, second]` writes in the order given. */
+const ordered = (head: string, writes: readonly [string, string], tail: string, swap: boolean): string =>
+  `function h(req, res) { ${head} ${(swap ? [writes[1], writes[0]] : writes).join(' ')} ${tail} }`;
+/** Both write orders of one shape. */
+const bothOrders = (head: string, writes: readonly [string, string], tail: string): string[] => [
+  ordered(head, writes, tail, false),
+  ordered(head, writes, tail, true),
+];
+
+// A cycle is computed to a fixed point: a binding read twice from inside its
+// own cycle keeps its shapes, so the answer does not depend on write order.
+ruleTester.run('no-user-controlled-redirect: cycles at a fixed point', noUserControlledRedirectRule, {
+  valid: [
+    // Cycles whose names can never be Location stay quiet, however they grow.
+    ...bothOrders("let a = 'X-Trace'; let b = ''; a = 'X-Trace' + b;", ["b = a + '-';", 'b = a;'], 'res.set(b, req.query.x);'),
+    ...bothOrders("let a = 'X'; let b = ''; let c = ''; a = 'X-Trace' + c;", ["b = a + '-';", 'b = a;'], 'c = b + "-"; c = b; res.set(c, req.query.x);'),
+    "function h(req, res) { let h = 'X-Trace'; h = h + '-1'; res.set(h, req.query.x); }",
+    "function h(req, res) { let h = 'X-Trace'; h = `${h}-${h}`; res.writeHead(302, { [h]: req.query.x }); }",
+    // A name that is runtime as a whole, also through a cycle, is still not read.
+    'function h(req, res) { let a = req.query.n; let b = a; a = b; res.set(b, req.query.x); }',
+  ].map((code) => ({ code, filename: TS })),
+  invalid: [
+    ...bothOrders("let a = 'X'; let b = ''; a = 'Location' + b;", ["b = a + '-';", 'b = a;'], 'res.set(b, req.query.x);'),
+    ...bothOrders("let a = 'X'; let b = ''; a = 'Location' + b;", ["b = a + '-';", 'b = a;'], 'res.writeHead(302, { [b]: req.query.x });'),
+    ...bothOrders("let a = 'X'; let b = ''; a = 'Location' + b;", ["b = a + '-';", 'b = a;'], 'res.setHeader(b, req.query.x);'),
+    ...bothOrders("let a = 'X'; let b = ''; a = 'Location' + b;", ["b = 'Y' + a;", 'b = a;'], 'res.set(b, req.query.x);'),
+    ...bothOrders("let a = 'X'; let b = ''; a = b; a = 'Location';", ["b = a + '-';", 'b = a;'], 'res.set(b, req.query.x);'),
+    ...bothOrders("let a = 'X'; let b = ''; a = 'Location'; a = b;", ["b = a + '-';", 'b = a;'], 'res.set(b, req.query.x);'),
+    ...bothOrders(
+      "let name = 'Location'; let prefix = ''; name = prefix + name;",
+      ["prefix = name + '-';", 'prefix = name;'],
+      'res.set(prefix, req.query.x);',
+    ),
+    ...bothOrders("let v0 = 'X'; let v1 = ''; v0 = `Location${v1}`;", ['v1 = `Y${v0}`;', 'v1 = v0;'], 'res.set(v1, req.query.x);'),
+    // A cycle of three bindings, each aliased and joined onto the next.
+    ...bothOrders(
+      "let a = 'X'; let b = ''; let c = ''; a = 'Location' + c;",
+      ["b = a + '-';", 'b = a;'],
+      "c = b + '-'; c = b; res.set(c, req.query.x);",
+    ),
+    ...bothOrders(
+      "let a = 'X'; let b = ''; let c = ''; a = 'Location' + c;",
+      ["b = a + '-';", 'b = a;'],
+      "c = b; c = b + '-'; res.writeHead(302, { [c]: req.query.x });",
+    ),
+    // Nested cycles: one feeding another, and two sharing a binding.
+    ...bothOrders(
+      "let a = 'X'; let b = ''; a = 'Location' + b; b = a + '-'; b = a; let c = ''; let d = '';",
+      ["c = d + '-';", 'c = d;'],
+      'd = c; d = a; res.set(d, req.query.x);',
+    ),
+    ...bothOrders(
+      "let a = ''; let b = ''; let c = ''; a = b + '-'; a = b; c = b + '-';",
+      ['b = a;', 'b = c;'],
+      "c = 'Location'; res.set(a, req.query.x);",
+    ),
+    // A cycle that grows past 16 shapes that can still be Location may be anything.
+    "function h(req, res) { let a = 'L'; a = a + n; res.set(a, req.query.x); }",
+    "function h(req, res) { let a = 'Loc'; a = a + 'ation'; res.set(a, req.query.x); }",
+  ].map((code) => ({ code, filename: TS, errors: [error] })),
+});
