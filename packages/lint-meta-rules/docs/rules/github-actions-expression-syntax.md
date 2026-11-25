@@ -39,6 +39,11 @@ one document, a `---` or `...` line at column 0 inside a quoted value or flow co
 quote or bracket, a tab used as indentation. A parse error is reported once, at the parser's first error, and the file's expressions
 are checked once it parses.
 
+Two limits of that repair: it stops after 1000 under-indented flow collections or quoted values in
+one file, so a valid file with more than that is reported as not valid YAML, and brackets nested
+thousands deep exhaust the parser's stack, which is reported as a file that could not be read.
+Neither shape occurs in a real workflow.
+
 Inside a closed `${{ }}`, the shape of the expression: a string that is never closed, an empty
 expression, unbalanced brackets, an operator with no left or right operand, two operands with no
 operator between them, an empty call argument, and `=`, `&` or `|` where `==`, `&&` or `||` was

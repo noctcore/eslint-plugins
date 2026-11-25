@@ -361,7 +361,7 @@ const COMPLETE_QUOTED: Readonly<Record<string, RegExp>> = {
 };
 /** A `---` or `...` document marker, at the start of a line. */
 const DOCUMENT_MARKER = /^(?:---|\.\.\.)(?:\s|$)/u;
-/** Each repair fixes a whole flow collection or quoted scalar, or spaces one comment; this bounds the work on a broken file. */
+/** Each repair fixes a flow collection or quoted scalar, or spaces every comment one parse reports; this bounds the work on a broken file. */
 const MAX_REPAIRS = 1000;
 
 /** A repaired text, the offset of a document marker that must not be repaired, or null when nothing applies. */
@@ -386,13 +386,19 @@ function quoteEnd(text: string, start: number): number {
  * The offset just past the bracket that closes the flow collection opened at
  * `start`, or -1. In flow context a plain scalar cannot hold a bracket or a
  * comma, so only quoted scalars (which open where a node starts) and comments
- * need skipping.
+ * need skipping. A node starts after `[`, `{`, `,`, a `:` or `?` indicator,
+ * an anchor or tag and the space after it (`&a "x"`, `!!str "x"`), and right
+ * after a `:` that follows a quoted scalar or a collection (`"os":"x"`).
  */
 function flowEnd(text: string, start: number): number {
   let depth = 0;
   let nodeStart = true;
+  // The last node read was quoted or a collection, so an adjacent `:` is an indicator.
+  let afterJsonNode = false;
   for (let index = start; index < text.length; index += 1) {
     const char = text[index] ?? '';
+    const jsonNode: boolean = afterJsonNode;
+    afterJsonNode = false;
     if (char === '[' || char === '{') {
       depth += 1;
       nodeStart = true;
@@ -400,19 +406,29 @@ function flowEnd(text: string, start: number): number {
       depth -= 1;
       if (depth === 0) return index + 1;
       nodeStart = false;
+      afterJsonNode = true;
     } else if (char === ',') {
       nodeStart = true;
     } else if (char === '#' && /[\s,[{]/u.test(text[index - 1] ?? ' ')) {
       index = text.indexOf('\n', index);
       if (index === -1) return -1;
-    } else if (char === ':' && /[\s,[\]{}]/u.test(text[index + 1] ?? ' ')) {
+    } else if (char === ':' && (jsonNode || /[\s,[\]{}]/u.test(text[index + 1] ?? ' '))) {
       nodeStart = true;
+    } else if (nodeStart && char === '?' && /\s/u.test(text[index + 1] ?? ' ')) {
+      // An explicit key indicator; the key starts after it.
+    } else if (nodeStart && (char === '&' || char === '!')) {
+      // An anchor or tag runs to the next space or flow indicator, and the node starts after it.
+      while (index + 1 < text.length && !/[\s,[\]{}]/u.test(text[index + 1] ?? '')) index += 1;
     } else if (nodeStart && (char === '"' || char === "'")) {
       const end = quoteEnd(text, index);
       if (end === -1) return -1;
       index = end - 1;
       nodeStart = false;
-    } else if (!/\s/u.test(char)) {
+      afterJsonNode = true;
+    } else if (/\s/u.test(char)) {
+      // Spaces keep a `:` after a quoted key an indicator (`"a" :"b"`).
+      afterJsonNode = jsonNode;
+    } else {
       nodeStart = false;
     }
   }
@@ -456,9 +472,10 @@ function indentRange(text: string, opener: number, at: number, end: number, inde
  * of it is indented past its opener in one go; extra indentation there is
  * folded away, so neither the parsed values nor any line number change. A
  * collection or quote still open at the end of the file is left alone: it is
- * really unclosed.
+ * really unclosed. With `ranged` false, only the line yaml stopped at is
+ * indented, which never reaches past the real end.
  */
-function indentContinuation(text: string): Repair {
+function indentContinuation(text: string, ranged: boolean): Repair {
   const openers: { readonly column: number; readonly offset: number }[] = [];
   let quote: { readonly column: number; readonly offset: number } | null = null;
   let offset = 0;
@@ -467,12 +484,14 @@ function indentContinuation(text: string): Repair {
       const outer = openers[0];
       if (token === FLOW_ERROR_END) openers.length = 0;
       if (token === FLOW_ERROR_END && outer !== undefined && text.slice(offset).trim() !== '') {
-        return indentRange(text, outer.offset, offset, flowEnd(text, outer.offset), outer.column + 1);
+        const end = ranged ? flowEnd(text, outer.offset) : -1;
+        return indentRange(text, outer.offset, offset, end, outer.column + 1);
       }
       continue;
     }
     if (quote !== null && token.trim() !== '') {
-      return indentRange(text, quote.offset, offset, quoteEnd(text, quote.offset), quote.column + 1);
+      const end = ranged ? quoteEnd(text, quote.offset) : -1;
+      return indentRange(text, quote.offset, offset, end, quote.column + 1);
     }
     const column = offset - (text.lastIndexOf('\n', offset - 1) + 1);
     if (token === '[' || token === '{') openers.push({ column, offset });
@@ -484,11 +503,24 @@ function indentContinuation(text: string): Repair {
   return null;
 }
 
-/** `text` with a space before a `#` that follows a flow indicator, or null when the parse reports none. */
+/** `text` with a space before every `#` that follows a flow indicator, or null when the parse reports none. */
 function commentSpacing(text: string, errors: readonly YAMLError[]): string | null {
   // `[x,#c`: GitHub's reader takes a `#` right after a flow indicator as a comment.
-  const comment = errors.find((error) => error.code === 'MISSING_CHAR' && error.message.startsWith('Comments must'));
-  return comment === undefined ? null : `${text.slice(0, comment.pos[0])} ${text.slice(comment.pos[0])}`;
+  const offsets = [
+    ...new Set(
+      errors
+        .filter((error) => error.code === 'MISSING_CHAR' && error.message.startsWith('Comments must'))
+        .map((error) => error.pos[0]),
+    ),
+  ].sort((a, b) => a - b);
+  if (offsets.length === 0) return null;
+  let spaced = '';
+  let from = 0;
+  for (const offset of offsets) {
+    spaced += `${text.slice(from, offset)} `;
+    from = offset;
+  }
+  return spaced + text.slice(from);
 }
 
 interface ReadWorkflow {
@@ -505,8 +537,22 @@ interface ReadWorkflow {
  * `|# note` header, `"x"#c`, long or multi-line implicit keys are accepted),
  * duplicate keys left to {@link duplicateKeys}, and the indentation that only
  * yaml rejects repaired first (see {@link indentContinuation}).
+ *
+ * A whole collection or quote is repaired at once. If the file still does not
+ * parse, the repair may have run past the real end (a bracket the scan read
+ * wrongly), so it is read again repairing one line at a time, and that reading
+ * decides: a repair must never be the reason a valid file is reported.
  */
 function readWorkflow(source: string): ReadWorkflow {
+  const ranged = repairedRead(source, true);
+  const clean = (read: ReadWorkflow): boolean => read.doc.errors.length === 0 && read.markerLine === undefined;
+  if (clean(ranged) || (ranged.text === source && ranged.markerLine === undefined)) return ranged;
+  const single = repairedRead(source, false);
+  // A marker the whole-range repair met stands unless the line by line reading parses cleanly.
+  return ranged.markerLine !== undefined && !clean(single) ? ranged : single;
+}
+
+function repairedRead(source: string, ranged: boolean): ReadWorkflow {
   let text = source;
   let repairs = 0;
   for (;;) {
@@ -516,7 +562,11 @@ function readWorkflow(source: string): ReadWorkflow {
     if (doc.errors.length === 0 || repairs >= MAX_REPAIRS) return read;
     // Repairs need only the lexer, so they run without a parse between them, one collection or quote each.
     let changed = false;
-    for (let repair = indentContinuation(text); repair !== null; repair = indentContinuation(text)) {
+    for (
+      let repair = indentContinuation(text, ranged);
+      repair !== null;
+      repair = indentContinuation(text, ranged)
+    ) {
       // Repairs only add spaces, so counting lines in the repaired text gives the source line.
       if ('marker' in repair) return { ...read, markerLine: text.slice(0, repair.marker).split('\n').length };
       text = repair.text;
