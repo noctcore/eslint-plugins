@@ -37,6 +37,22 @@ export {
 } from './fileScope';
 export { globToRegExp, matchesAnyGlob, toPosixPath } from './glob';
 export {
+  containmentGuard,
+  endsInSeparator,
+  failsOutside,
+  holdsInside,
+  isAssertedBefore,
+  isBroadBase,
+  isContainedBefore,
+  isExitGuard,
+  isGuardedBefore,
+  isGuardedByLogicalBefore,
+  isProcessCwd,
+  isStartsWithBase,
+  singleInitializer,
+  type PathContainmentContext,
+} from './pathContainment';
+export {
   DEFAULT_LOGGERS,
   DEFAULT_LOG_METHODS,
   loggerCallMatcher,
