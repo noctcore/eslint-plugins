@@ -221,10 +221,6 @@ ruleTester.run('no-unescaped-html-response', noUnescapedHtmlResponseRule, {
     { code: "function h(reply, name) { reply.send('<p>' + name + '</p>'); }", filename: TS },
     { code: "function h(ctx, name) { ctx.body = 'Hello ' + name + '<br>'; }", filename: TS },
     { code: "export function GET(req) { return new Response(`<p>${req.url}</p>`); }", filename: TS },
-    {
-      code: "import { Controller, Get, Query } from '@nestjs/common'; @Controller() class C { @Get() find(@Query('q') q: string) { return `<h1>${q}</h1>`; } }",
-      filename: TS,
-    },
     // A global sanitizer config that keeps protection on, or set on another instance.
     {
       code: "import { sanitize, setConfig } from 'isomorphic-dompurify'; setConfig({ ALLOWED_TAGS: ['b'], ADD_URI_SAFE_ATTR: ['title'], ADD_DATA_URI_TAGS: ['img'] }); res.send('<div>' + sanitize(q) + '</div>');",
@@ -293,7 +289,40 @@ ruleTester.run('no-unescaped-html-response', noUnescapedHtmlResponseRule, {
       code: "export function h(req, res) { res.send(`<script><!-- a --></script><p>${escapeHtml(req.query.q)}</p>`); }",
       filename: TS,
     },
-  ],
+    // Markup through calls, tags, placeholders and accumulators, escaped.
+    { code: "export function h(req, res) { res.send(layout(`<h1>${escapeHtml(req.query.q)}</h1>`)); }", filename: TS },
+    { code: "import { safeHtml } from 'common-tags'; export function h(req, res) { res.send(safeHtml`<h1>${req.query.q}</h1>`); }", filename: TS },
+    { code: "const TPL = '<h1>{{name}}</h1>'; export function h(req, res) { res.send(TPL.replace('{{name}}', escapeHtml(req.query.q))); }", filename: TS },
+    {
+      code: "export function h(res, list) { const rows = []; for (const r of list) rows.push('<li>' + escapeHtml(r.name) + '</li>'); res.send('<ul>' + rows.join('') + '</ul>'); }",
+      filename: TS,
+    },
+    {
+      code: "export function h(res, items) { res.send(`<ul>${items.map((i) => { if (i.hidden) return ''; return `<li>${escapeHtml(i.name)}</li>`; }).join('')}</ul>`); }",
+      filename: TS,
+    },
+    // Nest handlers that do not send their return value as HTML.
+    {
+      code: "import { Controller, Get, Header, Query } from '@nestjs/common'; @Controller() class C { @Get() @Header('Content-Type', 'text/plain') find(@Query('q') q: string) { return `<h1>${q}</h1>`; } }",
+      filename: TS,
+    },
+    {
+      code: "import { Controller, Get, Query, Render } from '@nestjs/common'; @Controller() class C { @Get() @Render('page') find(@Query('q') q: string) { return { q }; } }",
+      filename: TS,
+    },
+    {
+      code: "import { Controller, Get, Query, Res } from '@nestjs/common'; @Controller() class C { @Get() find(@Query('q') q: string, @Res() res) { res.json({ q }); return `<h1>${q}</h1>`; } }",
+      filename: TS,
+    },
+    { code: "class C { find(q: string) { return `<h1>${q}</h1>`; } }", filename: TS },
+    // URLs, comments and meta content where the value is safe.
+    { code: "export function h(req, res) { res.send(`<img src=\"data:image/png;base64,${encodeURIComponent(req.query.b)}\"><iframe src=\"https://x.test/?q=${encodeURIComponent(req.query.q)}\"></iframe>`); }", filename: TS },
+    { code: "export function h(req, res) { res.send(`<!-- ${escapeHtml(req.query.q)} --><a href=\"/s?a=1&amp;q=${encodeURIComponent(req.query.q)}\">s</a>`); }", filename: TS },
+    { code: "export function h(req, res) { res.send(`<meta name=\"description\" content=\"${escapeHtml(req.query.d)}\"><meta http-equiv=\"refresh\" content=\"5;url=/home?q=${encodeURIComponent(req.query.q)}\">`); }", filename: TS },
+    { code: `${NUNJUCKS} nunjucks.renderString('{% set b = bio %}<p>{{ b }}</p>', { bio: input });`, filename: TS },
+    // Other frameworks: no HTML type, or no branch that starts with markup.
+    { code: "fastify.get('/', async (request, reply) => { return `<h1>${request.query.q}</h1>`; });", filename: TS },
+    { code: "function h(ctx, ok) { ctx.body = ok ? 'Done' : 'Failed: ' + ctx.query.q + '<br>'; }", filename: TS },  ],
   invalid: [
     // A same-file function with a configured name is judged by its body, not its name.
     {
@@ -815,5 +844,80 @@ ruleTester.run('no-unescaped-html-response', noUnescapedHtmlResponseRule, {
       filename: TS,
       errors: where,
     },
-  ],
+    // Markup passed through a call or tag from elsewhere, a placeholder, or an array accumulator.
+    { code: "export function h(req, res) { res.send(layout(`<h1>${req.query.q}</h1>`)); }", filename: TS, errors: html },
+    { code: "import dedent from 'dedent'; export function h(req, res) { res.send(dedent`<h1>${req.query.q}</h1>`); }", filename: TS, errors: html },
+    { code: "import { html } from 'common-tags'; export function h(req, res) { res.send(html`<h1>${req.query.q}</h1>`); }", filename: TS, errors: html },
+    { code: "export function h(req, res) { const page = `<h1>${req.query.q}</h1>`; res.send(page.trim()); }", filename: TS, errors: html },
+    { code: "export function h(req, res) { res.send('<li>'.concat(req.query.q, '</li>')); }", filename: TS, errors: html },
+    { code: "const TPL = '<h1>{{name}}</h1>'; export function h(req, res) { res.send(TPL.replace('{{name}}', req.query.q)); }", filename: TS, errors: html },
+    {
+      code: "const TPL = '<a href=\"{{url}}\">{{name}}</a>'; export function h(req, res) { res.send(TPL.replace(/\\{\\{name\\}\\}/g, escapeHtml(req.query.n)).replace('{{url}}', escapeHtml(req.query.u))); }",
+      filename: TS,
+      errors: where,
+    },
+    {
+      code: "const TPL = '<h1>{{name}}</h1>'; export function h(req, res, data) { res.send(TPL.replace(/\\{\\{(\\w+)\\}\\}/g, (m, k) => data[k])); }",
+      filename: TS,
+      errors: html,
+    },
+    {
+      code: "export function h(res, list) { const rows = []; for (const r of list) rows.push('<li>' + r.name + '</li>'); res.send('<ul>' + rows.join('') + '</ul>'); }",
+      filename: TS,
+      errors: html,
+    },
+    {
+      code: "export function h(res, items) { res.send(`<ul>${items.map((i) => { if (i.hidden) return ''; return `<li>${i.name}</li>`; }).join('')}</ul>`); }",
+      filename: TS,
+      errors: html,
+    },
+    // A Nest route handler's string is sent as text/html on the Express platform.
+    {
+      code: "import { Controller, Get, Query } from '@nestjs/common'; @Controller() class C { @Get() find(@Query('q') q: string) { return `<h1>${q}</h1>`; } }",
+      filename: TS,
+      errors: html,
+    },
+    {
+      code: "import { Controller, Header, Post, Body } from '@nestjs/common'; @Controller() class C { @Post() @Header('Content-Type', type) save(@Body() b) { return `<p>${b.name}</p>`; } }",
+      filename: TS,
+      errors: html,
+    },
+    // A `data:` page in a frame, comment ends browsers accept, and URL text written with character references.
+    { code: "export function h(req, res) { res.send(`<iframe src=\"data:text/html,${escapeHtml(req.query.q)}\"></iframe>`); }", filename: TS, errors: where },
+    { code: "export function h(req, res) { res.send(`<object data=\"data:text/html;base64,${encodeURIComponent(req.query.q)}\"></object>`); }", filename: TS, errors: where },
+    { code: "export function h(req, res) { res.send(`<!--><script>${escapeHtml(req.query.q)}</script>`); }", filename: TS, errors: where },
+    { code: "export function h(req, res) { res.send(`<!---><script>${escapeHtml(req.query.q)}</script>`); }", filename: TS, errors: where },
+    { code: "export function h(req, res) { res.send(`<!-- a --!><script>${escapeHtml(req.query.q)}</script>`); }", filename: TS, errors: where },
+    { code: "export function h(req, res) { res.send(`<a href=\"&#106;avascript:${escapeHtml(req.query.q)}\">x</a>`); }", filename: TS, errors: where },
+    { code: "export function h(req, res) { res.send(`<a href=\"javascript&colon;${escapeHtml(req.query.q)}\">x</a>`); }", filename: TS, errors: where },
+    { code: "export function h(req, res) { res.send(`<a href=\"&#x6A${escapeHtml(req.query.q)}\">x</a>`); }", filename: TS, errors: where },
+    // Meta refresh URLs and SVG animation values.
+    { code: "export function h(req, res) { res.send(`<meta http-equiv=\"refresh\" content=\"0;url=${escapeHtml(req.query.q)}\">`); }", filename: TS, errors: where },
+    { code: "export function h(req, res) { res.send(`<meta http-equiv=\"Refresh\" content=\"0; URL='${escapeHtml(req.query.q)}'\">`); }", filename: TS, errors: where },
+    { code: "export function h(req, res) { res.send(`<svg><a><animate attributeName=\"href\" values=\"#;${escapeHtml(req.query.q)}\"/><set attributeName=\"href\" to=\"${escapeHtml(req.query.q)}\"/></a></svg>`); }", filename: TS, errors: [...where, ...where] },
+    // Template outputs read through a bracket key or a `set` alias.
+    { code: "ejs.render('<p><%- locals[\"bio\"] %></p>', { bio: input });", filename: TS, errors: raw },
+    { code: `${NUNJUCKS} nunjucks.renderString('{% set b = bio | safe %}<p>{{ b }}</p>', { bio: input });`, filename: TS, errors: raw },
+    // Response headers in a const or a Headers instance, a Fastify return, Koa branches, a removed type.
+    {
+      code: "export function GET(req) { const q = new URL(req.url).searchParams.get('q'); const headers = { 'Content-Type': 'text/html' }; return new Response(`<p>${q}</p>`, { headers }); }",
+      filename: TS,
+      errors: html,
+    },
+    {
+      code: "export function GET(req) { const q = new URL(req.url).searchParams.get('q'); const headers = new Headers(); headers.set('Content-Type', 'text/html; charset=utf-8'); return new Response(`<p>${q}</p>`, { headers }); }",
+      filename: TS,
+      errors: html,
+    },
+    {
+      code: "fastify.get('/', async (request, reply) => { reply.type('text/html'); return `<h1>${request.query.q}</h1>`; });",
+      filename: TS,
+      errors: html,
+    },
+    { code: "function h(ctx, ok) { ctx.body = ok ? 'Done' : `<p>${ctx.query.q}</p>`; }", filename: TS, errors: html },
+    {
+      code: "function h(res, q) { res.type('text/plain'); res.removeHeader('Content-Type'); res.send('<p>' + q + '</p>'); }",
+      filename: TS,
+      errors: html,
+    },  ],
 });
