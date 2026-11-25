@@ -110,8 +110,9 @@ keeps the array.
 - The URL of `fetch`, when the model output sits where it can choose the host: first, after a host
   that no `/`, `?` or `#` has closed (`https://api.example.com${text}` and `https:///${text}` alike),
   after a lone `/` (`/${text}` with `text = '/evil.com'`, also `/` then a tab, or `/\`), after only
-  spaces, or after relative text it can finish into a scheme (`h${text}` with
-  `text = 'ttps://evil.com'`).
+  spaces, or after relative text it can finish into a scheme that leaves the origin, runs script or
+  opens an operating system protocol handler (`h${text}` with `text = 'ttps://evil.com'`, `ms-${text}`
+  with `text = 'msdt:...'`).
 - The path arguments of `fs` functions (`readFile`, `writeFile`, `unlink`, `rm`, `rename`, ...),
   from `fs`, `fs.promises` or `fs/promises`.
 

@@ -39,8 +39,9 @@ The URL argument of each configured redirect callee goes through the same fixed-
 `no-user-controlled-fetch-url`: author-written text, in-file `const` resolution, `+`, `new URL(input,
 base)`. A same-origin relative path passes; a runtime host, a runtime value right after a lone `/`,
 a runtime value right after relative text that can still grow into a scheme which leaves the
-origin or runs script (`` `h${x}` `` with `x = 'ttps://evil.com'`, `java`, `dat`, `vb`, in any
-case), or a runtime value right after an origin that no `/`, `?` or `#` has closed is flagged.
+origin, runs script or opens an operating system protocol handler (`` `h${x}` `` with
+`x = 'ttps://evil.com'`, `java`, `dat`, `vb`, `ms-` for `ms-msdt:`, `se` for `search-ms:`, `vs`
+for `vscode:`, in any case), or a runtime value right after an origin that no `/`, `?` or `#` has closed is flagged.
 Relative text no such scheme starts with (`` `page${x}` ``, `` `users${id}` ``) passes: the runtime
 part can only turn it into a path or a scheme that does not leave the site.
 

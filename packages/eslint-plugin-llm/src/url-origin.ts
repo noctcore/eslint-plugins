@@ -7,9 +7,10 @@
  */
 
 /**
- * Schemes that leave the page's origin, reach the file system or run script
- * when a request is sent to them. A relative prefix that can still grow into
- * one of them (`h`, `dat`) does not pin the origin.
+ * Schemes that leave the page's origin, reach the file system, run script or
+ * launch an operating system protocol handler when a request is sent to them.
+ * A relative prefix that can still grow into one of them (`h`, `dat`,
+ * `ms-`) does not pin the origin.
  */
 const ORIGIN_MOVING_SCHEMES: readonly string[] = [
   'http',
@@ -36,6 +37,29 @@ const ORIGIN_MOVING_SCHEMES: readonly string[] = [
   'tftp',
   'telnet',
   'smb',
+  // Protocol handlers the operating system launches from a link or redirect.
+  'ms-msdt',
+  'ms-officecmd',
+  'ms-word',
+  'ms-excel',
+  'ms-powerpoint',
+  'ms-visio',
+  'ms-access',
+  'ms-appinstaller',
+  'ms-settings',
+  'ms-cxh',
+  'ms-cxh-full',
+  'ms-its',
+  'ms-help',
+  'search-ms',
+  'search',
+  'mhtml',
+  'mk',
+  'hcp',
+  'itms-services',
+  'itms-apps',
+  'vscode',
+  'vscode-insiders',
 ];
 
 /**
