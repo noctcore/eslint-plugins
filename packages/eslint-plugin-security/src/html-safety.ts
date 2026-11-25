@@ -618,7 +618,10 @@ export class HtmlSafety {
       return null;
     }
     const variable = this.variableOf(inner);
-    return variable === null ? null : (this.bindings.get(variable) ?? null);
+    if (variable === null || variable.references.some((reference) => reference.isWrite() && !reference.init)) {
+      return null;
+    }
+    return this.bindings.get(variable) ?? null;
   }
 
   private specOf(binding: ModuleBinding): ModuleSpec | null {
@@ -677,7 +680,7 @@ export class HtmlSafety {
         }
         const spec = this.specOf(binding);
         if (spec === null) {
-          return this.options.sanitizerNames.has(callee.name) ? { encoding: 'escape-quot' } : null;
+          return this.options.sanitizerNames.has(callee.name) && !this.changedHere(callee, []) ? { encoding: 'escape-quot' } : null;
         }
         if (binding.imported === '*' || binding.imported === 'default') {
           return spec.callable ?? null;
@@ -695,7 +698,7 @@ export class HtmlSafety {
       if ((this.variableOf(callee)?.defs.length ?? 0) > 0) {
         return null;
       }
-      return this.options.sanitizerNames.has(callee.name) ? { encoding: 'escape-quot' } : null;
+      return this.options.sanitizerNames.has(callee.name) && !this.changedHere(callee, []) ? { encoding: 'escape-quot' } : null;
     }
     if (callee.type !== AST_NODE_TYPES.MemberExpression) {
       return null;
@@ -721,10 +724,52 @@ export class HtmlSafety {
     if (object.type === AST_NODE_TYPES.Identifier || object.type === AST_NODE_TYPES.MemberExpression) {
       const text = `${squash(this.sourceCode.getText(object))}.${method}`;
       if (this.options.sanitizerTexts.has(text) && !this.declaredHere(object)) {
-        return { encoding: 'escape-quot' };
+        const path = [method];
+        let root: TSESTree.Node = object;
+        while (root.type === AST_NODE_TYPES.MemberExpression) {
+          path.unshift(propertyName(root) ?? '');
+          root = unwrap(root.object);
+        }
+        return root.type === AST_NODE_TYPES.Identifier && this.changedHere(root, path) ? null : { encoding: 'escape-quot' };
       }
     }
     return null;
+  }
+
+  /**
+   * True when this file may replace what a configured sanitizer name points
+   * at: a write to the name it starts from (other than its declaration), to
+   * the property path it calls (`utils.escapeHtml = ...`) or a part of it, or
+   * `Object.assign` / `Object.defineProperty` on one of those.
+   */
+  private changedHere(root: TSESTree.Identifier, path: readonly string[]): boolean {
+    const variable = this.variableOf(root);
+    const references =
+      variable?.references ??
+      (this.sourceCode.scopeManager?.globalScope?.through ?? []).filter((reference) => reference.identifier.name === root.name);
+    return references.some((reference) => {
+      if (reference.isWrite() && !reference.init) {
+        return true;
+      }
+      let node: TSESTree.Node = reference.identifier;
+      for (let index = 0; ; index += 1) {
+        if (isObjectWrite(node)) {
+          return true;
+        }
+        const parent: TSESTree.Node | undefined = node.parent;
+        if (index >= path.length || parent?.type !== AST_NODE_TYPES.MemberExpression || parent.object !== node) {
+          return false;
+        }
+        const name = propertyName(parent);
+        if (name !== null && name !== path[index]) {
+          return false;
+        }
+        if (isWriteTarget(parent)) {
+          return true;
+        }
+        node = parent;
+      }
+    });
   }
 
   /**
@@ -1856,6 +1901,22 @@ export class HtmlSafety {
 function squash(text: string): string {
   return text.replace(/\s+/gu, '');
 }
+
+/** True when `node` is the target of `Object.assign`, `Object.defineProperty` or a similar call that writes its members. */
+function isObjectWrite(node: TSESTree.Node): boolean {
+  const parent = node.parent;
+  if (parent?.type !== AST_NODE_TYPES.CallExpression || parent.arguments[0] !== node) {
+    return false;
+  }
+  const callee = unwrap(parent.callee);
+  if (callee.type !== AST_NODE_TYPES.MemberExpression) {
+    return false;
+  }
+  const owner = unwrap(callee.object);
+  return owner.type === AST_NODE_TYPES.Identifier && owner.name === 'Object' && OBJECT_WRITES.has(propertyName(callee) ?? '');
+}
+
+const OBJECT_WRITES: ReadonlySet<string> = new Set(['assign', 'defineProperty', 'defineProperties', 'setPrototypeOf']);
 
 /** True when `node` is written: assigned, updated, deleted or a loop target. */
 export function isWriteTarget(node: TSESTree.Node): boolean {
