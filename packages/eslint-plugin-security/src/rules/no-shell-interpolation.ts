@@ -434,29 +434,188 @@ function chainRoot(node: TSESTree.Node): TSESTree.Identifier | null {
   return current.type === AST_NODE_TYPES.Identifier ? current : null;
 }
 
+/** Array methods that read an array without changing it. */
+const ARRAY_READ_METHODS: ReadonlySet<string> = new Set(['includes', 'indexOf', 'lastIndexOf', 'join', 'at']);
+/** Array methods that add values to an array in place. */
+const ARRAY_ADD_METHODS: ReadonlySet<string> = new Set(['push', 'unshift', 'splice']);
+
+/** True for an unshadowed global name read here (`console`, `JSON`, `String`). */
+function isGlobalName(node: TSESTree.Node, name: string, sourceCode: Readonly<TSESLint.SourceCode>): boolean {
+  if (node.type !== AST_NODE_TYPES.Identifier || node.name !== name) {
+    return false;
+  }
+  const variable = ASTUtils.findVariable(sourceCode.getScope(node), node);
+  return variable === null || variable.defs.length === 0;
+}
+
+/** The name a member reads: `a.push`, `a['push']`; else null. */
+function memberKey(member: TSESTree.MemberExpression): string | null {
+  if (!member.computed) {
+    return member.property.type === AST_NODE_TYPES.Identifier ? member.property.name : null;
+  }
+  return member.property.type === AST_NODE_TYPES.Literal && typeof member.property.value === 'string'
+    ? member.property.value
+    : null;
+}
+
+/** True when `node` is written by its parent: assigned, updated, deleted or destructured into. */
+function isWriteTarget(node: TSESTree.Node): boolean {
+  const parent = node.parent;
+  switch (parent?.type) {
+    case AST_NODE_TYPES.AssignmentExpression:
+    case AST_NODE_TYPES.AssignmentPattern:
+      return parent.left === node;
+    case AST_NODE_TYPES.ForInStatement:
+    case AST_NODE_TYPES.ForOfStatement:
+      return parent.left === node;
+    case AST_NODE_TYPES.UpdateExpression:
+    case AST_NODE_TYPES.ArrayPattern:
+    case AST_NODE_TYPES.RestElement:
+      return true;
+    case AST_NODE_TYPES.Property:
+      return parent.parent?.type === AST_NODE_TYPES.ObjectPattern;
+    case AST_NODE_TYPES.UnaryExpression:
+      return parent.operator === 'delete';
+    default:
+      return false;
+  }
+}
+
+/**
+ * How a use of an args binding off the runner's path treats the array:
+ * `read` when it cannot change it (`.length`, an index read, `includes`,
+ * `indexOf`, `join`, `console.log(args)`, `JSON.stringify(args)` with no
+ * replacer, a template or `+` use, `String(args)`, a spread into a new array
+ * literal), `add` for `push` / `unshift` / `splice` with the values they add,
+ * `change` for anything else (a write, an alias, any other call).
+ */
+function argsUse(
+  identifier: TSESTree.Node,
+  sourceCode: Readonly<TSESLint.SourceCode>,
+):
+  | { readonly kind: 'read' | 'change' }
+  | { readonly kind: 'add'; readonly method: string; readonly values: readonly TSESTree.CallExpressionArgument[] } {
+  let node: TSESTree.Node = identifier;
+  while (
+    node.parent !== undefined &&
+    (node.parent.type === AST_NODE_TYPES.TSAsExpression ||
+      node.parent.type === AST_NODE_TYPES.TSNonNullExpression ||
+      node.parent.type === AST_NODE_TYPES.TSSatisfiesExpression ||
+      node.parent.type === AST_NODE_TYPES.TSTypeAssertion)
+  ) {
+    node = node.parent;
+  }
+  const parent = node.parent;
+  const read = { kind: 'read' } as const;
+  const change = { kind: 'change' } as const;
+  if (parent === undefined) {
+    return change;
+  }
+  if (parent.type === AST_NODE_TYPES.MemberExpression && parent.object === node) {
+    const key = memberKey(parent);
+    const call = parent.parent;
+    if (call?.type === AST_NODE_TYPES.CallExpression && call.callee === parent) {
+      if (key !== null && ARRAY_READ_METHODS.has(key)) {
+        return read;
+      }
+      return key !== null && ARRAY_ADD_METHODS.has(key)
+        ? { kind: 'add', method: key, values: key === 'splice' ? call.arguments.slice(2) : call.arguments }
+        : change;
+    }
+    // `.length` or an index read, neither written nor called (a call would get the array as `this`).
+    const used = call?.type === AST_NODE_TYPES.ChainExpression ? call : parent;
+    const elementRead = key === 'length' || (parent.computed && (key === null || /^\d+$/u.test(key)));
+    const outer = used.parent;
+    const calledWithThis =
+      (outer?.type === AST_NODE_TYPES.CallExpression && outer.callee === used) ||
+      (outer?.type === AST_NODE_TYPES.TaggedTemplateExpression && outer.tag === used);
+    return elementRead && !isWriteTarget(used) && !calledWithThis ? read : change;
+  }
+  if (parent.type === AST_NODE_TYPES.TemplateLiteral) {
+    return read;
+  }
+  if (parent.type === AST_NODE_TYPES.BinaryExpression && parent.operator === '+') {
+    return read;
+  }
+  if (parent.type === AST_NODE_TYPES.SpreadElement && parent.parent?.type === AST_NODE_TYPES.ArrayExpression) {
+    return read;
+  }
+  if (parent.type === AST_NODE_TYPES.CallExpression && parent.callee !== node) {
+    const callee = parent.callee;
+    if (callee.type === AST_NODE_TYPES.MemberExpression && isGlobalName(callee.object, 'console', sourceCode)) {
+      return read;
+    }
+    const [first, second] = parent.arguments;
+    if (
+      first === node &&
+      callee.type === AST_NODE_TYPES.MemberExpression &&
+      isGlobalName(callee.object, 'JSON', sourceCode) &&
+      memberKey(callee) === 'stringify' &&
+      (second === undefined || (second.type === AST_NODE_TYPES.Literal && second.value === null))
+    ) {
+      return read;
+    }
+    if (first === node && parent.arguments.length === 1 && isGlobalName(callee, 'String', sourceCode)) {
+      return read;
+    }
+  }
+  return change;
+}
+
+/** True when every value is fixed text: no spread, no runtime piece. */
+function allFixedWords(
+  values: readonly (TSESTree.Node | null)[],
+  sourceCode: Readonly<TSESLint.SourceCode>,
+): boolean {
+  return values.every(
+    (value) => value !== null && value.type !== AST_NODE_TYPES.SpreadElement && staticWord(value, sourceCode) !== null,
+  );
+}
+
 /**
  * The array literal an args list is, or (as in `const args = ['-c', cmd]`)
- * holds. `changed` when a binding it passed through is used anywhere but on
- * that path (`args[1] = x`, `args.push(x)`, `const a = args`, `log(args)`):
- * the elements at the call may then differ from the literal.
+ * holds, with the elements the runner can see. `changed` when a binding it
+ * passed through may change before the call (`args[1] = x`, `const a = args`,
+ * `fill(args)`, see {@link argsUse}): the elements at the call may then differ
+ * from the literal. Values added with `push` stand after the elements; values
+ * added with `unshift` or `splice` keep the list known only when every
+ * element and every added value is fixed text. Any added runtime value is a
+ * change.
  */
 function argsArray(
   list: TSESTree.Node,
   sourceCode: Readonly<TSESLint.SourceCode>,
-): { readonly array: TSESTree.ArrayExpression; readonly changed: boolean } | null {
+): {
+  readonly array: TSESTree.ArrayExpression;
+  readonly elements: readonly (TSESTree.Node | null)[];
+  readonly changed: boolean;
+} | null {
   const steps = flowSteps(list, list, sourceCode, 'taint');
   const onPath = new Set<TSESTree.Node>(steps.map((step) => step.node));
   let changed = false;
+  const pushed: TSESTree.Node[] = [];
+  let placed = false;
   for (const step of steps) {
     const value = unwrapTypeWrappers(step.node);
     if (value.type === AST_NODE_TYPES.ArrayExpression) {
-      return { array: value, changed };
+      if (changed || (pushed.length === 0 && !placed)) {
+        return { array: value, elements: value.elements, changed };
+      }
+      // Fixed text added in place keeps the list known, the added text
+      // included. `unshift` and `splice` (which may also remove elements)
+      // move the elements, so they keep it known only when all of it is fixed.
+      const elements = [...value.elements, ...pushed];
+      return placed && !allFixedWords(elements, sourceCode)
+        ? { array: value, elements: value.elements, changed: true }
+        : { array: value, elements, changed: false };
     }
     const root = chainRoot(step.node);
     const variable = root === null ? null : ASTUtils.findVariable(sourceCode.getScope(root), root);
     if (root !== null && variable === null) {
       changed = true;
     }
+    // Reads are told apart only for a binding that holds the list itself, not a holder of it.
+    const holdsList = root !== null && unwrapTypeWrappers(step.node) === root;
     for (const reference of variable?.references ?? []) {
       const write = reference.writeExpr;
       const onlyThePath =
@@ -464,7 +623,14 @@ function argsArray(
         (reference.init === true && write !== null && write !== undefined) ||
         (write !== null && write !== undefined && onPath.has(write)) ||
         isRunnerArgs(reference.identifier, sourceCode);
-      if (!onlyThePath) {
+      if (onlyThePath) {
+        continue;
+      }
+      const use = holdsList && !reference.isWrite() ? argsUse(reference.identifier, sourceCode) : { kind: 'change' as const };
+      if (use.kind === 'add' && allFixedWords(use.values, sourceCode)) {
+        pushed.push(...(use.values as TSESTree.Node[]));
+        placed ||= use.method !== 'push';
+      } else if (use.kind !== 'read') {
         changed = true;
       }
     }
@@ -492,11 +658,11 @@ function argsArray(
     }
     found ??= array;
     // Arrays of fixed words written in turn run nothing from the request.
-    if (!array.elements.every((element) => element !== null && element.type !== AST_NODE_TYPES.SpreadElement && staticWord(element, sourceCode) !== null)) {
+    if (!allFixedWords(array.elements, sourceCode)) {
       unknown = true;
     }
   }
-  return found === null || !unknown ? null : { array: found, changed: true };
+  return found === null || !unknown ? null : { array: found, elements: found.elements, changed: true };
 }
 
 /** The array a write puts in the binding, or under `key` of the object it puts there. */
@@ -533,7 +699,7 @@ function isRunnerArgs(identifier: TSESTree.Node, sourceCode: Readonly<TSESLint.S
  * it runs, after its variable assignments and the options it knows, else -1.
  */
 function envProgramIndex(
-  elements: TSESTree.ArrayExpression['elements'],
+  elements: readonly (TSESTree.Node | null)[],
   sourceCode: Readonly<TSESLint.SourceCode>,
 ): number {
   for (let index = 0; index < elements.length; index += 1) {
@@ -590,8 +756,8 @@ function shellProgramCommand(
   let name = commandName(text).toLowerCase().replace(/\.exe$/u, '');
   let start = 0;
   if (name === 'env') {
-    start = envProgramIndex(array.elements, sourceCode);
-    const shell = array.elements[start];
+    start = envProgramIndex(held.elements, sourceCode);
+    const shell = held.elements[start];
     const word = start === -1 || shell === undefined || shell === null ? null : staticWord(shell, sourceCode);
     if (word === null) {
       return null;
@@ -606,7 +772,7 @@ function shellProgramCommand(
   if (held.changed) {
     return { node: list, rest: [], reportAt: list, unknown: true };
   }
-  const elements = array.elements;
+  const elements = held.elements;
   let commandFlag = false;
   for (let index = start; index < elements.length; index += 1) {
     const element = elements[index];

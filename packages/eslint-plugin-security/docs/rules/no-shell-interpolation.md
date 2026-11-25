@@ -43,7 +43,11 @@ Precision is the whole point — this rule fires **only** on the genuinely dange
   (`const args = ['-c', cmd]`). A binding that may change before the call (`args[1] = x`,
   `args.push(x)`, a write through an alias, another write of a `let` that is not all fixed words,
   or handed to a call other than a runner) is reported: the command is then whatever was put
-  there. The element the shell runs is checked like an `exec` command when it is built from
+  there. Uses that cannot change the array keep its command known: `.length`, an index read,
+  `includes`, `indexOf`, `lastIndexOf`, `join`, `at`, `console.*`, `JSON.stringify` with no
+  replacer, a template, `+` or `String(args)` use, and a spread into a new array literal. Fixed
+  text added with `push` is read after the elements; fixed text added with `unshift` or `splice`
+  keeps the command known only when every element is fixed text too. The element the shell runs is checked like an `exec` command when it is built from
   runtime parts here or in the `const` it names, also after it moves through a holder
   (`holder.value`), an element (`items[0]`), destructuring, a local function that returns its
   parameter or a callback (`[cmd].forEach((c) => ...)`); for `cmd.exe` the elements after it are
