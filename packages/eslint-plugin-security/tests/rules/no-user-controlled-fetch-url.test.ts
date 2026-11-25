@@ -130,6 +130,99 @@ ruleTester.run('no-user-controlled-fetch-url', noUserControlledFetchUrlRule, {
       code: "const HOSTS = ['api.example.com']; function probe(input: string) { const host = new URL(input).hostname; if (!HOSTS.includes(host)) return; https.get({ hostname: new URL(input).hostname, path: '/x' }); }",
       filename: TS,
     },
+    // Trailing options the rule cannot see are left alone: a parameter, a callback, a call result.
+    { code: "function get(options) { return https.get('https://api.example.com/x', options); }", filename: TS },
+    { code: "https.get('https://api.example.com/x', (res) => res.pipe(out));", filename: TS },
+    { code: "https.get('https://api.example.com/x', withAuth(req.headers.authorization));", filename: TS },
+    { code: "net.connect(6379, 'cache.internal', () => res.json(req.body));", filename: TS },
+    // ...and trailing options the rule can read, through a conditional or Object.assign.
+    { code: "https.get('https://api.example.com/x', cond ? { timeout: 1000 } : undefined);", filename: TS },
+    { code: "https.get('https://api.example.com/x', { headers: { 'x-user': req.body.name } });", filename: TS },
+    {
+      code: "const BASE = { headers: { accept: 'application/json' } }; https.get('https://api.example.com/x', Object.assign({}, BASE, { timeout: 5000 }));",
+      filename: TS,
+    },
+    { code: "axios.get('https://api.example.com/x', req.body.flag ? { timeout: 1000 } : {});", filename: TS },
+    // A prototype that sets nothing, or only fixed keys.
+    { code: "net.connect({ __proto__: null, host: 'db.internal', port: 5432 });", filename: TS },
+    { code: "net.connect({ __proto__: { host: 'db.internal' }, port: 5432 });", filename: TS },
+    { code: "net.connect({ ['__proto__']: req.body, host: 'db.internal', port: 5432 });", filename: TS },
+    // axios defaults set to fixed values, and keys that do not move the request.
+    { code: "axios.defaults['baseURL'] = 'https://api.example.com';", filename: TS },
+    { code: "Object.assign(axios.defaults, { baseURL: 'https://api.example.com', timeout: 5000 });", filename: TS },
+    { code: 'axios.defaults.timeout = Number(req.query.t); axios.defaults.headers.common.authorization = token;', filename: TS },
+    // The axios form methods with a fixed URL.
+    { code: "axios.postForm('/upload', form); axios.putForm('https://api.example.com/x', form, { timeout: 1000 });", filename: TS },
+    // undici clients on a fixed origin, and a Client that is not undici's.
+    { code: "import { Client, Pool } from 'undici'; new Client('https://api.example.com'); new Pool('http://localhost:3000');", filename: TS },
+    { code: "import { Client } from './client'; new Client(target);", filename: TS },
+    // Hooks that are author-written, directly or through a const.
+    { code: "import { Agent } from 'node:https'; const agent = new Agent({ keepAlive: true }); const hook = agent; https.get({ hostname: 'api.example.com', agent: hook });", filename: TS },
+    // An exported string is fixed: a string cannot change.
+    { code: "export const HOST = 'api.example.com'; https.get({ hostname: HOST, path: '/x' });", filename: TS },
+    // axios through an alias or a type wrapper, with a fixed URL.
+    { code: "const ax = axios; ax.get('https://api.example.com/x'); (axios as any).post('/x', body);", filename: TS },
+    // Opt-in: values the person running the program picks, and their properties.
+    {
+      code: 'fetch(new URL(`r/${name}.json`, config.registryUrl));',
+      filename: TS,
+      options: [{ trustedSources: ['config.registryUrl'] }],
+    },
+    {
+      code: "fetch(`${config.registryUrl}/r/${name}.json`); fetch(config?.mirrors[0]); fetch(config['registryUrl']);",
+      filename: TS,
+      options: [{ trustedSources: ['config'] }],
+    },
+    {
+      code: 'const base = argv.registry; fetch(base); https.get({ hostname: argv.host, path: `/r/${name}` });',
+      filename: TS,
+      options: [{ trustedSources: ['argv'] }],
+    },
+    {
+      code: "axios.create({ baseURL: options.registry }); axios.get('/r', { baseURL: options.registry });",
+      filename: TS,
+      options: [{ trustedSources: ['options.registry'] }],
+    },
+    // Opt-in: a loopback host written in full, then a port that is a number.
+    {
+      code: [
+        'fetch(`http://127.0.0.1:${Number(port)}/health`);',
+        'fetch(`http://localhost:${Number(process.env.PORT)}`);',
+        'fetch(`http://[::1]:${+port}?q=${q}`);',
+        "fetch('http://LOCALHOST:' + parseInt(port, 10) + '/x/' + id);",
+        'fetch(new URL(`/api/${id}`, `https://127.0.0.1:${Number.parseInt(port)}`));',
+        'fetch(`ws://localhost:${base + 1 - 1}#x`);',
+        'fetch(`http://localhost:${Math.max(1024, Math.floor(port))}/x`);',
+        'const p = Number(port); fetch(`http://localhost:${p}/x`);',
+      ].join('\n'),
+      filename: TS,
+      options: [{ allowLoopback: true }],
+    },
+    // A source of Object.assign whose values are all primitives cannot change through the copy.
+    {
+      code: "const base = { hostname: 'api.example.com', port: 443, path: `/v1`, agent: undefined, family: null }; const copy = Object.assign({}, base); copy.path = '/v2'; https.get(base);",
+      filename: TS,
+    },
+    // A trusted source read from a binding nothing rewrites and no request fills.
+    {
+      code: "import config from './config'; const cli = loadConfig(); fetch(config.url); fetch(cli.url); https.get({ hostname: cli.host, path: '/x' }); log(config.url.replace(a, b));",
+      filename: TS,
+      options: [{ trustedSources: ['config', 'cli'] }],
+    },
+    // A hook the author wrote, reached through a later assignment or a callback's value.
+    {
+      code: "import { Agent } from 'node:https'; let a; a = new Agent({ keepAlive: true }); https.get({ hostname: 'api.example.com', agent: a });",
+      filename: TS,
+    },
+    {
+      code: "import { Agent } from 'node:https'; [new Agent()].forEach((agent) => https.get({ hostname: 'api.example.com', agent }));",
+      filename: TS,
+    },
+    // A host regex over a public suffix with one more literal label pinned.
+    {
+      code: "async function h(src: string) { if (!/^[a-z0-9-]+\\.assets\\.github\\.io$/.test(new URL(src).hostname)) return; await fetch(src); }",
+      filename: TS,
+    },
     // A fixed options object behind a type wrapper is read as written.
     { code: "const opts = { hostname: 'api.example.com' } satisfies RequestOptions; https.get(opts);", filename: TS },
     { code: "https.get({ hostname: 'api.example.com', path: '/x' } as https.RequestOptions);", filename: TS },
@@ -354,6 +447,198 @@ ruleTester.run('no-user-controlled-fetch-url', noUserControlledFetchUrlRule, {
     { code: 'axios.create(req.body);', filename: TS, errors: [option] },
     { code: 'function mk(cfg) { return axios.create(cfg); }', filename: TS, errors: [option] },
     { code: 'axios.create(c ? { baseURL: x } : {});', filename: TS, errors: [option] },
+    // Trailing options the requester supplies whole, or partly through Object.assign or a branch.
+    { code: "https.get('https://api.example.com/x', req.body);", filename: TS, errors: [option] },
+    { code: "axios.get('https://api.example.com/x', req.body);", filename: TS, errors: [option] },
+    { code: "axios.post('https://api.example.com/x', data, req.body.config);", filename: TS, errors: [option] },
+    { code: "const opts = req.body.options; https.request('https://api.example.com/x', opts);", filename: TS, errors: [option] },
+    { code: "const { options } = req.body; https.get('https://api.example.com/x', options);", filename: TS, errors: [option] },
+    { code: "https.get('https://api.example.com/x', req.body.options ?? {});", filename: TS, errors: [option] },
+    {
+      code: "const fixed = { timeout: 1000 }; https.get('https://api.example.com/x', Object.assign({}, fixed, req.body));",
+      filename: TS,
+      errors: [option],
+    },
+    {
+      code: "function get(overrides) { return https.get('https://api.example.com/x', Object.assign({}, overrides)); }",
+      filename: TS,
+      errors: [option],
+    },
+    { code: "https.get('https://api.example.com/x', Object.assign({}, { hostname: req.query.h }));", filename: TS, errors: [host] },
+    { code: "https.get('https://api.example.com/x', cond ? { hostname: x } : {});", filename: TS, errors: [host] },
+    { code: "https.get('https://api.example.com/x', cond ? {} : req.body);", filename: TS, errors: [option] },
+    { code: "tls.connect(443, 'api.example.com', req.body);", filename: TS, errors: [option] },
+    // axios defaults set by a computed key or Object.assign, or replaced whole.
+    { code: "axios.defaults['baseURL'] = req.query.base;", filename: TS, errors: [error] },
+    { code: 'axios.defaults[`baseURL`] = req.query.base;', filename: TS, errors: [error] },
+    { code: 'Object.assign(axios.defaults, { baseURL: req.query.base });', filename: TS, errors: [error] },
+    { code: 'function setup(cfg) { Object.assign(axios.defaults, cfg); }', filename: TS, errors: [option] },
+    { code: 'axios.defaults.proxy = { host: req.query.h, port: 8080 };', filename: TS, errors: [host] },
+    { code: 'axios.defaults[key] = value;', filename: TS, errors: [option] },
+    { code: 'axios.defaults = req.body;', filename: TS, errors: [option] },
+    {
+      code: "const api = axios.create({ baseURL: 'https://api.example.com' }); api.defaults['baseURL'] = req.query.base;",
+      filename: TS,
+      errors: [error],
+    },
+    // A const is author-written only when what it holds is.
+    { code: "const a = req.body.agent; http.get({ hostname: 'api.example.com', agent: a });", filename: TS, errors: [option] },
+    { code: "const l = makeLookup(req.query.dns); http.get({ hostname: 'api.example.com', lookup: l });", filename: TS, errors: [option] },
+    // A prototype the rule cannot read supplies every key the object does not set.
+    { code: 'net.connect({ __proto__: req.body, port: 80 });', filename: TS, errors: [option] },
+    { code: "net.connect({ '__proto__': req.body, port: 80 });", filename: TS, errors: [option] },
+    { code: "http.get({ __proto__: opts, path: '/x' });", filename: TS, errors: [option] },
+    { code: 'net.connect({ __proto__: { host: req.query.h }, port: 80 });', filename: TS, errors: [host] },
+    // The axios form methods.
+    { code: 'axios.postForm(req.query.url, form);', filename: TS, errors: [error] },
+    { code: 'axios.putForm(target, form);', filename: TS, errors: [error] },
+    { code: "axios.patchForm('/x', form, { baseURL: req.query.base });", filename: TS, errors: [error] },
+    // undici clients built on a runtime origin.
+    { code: "import { Client } from 'undici'; new Client(req.query.origin);", filename: TS, errors: [error] },
+    { code: "import { Pool } from 'undici'; const pool = new Pool(`https://${host}`);", filename: TS, errors: [error] },
+    { code: "import * as undici from 'undici'; new undici.Client(target);", filename: TS, errors: [error] },
+    { code: "const { Pool } = require('undici'); new Pool(target);", filename: TS, errors: [error] },
+    // An exported const options object can be changed by an importing module.
+    { code: "export const opts = { hostname: 'api.example.com' }; https.get(opts);", filename: TS, errors: [error] },
+    { code: "export const opts = { hostname: 'api.example.com' } as const; https.get(opts);", filename: TS, errors: [error] },
+    { code: "const opts = { hostname: 'api.example.com' }; export { opts }; https.get(opts);", filename: TS, errors: [error] },
+    { code: "export const BASE = { hostname: 'api.example.com' }; https.get({ ...BASE, path: '/x' });", filename: TS, errors: [option] },
+    { code: "export const cfg = { timeout: 1000 }; https.get('https://api.example.com/x', cfg);", filename: TS, errors: [option] },
+    { code: "export const config = { baseURL: 'https://api.example.com' }; axios.create(config);", filename: TS, errors: [option] },
+    // axios behind a type wrapper or an alias.
+    { code: '(axios as any).get(req.query.u);', filename: TS, errors: [error] },
+    { code: '(<any>axios).post(req.query.u, body);', filename: TS, errors: [error] },
+    { code: 'const ax = axios; ax.get(req.query.u);', filename: TS, errors: [error] },
+    { code: 'const ax = axios; ax({ url: target });', filename: TS, errors: [error] },
+    { code: 'const ax = axios as AxiosStatic; ax.defaults.baseURL = req.query.base;', filename: TS, errors: [error] },
+    {
+      code: "const api = axios.create({ baseURL: 'https://api.example.com' }); const client = api; client.get(req.query.u);",
+      filename: TS,
+      errors: [error],
+    },
+    // Both opt-ins are off by default.
+    { code: 'fetch(new URL(`r/${name}.json`, config.registryUrl));', filename: TS, errors: [error] },
+    { code: 'fetch(`http://127.0.0.1:${port}/health`);', filename: TS, errors: [error] },
+    { code: 'fetch(`http://localhost:${Number(port)}/health`);', filename: TS, errors: [error] },
+    // A trusted source is an origin: what follows it must still close the authority.
+    {
+      code: 'fetch(`${config.registryUrl}${path}`);',
+      filename: TS,
+      options: [{ trustedSources: ['config.registryUrl'] }],
+      errors: [error],
+    },
+    {
+      code: 'fetch(new URL(path, config.registryUrl));',
+      filename: TS,
+      options: [{ trustedSources: ['config.registryUrl'] }],
+      errors: [error],
+    },
+    // Only the entry and properties read off it, by name or literal key.
+    {
+      code: 'fetch(config.mirrors[req.query.i]); fetch(configs.registryUrl); fetch(getConfig().registryUrl); fetch(config.registryUrl.replace(a, b));',
+      filename: TS,
+      options: [{ trustedSources: ['config'] }],
+      errors: [error, error, error, error],
+    },
+    {
+      code: 'fetch(config.registry);',
+      filename: TS,
+      options: [{ trustedSources: ['config.registryUrl'] }],
+      errors: [error],
+    },
+    {
+      code: 'https.get({ hostname: req.query.h }); https.get({ hostname: config[key] });',
+      filename: TS,
+      options: [{ trustedSources: ['config'] }],
+      errors: [host, host],
+    },
+    // A runtime value is never trusted for looking like loopback.
+    {
+      code: [
+        'fetch(target);',
+        "const t = 'http://localhost:' + port; fetch(t);",
+        'fetch(`http://${host}:${Number(port)}/x`);',
+        'fetch(`http://localhost:${port}/x`);',
+        'fetch(`http://localhost:${String(port)}/x`);',
+        'fetch(`http://localhost:${a + b}/x`);',
+        'fetch(`http://localhost:${Number(port)}${path}`);',
+        'fetch(`http://localhost:${Number(port)}@evil.com/x`);',
+        'fetch(`http://localhost.evil.com:${Number(port)}/x`);',
+        'fetch(`http://127.0.0.2:${Number(port)}/x`);',
+        'fetch(`http://localhost${Number(port)}/x`);',
+        'fetch(`http://user@localhost:${Number(port)}/x`);',
+        'function f(Number) { return fetch(`http://localhost:${Number(port)}/x`); }',
+        'fetch(`http://localhost:${Math.constructor(port)}/x`);',
+        'fetch(`http://localhost:${Math.random.call(port)}/x`);',
+      ].join('\n'),
+      filename: TS,
+      options: [{ allowLoopback: true }],
+      errors: Array.from({ length: 15 }, () => error),
+    },
+    // Object.assign copies shallowly: a nested object stays shared with the copy.
+    {
+      code: "const cfg = { proxy: { host: 'p.example.com', port: 8080 } }; const t = Object.assign({}, cfg); t.proxy.host = req.query.h; axios.get('/x', cfg);",
+      filename: TS,
+      errors: [option],
+    },
+    {
+      code: "import { Agent } from 'node:https'; const o = { hostname: 'api.example.com', agent: new Agent() }; Object.assign({}, o).agent.options.host = req.query.h; https.get(o);",
+      filename: TS,
+      errors: [error],
+    },
+    {
+      code: "const cfg = { headers: { host: 'api.example.com' } }; const t = {}; https.get('https://api.example.com/x', Object.assign(t, cfg)); t.headers.host = req.query.h;",
+      filename: TS,
+      errors: [option, option],
+    },
+    // A trusted source name is matched by binding: request data, a parameter or a write keeps the report.
+    ...[
+      'const config = req.body;',
+      'const { config } = req.body;',
+      'let config = load(); config = req.body;',
+      'config.url = req.query.u; config.host = req.query.h;',
+      'Object.assign(config, req.body);',
+      'Object.assign(config.http, req.body);',
+      '({ url: config.url, host: config.host } = req.query);',
+      'config.mirrors.push(req.query.u);',
+      'delete config.url;',
+      'const config = req.body.settings ?? {};',
+    ].map((setup) => ({
+      code: `${setup} fetch(config.url); https.get({ hostname: config.host, path: '/x' });`,
+      filename: TS,
+      options: [{ trustedSources: ['config'] }],
+      errors: [error, host],
+    })),
+    {
+      code: "function handler(config) { fetch(config.url); https.get({ hostname: config.host, path: '/x' }); }",
+      filename: TS,
+      options: [{ trustedSources: ['config'] }],
+      errors: [error, host],
+    },
+    {
+      code: "app.post('/x', async (req, res) => { const config = req.body; await fetch(config.url); https.get({ hostname: config.host, path: '/x' }); });",
+      filename: TS,
+      options: [{ trustedSources: ['config'] }],
+      errors: [error, host],
+    },
+    {
+      code: "app.post('/x', async ({ body: config }, res) => { await fetch(config.url); });",
+      filename: TS,
+      options: [{ trustedSources: ['config'] }],
+      errors: [error],
+    },
+    {
+      code: "class Cli { run() { fetch(this.config.url); fetch(getConfig().url); } }",
+      filename: TS,
+      options: [{ trustedSources: ['this.config', 'getConfig()'] }],
+      errors: [error, error],
+    },
+    // A host regex over a public suffix: anyone can register a name under it.
+    ...['vercel\\.app', 'github\\.io', 'netlify\\.app', 'pages\\.dev', 'co\\.uk'].map((suffix) => ({
+      code: `async function h(src: string) { if (!/^[a-z0-9-]+\\.${suffix}$/.test(new URL(src).hostname)) return; await fetch(src); }`,
+      filename: TS,
+      errors: [error],
+    })),
     // A relative prefix made only of scheme characters can still grow into a scheme.
     { code: 'fetch(`h${x}`);', filename: TS, errors: [error] },
     { code: 'fetch(`java${x}`);', filename: TS, errors: [error] },

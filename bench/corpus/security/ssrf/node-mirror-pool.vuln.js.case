@@ -1,0 +1,14 @@
+// @bench category=ssrf cwe=CWE-918 framework=node pair=node-mirror-pool title="mirror health check opens an undici Pool on the origin from the query"
+const http = require('node:http');
+const { Pool } = require('undici');
+
+const server = http.createServer(async (req, res) => {
+  const incoming = new URL(req.url, 'http://localhost');
+  const pool = new Pool(incoming.searchParams.get('mirror') ?? ''); // expect: security/no-user-controlled-fetch-url
+  const { statusCode } = await pool.request({ path: '/health', method: 'GET' });
+  await pool.close();
+  res.writeHead(200, { 'Content-Type': 'application/json' });
+  res.end(JSON.stringify({ up: statusCode === 200 }));
+});
+
+server.listen(3000);

@@ -1,0 +1,33 @@
+// @bench category=ssrf cwe=CWE-918 framework=nest pair=nest-feed-probe title="feed probe checks the DTO url hostname against an allowlist before the axios alias call"
+// ok
+import { BadRequestException, Body, Controller, Injectable, Post } from '@nestjs/common';
+import axios, { type AxiosStatic } from 'axios';
+
+const client: AxiosStatic = axios;
+const FEED_HOSTS = ['news.example.com', 'blog.example.com'];
+
+class ProbeDto {
+  url!: string;
+}
+
+@Injectable()
+export class ProbeService {
+  async probe(dto: ProbeDto) {
+    const url = new URL(dto.url);
+    if (url.protocol !== 'https:' || !FEED_HOSTS.includes(url.hostname)) {
+      throw new BadRequestException('host not allowed');
+    }
+    const res = await client.get<string>(url.href);
+    return { length: res.data.length };
+  }
+}
+
+@Controller('probe')
+export class ProbeController {
+  constructor(private readonly service: ProbeService) {}
+
+  @Post()
+  create(@Body() dto: ProbeDto) {
+    return this.service.probe(dto);
+  }
+}

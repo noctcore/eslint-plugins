@@ -12,7 +12,7 @@ import {
   type FetchCalleeEntry,
   type FetchCalleeSpec,
 } from '@noctcore/eslint-utils';
-import { AST_NODE_TYPES, type TSESLint, type TSESTree } from '@typescript-eslint/utils';
+import { AST_NODE_TYPES, ASTUtils, type TSESLint, type TSESTree } from '@typescript-eslint/utils';
 import type { JSONSchema4 } from '@typescript-eslint/utils/json-schema';
 
 import { conventionalCallee, flowStep, stringPieces } from './value-flow';
@@ -53,6 +53,22 @@ export interface UrlTrustOptions {
    * an imported path constant the rule cannot see into: `AUTH_CALLBACK_PATH`.
    */
   readonly trustedPaths?: readonly string[];
+  /**
+   * Variables whose value the person running the program picks, not a
+   * requester (CLI and test code): the variable and every property read off
+   * it (`config` covers `config.registryUrl` and `config.mirrors[0]`). Each
+   * counts as a trusted origin, so what follows it must still close the
+   * authority. The binding must be a variable or import that is never
+   * written and never takes request data. Read by
+   * `no-user-controlled-fetch-url` only.
+   */
+  readonly trustedSources?: readonly string[];
+  /**
+   * Trust a URL whose author-written text names a loopback host
+   * (`localhost`, `127.0.0.1`, `[::1]`) followed by a port the rule can see is
+   * a number. Read by `no-user-controlled-fetch-url` only.
+   */
+  readonly allowLoopback?: boolean;
 }
 
 // The callee vocabulary is shared with the other plugins' fetch rules through
@@ -68,12 +84,35 @@ export const trustSchemaProperties: Record<string, JSONSchema4> = {
   trustedPaths: { type: 'array', items: { type: 'string' }, uniqueItems: true },
 };
 
+export const sourceTrustSchemaProperties: Record<string, JSONSchema4> = {
+  trustedSources: {
+    type: 'array',
+    items: { type: 'string' },
+    uniqueItems: true,
+    description:
+      'For CLI and test code: variables whose value the person running the program picks (a CLI config or flag). The variable and every property read off it count as a trusted origin, unless the binding is a parameter, is written, or takes request data.',
+  },
+  allowLoopback: {
+    type: 'boolean',
+    description:
+      'Trust a URL whose author-written text names `localhost`, `127.0.0.1` or `[::1]` followed by a port that is a number literal or a numeric expression (`Number(port)`).',
+  },
+};
+
 /** Normalized, lookup-ready form of {@link UrlTrustOptions}. */
 export interface UrlTrust {
   readonly originTexts: ReadonlySet<string>;
   readonly originCallees: ReadonlySet<string>;
   readonly sanitizerCallees: ReadonlySet<string>;
   readonly pathTexts: ReadonlySet<string>;
+  readonly sourceTexts: ReadonlySet<string>;
+  readonly loopback: boolean;
+  /**
+   * True when the root binding of a trusted source may hold request data
+   * (`const config = req.body`). Set by a rule that follows request taint;
+   * without it, no source binding is taken to reach a request.
+   */
+  readonly sourceReachesRequest?: (root: TSESTree.Identifier) => boolean;
 }
 
 /** Drops all whitespace so `this.shared.appUrl` matches however it is wrapped. */
@@ -99,6 +138,8 @@ export function normalizeTrust(options: UrlTrustOptions): UrlTrust {
       (options.sanitizers ?? []).map((entry) => squash(entry).replace(/\(\)$/u, '')),
     ),
     pathTexts: new Set((options.trustedPaths ?? []).map(squash)),
+    sourceTexts: new Set((options.trustedSources ?? []).map(squash)),
+    loopback: options.allowLoopback === true,
   };
 }
 
@@ -163,6 +204,7 @@ type Part =
   | { readonly kind: 'text'; readonly value: string }
   | { readonly kind: 'origin' }
   | { readonly kind: 'path' }
+  | { readonly kind: 'number' }
   | { readonly kind: 'unknown' };
 
 const MAX_RESOLVE_DEPTH = 8;
@@ -209,14 +251,35 @@ export function hasFixedOrigin(
   }
   switch (head.kind) {
     case 'text':
-      return rest.length === 0 || prefixPinsOrigin(head.value);
+      return rest.length === 0 || prefixPinsOrigin(head.value) || (trust.loopback && loopbackWithPort(head.value, rest));
     case 'origin':
       return authorityClosedBy(rest, true);
     case 'path':
       return authorityClosedBy(rest, false);
+    case 'number':
     case 'unknown':
       return false;
   }
+}
+
+/**
+ * `http://127.0.0.1:${port}/x`: a loopback host written in full, then a port
+ * that is a number, then nothing or text that closes the authority. Every
+ * string a number turns into (`3000`, `-1`, `NaN`, `1e+21`) is a port or an
+ * invalid URL, never `@` or `/`, so the host cannot move. Anything else
+ * after the port could start `@evil.com` and turn the host into userinfo.
+ */
+function loopbackWithPort(rawPrefix: string, rest: readonly Part[]): boolean {
+  const prefix = rawPrefix
+    .replace(/^[\u0000- ]+/u, '')
+    .replace(/[\t\n\r]/gu, '')
+    .replace(/\\/gu, '/');
+  const [port, after] = rest;
+  return (
+    /^(?:https?|wss?):\/\/(?:localhost|127\.0\.0\.1|\[::1\]):$/iu.test(prefix) &&
+    port?.kind === 'number' &&
+    (after === undefined || (after.kind === 'text' && /^[/?#\\]/u.test(after.value)))
+  );
 }
 
 /**
@@ -313,7 +376,7 @@ function trustedRole(
   sourceCode: Readonly<TSESLint.SourceCode>,
 ): Part | undefined {
   const text = squash(sourceCode.getText(node));
-  if (trust.originTexts.has(text)) {
+  if (trust.originTexts.has(text) || readsTrustedSource(node, trust, sourceCode)) {
     return { kind: 'origin' };
   }
   if (trust.pathTexts.has(text)) {
@@ -329,6 +392,252 @@ function trustedRole(
     }
   }
   return undefined;
+}
+
+/** True for a configured trusted source or a property read off one (see {@link UrlTrustOptions.trustedSources}). */
+export function isTrustedSource(
+  node: TSESTree.Node,
+  trust: UrlTrust,
+  sourceCode: Readonly<TSESLint.SourceCode>,
+): boolean {
+  return isExpression(node) && readsTrustedSource(unwrap(node), trust, sourceCode);
+}
+
+function isExpression(node: TSESTree.Node): node is TSESTree.Expression {
+  return node.type !== AST_NODE_TYPES.SpreadElement && node.type !== AST_NODE_TYPES.PrivateIdentifier;
+}
+
+/**
+ * A configured trusted source, or a property read off one by name or literal
+ * key. A key computed at run time could pick a value the entry does not
+ * cover (`config[req.query.k]`), so it does not count.
+ */
+function readsTrustedSource(
+  node: TSESTree.Expression,
+  trust: UrlTrust,
+  sourceCode: Readonly<TSESLint.SourceCode>,
+): boolean {
+  if (trust.sourceTexts.size === 0) {
+    return false;
+  }
+  let current: TSESTree.Expression = node;
+  for (;;) {
+    if (current.type === AST_NODE_TYPES.ChainExpression) {
+      current = current.expression;
+    }
+    if (trust.sourceTexts.has(squash(sourceCode.getText(current)))) {
+      return isSettledSource(current, trust, sourceCode);
+    }
+    if (
+      current.type !== AST_NODE_TYPES.MemberExpression ||
+      (current.computed && current.property.type !== AST_NODE_TYPES.Literal)
+    ) {
+      return false;
+    }
+    current = unwrap(current.object);
+  }
+}
+
+/**
+ * True when the binding a trusted source is read from holds what the person
+ * running the program picked, and nothing can swap it for request data: its
+ * root is a variable or import (not a parameter, which any caller fills, nor
+ * `this` or a call result), it is never reassigned, no property under it is
+ * written, and it never takes its value from a request.
+ */
+function isSettledSource(
+  source: TSESTree.Expression,
+  trust: UrlTrust,
+  sourceCode: Readonly<TSESLint.SourceCode>,
+): boolean {
+  let root: TSESTree.Expression = source;
+  for (;;) {
+    if (root.type === AST_NODE_TYPES.ChainExpression) {
+      root = root.expression;
+    } else if (root.type === AST_NODE_TYPES.MemberExpression) {
+      root = unwrap(root.object);
+    } else {
+      break;
+    }
+  }
+  if (root.type !== AST_NODE_TYPES.Identifier) {
+    return false;
+  }
+  const variable = ASTUtils.findVariable(sourceCode.getScope(root), root);
+  let references: readonly TSESLint.Scope.Reference[];
+  if (variable === null) {
+    const name = root.name;
+    references = sourceCode.scopeManager?.globalScope?.through.filter((ref) => ref.identifier.name === name) ?? [];
+  } else if (variable.defs.length === 0) {
+    references = variable.references;
+  } else {
+    const def = variable.defs[0];
+    if (variable.defs.length !== 1 || (def?.type !== 'Variable' && def?.type !== 'ImportBinding')) {
+      return false;
+    }
+    references = variable.references;
+  }
+  return !references.some(writesThrough) && !(trust.sourceReachesRequest?.(root) ?? false);
+}
+
+/** Calls that change their first argument. */
+const MUTATING_CALLS = new Set([
+  'Object.assign',
+  'Object.defineProperty',
+  'Object.defineProperties',
+  'Object.setPrototypeOf',
+  'Reflect.set',
+  'Reflect.defineProperty',
+  'Reflect.setPrototypeOf',
+  'Reflect.deleteProperty',
+]);
+
+/** Methods that change the array, map or set they are called on. */
+const MUTATING_METHODS = new Set([
+  'push',
+  'pop',
+  'shift',
+  'unshift',
+  'splice',
+  'sort',
+  'reverse',
+  'fill',
+  'copyWithin',
+  'set',
+  'add',
+  'delete',
+  'clear',
+]);
+
+/**
+ * True when a reference reassigns the binding, or writes the object it holds
+ * or anything under it: `config = x`, `config.url = x`, `delete config.url`,
+ * `({ url: config.url } = x)`, `Object.assign(config, x)`,
+ * `config.mirrors.push(x)`.
+ */
+function writesThrough(reference: TSESLint.Scope.Reference): boolean {
+  if (reference.init === true) {
+    return false;
+  }
+  if (reference.isWrite()) {
+    return true;
+  }
+  let chain: TSESTree.Node = reference.identifier;
+  for (;;) {
+    const parent: TSESTree.Node | undefined = chain.parent;
+    if (
+      (parent?.type === AST_NODE_TYPES.MemberExpression && parent.object === chain) ||
+      parent?.type === AST_NODE_TYPES.ChainExpression ||
+      parent?.type === AST_NODE_TYPES.TSNonNullExpression ||
+      parent?.type === AST_NODE_TYPES.TSAsExpression ||
+      parent?.type === AST_NODE_TYPES.TSSatisfiesExpression ||
+      parent?.type === AST_NODE_TYPES.TSTypeAssertion
+    ) {
+      chain = parent;
+    } else {
+      break;
+    }
+  }
+  const parent = chain.parent;
+  if (parent === undefined) {
+    return false;
+  }
+  if (chain !== reference.identifier) {
+    if (
+      (parent.type === AST_NODE_TYPES.AssignmentExpression && parent.left === chain) ||
+      parent.type === AST_NODE_TYPES.UpdateExpression ||
+      (parent.type === AST_NODE_TYPES.UnaryExpression && parent.operator === 'delete') ||
+      ((parent.type === AST_NODE_TYPES.ForInStatement || parent.type === AST_NODE_TYPES.ForOfStatement) &&
+        parent.left === chain) ||
+      parent.type === AST_NODE_TYPES.ArrayPattern ||
+      parent.type === AST_NODE_TYPES.RestElement ||
+      (parent.type === AST_NODE_TYPES.AssignmentPattern && parent.left === chain) ||
+      (parent.type === AST_NODE_TYPES.Property &&
+        parent.value === chain &&
+        parent.parent.type === AST_NODE_TYPES.ObjectPattern)
+    ) {
+      return true;
+    }
+    const last = unwrapChain(chain);
+    if (
+      parent.type === AST_NODE_TYPES.CallExpression &&
+      parent.callee === chain &&
+      last.type === AST_NODE_TYPES.MemberExpression &&
+      !last.computed &&
+      last.property.type === AST_NODE_TYPES.Identifier &&
+      MUTATING_METHODS.has(last.property.name)
+    ) {
+      return true;
+    }
+  }
+  return (
+    parent.type === AST_NODE_TYPES.CallExpression &&
+    parent.arguments[0] === chain &&
+    parent.callee.type === AST_NODE_TYPES.MemberExpression &&
+    !parent.callee.computed &&
+    parent.callee.object.type === AST_NODE_TYPES.Identifier &&
+    parent.callee.property.type === AST_NODE_TYPES.Identifier &&
+    MUTATING_CALLS.has(`${parent.callee.object.name}.${parent.callee.property.name}`)
+  );
+}
+
+function unwrapChain(node: TSESTree.Node): TSESTree.Node {
+  let current = node;
+  while (
+    current.type === AST_NODE_TYPES.ChainExpression ||
+    current.type === AST_NODE_TYPES.TSNonNullExpression ||
+    current.type === AST_NODE_TYPES.TSAsExpression ||
+    current.type === AST_NODE_TYPES.TSSatisfiesExpression ||
+    current.type === AST_NODE_TYPES.TSTypeAssertion
+  ) {
+    current = current.expression;
+  }
+  return current;
+}
+
+/** Globals whose result is always a number. */
+const NUMBER_CALLS = new Set(['Number', 'parseInt', 'parseFloat']);
+/** `Math` methods that always return a number (`Math.constructor(x)` returns `x`). */
+const MATH_NUMBER_METHODS = new Set(['max', 'min', 'floor', 'trunc', 'round', 'abs', 'ceil']);
+const NUMBER_OPERATORS = new Set(['-', '*', '/', '%', '**', '|', '&', '^', '<<', '>>', '>>>']);
+
+/** True for an unshadowed global name read here. */
+function isGlobal(node: TSESTree.Node, sourceCode: Readonly<TSESLint.SourceCode>): node is TSESTree.Identifier {
+  if (node.type !== AST_NODE_TYPES.Identifier) {
+    return false;
+  }
+  const variable = ASTUtils.findVariable(sourceCode.getScope(node), node);
+  return variable === null || variable.defs.length === 0;
+}
+
+/**
+ * Expressions whose value is a number whatever their operands hold:
+ * `Number(x)`, `parseInt(x)`, `Number.parseInt(x)`, `Math.max(...)`, `+x`,
+ * `a - b`. A `+` between two values may join strings, so it does not count.
+ */
+function isNumberExpression(node: TSESTree.Expression, sourceCode: Readonly<TSESLint.SourceCode>): boolean {
+  if (node.type === AST_NODE_TYPES.UnaryExpression) {
+    return node.operator === '+' || node.operator === '-' || node.operator === '~';
+  }
+  if (node.type === AST_NODE_TYPES.BinaryExpression) {
+    return NUMBER_OPERATORS.has(node.operator);
+  }
+  if (node.type !== AST_NODE_TYPES.CallExpression) {
+    return false;
+  }
+  const callee = node.callee;
+  if (callee.type === AST_NODE_TYPES.Identifier) {
+    return NUMBER_CALLS.has(callee.name) && isGlobal(callee, sourceCode);
+  }
+  return (
+    callee.type === AST_NODE_TYPES.MemberExpression &&
+    !callee.computed &&
+    callee.property.type === AST_NODE_TYPES.Identifier &&
+    isGlobal(callee.object, sourceCode) &&
+    ((callee.object.name === 'Math' && MATH_NUMBER_METHODS.has(callee.property.name)) ||
+      (callee.object.name === 'Number' &&
+        (callee.property.name === 'parseInt' || callee.property.name === 'parseFloat')))
+  );
 }
 
 function flatten(
@@ -348,6 +657,9 @@ function flatten(
   }
   const next = (child: TSESTree.Expression): Part[] =>
     flatten(child, trust, sourceCode, depth + 1, seen);
+  if (isNumberExpression(node, sourceCode)) {
+    return [{ kind: 'number' }];
+  }
   const parts = flattenNode(node, sourceCode, seen, next);
   if (parts.length !== 1 || parts[0]?.kind !== 'unknown') {
     return parts;

@@ -196,6 +196,15 @@ ruleTester.run('no-user-controlled-redirect', noUserControlledRedirectRule, {
       code: "function h(req) { const u = new URL(String(req.query.next)); if (u.origin !== 'https://app.example.com') return; return new Response(null, { status: 302, headers: { Location: u.href } }); }",
       filename: TS,
     },
+    // A public suffix with one more literal label pinned before it.
+    {
+      code: 'function h(req, res) { const next = String(req.query.next); if (!/^[a-z0-9-]+\\.myapp\\.vercel\\.app$/.test(new URL(next).hostname)) return; res.redirect(next); }',
+      filename: TS,
+    },
+    {
+      code: 'function h(req, res) { const next = String(req.query.next); if (!/^[a-z0-9-]+\\.example\\.co\\.uk$/.test(new URL(next).hostname)) return; res.redirect(next); }',
+      filename: TS,
+    },
     // Any subdomain of example.com, and an origin with an optional subdomain.
     {
       code: 'function h(req, res) { const next = String(req.query.next); if (!/^(?:[a-z0-9-]+\\.)*example\\.com$/.test(new URL(next).hostname)) return res.status(403).end(); res.redirect(next); }',
@@ -724,6 +733,27 @@ ruleTester.run('no-user-controlled-redirect', noUserControlledRedirectRule, {
     },
     {
       code: 'new Response(null, { status: 302, headers: new Headers({ Location: target }) });',
+      filename: TS,
+      errors: [error],
+    },
+    // A host regex over a public suffix: anyone can register `evil.vercel.app`.
+    ...[
+      '/^[a-z0-9-]+\\.vercel\\.app$/',
+      '/^[a-z0-9-]+\\.github\\.io$/',
+      '/^[a-z0-9-]+\\.netlify\\.app$/',
+      '/^[a-z0-9-]+\\.pages\\.dev$/',
+      '/^[a-z0-9-]+\\.co\\.uk$/',
+      '/^(?:[a-z0-9-]+\\.)*vercel\\.app$/',
+      '/^myapp-[a-z0-9-]+\\.vercel\\.app$/',
+    ].map((regex) => ({
+      code: `function h(req, res) { const next = String(req.query.next);
+  if (!${regex}.test(new URL(next).hostname)) return;
+  res.redirect(next); }`,
+      filename: TS,
+      errors: [error],
+    })),
+    {
+      code: 'function h(req) { const next = String(req.query.next); if (!/^https:\\/\\/[a-z0-9-]+\\.vercel\\.app$/.test(new URL(next).origin)) return; redirect(next); }',
       filename: TS,
       errors: [error],
     },

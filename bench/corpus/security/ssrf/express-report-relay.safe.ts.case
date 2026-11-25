@@ -1,0 +1,18 @@
+// @bench category=ssrf cwe=CWE-918 framework=express pair=express-report-relay title="report relay builds its own request options and takes only a bounded timeout"
+// ok
+import express from 'express';
+import https from 'node:https';
+
+const app = express();
+app.use(express.json());
+
+app.post('/reports/relay', (req, res) => {
+  const timeout = Math.min(Number(req.body.timeout) || 5000, 30000);
+  const upstream = https.request('https://reports.example.com/v1/render', { method: 'POST', timeout, headers: { 'content-type': 'application/json' } }, (reply) => {
+    res.status(reply.statusCode ?? 502);
+    reply.pipe(res);
+  });
+  upstream.end(JSON.stringify(req.body.report));
+});
+
+app.listen(3000);

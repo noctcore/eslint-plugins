@@ -16,6 +16,7 @@ import type { JSONSchema4 } from '@typescript-eslint/utils/json-schema';
 import { createRule } from '../createRule';
 import { isHostPinned } from '../guards';
 import {
+  copiesOnlyPrimitives,
   isAuthorWritten,
   isChangedConstObject,
   isFixedValue,
@@ -27,9 +28,11 @@ import {
 import {
   calleeSpecSchema,
   hasFixedOrigin,
+  isTrustedSource,
   matchCallee,
   normalizeCallees,
   normalizeTrust,
+  sourceTrustSchemaProperties,
   trustSchemaProperties,
   type UrlCalleeEntry,
   type UrlCalleeSpec,
@@ -37,7 +40,8 @@ import {
   type UrlTrustOptions,
   urlArgumentOf,
 } from '../url-origin';
-import { callArguments, holdsAlongFlow, importedBinding, withArguments } from '../value-flow';
+import { requestSourceOf, type TaintOptions } from '../request-taint';
+import { callArguments, flowSteps, holdsAlongFlow, importedBinding, withArguments } from '../value-flow';
 
 const RULE_NAME = 'no-user-controlled-fetch-url';
 
@@ -58,9 +62,20 @@ export interface NoUserControlledFetchUrlOptions extends UrlTrustOptions {
 type RuleOptions = [NoUserControlledFetchUrlOptions];
 type MessageIds = 'userControlledFetchUrl' | 'userControlledSocketHost' | 'userControlledRequestOption';
 
-const AXIOS_METHODS = ['get', 'post', 'put', 'patch', 'delete', 'head', 'options'] as const;
+const AXIOS_METHODS = [
+  'get',
+  'post',
+  'put',
+  'patch',
+  'delete',
+  'head',
+  'options',
+  'postForm',
+  'putForm',
+  'patchForm',
+] as const;
 /** axios methods that take a body before the config: `axios.post(url, data, config)`. */
-const AXIOS_BODY_METHODS: ReadonlySet<string> = new Set(['post', 'put', 'patch']);
+const AXIOS_BODY_METHODS: ReadonlySet<string> = new Set(['post', 'put', 'patch', 'postForm', 'putForm', 'patchForm']);
 
 export const DEFAULT_FETCH_CALLEES: readonly UrlCalleeSpec[] = [
   { name: 'fetch' },
@@ -80,6 +95,17 @@ export const DEFAULT_SOCKET_CALLEES: readonly string[] = [
   'net.createConnection',
   'tls.connect',
 ];
+
+/**
+ * Request-shaped input, for an options object the requester supplies whole
+ * (`https.get(url, req.body)`): by name, or by its place in a handler.
+ */
+const REQUEST_TAINT: TaintOptions = {
+  requestObjects: new Set(['req', 'request']),
+  handlerRequests: true,
+  context: 'path',
+  sanitizers: new Set(),
+};
 
 /** Node client receivers, whose options object picks the target key by key. */
 const NODE_CLIENTS: ReadonlySet<string> = new Set(['http', 'https']);
@@ -144,7 +170,7 @@ const SOCKET_KEYS: ReadonlyMap<string, KeyCheck> = new Map([
 type AxiosForm = 'call' | 'request' | 'create' | 'method' | 'body-method';
 
 /** True for `axios` itself: the name, or the module's default export or namespace under another name. */
-function isAxiosName(node: TSESTree.Node, sourceCode: Readonly<TSESLint.SourceCode>): boolean {
+function namesAxios(node: TSESTree.Node, sourceCode: Readonly<TSESLint.SourceCode>): boolean {
   if (node.type !== AST_NODE_TYPES.Identifier) {
     return false;
   }
@@ -153,6 +179,15 @@ function isAxiosName(node: TSESTree.Node, sourceCode: Readonly<TSESLint.SourceCo
   }
   const binding = importedBinding(node, sourceCode);
   return binding?.module === 'axios' && (binding.imported === 'default' || binding.imported === '*');
+}
+
+/**
+ * True for `axios`, also behind a type wrapper or a binding that holds it
+ * (`(axios as any)`, `const ax = axios`). Seeing more calls as axios only
+ * adds checks, so the loose (taint) moves of `../value-flow` are followed.
+ */
+function isAxiosName(node: TSESTree.Node, sourceCode: Readonly<TSESLint.SourceCode>): boolean {
+  return flowSteps(node, node, sourceCode, 'taint').some((step) => namesAxios(peelTypes(step.node), sourceCode));
 }
 
 function isAxiosCreate(node: TSESTree.Node, sourceCode: Readonly<TSESLint.SourceCode>): boolean {
@@ -165,23 +200,50 @@ function isAxiosCreate(node: TSESTree.Node, sourceCode: Readonly<TSESLint.Source
   );
 }
 
-/** True for a `const api = axios.create(...)` binding read here. */
+/** True for a binding that holds `axios.create(...)` (`const api = axios.create(...)`, or an alias of it). */
 function isAxiosInstance(raw: TSESTree.Node, sourceCode: Readonly<TSESLint.SourceCode>): boolean {
-  const node = peelTypes(raw);
-  if (node.type !== AST_NODE_TYPES.Identifier) {
+  if (peelTypes(raw).type !== AST_NODE_TYPES.Identifier) {
     return false;
   }
-  const variable = ASTUtils.findVariable(sourceCode.getScope(node), node);
-  const def = variable?.defs[0];
-  const init = def?.type === 'Variable' && def.node.init !== null ? peelTypes(def.node.init) : null;
-  return (
-    variable?.defs.length === 1 &&
-    def?.type === 'Variable' &&
-    def.parent.kind === 'const' &&
-    init?.type === AST_NODE_TYPES.CallExpression &&
-    isAxiosCreate(init.callee, sourceCode)
-  );
+  return flowSteps(raw, raw, sourceCode, 'taint').some((step) => {
+    const node = peelTypes(step.node);
+    return node.type === AST_NODE_TYPES.CallExpression && isAxiosCreate(node.callee, sourceCode);
+  });
 }
+
+/** True for a call to the global `Object.assign`. */
+function isObjectAssign(node: TSESTree.Node, sourceCode: Readonly<TSESLint.SourceCode>): node is TSESTree.CallExpression {
+  if (
+    node.type !== AST_NODE_TYPES.CallExpression ||
+    node.callee.type !== AST_NODE_TYPES.MemberExpression ||
+    node.callee.computed ||
+    node.callee.object.type !== AST_NODE_TYPES.Identifier ||
+    node.callee.object.name !== 'Object' ||
+    node.callee.property.type !== AST_NODE_TYPES.Identifier ||
+    node.callee.property.name !== 'assign'
+  ) {
+    return false;
+  }
+  const variable = ASTUtils.findVariable(sourceCode.getScope(node.callee.object), node.callee.object);
+  return variable === null || variable.defs.length === 0;
+}
+
+/** The static name of a member's property (`a.b`, `a['b']`), or null when it is computed at run time. */
+function memberName(member: TSESTree.MemberExpression): string | null {
+  if (!member.computed) {
+    return member.property.type === AST_NODE_TYPES.Identifier ? member.property.name : null;
+  }
+  const property = member.property;
+  if (property.type === AST_NODE_TYPES.Literal && typeof property.value === 'string') {
+    return property.value;
+  }
+  return property.type === AST_NODE_TYPES.TemplateLiteral && property.expressions.length === 0
+    ? (property.quasis[0]?.value.cooked ?? null)
+    : null;
+}
+
+/** undici's clients, built on the origin they send every request to: `new Client(origin)`. */
+const UNDICI_CLIENTS: ReadonlySet<string> = new Set(['Client', 'Pool']);
 
 /** `new Request(input, ...)` (the global), or a `const` bound to one: the `input`. */
 function requestInput(
@@ -236,6 +298,7 @@ const optionSchema: JSONSchema4 = {
         'Calls that open a socket, as written (`net.connect`). The host, port and IPC path must be fixed. Replaces the defaults (`net.connect`, `net.createConnection`, `tls.connect`).',
     },
     ...trustSchemaProperties,
+    ...sourceTrustSchemaProperties,
   },
 };
 
@@ -267,12 +330,17 @@ export const noUserControlledFetchUrlRule = createRule<RuleOptions, MessageIds>(
       trustedOrigins: [],
       sanitizers: [],
       trustedPaths: [],
+      trustedSources: [],
+      allowLoopback: false,
     },
   ],
   create(context, [options]) {
     const callees = normalizeCallees(options.fetchCallees ?? DEFAULT_FETCH_CALLEES);
     const sockets = normalizeCallees(options.socketCallees ?? DEFAULT_SOCKET_CALLEES);
-    const trust: UrlTrust = normalizeTrust(options);
+    const trust: UrlTrust = {
+      ...normalizeTrust(options),
+      sourceReachesRequest: (root) => requestSourceOf(root, root, REQUEST_TAINT, sourceCode) !== null,
+    };
     const sourceCode = context.sourceCode;
     const axiosSpecs = callees.filter(
       (spec) => spec.object === 'axios' || (spec.object === undefined && spec.name === 'axios'),
@@ -320,12 +388,55 @@ export const noUserControlledFetchUrlRule = createRule<RuleOptions, MessageIds>(
       return AXIOS_BODY_METHODS.has(method) ? 'body-method' : 'method';
     }
 
-    /** True for a call this rule reads an options object of: it does not change the object. */
-    function readsOptions(call: TSESTree.CallExpression): boolean {
+    /**
+     * True for a call that only reads `argument`: a call this rule reads, or a
+     * source of `Object.assign` that nothing can change through the copy.
+     */
+    function readsOptions(call: TSESTree.CallExpression, argument: TSESTree.Node): boolean {
       return (
         matchCallee(call, sockets, sourceCode) !== undefined ||
         matchCallee(call, callees, sourceCode) !== undefined ||
-        axiosForm(call) !== undefined
+        axiosForm(call) !== undefined ||
+        (isObjectAssign(call, sourceCode) &&
+          call.arguments[0] !== argument &&
+          (copiesOnlyPrimitives(argument, sourceCode) || copyOnlyRead(call)))
+      );
+    }
+
+    /**
+     * True for `Object.assign({}, ...)` whose fresh copy goes straight into a
+     * call that only reads it, so no binding holds the copy and nothing can
+     * reach the nested values it shares with its sources.
+     */
+    function copyOnlyRead(call: TSESTree.CallExpression): boolean {
+      const target = call.arguments[0];
+      let outer: TSESTree.Node = call;
+      while (outer.parent !== undefined && peelTypes(outer.parent) === call) {
+        outer = outer.parent;
+      }
+      const parent = outer.parent;
+      return (
+        target !== undefined &&
+        peelTypes(target).type === AST_NODE_TYPES.ObjectExpression &&
+        parent?.type === AST_NODE_TYPES.CallExpression &&
+        parent.callee !== outer &&
+        parent.arguments.includes(outer as TSESTree.CallExpressionArgument) &&
+        readsOptions(parent, outer)
+      );
+    }
+
+    /** True for an options value the requester supplies: `req.body`, or a binding that holds it. */
+    function isRequestControlled(node: TSESTree.Node, sink: TSESTree.Node): boolean {
+      // A function is a callback, and a call result is a documented gap: the
+      // rule does not judge what a helper returns.
+      const settled = peelTypes(flowSteps(node, sink, sourceCode, 'taint').at(-1)?.node ?? node);
+      return (
+        !isFunctionValue(node, sourceCode) &&
+        settled.type !== AST_NODE_TYPES.CallExpression &&
+        settled.type !== AST_NODE_TYPES.NewExpression &&
+        settled.type !== AST_NODE_TYPES.ArrowFunctionExpression &&
+        settled.type !== AST_NODE_TYPES.FunctionExpression &&
+        requestSourceOf(node, sink, REQUEST_TAINT, sourceCode) !== null
       );
     }
 
@@ -336,20 +447,73 @@ export const noUserControlledFetchUrlRule = createRule<RuleOptions, MessageIds>(
 
     /**
      * Checks an options object that follows the URL. One the rule cannot see
-     * (a parameter) is left alone; an in-file object changed before the call
-     * is reported, since the change may set any key.
+     * (a parameter, a call result) is left alone. An in-file object changed
+     * before the call, an `Object.assign` with a source the rule cannot read,
+     * and an object the requester supplies (`req.body`) are reported, since
+     * they may set any key. Each branch of `?:`, `||`, `&&` and `??` is
+     * checked the same way.
      */
     function checkTrailing(
       node: TSESTree.Node | undefined,
       keys: ReadonlyMap<string, KeyCheck>,
       sink: TSESTree.Node,
     ): void {
+      if (node === undefined || node.type === AST_NODE_TYPES.SpreadElement) {
+        return;
+      }
+      const bare = peelTypes(node);
+      if (bare.type === AST_NODE_TYPES.ConditionalExpression) {
+        checkTrailing(bare.consequent, keys, sink);
+        checkTrailing(bare.alternate, keys, sink);
+        return;
+      }
+      if (bare.type === AST_NODE_TYPES.LogicalExpression) {
+        checkTrailing(bare.left, keys, sink);
+        checkTrailing(bare.right, keys, sink);
+        return;
+      }
+      if (isObjectAssign(bare, sourceCode)) {
+        checkAssigned(bare.arguments, keys, sink, 'options');
+        return;
+      }
       const found = read(node);
       if (found !== undefined) {
         checkOptions(found, keys, sink);
-      } else if (node !== undefined && isChangedConstObject(node, sourceCode, readsOptions)) {
+      } else if (isChangedConstObject(node, sourceCode, readsOptions) || isRequestControlled(node, sink)) {
         reportOption(node, 'options', node);
       }
+    }
+
+    /**
+     * The objects `Object.assign` copies keys from, each read like an options
+     * object. One the rule cannot read (a spread, a parameter, `req.body`) may
+     * set any key, so it is reported.
+     */
+    function checkAssigned(
+      args: readonly TSESTree.CallExpressionArgument[],
+      keys: ReadonlyMap<string, KeyCheck>,
+      sink: TSESTree.Node,
+      option: string,
+    ): void {
+      for (const argument of args) {
+        const found = read(argument);
+        if (found !== undefined) {
+          checkOptions(found, keys, sink);
+        } else {
+          reportOption(argument, option, argument);
+        }
+      }
+    }
+
+    /** True for `axios.defaults` or `api.defaults` on an axios instance. */
+    function isAxiosDefaults(node: TSESTree.Node): boolean {
+      const bare = peelTypes(node);
+      return (
+        axiosSpecs.length > 0 &&
+        bare.type === AST_NODE_TYPES.MemberExpression &&
+        memberName(bare) === 'defaults' &&
+        (isAxiosName(bare.object, sourceCode) || isAxiosInstance(bare.object, sourceCode))
+      );
     }
 
     function checkUrl(node: TSESTree.Expression, sink: TSESTree.Node): void {
@@ -370,7 +534,12 @@ export const noUserControlledFetchUrlRule = createRule<RuleOptions, MessageIds>(
     function checkHost(node: TSESTree.Node, sink: TSESTree.Node): void {
       if (
         isFixedValue(node, sourceCode) ||
-        holdsAlongFlow(node, sink, sourceCode, (value, at) => isHostPinned(value, at, sourceCode))
+        holdsAlongFlow(
+          node,
+          sink,
+          sourceCode,
+          (value, at) => isTrustedSource(value, trust, sourceCode) || isHostPinned(value, at, sourceCode),
+        )
       ) {
         return;
       }
@@ -465,6 +634,7 @@ export const noUserControlledFetchUrlRule = createRule<RuleOptions, MessageIds>(
         return;
       }
       const leading = read(first);
+      let positionalHost = false;
       if (leading !== undefined) {
         checkOptions(leading, SOCKET_KEYS, node);
       } else {
@@ -473,18 +643,25 @@ export const noUserControlledFetchUrlRule = createRule<RuleOptions, MessageIds>(
         if (!isFixedValue(first, sourceCode) && !isFunctionValue(first, sourceCode)) {
           reportOption(first, 'port, path or options', first);
         }
-        if (
+        positionalHost =
           second !== undefined &&
           second.type !== AST_NODE_TYPES.SpreadElement &&
           peelTypes(second).type !== AST_NODE_TYPES.ObjectExpression &&
           !isFunctionValue(second, sourceCode) &&
-          read(second) === undefined
-        ) {
+          read(second) === undefined;
+        if (positionalHost && second !== undefined) {
           checkHost(second, node);
         }
       }
       // `tls.connect(port, host, options)`: an options object overrides the positional host.
       for (const argument of [second, ...rest]) {
+        if (argument === second && positionalHost && second !== undefined) {
+          // Checked as a host above; a changed `const` object there is still reported.
+          if (isChangedConstObject(second, sourceCode, readsOptions)) {
+            reportOption(second, 'options', second);
+          }
+          continue;
+        }
         checkTrailing(argument, SOCKET_KEYS, node);
       }
     }
@@ -558,7 +735,38 @@ export const noUserControlledFetchUrlRule = createRule<RuleOptions, MessageIds>(
     }
 
     return {
+      // `new Client(origin)` and `new Pool(origin)` from undici send every request to `origin`.
+      NewExpression(node: TSESTree.NewExpression): void {
+        const callee = peelTypes(node.callee);
+        const root = callee.type === AST_NODE_TYPES.MemberExpression ? peelTypes(callee.object) : callee;
+        if (root.type !== AST_NODE_TYPES.Identifier) {
+          return;
+        }
+        const binding = importedBinding(root, sourceCode);
+        if (binding === null || binding.module !== 'undici') {
+          return;
+        }
+        const name =
+          callee.type === AST_NODE_TYPES.MemberExpression
+            ? binding.imported === '*' || binding.imported === 'default'
+              ? memberName(callee)
+              : null
+            : binding.imported;
+        const [origin] = node.arguments;
+        if (name === null || !UNDICI_CLIENTS.has(name) || origin === undefined || origin.type === AST_NODE_TYPES.SpreadElement) {
+          return;
+        }
+        checkUrl(origin, node);
+      },
       CallExpression(node: TSESTree.CallExpression): void {
+        if (isObjectAssign(node, sourceCode)) {
+          // `Object.assign(axios.defaults, { baseURL })` moves every request after it.
+          const [target, ...sources] = node.arguments;
+          if (target !== undefined && target.type !== AST_NODE_TYPES.SpreadElement && isAxiosDefaults(target)) {
+            checkAssigned(sources, AXIOS_KEYS, node, 'defaults');
+          }
+          return;
+        }
         if (matchCallee(node, sockets, sourceCode) !== undefined) {
           checkSocket(node);
           return;
@@ -578,25 +786,34 @@ export const noUserControlledFetchUrlRule = createRule<RuleOptions, MessageIds>(
         }
         checkOther(node, spec);
       },
-      // `axios.defaults.baseURL = x` / `api.defaults.baseURL = x` moves every relative request.
+      // `axios.defaults.baseURL = x`, `axios.defaults['proxy'] = x` and `axios.defaults = config`
+      // set the config every request after them starts from.
       AssignmentExpression(node: TSESTree.AssignmentExpression): void {
         const left = node.left;
-        if (
-          axiosSpecs.length === 0 ||
-          left.type !== AST_NODE_TYPES.MemberExpression ||
-          left.computed ||
-          left.property.type !== AST_NODE_TYPES.Identifier ||
-          left.property.name !== 'baseURL' ||
-          left.object.type !== AST_NODE_TYPES.MemberExpression ||
-          left.object.computed ||
-          left.object.property.type !== AST_NODE_TYPES.Identifier ||
-          left.object.property.name !== 'defaults'
-        ) {
+        if (left.type !== AST_NODE_TYPES.MemberExpression) {
           return;
         }
-        const receiver = left.object.object;
-        if (isAxiosName(receiver, sourceCode) || isAxiosInstance(receiver, sourceCode)) {
-          checkUrl(node.right, node);
+        if (isAxiosDefaults(left)) {
+          const config = read(node.right);
+          if (config === undefined) {
+            reportOption(node.right, 'defaults', node.right);
+          } else {
+            checkOptions(config, AXIOS_KEYS, node);
+          }
+          return;
+        }
+        if (!isAxiosDefaults(left.object)) {
+          return;
+        }
+        const name = memberName(left);
+        if (name === null) {
+          // A key computed at run time may be `baseURL`.
+          reportOption(left, 'defaults[...]', node.right);
+          return;
+        }
+        const check = AXIOS_KEYS.get(name);
+        if (check !== undefined) {
+          checkOption(name, check, { node: left, value: node.right }, node);
         }
       },
     };

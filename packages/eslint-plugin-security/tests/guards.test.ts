@@ -123,6 +123,15 @@ describe('regexPinsHost', () => {
     // An origin: the host starts after a literal `://`.
     '^https:\\/\\/example\\.com$',
     '^https:\\/\\/(?:[a-z0-9-]+\\.)?example\\.com$',
+    // A public suffix with one more literal label before it.
+    '^[a-z0-9-]+\\.myapp\\.vercel\\.app$',
+    '^(?:[a-z0-9-]+\\.)*docs\\.github\\.io$',
+    '^[a-z]+\\.example\\.co\\.uk$',
+    '^https:\\/\\/[a-z0-9-]+\\.preview\\.pages\\.dev$',
+    // A hosting suffix with a varying label, and a literal name under it.
+    '^media\\.s3\\.amazonaws\\.com$',
+    '^media\\.s3\\.us-east-1\\.amazonaws\\.com$',
+    '^[a-z0-9-]+\\.media\\.s3-us-west-2\\.amazonaws\\.com$',
   ])('pins %s', (pattern) => {
     expect(regexPinsHost(pattern, '')).toBe(true);
   });
@@ -155,6 +164,38 @@ describe('regexPinsHost', () => {
     '^(app\\.example\\.com|[a-z]*example\\.com)$',
     // An empty label.
     '^\\.example\\.com$',
+    // A public suffix: anyone can register a label under it.
+    '^[a-z0-9-]+\\.vercel\\.app$',
+    '^[a-z0-9-]+\\.github\\.io$',
+    '^(?:[a-z0-9-]+\\.)*netlify\\.app$',
+    '^[a-z0-9-]+\\.pages\\.dev$',
+    '^[a-z0-9-]+\\.co\\.uk$',
+    '^[a-z0-9-]+\\.Vercel\\.App$',
+    '^https:\\/\\/[a-z0-9-]+\\.vercel\\.app$',
+    '^(app\\.example\\.com|[a-z0-9-]+\\.vercel\\.app)$',
+    // A label that only starts literally is not a literal label.
+    '^myapp-[a-z0-9-]+\\.vercel\\.app$',
+    // The suffix alone.
+    '^vercel\\.app$',
+    '^co\\.uk$',
+    // A hosting suffix with a varying label: a region, or a bucket host.
+    '^[a-z0-9-]+\\.s3\\.amazonaws\\.com$',
+    '^[a-z0-9-]+\\.s3\\.us-east-1\\.amazonaws\\.com$',
+    '^[a-z0-9-]+\\.s3-us-west-2\\.amazonaws\\.com$',
+    '^[a-z0-9-]+\\.s3-website\\.eu-west-1\\.amazonaws\\.com$',
+    '^[a-z0-9-]+\\.us-west-2\\.compute\\.amazonaws\\.com$',
+    '^[a-z0-9-]+\\.compute-1\\.amazonaws\\.com$',
+    '^[a-z0-9-]+\\.execute-api\\.us-east-1\\.amazonaws\\.com$',
+    '^[a-z0-9-]+\\.lambda-url\\.us-east-1\\.on\\.aws$',
+    '^[a-z0-9-]+\\.blob\\.core\\.windows\\.net$',
+    '^[a-z0-9-]+\\.storage\\.googleapis\\.com$',
+    '^[a-z0-9-]+\\.cloudfront\\.net$',
+    '^[a-z0-9-]+\\.azurewebsites\\.net$',
+    '^[a-z0-9-]+\\.herokuapp\\.com$',
+    '^[a-z0-9-]+\\.web\\.app$',
+    '^[a-z0-9-]+\\.firebaseapp\\.com$',
+    '^[a-z0-9-]+\\.fly\\.dev$',
+    '^[a-z0-9-]+\\.onrender\\.com$',
   ])('does not pin %s', (pattern) => {
     expect(regexPinsHost(pattern, '')).toBe(false);
   });

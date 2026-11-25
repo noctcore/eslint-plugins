@@ -5,6 +5,8 @@
  */
 import { AST_NODE_TYPES, ASTUtils, type TSESLint, type TSESTree } from '@typescript-eslint/utils';
 
+import { holdsAlongFlow, isExported } from './value-flow';
+
 type SourceCode = Readonly<TSESLint.SourceCode>;
 
 /** One key of an options object: the node to report and the value, null when it cannot be read. */
@@ -24,8 +26,11 @@ export interface RequestOptions {
   readonly opaque: TSESTree.Node | null;
 }
 
-/** True for a call that only reads the object it is handed: the request or socket call itself. */
-export type ReadsOptions = (call: TSESTree.CallExpression) => boolean;
+/**
+ * True for a call that only reads `argument`, one of the objects it is handed:
+ * the request or socket call itself, or a source of `Object.assign`.
+ */
+export type ReadsOptions = (call: TSESTree.CallExpression, argument: TSESTree.Node) => boolean;
 
 const MAX_DEPTH = 8;
 
@@ -115,7 +120,7 @@ function onlyReads(reference: TSESLint.Scope.Reference, readsOptions: ReadsOptio
   const id = climbTypes(reference.identifier);
   const parent = id.parent;
   if (parent?.type === AST_NODE_TYPES.CallExpression) {
-    return parent.callee !== id && readsOptions(parent);
+    return parent.callee !== id && readsOptions(parent, id);
   }
   if (parent?.type === AST_NODE_TYPES.SpreadElement) {
     return parent.parent.type === AST_NODE_TYPES.ObjectExpression;
@@ -137,7 +142,8 @@ function onlyReads(reference: TSESLint.Scope.Reference, readsOptions: ReadsOptio
  * The object literal a node stands for: inline, or the initializer of an
  * in-file `const` that nothing changes (every other use is a request call, a
  * spread or a plain read). `opts.host = x`, `Object.assign(opts, ...)` or
- * `helper(opts)` make it unreadable.
+ * `helper(opts)` make it unreadable, and so does an export: an importing
+ * module can change the object (`as const` freezes only the type).
  */
 export function objectLiteralOf(
   node: TSESTree.Node | undefined,
@@ -164,6 +170,7 @@ export function objectLiteralOf(
     def.parent.kind !== 'const' ||
     def.node.id.type !== AST_NODE_TYPES.Identifier ||
     init?.type !== AST_NODE_TYPES.ObjectExpression ||
+    isExported(variable) ||
     !variable.references.every((reference) => onlyReads(reference, readsOptions))
   ) {
     return undefined;
@@ -196,15 +203,95 @@ export function isChangedConstObject(
   );
 }
 
+/**
+ * True when every value `Object.assign` would copy out of `node` is a
+ * primitive. The copy is shallow, so a nested object stays shared with the
+ * copy (`Object.assign({}, cfg).proxy.host = x` changes `cfg.proxy`), and
+ * only a source made of primitives is left unchanged by what happens to the
+ * copy. `node` is an object literal or an in-file `const` bound to one.
+ */
+export function copiesOnlyPrimitives(node: TSESTree.Node, sourceCode: SourceCode): boolean {
+  let object = peelTypes(node);
+  if (object.type === AST_NODE_TYPES.Identifier) {
+    const variable = ASTUtils.findVariable(sourceCode.getScope(object), object);
+    const def = variable?.defs[0];
+    if (
+      variable?.defs.length !== 1 ||
+      def?.type !== 'Variable' ||
+      def.parent.kind !== 'const' ||
+      def.node.init === null
+    ) {
+      return false;
+    }
+    object = peelTypes(def.node.init);
+  }
+  return (
+    object.type === AST_NODE_TYPES.ObjectExpression &&
+    object.properties.every(
+      (property) =>
+        property.type === AST_NODE_TYPES.Property &&
+        !setsPrototype(property) &&
+        property.kind === 'init' &&
+        !property.method &&
+        isPrimitiveValue(property.value, sourceCode),
+    )
+  );
+}
+
+function isPrimitiveValue(raw: TSESTree.Node, sourceCode: SourceCode): boolean {
+  const node = peelTypes(raw);
+  switch (node.type) {
+    case AST_NODE_TYPES.Literal:
+      return !('regex' in node);
+    case AST_NODE_TYPES.TemplateLiteral:
+      return true;
+    case AST_NODE_TYPES.UnaryExpression:
+      return node.operator !== 'delete';
+    case AST_NODE_TYPES.Identifier:
+      return node.name === 'undefined' || isFixedValue(node, sourceCode);
+    default:
+      return false;
+  }
+}
+
+/**
+ * True for `__proto__: value` written with a plain key, which sets the
+ * object's prototype rather than an own key. A client reads `options.host`
+ * through the prototype like any other key. A shorthand, computed or method
+ * `__proto__` is an own key.
+ */
+function setsPrototype(property: TSESTree.Property): boolean {
+  return (
+    !property.computed &&
+    !property.shorthand &&
+    !property.method &&
+    property.kind === 'init' &&
+    ((property.key.type === AST_NODE_TYPES.Identifier && property.key.name === '__proto__') ||
+      (property.key.type === AST_NODE_TYPES.Literal && property.key.value === '__proto__'))
+  );
+}
+
+interface CollectState {
+  opaque: TSESTree.Node | null;
+  /** The `__proto__` of the object itself; one inside a spread object is not copied. */
+  prototype: TSESTree.Property | null;
+}
+
 function collect(
   object: TSESTree.ObjectExpression,
   sourceCode: SourceCode,
   readsOptions: ReadsOptions,
   entries: Map<string, OptionEntry>,
-  state: { opaque: TSESTree.Node | null },
+  state: CollectState,
   depth: number,
 ): void {
   for (const property of object.properties) {
+    if (property.type === AST_NODE_TYPES.Property && setsPrototype(property)) {
+      if (depth === 0) {
+        state.prototype = property;
+      }
+      continue;
+    }
     if (property.type === AST_NODE_TYPES.SpreadElement) {
       const spread = objectLiteralOf(property.argument, sourceCode, readsOptions);
       if (spread !== undefined && depth < MAX_DEPTH) {
@@ -231,14 +318,35 @@ export function readOptions(
   node: TSESTree.Node | undefined,
   sourceCode: SourceCode,
   readsOptions: ReadsOptions,
+  depth = 0,
 ): RequestOptions | undefined {
   const object = objectLiteralOf(node, sourceCode, readsOptions);
   if (object === undefined) {
     return undefined;
   }
   const entries = new Map<string, OptionEntry>();
-  const state: { opaque: TSESTree.Node | null } = { opaque: null };
+  const state: CollectState = { opaque: null, prototype: null };
   collect(object, sourceCode, readsOptions, entries, state, 0);
+  const prototype = state.prototype;
+  if (prototype !== null) {
+    // Own keys win over the prototype's, wherever they sit.
+    const value = propertyValue(prototype);
+    const bare = value === null ? null : peelTypes(value);
+    const inherited =
+      value === null || depth >= MAX_DEPTH ? undefined : readOptions(value, sourceCode, readsOptions, depth + 1);
+    if (bare?.type === AST_NODE_TYPES.Literal && bare.value === null) {
+      // `__proto__: null` adds no keys.
+    } else if (inherited === undefined) {
+      state.opaque ??= prototype;
+    } else {
+      for (const [name, entry] of inherited.entries) {
+        if (!entries.has(name)) {
+          entries.set(name, entry);
+        }
+      }
+      state.opaque ??= inherited.opaque;
+    }
+  }
   return { entries, opaque: state.opaque };
 }
 
@@ -278,10 +386,16 @@ export function isFixedValue(node: TSESTree.Node, sourceCode: SourceCode, depth 
 /**
  * True when a hook value (`agent`, `lookup`, `createConnection`) is code the
  * author wrote: a literal, a function, a `new` or literal object, `this.x`, or
- * a `const`, function, class or import binding. A parameter, a `let` or a
- * property read off a runtime object is not.
+ * a function, class or import binding, directly or through the exact moves of
+ * `./value-flow` (a `const` holding one of these). A parameter, a `let`, a
+ * call result or a property read off a runtime object is not, and neither is a
+ * `const` holding one (`const a = req.body.agent`).
  */
 export function isAuthorWritten(raw: TSESTree.Node, sourceCode: SourceCode): boolean {
+  return holdsAlongFlow(raw, raw, sourceCode, (step) => writtenHere(step, sourceCode));
+}
+
+function writtenHere(raw: TSESTree.Node, sourceCode: SourceCode): boolean {
   const node = peelTypes(raw);
   switch (node.type) {
     case AST_NODE_TYPES.Literal:
@@ -301,12 +415,7 @@ export function isAuthorWritten(raw: TSESTree.Node, sourceCode: SourceCode): boo
       if (variable === null || variable.defs.length !== 1 || def === undefined) {
         return false;
       }
-      return (
-        def.type === 'FunctionName' ||
-        def.type === 'ClassName' ||
-        def.type === 'ImportBinding' ||
-        (def.type === 'Variable' && def.parent.kind === 'const')
-      );
+      return def.type === 'FunctionName' || def.type === 'ClassName' || def.type === 'ImportBinding';
     }
     default:
       return false;

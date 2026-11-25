@@ -416,7 +416,7 @@ function isPlainData(node: TSESTree.Node, sourceCode: SourceCode, depth = 0): bo
 }
 
 /** True when another module can reach the binding: `export const`, `export { x }`, `export default x`. */
-function isExported(variable: Variable): boolean {
+export function isExported(variable: Variable): boolean {
   const def = variable.defs[0];
   if (def?.type === 'Variable' && def.parent.parent?.type === AST_NODE_TYPES.ExportNamedDeclaration) {
     return true;

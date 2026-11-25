@@ -48,7 +48,7 @@
       "j": 0.5054,
       "extra": 1,
       "crossFp": 0,
-      "crossSafe": 167,
+      "crossSafe": 173,
       "enabledBy": "recommended",
       "categories": [
         "security/command-injection"
@@ -75,16 +75,16 @@
       "url": "https://noctcore.github.io/eslint-plugins/rules/security/no-unescaped-html-response/"
     },
     "security/no-user-controlled-fetch-url": {
-      "tp": 25,
+      "tp": 30,
       "fn": 7,
       "fp": 9,
-      "tn": 23,
-      "detection": 0.7813,
-      "falseAlarm": 0.2813,
-      "j": 0.5,
+      "tn": 28,
+      "detection": 0.8108,
+      "falseAlarm": 0.2432,
+      "j": 0.5676,
       "extra": 0,
       "crossFp": 0,
-      "crossSafe": 174,
+      "crossSafe": 175,
       "enabledBy": "recommended",
       "categories": [
         "security/ssrf"
@@ -93,16 +93,16 @@
       "url": "https://noctcore.github.io/eslint-plugins/rules/security/no-user-controlled-fetch-url/"
     },
     "security/no-user-controlled-redirect": {
-      "tp": 26,
+      "tp": 27,
       "fn": 9,
       "fp": 7,
-      "tn": 28,
-      "detection": 0.7429,
-      "falseAlarm": 0.2,
-      "j": 0.5429,
+      "tn": 29,
+      "detection": 0.75,
+      "falseAlarm": 0.1944,
+      "j": 0.5556,
       "extra": 0,
       "crossFp": 0,
-      "crossSafe": 171,
+      "crossSafe": 176,
       "enabledBy": "recommended",
       "categories": [
         "security/open-redirect"
@@ -185,20 +185,20 @@
       }
     },
     "security/open-redirect": {
-      "tp": 26,
+      "tp": 27,
       "fn": 9,
       "fp": 7,
-      "tn": 28,
-      "detection": 0.7429,
-      "falseAlarm": 0.2,
-      "j": 0.5429,
+      "tn": 29,
+      "detection": 0.75,
+      "falseAlarm": 0.1944,
+      "j": 0.5556,
       "extra": 0,
       "title": "Open redirect",
       "cwe": "CWE-601",
       "rules": [
         "security/no-user-controlled-redirect"
       ],
-      "pairs": 35,
+      "pairs": 36,
       "overrides": {}
     },
     "security/path-traversal": {
@@ -242,20 +242,20 @@
       }
     },
     "security/ssrf": {
-      "tp": 25,
+      "tp": 30,
       "fn": 7,
       "fp": 9,
-      "tn": 23,
-      "detection": 0.7813,
-      "falseAlarm": 0.2813,
-      "j": 0.5,
+      "tn": 28,
+      "detection": 0.8108,
+      "falseAlarm": 0.2432,
+      "j": 0.5676,
       "extra": 0,
       "title": "Server-side request forgery",
       "cwe": "CWE-918",
       "rules": [
         "security/no-user-controlled-fetch-url"
       ],
-      "pairs": 32,
+      "pairs": 37,
       "overrides": {}
     }
   },
@@ -4230,6 +4230,50 @@
       "framework": "express",
       "cwe": "CWE-601",
       "title": "payment return_url query value used for a 303 redirect"
+    },
+    "security/open-redirect/express-preview-redirect.safe.js.case#security/no-shell-interpolation": {
+      "outcome": "TN",
+      "category": "security/open-redirect",
+      "rule": "security/no-shell-interpolation",
+      "file": "security/open-redirect/express-preview-redirect.safe.js.case",
+      "line": null,
+      "pair": "express-preview-redirect",
+      "framework": "express",
+      "cwe": "CWE-601",
+      "title": "preview link host regex pins the project label under pages.dev"
+    },
+    "security/open-redirect/express-preview-redirect.safe.js.case#security/no-user-controlled-fetch-url": {
+      "outcome": "TN",
+      "category": "security/open-redirect",
+      "rule": "security/no-user-controlled-fetch-url",
+      "file": "security/open-redirect/express-preview-redirect.safe.js.case",
+      "line": null,
+      "pair": "express-preview-redirect",
+      "framework": "express",
+      "cwe": "CWE-601",
+      "title": "preview link host regex pins the project label under pages.dev"
+    },
+    "security/open-redirect/express-preview-redirect.safe.js.case#security/no-user-controlled-redirect": {
+      "outcome": "TN",
+      "category": "security/open-redirect",
+      "rule": "security/no-user-controlled-redirect",
+      "file": "security/open-redirect/express-preview-redirect.safe.js.case",
+      "line": null,
+      "pair": "express-preview-redirect",
+      "framework": "express",
+      "cwe": "CWE-601",
+      "title": "preview link host regex pins the project label under pages.dev"
+    },
+    "security/open-redirect/express-preview-redirect.vuln.js.case#security/no-user-controlled-redirect": {
+      "outcome": "TP",
+      "category": "security/open-redirect",
+      "rule": "security/no-user-controlled-redirect",
+      "file": "security/open-redirect/express-preview-redirect.vuln.js.case",
+      "line": 13,
+      "pair": "express-preview-redirect",
+      "framework": "express",
+      "cwe": "CWE-601",
+      "title": "preview link redirects to any host matching a regex that ends in pages.dev"
     },
     "security/open-redirect/express-slash-concat-page.safe.js.case#security/no-shell-interpolation": {
       "outcome": "TN",
@@ -9665,6 +9709,50 @@
       "cwe": "CWE-918",
       "title": "PDF renderer fetches the page URL from the body with axios config"
     },
+    "security/ssrf/express-report-relay.safe.ts.case#security/no-shell-interpolation": {
+      "outcome": "TN",
+      "category": "security/ssrf",
+      "rule": "security/no-shell-interpolation",
+      "file": "security/ssrf/express-report-relay.safe.ts.case",
+      "line": null,
+      "pair": "express-report-relay",
+      "framework": "express",
+      "cwe": "CWE-918",
+      "title": "report relay builds its own request options and takes only a bounded timeout"
+    },
+    "security/ssrf/express-report-relay.safe.ts.case#security/no-user-controlled-fetch-url": {
+      "outcome": "TN",
+      "category": "security/ssrf",
+      "rule": "security/no-user-controlled-fetch-url",
+      "file": "security/ssrf/express-report-relay.safe.ts.case",
+      "line": null,
+      "pair": "express-report-relay",
+      "framework": "express",
+      "cwe": "CWE-918",
+      "title": "report relay builds its own request options and takes only a bounded timeout"
+    },
+    "security/ssrf/express-report-relay.safe.ts.case#security/no-user-controlled-redirect": {
+      "outcome": "TN",
+      "category": "security/ssrf",
+      "rule": "security/no-user-controlled-redirect",
+      "file": "security/ssrf/express-report-relay.safe.ts.case",
+      "line": null,
+      "pair": "express-report-relay",
+      "framework": "express",
+      "cwe": "CWE-918",
+      "title": "report relay builds its own request options and takes only a bounded timeout"
+    },
+    "security/ssrf/express-report-relay.vuln.ts.case#security/no-user-controlled-fetch-url": {
+      "outcome": "TP",
+      "category": "security/ssrf",
+      "rule": "security/no-user-controlled-fetch-url",
+      "file": "security/ssrf/express-report-relay.vuln.ts.case",
+      "line": 9,
+      "pair": "express-report-relay",
+      "framework": "express",
+      "cwe": "CWE-918",
+      "title": "report relay hands the posted request options to https.request"
+    },
     "security/ssrf/express-saved-webhook.safe.js.case#security/no-shell-interpolation": {
       "outcome": "TN",
       "category": "security/ssrf",
@@ -10061,6 +10149,50 @@
       "cwe": "CWE-918",
       "title": "saved integration URL is loaded from the db and requested"
     },
+    "security/ssrf/koa-upstream-settings.safe.js.case#security/no-shell-interpolation": {
+      "outcome": "TN",
+      "category": "security/ssrf",
+      "rule": "security/no-shell-interpolation",
+      "file": "security/ssrf/koa-upstream-settings.safe.js.case",
+      "line": null,
+      "pair": "koa-upstream-settings",
+      "framework": "koa",
+      "cwe": "CWE-918",
+      "title": "settings endpoint picks the axios default base URL from two fixed regions"
+    },
+    "security/ssrf/koa-upstream-settings.safe.js.case#security/no-user-controlled-fetch-url": {
+      "outcome": "TN",
+      "category": "security/ssrf",
+      "rule": "security/no-user-controlled-fetch-url",
+      "file": "security/ssrf/koa-upstream-settings.safe.js.case",
+      "line": null,
+      "pair": "koa-upstream-settings",
+      "framework": "koa",
+      "cwe": "CWE-918",
+      "title": "settings endpoint picks the axios default base URL from two fixed regions"
+    },
+    "security/ssrf/koa-upstream-settings.safe.js.case#security/no-user-controlled-redirect": {
+      "outcome": "TN",
+      "category": "security/ssrf",
+      "rule": "security/no-user-controlled-redirect",
+      "file": "security/ssrf/koa-upstream-settings.safe.js.case",
+      "line": null,
+      "pair": "koa-upstream-settings",
+      "framework": "koa",
+      "cwe": "CWE-918",
+      "title": "settings endpoint picks the axios default base URL from two fixed regions"
+    },
+    "security/ssrf/koa-upstream-settings.vuln.js.case#security/no-user-controlled-fetch-url": {
+      "outcome": "TP",
+      "category": "security/ssrf",
+      "rule": "security/no-user-controlled-fetch-url",
+      "file": "security/ssrf/koa-upstream-settings.vuln.js.case",
+      "line": 10,
+      "pair": "koa-upstream-settings",
+      "framework": "koa",
+      "cwe": "CWE-918",
+      "title": "settings endpoint sets the axios default base URL from the request body"
+    },
     "security/ssrf/koa-webhook-ping.safe.js.case#security/no-shell-interpolation": {
       "outcome": "TN",
       "category": "security/ssrf",
@@ -10104,6 +10236,50 @@
       "framework": "koa",
       "cwe": "CWE-918",
       "title": "webhook ping posts to the endpoint URL from the request body"
+    },
+    "security/ssrf/nest-feed-probe.safe.ts.case#security/no-shell-interpolation": {
+      "outcome": "TN",
+      "category": "security/ssrf",
+      "rule": "security/no-shell-interpolation",
+      "file": "security/ssrf/nest-feed-probe.safe.ts.case",
+      "line": null,
+      "pair": "nest-feed-probe",
+      "framework": "nest",
+      "cwe": "CWE-918",
+      "title": "feed probe checks the DTO url hostname against an allowlist before the axios alias call"
+    },
+    "security/ssrf/nest-feed-probe.safe.ts.case#security/no-user-controlled-fetch-url": {
+      "outcome": "TN",
+      "category": "security/ssrf",
+      "rule": "security/no-user-controlled-fetch-url",
+      "file": "security/ssrf/nest-feed-probe.safe.ts.case",
+      "line": null,
+      "pair": "nest-feed-probe",
+      "framework": "nest",
+      "cwe": "CWE-918",
+      "title": "feed probe checks the DTO url hostname against an allowlist before the axios alias call"
+    },
+    "security/ssrf/nest-feed-probe.safe.ts.case#security/no-user-controlled-redirect": {
+      "outcome": "TN",
+      "category": "security/ssrf",
+      "rule": "security/no-user-controlled-redirect",
+      "file": "security/ssrf/nest-feed-probe.safe.ts.case",
+      "line": null,
+      "pair": "nest-feed-probe",
+      "framework": "nest",
+      "cwe": "CWE-918",
+      "title": "feed probe checks the DTO url hostname against an allowlist before the axios alias call"
+    },
+    "security/ssrf/nest-feed-probe.vuln.ts.case#security/no-user-controlled-fetch-url": {
+      "outcome": "TP",
+      "category": "security/ssrf",
+      "rule": "security/no-user-controlled-fetch-url",
+      "file": "security/ssrf/nest-feed-probe.vuln.ts.case",
+      "line": 14,
+      "pair": "nest-feed-probe",
+      "framework": "nest",
+      "cwe": "CWE-918",
+      "title": "feed probe calls the DTO url through an alias of axios"
     },
     "security/ssrf/nest-feed-reader.safe.ts.case#security/no-shell-interpolation": {
       "outcome": "TN",
@@ -10588,6 +10764,94 @@
       "framework": "node",
       "cwe": "CWE-918",
       "title": "http server fetches the url query parameter"
+    },
+    "security/ssrf/node-mirror-pool.safe.js.case#security/no-shell-interpolation": {
+      "outcome": "TN",
+      "category": "security/ssrf",
+      "rule": "security/no-shell-interpolation",
+      "file": "security/ssrf/node-mirror-pool.safe.js.case",
+      "line": null,
+      "pair": "node-mirror-pool",
+      "framework": "node",
+      "cwe": "CWE-918",
+      "title": "mirror health check keeps one undici Pool on a fixed origin and takes only the region path"
+    },
+    "security/ssrf/node-mirror-pool.safe.js.case#security/no-user-controlled-fetch-url": {
+      "outcome": "TN",
+      "category": "security/ssrf",
+      "rule": "security/no-user-controlled-fetch-url",
+      "file": "security/ssrf/node-mirror-pool.safe.js.case",
+      "line": null,
+      "pair": "node-mirror-pool",
+      "framework": "node",
+      "cwe": "CWE-918",
+      "title": "mirror health check keeps one undici Pool on a fixed origin and takes only the region path"
+    },
+    "security/ssrf/node-mirror-pool.safe.js.case#security/no-user-controlled-redirect": {
+      "outcome": "TN",
+      "category": "security/ssrf",
+      "rule": "security/no-user-controlled-redirect",
+      "file": "security/ssrf/node-mirror-pool.safe.js.case",
+      "line": null,
+      "pair": "node-mirror-pool",
+      "framework": "node",
+      "cwe": "CWE-918",
+      "title": "mirror health check keeps one undici Pool on a fixed origin and takes only the region path"
+    },
+    "security/ssrf/node-mirror-pool.vuln.js.case#security/no-user-controlled-fetch-url": {
+      "outcome": "TP",
+      "category": "security/ssrf",
+      "rule": "security/no-user-controlled-fetch-url",
+      "file": "security/ssrf/node-mirror-pool.vuln.js.case",
+      "line": 7,
+      "pair": "node-mirror-pool",
+      "framework": "node",
+      "cwe": "CWE-918",
+      "title": "mirror health check opens an undici Pool on the origin from the query"
+    },
+    "security/ssrf/node-pages-snapshot.safe.js.case#security/no-shell-interpolation": {
+      "outcome": "TN",
+      "category": "security/ssrf",
+      "rule": "security/no-shell-interpolation",
+      "file": "security/ssrf/node-pages-snapshot.safe.js.case",
+      "line": null,
+      "pair": "node-pages-snapshot",
+      "framework": "node",
+      "cwe": "CWE-918",
+      "title": "snapshot host regex pins a literal domain label before the suffix"
+    },
+    "security/ssrf/node-pages-snapshot.safe.js.case#security/no-user-controlled-fetch-url": {
+      "outcome": "TN",
+      "category": "security/ssrf",
+      "rule": "security/no-user-controlled-fetch-url",
+      "file": "security/ssrf/node-pages-snapshot.safe.js.case",
+      "line": null,
+      "pair": "node-pages-snapshot",
+      "framework": "node",
+      "cwe": "CWE-918",
+      "title": "snapshot host regex pins a literal domain label before the suffix"
+    },
+    "security/ssrf/node-pages-snapshot.safe.js.case#security/no-user-controlled-redirect": {
+      "outcome": "TN",
+      "category": "security/ssrf",
+      "rule": "security/no-user-controlled-redirect",
+      "file": "security/ssrf/node-pages-snapshot.safe.js.case",
+      "line": null,
+      "pair": "node-pages-snapshot",
+      "framework": "node",
+      "cwe": "CWE-918",
+      "title": "snapshot host regex pins a literal domain label before the suffix"
+    },
+    "security/ssrf/node-pages-snapshot.vuln.js.case#security/no-user-controlled-fetch-url": {
+      "outcome": "TP",
+      "category": "security/ssrf",
+      "rule": "security/no-user-controlled-fetch-url",
+      "file": "security/ssrf/node-pages-snapshot.vuln.js.case",
+      "line": 13,
+      "pair": "node-pages-snapshot",
+      "framework": "node",
+      "cwe": "CWE-918",
+      "title": "snapshot fetches any URL whose host matches a regex that ends in github.io"
     },
     "security/ssrf/node-status-check.safe.js.case#security/no-shell-interpolation": {
       "outcome": "TN",
@@ -11233,13 +11497,178 @@
       }
     },
     "security/no-user-controlled-fetch-url": {
-      "tp": 356,
+      "tp": 428,
       "fn": 105,
-      "fp": 145,
-      "tn": 322,
-      "detection": 0.7722,
-      "falseAlarm": 0.3105,
-      "j": 0.4617,
+      "fp": 148,
+      "tn": 390,
+      "detection": 0.803,
+      "falseAlarm": 0.2751,
+      "j": 0.5279,
+      "transforms": {
+        "arrow-to-function": {
+          "variants": 58,
+          "holds": 58,
+          "missed": 0,
+          "falseAlarms": 0,
+          "gained": 0
+        },
+        "callback": {
+          "variants": 9,
+          "holds": 9,
+          "missed": 0,
+          "falseAlarms": 0,
+          "gained": 0
+        },
+        "cjs-to-esm": {
+          "variants": 40,
+          "holds": 40,
+          "missed": 0,
+          "falseAlarms": 0,
+          "gained": 0
+        },
+        "import-alias": {
+          "variants": 74,
+          "holds": 74,
+          "missed": 0,
+          "falseAlarms": 0,
+          "gained": 0
+        },
+        "import-namespace": {
+          "variants": 29,
+          "holds": 29,
+          "missed": 0,
+          "falseAlarms": 0,
+          "gained": 0
+        },
+        "node-prefix": {
+          "variants": 24,
+          "holds": 24,
+          "missed": 0,
+          "falseAlarms": 0,
+          "gained": 0
+        },
+        "promise-await": {
+          "variants": 68,
+          "holds": 68,
+          "missed": 0,
+          "falseAlarms": 0,
+          "gained": 0
+        },
+        "promise-then": {
+          "variants": 65,
+          "holds": 54,
+          "missed": 0,
+          "falseAlarms": 11,
+          "gained": 0
+        },
+        "rename-locals": {
+          "variants": 74,
+          "holds": 74,
+          "missed": 0,
+          "falseAlarms": 0,
+          "gained": 0
+        },
+        "rename-params": {
+          "variants": 74,
+          "holds": 74,
+          "missed": 0,
+          "falseAlarms": 0,
+          "gained": 0
+        },
+        "string-concat": {
+          "variants": 13,
+          "holds": 13,
+          "missed": 0,
+          "falseAlarms": 0,
+          "gained": 0
+        },
+        "string-concat-method": {
+          "variants": 13,
+          "holds": 13,
+          "missed": 0,
+          "falseAlarms": 0,
+          "gained": 0
+        },
+        "string-join": {
+          "variants": 5,
+          "holds": 5,
+          "missed": 0,
+          "falseAlarms": 0,
+          "gained": 0
+        },
+        "ts-annotations": {
+          "variants": 34,
+          "holds": 34,
+          "missed": 0,
+          "falseAlarms": 0,
+          "gained": 0
+        },
+        "ts-as-cast": {
+          "variants": 34,
+          "holds": 34,
+          "missed": 0,
+          "falseAlarms": 0,
+          "gained": 0
+        },
+        "ts-non-null": {
+          "variants": 34,
+          "holds": 34,
+          "missed": 0,
+          "falseAlarms": 0,
+          "gained": 0
+        },
+        "via-array": {
+          "variants": 74,
+          "holds": 74,
+          "missed": 0,
+          "falseAlarms": 0,
+          "gained": 0
+        },
+        "via-destructuring": {
+          "variants": 74,
+          "holds": 69,
+          "missed": 0,
+          "falseAlarms": 5,
+          "gained": 0
+        },
+        "via-helper": {
+          "variants": 74,
+          "holds": 74,
+          "missed": 0,
+          "falseAlarms": 0,
+          "gained": 0
+        },
+        "via-object": {
+          "variants": 74,
+          "holds": 74,
+          "missed": 0,
+          "falseAlarms": 0,
+          "gained": 0
+        },
+        "via-spread": {
+          "variants": 53,
+          "holds": 53,
+          "missed": 0,
+          "falseAlarms": 0,
+          "gained": 0
+        },
+        "via-variable": {
+          "variants": 74,
+          "holds": 74,
+          "missed": 0,
+          "falseAlarms": 0,
+          "gained": 0
+        }
+      }
+    },
+    "security/no-user-controlled-redirect": {
+      "tp": 384,
+      "fn": 132,
+      "fp": 124,
+      "tn": 384,
+      "detection": 0.7442,
+      "falseAlarm": 0.2441,
+      "j": 0.5001,
       "transforms": {
         "arrow-to-function": {
           "variants": 50,
@@ -11249,10 +11678,10 @@
           "gained": 0
         },
         "callback": {
-          "variants": 4,
-          "holds": 4,
+          "variants": 68,
+          "holds": 64,
           "missed": 0,
-          "falseAlarms": 0,
+          "falseAlarms": 4,
           "gained": 0
         },
         "cjs-to-esm": {
@@ -11263,173 +11692,8 @@
           "gained": 0
         },
         "import-alias": {
-          "variants": 64,
-          "holds": 64,
-          "missed": 0,
-          "falseAlarms": 0,
-          "gained": 0
-        },
-        "import-namespace": {
-          "variants": 25,
-          "holds": 25,
-          "missed": 0,
-          "falseAlarms": 0,
-          "gained": 0
-        },
-        "node-prefix": {
-          "variants": 18,
-          "holds": 18,
-          "missed": 0,
-          "falseAlarms": 0,
-          "gained": 0
-        },
-        "promise-await": {
-          "variants": 60,
-          "holds": 60,
-          "missed": 0,
-          "falseAlarms": 0,
-          "gained": 0
-        },
-        "promise-then": {
-          "variants": 60,
-          "holds": 51,
-          "missed": 0,
-          "falseAlarms": 9,
-          "gained": 0
-        },
-        "rename-locals": {
-          "variants": 64,
-          "holds": 64,
-          "missed": 0,
-          "falseAlarms": 0,
-          "gained": 0
-        },
-        "rename-params": {
-          "variants": 64,
-          "holds": 64,
-          "missed": 0,
-          "falseAlarms": 0,
-          "gained": 0
-        },
-        "string-concat": {
-          "variants": 12,
-          "holds": 12,
-          "missed": 0,
-          "falseAlarms": 0,
-          "gained": 0
-        },
-        "string-concat-method": {
-          "variants": 12,
-          "holds": 12,
-          "missed": 0,
-          "falseAlarms": 0,
-          "gained": 0
-        },
-        "string-join": {
-          "variants": 4,
-          "holds": 4,
-          "missed": 0,
-          "falseAlarms": 0,
-          "gained": 0
-        },
-        "ts-annotations": {
-          "variants": 30,
-          "holds": 30,
-          "missed": 0,
-          "falseAlarms": 0,
-          "gained": 0
-        },
-        "ts-as-cast": {
-          "variants": 30,
-          "holds": 30,
-          "missed": 0,
-          "falseAlarms": 0,
-          "gained": 0
-        },
-        "ts-non-null": {
-          "variants": 30,
-          "holds": 30,
-          "missed": 0,
-          "falseAlarms": 0,
-          "gained": 0
-        },
-        "via-array": {
-          "variants": 64,
-          "holds": 64,
-          "missed": 0,
-          "falseAlarms": 0,
-          "gained": 0
-        },
-        "via-destructuring": {
-          "variants": 64,
-          "holds": 60,
-          "missed": 0,
-          "falseAlarms": 4,
-          "gained": 0
-        },
-        "via-helper": {
-          "variants": 64,
-          "holds": 64,
-          "missed": 0,
-          "falseAlarms": 0,
-          "gained": 0
-        },
-        "via-object": {
-          "variants": 64,
-          "holds": 64,
-          "missed": 0,
-          "falseAlarms": 0,
-          "gained": 0
-        },
-        "via-spread": {
-          "variants": 47,
-          "holds": 47,
-          "missed": 0,
-          "falseAlarms": 0,
-          "gained": 0
-        },
-        "via-variable": {
-          "variants": 64,
-          "holds": 64,
-          "missed": 0,
-          "falseAlarms": 0,
-          "gained": 0
-        }
-      }
-    },
-    "security/no-user-controlled-redirect": {
-      "tp": 372,
-      "fn": 132,
-      "fp": 123,
-      "tn": 373,
-      "detection": 0.7381,
-      "falseAlarm": 0.248,
-      "j": 0.4901,
-      "transforms": {
-        "arrow-to-function": {
-          "variants": 48,
-          "holds": 48,
-          "missed": 0,
-          "falseAlarms": 0,
-          "gained": 0
-        },
-        "callback": {
-          "variants": 66,
-          "holds": 62,
-          "missed": 0,
-          "falseAlarms": 4,
-          "gained": 0
-        },
-        "cjs-to-esm": {
-          "variants": 32,
-          "holds": 32,
-          "missed": 0,
-          "falseAlarms": 0,
-          "gained": 0
-        },
-        "import-alias": {
-          "variants": 68,
-          "holds": 68,
+          "variants": 70,
+          "holds": 70,
           "missed": 0,
           "falseAlarms": 0,
           "gained": 0
@@ -11463,15 +11727,15 @@
           "gained": 0
         },
         "rename-locals": {
-          "variants": 65,
-          "holds": 65,
+          "variants": 67,
+          "holds": 67,
           "missed": 0,
           "falseAlarms": 0,
           "gained": 0
         },
         "rename-params": {
-          "variants": 70,
-          "holds": 70,
+          "variants": 72,
+          "holds": 72,
           "missed": 0,
           "falseAlarms": 0,
           "gained": 0
@@ -11526,43 +11790,43 @@
           "gained": 0
         },
         "via-array": {
-          "variants": 70,
-          "holds": 68,
+          "variants": 72,
+          "holds": 70,
           "missed": 1,
           "falseAlarms": 1,
           "gained": 0
         },
         "via-destructuring": {
-          "variants": 70,
-          "holds": 67,
+          "variants": 72,
+          "holds": 68,
           "missed": 0,
-          "falseAlarms": 3,
+          "falseAlarms": 4,
           "gained": 0
         },
         "via-helper": {
-          "variants": 70,
-          "holds": 67,
+          "variants": 72,
+          "holds": 69,
           "missed": 0,
           "falseAlarms": 3,
           "gained": 0
         },
         "via-object": {
-          "variants": 70,
-          "holds": 68,
+          "variants": 72,
+          "holds": 70,
           "missed": 1,
           "falseAlarms": 1,
           "gained": 0
         },
         "via-spread": {
-          "variants": 37,
-          "holds": 36,
+          "variants": 39,
+          "holds": 38,
           "missed": 0,
           "falseAlarms": 1,
           "gained": 0
         },
         "via-variable": {
-          "variants": 70,
-          "holds": 69,
+          "variants": 72,
+          "holds": 71,
           "missed": 0,
           "falseAlarms": 1,
           "gained": 0
@@ -14443,6 +14707,30 @@
     "security/open-redirect/express-payment-return-url.vuln.ts.case~via-object#security/no-user-controlled-redirect": "TP",
     "security/open-redirect/express-payment-return-url.vuln.ts.case~via-spread#security/no-user-controlled-redirect": "TP",
     "security/open-redirect/express-payment-return-url.vuln.ts.case~via-variable#security/no-user-controlled-redirect": "TP",
+    "security/open-redirect/express-preview-redirect.safe.js.case~arrow-to-function#security/no-user-controlled-redirect": "TN",
+    "security/open-redirect/express-preview-redirect.safe.js.case~callback#security/no-user-controlled-redirect": "TN",
+    "security/open-redirect/express-preview-redirect.safe.js.case~cjs-to-esm#security/no-user-controlled-redirect": "TN",
+    "security/open-redirect/express-preview-redirect.safe.js.case~import-alias#security/no-user-controlled-redirect": "TN",
+    "security/open-redirect/express-preview-redirect.safe.js.case~rename-locals#security/no-user-controlled-redirect": "TN",
+    "security/open-redirect/express-preview-redirect.safe.js.case~rename-params#security/no-user-controlled-redirect": "TN",
+    "security/open-redirect/express-preview-redirect.safe.js.case~via-array#security/no-user-controlled-redirect": "TN",
+    "security/open-redirect/express-preview-redirect.safe.js.case~via-destructuring#security/no-user-controlled-redirect": "FP",
+    "security/open-redirect/express-preview-redirect.safe.js.case~via-helper#security/no-user-controlled-redirect": "TN",
+    "security/open-redirect/express-preview-redirect.safe.js.case~via-object#security/no-user-controlled-redirect": "TN",
+    "security/open-redirect/express-preview-redirect.safe.js.case~via-spread#security/no-user-controlled-redirect": "TN",
+    "security/open-redirect/express-preview-redirect.safe.js.case~via-variable#security/no-user-controlled-redirect": "TN",
+    "security/open-redirect/express-preview-redirect.vuln.js.case~arrow-to-function#security/no-user-controlled-redirect": "TP",
+    "security/open-redirect/express-preview-redirect.vuln.js.case~callback#security/no-user-controlled-redirect": "TP",
+    "security/open-redirect/express-preview-redirect.vuln.js.case~cjs-to-esm#security/no-user-controlled-redirect": "TP",
+    "security/open-redirect/express-preview-redirect.vuln.js.case~import-alias#security/no-user-controlled-redirect": "TP",
+    "security/open-redirect/express-preview-redirect.vuln.js.case~rename-locals#security/no-user-controlled-redirect": "TP",
+    "security/open-redirect/express-preview-redirect.vuln.js.case~rename-params#security/no-user-controlled-redirect": "TP",
+    "security/open-redirect/express-preview-redirect.vuln.js.case~via-array#security/no-user-controlled-redirect": "TP",
+    "security/open-redirect/express-preview-redirect.vuln.js.case~via-destructuring#security/no-user-controlled-redirect": "TP",
+    "security/open-redirect/express-preview-redirect.vuln.js.case~via-helper#security/no-user-controlled-redirect": "TP",
+    "security/open-redirect/express-preview-redirect.vuln.js.case~via-object#security/no-user-controlled-redirect": "TP",
+    "security/open-redirect/express-preview-redirect.vuln.js.case~via-spread#security/no-user-controlled-redirect": "TP",
+    "security/open-redirect/express-preview-redirect.vuln.js.case~via-variable#security/no-user-controlled-redirect": "TP",
     "security/open-redirect/express-slash-concat-page.safe.js.case~arrow-to-function#security/no-user-controlled-redirect": "FP",
     "security/open-redirect/express-slash-concat-page.safe.js.case~callback#security/no-user-controlled-redirect": "FP",
     "security/open-redirect/express-slash-concat-page.safe.js.case~cjs-to-esm#security/no-user-controlled-redirect": "FP",
@@ -17877,6 +18165,35 @@
     "security/ssrf/express-pdf-render.vuln.ts.case~via-helper#security/no-user-controlled-fetch-url": "TP",
     "security/ssrf/express-pdf-render.vuln.ts.case~via-object#security/no-user-controlled-fetch-url": "TP",
     "security/ssrf/express-pdf-render.vuln.ts.case~via-variable#security/no-user-controlled-fetch-url": "TP",
+    "security/ssrf/express-report-relay.safe.ts.case~arrow-to-function#security/no-user-controlled-fetch-url": "TN",
+    "security/ssrf/express-report-relay.safe.ts.case~callback#security/no-user-controlled-fetch-url": "TN",
+    "security/ssrf/express-report-relay.safe.ts.case~import-alias#security/no-user-controlled-fetch-url": "TN",
+    "security/ssrf/express-report-relay.safe.ts.case~node-prefix#security/no-user-controlled-fetch-url": "TN",
+    "security/ssrf/express-report-relay.safe.ts.case~rename-locals#security/no-user-controlled-fetch-url": "TN",
+    "security/ssrf/express-report-relay.safe.ts.case~rename-params#security/no-user-controlled-fetch-url": "TN",
+    "security/ssrf/express-report-relay.safe.ts.case~ts-annotations#security/no-user-controlled-fetch-url": "TN",
+    "security/ssrf/express-report-relay.safe.ts.case~ts-as-cast#security/no-user-controlled-fetch-url": "TN",
+    "security/ssrf/express-report-relay.safe.ts.case~ts-non-null#security/no-user-controlled-fetch-url": "TN",
+    "security/ssrf/express-report-relay.safe.ts.case~via-array#security/no-user-controlled-fetch-url": "TN",
+    "security/ssrf/express-report-relay.safe.ts.case~via-destructuring#security/no-user-controlled-fetch-url": "TN",
+    "security/ssrf/express-report-relay.safe.ts.case~via-helper#security/no-user-controlled-fetch-url": "TN",
+    "security/ssrf/express-report-relay.safe.ts.case~via-object#security/no-user-controlled-fetch-url": "TN",
+    "security/ssrf/express-report-relay.safe.ts.case~via-variable#security/no-user-controlled-fetch-url": "TN",
+    "security/ssrf/express-report-relay.vuln.ts.case~arrow-to-function#security/no-user-controlled-fetch-url": "TP",
+    "security/ssrf/express-report-relay.vuln.ts.case~callback#security/no-user-controlled-fetch-url": "TP",
+    "security/ssrf/express-report-relay.vuln.ts.case~import-alias#security/no-user-controlled-fetch-url": "TP",
+    "security/ssrf/express-report-relay.vuln.ts.case~node-prefix#security/no-user-controlled-fetch-url": "TP",
+    "security/ssrf/express-report-relay.vuln.ts.case~rename-locals#security/no-user-controlled-fetch-url": "TP",
+    "security/ssrf/express-report-relay.vuln.ts.case~rename-params#security/no-user-controlled-fetch-url": "TP",
+    "security/ssrf/express-report-relay.vuln.ts.case~ts-annotations#security/no-user-controlled-fetch-url": "TP",
+    "security/ssrf/express-report-relay.vuln.ts.case~ts-as-cast#security/no-user-controlled-fetch-url": "TP",
+    "security/ssrf/express-report-relay.vuln.ts.case~ts-non-null#security/no-user-controlled-fetch-url": "TP",
+    "security/ssrf/express-report-relay.vuln.ts.case~via-array#security/no-user-controlled-fetch-url": "TP",
+    "security/ssrf/express-report-relay.vuln.ts.case~via-destructuring#security/no-user-controlled-fetch-url": "TP",
+    "security/ssrf/express-report-relay.vuln.ts.case~via-helper#security/no-user-controlled-fetch-url": "TP",
+    "security/ssrf/express-report-relay.vuln.ts.case~via-object#security/no-user-controlled-fetch-url": "TP",
+    "security/ssrf/express-report-relay.vuln.ts.case~via-spread#security/no-user-controlled-fetch-url": "TP",
+    "security/ssrf/express-report-relay.vuln.ts.case~via-variable#security/no-user-controlled-fetch-url": "TP",
     "security/ssrf/express-saved-webhook.safe.js.case~arrow-to-function#security/no-user-controlled-fetch-url": "TN",
     "security/ssrf/express-saved-webhook.safe.js.case~cjs-to-esm#security/no-user-controlled-fetch-url": "TN",
     "security/ssrf/express-saved-webhook.safe.js.case~import-alias#security/no-user-controlled-fetch-url": "TN",
@@ -18131,6 +18448,31 @@
     "security/ssrf/koa-saved-integration.vuln.ts.case~via-object#security/no-user-controlled-fetch-url": "TP",
     "security/ssrf/koa-saved-integration.vuln.ts.case~via-spread#security/no-user-controlled-fetch-url": "TP",
     "security/ssrf/koa-saved-integration.vuln.ts.case~via-variable#security/no-user-controlled-fetch-url": "TP",
+    "security/ssrf/koa-upstream-settings.safe.js.case~arrow-to-function#security/no-user-controlled-fetch-url": "TN",
+    "security/ssrf/koa-upstream-settings.safe.js.case~cjs-to-esm#security/no-user-controlled-fetch-url": "TN",
+    "security/ssrf/koa-upstream-settings.safe.js.case~import-alias#security/no-user-controlled-fetch-url": "TN",
+    "security/ssrf/koa-upstream-settings.safe.js.case~promise-await#security/no-user-controlled-fetch-url": "TN",
+    "security/ssrf/koa-upstream-settings.safe.js.case~rename-locals#security/no-user-controlled-fetch-url": "TN",
+    "security/ssrf/koa-upstream-settings.safe.js.case~rename-params#security/no-user-controlled-fetch-url": "TN",
+    "security/ssrf/koa-upstream-settings.safe.js.case~via-array#security/no-user-controlled-fetch-url": "TN",
+    "security/ssrf/koa-upstream-settings.safe.js.case~via-destructuring#security/no-user-controlled-fetch-url": "TN",
+    "security/ssrf/koa-upstream-settings.safe.js.case~via-helper#security/no-user-controlled-fetch-url": "TN",
+    "security/ssrf/koa-upstream-settings.safe.js.case~via-object#security/no-user-controlled-fetch-url": "TN",
+    "security/ssrf/koa-upstream-settings.safe.js.case~via-variable#security/no-user-controlled-fetch-url": "TN",
+    "security/ssrf/koa-upstream-settings.vuln.js.case~arrow-to-function#security/no-user-controlled-fetch-url": "TP",
+    "security/ssrf/koa-upstream-settings.vuln.js.case~callback#security/no-user-controlled-fetch-url": "TP",
+    "security/ssrf/koa-upstream-settings.vuln.js.case~cjs-to-esm#security/no-user-controlled-fetch-url": "TP",
+    "security/ssrf/koa-upstream-settings.vuln.js.case~import-alias#security/no-user-controlled-fetch-url": "TP",
+    "security/ssrf/koa-upstream-settings.vuln.js.case~promise-await#security/no-user-controlled-fetch-url": "TP",
+    "security/ssrf/koa-upstream-settings.vuln.js.case~promise-then#security/no-user-controlled-fetch-url": "TP",
+    "security/ssrf/koa-upstream-settings.vuln.js.case~rename-locals#security/no-user-controlled-fetch-url": "TP",
+    "security/ssrf/koa-upstream-settings.vuln.js.case~rename-params#security/no-user-controlled-fetch-url": "TP",
+    "security/ssrf/koa-upstream-settings.vuln.js.case~via-array#security/no-user-controlled-fetch-url": "TP",
+    "security/ssrf/koa-upstream-settings.vuln.js.case~via-destructuring#security/no-user-controlled-fetch-url": "TP",
+    "security/ssrf/koa-upstream-settings.vuln.js.case~via-helper#security/no-user-controlled-fetch-url": "TP",
+    "security/ssrf/koa-upstream-settings.vuln.js.case~via-object#security/no-user-controlled-fetch-url": "TP",
+    "security/ssrf/koa-upstream-settings.vuln.js.case~via-spread#security/no-user-controlled-fetch-url": "TP",
+    "security/ssrf/koa-upstream-settings.vuln.js.case~via-variable#security/no-user-controlled-fetch-url": "TP",
     "security/ssrf/koa-webhook-ping.safe.js.case~arrow-to-function#security/no-user-controlled-fetch-url": "FP",
     "security/ssrf/koa-webhook-ping.safe.js.case~cjs-to-esm#security/no-user-controlled-fetch-url": "FP",
     "security/ssrf/koa-webhook-ping.safe.js.case~import-alias#security/no-user-controlled-fetch-url": "FP",
@@ -18157,6 +18499,36 @@
     "security/ssrf/koa-webhook-ping.vuln.js.case~via-object#security/no-user-controlled-fetch-url": "TP",
     "security/ssrf/koa-webhook-ping.vuln.js.case~via-spread#security/no-user-controlled-fetch-url": "TP",
     "security/ssrf/koa-webhook-ping.vuln.js.case~via-variable#security/no-user-controlled-fetch-url": "TP",
+    "security/ssrf/nest-feed-probe.safe.ts.case~import-alias#security/no-user-controlled-fetch-url": "TN",
+    "security/ssrf/nest-feed-probe.safe.ts.case~import-namespace#security/no-user-controlled-fetch-url": "TN",
+    "security/ssrf/nest-feed-probe.safe.ts.case~promise-await#security/no-user-controlled-fetch-url": "TN",
+    "security/ssrf/nest-feed-probe.safe.ts.case~promise-then#security/no-user-controlled-fetch-url": "FP",
+    "security/ssrf/nest-feed-probe.safe.ts.case~rename-locals#security/no-user-controlled-fetch-url": "TN",
+    "security/ssrf/nest-feed-probe.safe.ts.case~rename-params#security/no-user-controlled-fetch-url": "TN",
+    "security/ssrf/nest-feed-probe.safe.ts.case~ts-annotations#security/no-user-controlled-fetch-url": "TN",
+    "security/ssrf/nest-feed-probe.safe.ts.case~ts-as-cast#security/no-user-controlled-fetch-url": "TN",
+    "security/ssrf/nest-feed-probe.safe.ts.case~ts-non-null#security/no-user-controlled-fetch-url": "TN",
+    "security/ssrf/nest-feed-probe.safe.ts.case~via-array#security/no-user-controlled-fetch-url": "TN",
+    "security/ssrf/nest-feed-probe.safe.ts.case~via-destructuring#security/no-user-controlled-fetch-url": "FP",
+    "security/ssrf/nest-feed-probe.safe.ts.case~via-helper#security/no-user-controlled-fetch-url": "TN",
+    "security/ssrf/nest-feed-probe.safe.ts.case~via-object#security/no-user-controlled-fetch-url": "TN",
+    "security/ssrf/nest-feed-probe.safe.ts.case~via-spread#security/no-user-controlled-fetch-url": "TN",
+    "security/ssrf/nest-feed-probe.safe.ts.case~via-variable#security/no-user-controlled-fetch-url": "TN",
+    "security/ssrf/nest-feed-probe.vuln.ts.case~import-alias#security/no-user-controlled-fetch-url": "TP",
+    "security/ssrf/nest-feed-probe.vuln.ts.case~import-namespace#security/no-user-controlled-fetch-url": "TP",
+    "security/ssrf/nest-feed-probe.vuln.ts.case~promise-await#security/no-user-controlled-fetch-url": "TP",
+    "security/ssrf/nest-feed-probe.vuln.ts.case~promise-then#security/no-user-controlled-fetch-url": "TP",
+    "security/ssrf/nest-feed-probe.vuln.ts.case~rename-locals#security/no-user-controlled-fetch-url": "TP",
+    "security/ssrf/nest-feed-probe.vuln.ts.case~rename-params#security/no-user-controlled-fetch-url": "TP",
+    "security/ssrf/nest-feed-probe.vuln.ts.case~ts-annotations#security/no-user-controlled-fetch-url": "TP",
+    "security/ssrf/nest-feed-probe.vuln.ts.case~ts-as-cast#security/no-user-controlled-fetch-url": "TP",
+    "security/ssrf/nest-feed-probe.vuln.ts.case~ts-non-null#security/no-user-controlled-fetch-url": "TP",
+    "security/ssrf/nest-feed-probe.vuln.ts.case~via-array#security/no-user-controlled-fetch-url": "TP",
+    "security/ssrf/nest-feed-probe.vuln.ts.case~via-destructuring#security/no-user-controlled-fetch-url": "TP",
+    "security/ssrf/nest-feed-probe.vuln.ts.case~via-helper#security/no-user-controlled-fetch-url": "TP",
+    "security/ssrf/nest-feed-probe.vuln.ts.case~via-object#security/no-user-controlled-fetch-url": "TP",
+    "security/ssrf/nest-feed-probe.vuln.ts.case~via-spread#security/no-user-controlled-fetch-url": "TP",
+    "security/ssrf/nest-feed-probe.vuln.ts.case~via-variable#security/no-user-controlled-fetch-url": "TP",
     "security/ssrf/nest-feed-reader.safe.ts.case~import-alias#security/no-user-controlled-fetch-url": "TN",
     "security/ssrf/nest-feed-reader.safe.ts.case~import-namespace#security/no-user-controlled-fetch-url": "TN",
     "security/ssrf/nest-feed-reader.safe.ts.case~promise-await#security/no-user-controlled-fetch-url": "TN",
@@ -18492,6 +18864,65 @@
     "security/ssrf/node-link-preview.vuln.js.case~via-object#security/no-user-controlled-fetch-url": "TP",
     "security/ssrf/node-link-preview.vuln.js.case~via-spread#security/no-user-controlled-fetch-url": "TP",
     "security/ssrf/node-link-preview.vuln.js.case~via-variable#security/no-user-controlled-fetch-url": "TP",
+    "security/ssrf/node-mirror-pool.safe.js.case~arrow-to-function#security/no-user-controlled-fetch-url": "TN",
+    "security/ssrf/node-mirror-pool.safe.js.case~callback#security/no-user-controlled-fetch-url": "TN",
+    "security/ssrf/node-mirror-pool.safe.js.case~cjs-to-esm#security/no-user-controlled-fetch-url": "TN",
+    "security/ssrf/node-mirror-pool.safe.js.case~import-alias#security/no-user-controlled-fetch-url": "TN",
+    "security/ssrf/node-mirror-pool.safe.js.case~import-namespace#security/no-user-controlled-fetch-url": "TN",
+    "security/ssrf/node-mirror-pool.safe.js.case~node-prefix#security/no-user-controlled-fetch-url": "TN",
+    "security/ssrf/node-mirror-pool.safe.js.case~promise-await#security/no-user-controlled-fetch-url": "TN",
+    "security/ssrf/node-mirror-pool.safe.js.case~rename-locals#security/no-user-controlled-fetch-url": "TN",
+    "security/ssrf/node-mirror-pool.safe.js.case~rename-params#security/no-user-controlled-fetch-url": "TN",
+    "security/ssrf/node-mirror-pool.safe.js.case~string-concat#security/no-user-controlled-fetch-url": "TN",
+    "security/ssrf/node-mirror-pool.safe.js.case~string-concat-method#security/no-user-controlled-fetch-url": "TN",
+    "security/ssrf/node-mirror-pool.safe.js.case~string-join#security/no-user-controlled-fetch-url": "TN",
+    "security/ssrf/node-mirror-pool.safe.js.case~via-array#security/no-user-controlled-fetch-url": "TN",
+    "security/ssrf/node-mirror-pool.safe.js.case~via-destructuring#security/no-user-controlled-fetch-url": "TN",
+    "security/ssrf/node-mirror-pool.safe.js.case~via-helper#security/no-user-controlled-fetch-url": "TN",
+    "security/ssrf/node-mirror-pool.safe.js.case~via-object#security/no-user-controlled-fetch-url": "TN",
+    "security/ssrf/node-mirror-pool.safe.js.case~via-variable#security/no-user-controlled-fetch-url": "TN",
+    "security/ssrf/node-mirror-pool.vuln.js.case~arrow-to-function#security/no-user-controlled-fetch-url": "TP",
+    "security/ssrf/node-mirror-pool.vuln.js.case~callback#security/no-user-controlled-fetch-url": "TP",
+    "security/ssrf/node-mirror-pool.vuln.js.case~cjs-to-esm#security/no-user-controlled-fetch-url": "TP",
+    "security/ssrf/node-mirror-pool.vuln.js.case~import-alias#security/no-user-controlled-fetch-url": "TP",
+    "security/ssrf/node-mirror-pool.vuln.js.case~import-namespace#security/no-user-controlled-fetch-url": "TP",
+    "security/ssrf/node-mirror-pool.vuln.js.case~node-prefix#security/no-user-controlled-fetch-url": "TP",
+    "security/ssrf/node-mirror-pool.vuln.js.case~promise-await#security/no-user-controlled-fetch-url": "TP",
+    "security/ssrf/node-mirror-pool.vuln.js.case~rename-locals#security/no-user-controlled-fetch-url": "TP",
+    "security/ssrf/node-mirror-pool.vuln.js.case~rename-params#security/no-user-controlled-fetch-url": "TP",
+    "security/ssrf/node-mirror-pool.vuln.js.case~via-array#security/no-user-controlled-fetch-url": "TP",
+    "security/ssrf/node-mirror-pool.vuln.js.case~via-destructuring#security/no-user-controlled-fetch-url": "TP",
+    "security/ssrf/node-mirror-pool.vuln.js.case~via-helper#security/no-user-controlled-fetch-url": "TP",
+    "security/ssrf/node-mirror-pool.vuln.js.case~via-object#security/no-user-controlled-fetch-url": "TP",
+    "security/ssrf/node-mirror-pool.vuln.js.case~via-variable#security/no-user-controlled-fetch-url": "TP",
+    "security/ssrf/node-pages-snapshot.safe.js.case~arrow-to-function#security/no-user-controlled-fetch-url": "TN",
+    "security/ssrf/node-pages-snapshot.safe.js.case~cjs-to-esm#security/no-user-controlled-fetch-url": "TN",
+    "security/ssrf/node-pages-snapshot.safe.js.case~import-alias#security/no-user-controlled-fetch-url": "TN",
+    "security/ssrf/node-pages-snapshot.safe.js.case~node-prefix#security/no-user-controlled-fetch-url": "TN",
+    "security/ssrf/node-pages-snapshot.safe.js.case~promise-await#security/no-user-controlled-fetch-url": "TN",
+    "security/ssrf/node-pages-snapshot.safe.js.case~promise-then#security/no-user-controlled-fetch-url": "FP",
+    "security/ssrf/node-pages-snapshot.safe.js.case~rename-locals#security/no-user-controlled-fetch-url": "TN",
+    "security/ssrf/node-pages-snapshot.safe.js.case~rename-params#security/no-user-controlled-fetch-url": "TN",
+    "security/ssrf/node-pages-snapshot.safe.js.case~via-array#security/no-user-controlled-fetch-url": "TN",
+    "security/ssrf/node-pages-snapshot.safe.js.case~via-destructuring#security/no-user-controlled-fetch-url": "TN",
+    "security/ssrf/node-pages-snapshot.safe.js.case~via-helper#security/no-user-controlled-fetch-url": "TN",
+    "security/ssrf/node-pages-snapshot.safe.js.case~via-object#security/no-user-controlled-fetch-url": "TN",
+    "security/ssrf/node-pages-snapshot.safe.js.case~via-spread#security/no-user-controlled-fetch-url": "TN",
+    "security/ssrf/node-pages-snapshot.safe.js.case~via-variable#security/no-user-controlled-fetch-url": "TN",
+    "security/ssrf/node-pages-snapshot.vuln.js.case~arrow-to-function#security/no-user-controlled-fetch-url": "TP",
+    "security/ssrf/node-pages-snapshot.vuln.js.case~cjs-to-esm#security/no-user-controlled-fetch-url": "TP",
+    "security/ssrf/node-pages-snapshot.vuln.js.case~import-alias#security/no-user-controlled-fetch-url": "TP",
+    "security/ssrf/node-pages-snapshot.vuln.js.case~node-prefix#security/no-user-controlled-fetch-url": "TP",
+    "security/ssrf/node-pages-snapshot.vuln.js.case~promise-await#security/no-user-controlled-fetch-url": "TP",
+    "security/ssrf/node-pages-snapshot.vuln.js.case~promise-then#security/no-user-controlled-fetch-url": "TP",
+    "security/ssrf/node-pages-snapshot.vuln.js.case~rename-locals#security/no-user-controlled-fetch-url": "TP",
+    "security/ssrf/node-pages-snapshot.vuln.js.case~rename-params#security/no-user-controlled-fetch-url": "TP",
+    "security/ssrf/node-pages-snapshot.vuln.js.case~via-array#security/no-user-controlled-fetch-url": "TP",
+    "security/ssrf/node-pages-snapshot.vuln.js.case~via-destructuring#security/no-user-controlled-fetch-url": "TP",
+    "security/ssrf/node-pages-snapshot.vuln.js.case~via-helper#security/no-user-controlled-fetch-url": "TP",
+    "security/ssrf/node-pages-snapshot.vuln.js.case~via-object#security/no-user-controlled-fetch-url": "TP",
+    "security/ssrf/node-pages-snapshot.vuln.js.case~via-spread#security/no-user-controlled-fetch-url": "TP",
+    "security/ssrf/node-pages-snapshot.vuln.js.case~via-variable#security/no-user-controlled-fetch-url": "TP",
     "security/ssrf/node-status-check.safe.js.case~arrow-to-function#security/no-user-controlled-fetch-url": "FP",
     "security/ssrf/node-status-check.safe.js.case~cjs-to-esm#security/no-user-controlled-fetch-url": "FP",
     "security/ssrf/node-status-check.safe.js.case~import-alias#security/no-user-controlled-fetch-url": "FP",

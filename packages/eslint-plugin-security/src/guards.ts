@@ -1,5 +1,6 @@
 import { AST_NODE_TYPES, ASTUtils, type TSESLint, type TSESTree } from '@typescript-eslint/utils';
 
+import { publicSuffixLabels } from './public-suffixes';
 import { type FlowStep, flowStep, flowSteps, isImmediateCallback, stringPieces, takenAt } from './value-flow';
 
 /*
@@ -518,8 +519,11 @@ function firstCharacters(body: readonly RegexToken[]): string | null {
  * least two labels: anchored `^...$`, no `m` flag, no `.` wildcard, and every
  * way it can end is that domain, right after `^`, a literal `\.`, a group whose
  * every alternative ends in a literal `\.` (`^(?:[a-z0-9-]+\.)*example\.com$`)
- * or, for an origin, a literal `://`. `^[a-z0-9.-]*example\.com$` (which
- * accepts `evilexample.com`) and `^[a-z]+\.com$` (any `.com` host) do not count.
+ * or a literal `://`. `^[a-z0-9.-]*example\.com$` (which accepts
+ * `evilexample.com`) and `^[a-z]+\.com$` (any `.com` host) do not count. A
+ * domain that ends in a common public suffix (`vercel.app`, `github.io`,
+ * `co.uk`, see `./public-suffixes`) needs one more literal label than the
+ * suffix: anyone can register `evil.vercel.app`.
  */
 export function regexPinsHost(pattern: string, flags: string): boolean {
   const body = anchoredBody(pattern, flags);
@@ -561,7 +565,9 @@ function groupEndsInDot(tokens: readonly RegexToken[], open: number, close: numb
  * True when the text matched before `tokens[end]` always ends a label: the
  * start of the body (`^`), a literal `.`, a group whose every alternative ends
  * in a literal `.` (when the group or the `.` is optional, the same must hold
- * before it), or a literal `://` (the host of an origin starts there).
+ * before it), or a literal `://`. The host of an origin starts after `://`;
+ * a `hostname` or `host` never holds `://`, so a regex with one accepts no
+ * value of theirs and the check it guards always fails.
  */
 function labelBoundaryBefore(tokens: readonly RegexToken[], end: number): boolean {
   if (end === 0) {
@@ -628,6 +634,7 @@ function endsWithLiteralDomain(tokens: readonly RegexToken[]): boolean {
     bounded &&
     !(start === 0 && domain.startsWith('.')) &&
     labels.length >= 2 &&
+    labels.length > publicSuffixLabels(labels.join('.')) &&
     labels.every((label) => label !== '')
   );
 }
