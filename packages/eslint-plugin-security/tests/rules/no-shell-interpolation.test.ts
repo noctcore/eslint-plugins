@@ -1365,3 +1365,30 @@ ruleTester.run('no-shell-interpolation: sh -c command flows', noShellInterpolati
     ].map((body) => ({ code: builtCmd(body), filename: TS, errors: error })),
   ],
 });
+
+// An args binding changed in place, aliased or handed to a call before the
+// runner reads it: the command is whatever was put there.
+ruleTester.run('no-shell-interpolation: sh -c args changed in place', noShellInterpolationRule, {
+  valid: [
+    ...[
+      "const args = ['-c', 'ls']; spawn('sh', args);",
+      "const args = ['-c', 'ls']; spawn('sh', args); execFile('sh', args);",
+      "let args; args = ['-c', 'ls']; spawn('sh', args);",
+      "let args = ['-c', 'ls']; if (d) args = ['-c', 'pwd']; spawn('sh', args);",
+      "const holder = { args: ['-c', 'ls'] }; spawn('sh', holder.args);",
+      "const args = ['x']; args.push(d); spawn('node', args);",
+    ].map((body) => ({ code: `function run(d: string) { ${body} }`, filename: TS })),
+  ],
+  invalid: [
+    ...[
+      "const args = ['-c', 'ls']; args[1] = `dig ${d}`; spawn('sh', args);",
+      "const args = ['-c']; args.push(`dig ${d}`); spawn('sh', args);",
+      "const args = ['-c', 'ls']; args.splice(1, 1, `dig ${d}`); spawn('sh', args);",
+      "const args = ['-c', 'ls']; const a = args; a[1] = `dig ${d}`; spawn('sh', args);",
+      "const args = ['-c', 'ls']; fill(args, d); spawn('sh', args);",
+      "const args = ['-c', 'ls']; Object.assign(args, { 1: d }); execFile('bash', args);",
+      "let args = ['-c', 'ls']; if (d) args = ['-c', `dig ${d}`]; spawn('sh', args);",
+      "const holder = { args: ['-c', 'ls'] }; holder.args[1] = d; spawn('sh', holder.args);",
+    ].map((body) => ({ code: `function run(d: string) { ${body} }`, filename: TS, errors: error })),
+  ],
+});
