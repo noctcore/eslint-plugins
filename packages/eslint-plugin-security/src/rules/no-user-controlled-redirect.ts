@@ -317,8 +317,12 @@ const MAX_ALIAS_CHAIN = 256;
  * State of one {@link nameShapes} reading. Bindings are read once each, in
  * the order of Tarjan's strongly connected components: a binding met again
  * while it is still being read is part of a cycle with every binding read
- * since, and they all end up with the shapes of the first one, so no result
- * depends on the path or depth it was first reached by.
+ * since. Only the first one is kept once the cycle closes: the others were
+ * read with it still open (a runtime piece), so each is read again, with the
+ * first one's shapes, when a later reading reaches it. That later reading
+ * starts at the binding itself, which keeps its result, so a walk passes over
+ * a cycle at most once per binding in it, and no result depends on the path,
+ * depth or order the cycle was first reached by.
  */
 interface ShapeWalk {
   readonly done: Map<object, readonly string[] | null>;
@@ -331,7 +335,13 @@ interface ShapeWalk {
 }
 
 function shapeWalk(): ShapeWalk {
-  return { done: new Map(), open: new Map(), stack: [], low: Number.POSITIVE_INFINITY, capped: false };
+  return {
+    done: new Map(),
+    open: new Map(),
+    stack: [],
+    low: Number.POSITIVE_INFINITY,
+    capped: false,
+  };
 }
 
 /**
@@ -417,9 +427,9 @@ function bindingShapes(
   if (low >= index) {
     for (const member of walk.stack.splice(index)) {
       walk.open.delete(member);
-      if (!walk.capped) {
-        walk.done.set(member, shapes);
-      }
+    }
+    if (!walk.capped) {
+      walk.done.set(variable, shapes);
     }
   }
   return shapes;
