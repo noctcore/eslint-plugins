@@ -374,7 +374,7 @@ function nameShapes(
 ): readonly string[] | null {
   const inner = unwrapExpression(node as TSESTree.Expression);
   if (inner.type === AST_NODE_TYPES.Literal) {
-    return keptShapes([typeof inner.value === 'string' ? inner.value : String(inner.value)], walk);
+    return keptShapes([joinShape('', typeof inner.value === 'string' ? inner.value : String(inner.value))], walk);
   }
   if (inner.type === AST_NODE_TYPES.Identifier) {
     return bindingShapes(inner, sourceCode, walk);
@@ -495,9 +495,12 @@ function bindingShapes(
 /**
  * The shapes of every binding of a closed cycle, at their fixed point: each
  * starts with no shapes and is read again, with the current shapes of the
- * others, until none changes. Shapes only grow, and a binding past
- * {@link MAX_JOINED_TEXTS} is null (may be anything) and stays so, so this
- * ends after at most 17 rounds per binding.
+ * others, until none changes. Each round that does not end it adds a shape
+ * to a binding or makes it null (may be anything), and a binding holds at
+ * most {@link MAX_JOINED_TEXTS} shapes before it is null for good, so this
+ * ends within 17 rounds per binding, plus one. Each round reads every value
+ * once, and no shape holds two runtime pieces in a row (see
+ * {@link joinShape}), so each reading is bounded too.
  */
 function cycleShapes(
   members: readonly object[],
@@ -527,6 +530,16 @@ function cycleShapes(
   return cycle;
 }
 
+/**
+ * Two shapes joined, each run of runtime pieces made one: any text followed
+ * by any text is any text, so no answer changes, and a shape never holds two
+ * runtime pieces in a row (the patterns {@link shapePattern} builds stay
+ * small, and a cycle that keeps adding runtime pieces settles).
+ */
+function joinShape(first: string, second: string): string {
+  return (first + second).replace(/\u0000{2,}/gu, RUNTIME_PIECE);
+}
+
 /** Every shape a header name joined from pieces can take, or null past {@link MAX_JOINED_TEXTS}. */
 function joinedShapes(
   pieces: readonly (string | TSESTree.Node)[],
@@ -540,7 +553,7 @@ function joinedShapes(
     if (options === null) {
       return null;
     }
-    shapes = keptShapes([...new Set(shapes.flatMap((shape) => options.map((option) => shape + option)))], walk);
+    shapes = keptShapes([...new Set(shapes.flatMap((shape) => options.map((option) => joinShape(shape, option))))], walk);
     if (shapes.length > MAX_JOINED_TEXTS) {
       return null;
     }
