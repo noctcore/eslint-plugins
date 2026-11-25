@@ -660,9 +660,13 @@ const READING_FUNCTIONS: ReadonlySet<string> = new Set([
   'URLSearchParams',
 ]);
 
-/** Static methods of globals that only read their arguments, matched when not shadowed. */
+/**
+ * Static methods of globals that only read their arguments, matched when not
+ * shadowed. `JSON.stringify` counts only without a replacer function, which
+ * is handed every value under its argument.
+ */
 const READING_METHODS: Readonly<Record<string, ReadonlySet<string> | 'any'>> = {
-  Object: new Set(['keys', 'values', 'entries', 'freeze', 'isFrozen', 'getOwnPropertyNames', 'hasOwn']),
+  Object: new Set(['keys', 'freeze', 'isFrozen', 'getOwnPropertyNames', 'hasOwn']),
   JSON: new Set(['stringify']),
   Array: new Set(['isArray']),
   Number: new Set(['isInteger', 'isFinite', 'isNaN', 'parseInt', 'parseFloat']),
@@ -819,11 +823,14 @@ function valueLetsGo(node: TSESTree.Node, walk: SourceWalk): boolean {
     case AST_NODE_TYPES.ForInStatement:
     case AST_NODE_TYPES.SwitchStatement:
     case AST_NODE_TYPES.SwitchCase:
-    case AST_NODE_TYPES.ExportSpecifier:
       return false;
     case AST_NODE_TYPES.CallExpression:
     case AST_NODE_TYPES.NewExpression:
-      return parent.callee === node ? false : !onlyReads(parent, walk);
+      if (parent.callee === node) {
+        return false;
+      }
+      // `Object.values(config)` holds the very objects under the source.
+      return returnsParts(parent, walk) ? valueLetsGo(parent, walk) : !onlyReads(parent, walk);
     case AST_NODE_TYPES.VariableDeclarator:
       return parent.init === node && copyLetsGo(parent, walk);
     case AST_NODE_TYPES.ForOfStatement:
@@ -885,10 +892,44 @@ function onlyReads(call: TSESTree.CallExpression | TSESTree.NewExpression, walk:
   }
   const methods = READING_METHODS[callee.object.name];
   const name = memberKey(callee);
+  if (callee.object.name === 'JSON' && name === 'stringify' && !isNoReplacer(call.arguments[1])) {
+    return false;
+  }
   return (
     methods !== undefined &&
     name !== undefined &&
     (methods === 'any' || methods.has(name)) &&
+    isUnshadowedGlobal(callee.object, walk)
+  );
+}
+
+/** True when a `JSON.stringify` replacer is absent or cannot be a function: an array, `null`, `undefined`. */
+function isNoReplacer(argument: TSESTree.CallExpressionArgument | undefined): boolean {
+  if (argument === undefined) {
+    return true;
+  }
+  const inner = unwrapChain(argument);
+  return (
+    inner.type === AST_NODE_TYPES.ArrayExpression ||
+    (inner.type === AST_NODE_TYPES.Literal && inner.value === null) ||
+    (inner.type === AST_NODE_TYPES.Identifier && inner.name === 'undefined')
+  );
+}
+
+/** Static methods whose result holds the objects under their argument: `Object.values`, `Object.entries`. */
+const PART_RETURNING_METHODS: Readonly<Record<string, ReadonlySet<string>>> = {
+  Object: new Set(['values', 'entries']),
+};
+
+function returnsParts(call: TSESTree.CallExpression | TSESTree.NewExpression, walk: SourceWalk): boolean {
+  const callee = unwrapChain(call.callee);
+  if (callee.type !== AST_NODE_TYPES.MemberExpression || callee.object.type !== AST_NODE_TYPES.Identifier) {
+    return false;
+  }
+  const name = memberKey(callee);
+  return (
+    name !== undefined &&
+    PART_RETURNING_METHODS[callee.object.name]?.has(name) === true &&
     isUnshadowedGlobal(callee.object, walk)
   );
 }

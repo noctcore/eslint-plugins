@@ -317,11 +317,15 @@ only when its root is a variable or an import, and:
   global), and no property under it is written: `config.url = x`, `delete config.url`,
   `({ url: config.url } = x)`, `Object.assign(config, x)`, `config.mirrors.push(x)`;
 - it is never handed to a call that may change it. Only the rule's own request calls and a few
-  known readers (`String`, `Number`, `encodeURIComponent`, `new URL`, `JSON.stringify`,
-  `Object.keys`, `console.log`) count as reading; `merge(config, req.body)`, `_.set(config, ...)`,
-  `mutate(config.http)` and `Object.assign({}, config)` end the trust, since helpers are not
-  followed;
-- it never leaves through a `return`, a `throw`, a tagged template or an `export const`;
+  known readers (`String`, `Number`, `encodeURIComponent`, `new URL`, `JSON.stringify` with no
+  replacer function, `Object.keys`, `console.log`) count as reading; `merge(config, req.body)`,
+  `_.set(config, ...)`, `mutate(config.http)`, `Object.assign({}, config)` and
+  `JSON.stringify(config, (k, v) => ...)` end the trust, since helpers are not followed.
+  `Object.values` and `Object.entries` hand out the objects under the source, so their result
+  keeps to the same rules (`Object.values(config.mirrors).forEach((m) => { m.url = x; })` ends
+  the trust);
+- it never leaves through a `return`, a `throw`, a tagged template, an `export const` or an
+  export list (`export { config }`);
 - a copy of it or of anything under it in a local binding (`const c = config`,
   `const { mirrors } = config`, `const m = config.mirrors`, `for (const m of config.mirrors)`, the
   parameter of a callback such as `config.mirrors.forEach((m) => ...)`, `{ ...config }`) keeps to
